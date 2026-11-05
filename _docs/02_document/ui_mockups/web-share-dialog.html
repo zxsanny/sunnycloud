@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share link · sunnycloud mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400..800&display=swap">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/mockup.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="assets/tw-config.js"></script>
+<script src="assets/mockup.js" defer></script>
+<style>
+  .scrim-page { position: fixed; z-index: 40; }
+  .sun-panel { background: var(--sun-fill); color: var(--on-sun); border-radius: var(--radius-md); }
+  .sun-panel .t-small, .sun-panel .label { color: var(--on-sun); }
+  .share-url { padding: 10px 12px; background: var(--bg-raised); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); word-break: break-all; line-height: 1.5; }
+  .row-confirm { background: var(--danger-bg); }
+  .row-confirm .confirm-text { color: var(--on-danger-bg); }
+  .toast { position: fixed; z-index: 45; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--bg-raised); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-float); font-size: 0.9375rem; font-weight: 650; white-space: nowrap; }
+  .toast .icon { color: var(--success); }
+  .menu-wide { width: 300px; max-width: calc(100vw - 48px); }
+  .menu-item.is-reason { height: auto; padding-top: 8px; padding-bottom: 8px; align-items: flex-start; }
+</style>
+</head>
+<body>
+<div class="review-bar" role="region" aria-label="Mockup controls">
+  <strong>Mockup · Share dialog</strong>
+  <a href="index.html">All screens</a>
+  <span>Theme</span>
+  <div class="seg"><button data-theme-set="system">System</button><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+  <span>State</span>
+  <div class="seg"><button data-show="create">Create link</button><button data-show="created">Link created</button><button data-show="revoke">Revoke</button><button data-show="folder">Folder</button></div>
+</div>
+
+<div class="relative">
+<div class="shell">
+  <aside class="sidebar" aria-label="Main">
+    <a class="brand mb-6 px-3" href="#">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>
+      sunnycloud
+    </a>
+    <nav class="flex flex-col gap-1" aria-label="Sections">
+      <a class="nav-item" href="web-files.html" aria-current="page"><i data-icon="folder"></i>Files</a>
+      <a class="nav-item" href="#"><i data-icon="link"></i>Shared links</a>
+      <a class="nav-item" href="web-account.html#devices"><i data-icon="laptop"></i>Devices</a>
+      <a class="nav-item" href="web-account.html"><i data-icon="user"></i>Account</a>
+    </nav>
+    <p class="t-label nav-group">Admin</p>
+    <nav class="flex flex-col gap-1" aria-label="Admin">
+      <a class="nav-item" href="web-admin.html"><i data-icon="users"></i>Users</a>
+      <a class="nav-item" href="web-admin.html"><i data-icon="mail"></i>Invites</a>
+      <a class="nav-item" href="web-admin.html"><i data-icon="database"></i>Quotas</a>
+      <a class="nav-item" href="web-admin.html"><i data-icon="activity"></i>Health</a>
+    </nav>
+    <section class="mt-auto card p-4" aria-labelledby="storage-h">
+      <div class="flex items-baseline justify-between">
+        <h2 id="storage-h" class="t-label">Storage</h2>
+        <span class="t-small num">38%</span>
+      </div>
+      <p class="t-row num mt-2 mb-2">38.2 GB <span class="t-small">of 100 GB</span></p>
+      <div class="progress" role="progressbar" aria-valuenow="38" aria-valuemin="0" aria-valuemax="100" aria-label="Storage used"><span style="width:38%"></span></div>
+    </section>
+  </aside>
+
+  <div class="main-panel">
+    <header class="topbar">
+      <button class="btn btn-ghost btn-icon menu-button" aria-label="Open navigation"><i data-icon="menu"></i></button>
+      <nav aria-label="Breadcrumb" class="min-w-0 flex-1">
+        <ol class="flex items-center gap-1 t-small min-w-0">
+          <li><a href="#">Files</a></li>
+          <li aria-hidden="true"><i data-icon="chevron-right" class="icon-sm"></i></li>
+          <li><a href="#">Photos</a></li>
+          <li aria-hidden="true"><i data-icon="chevron-right" class="icon-sm"></i></li>
+          <li aria-current="page" class="truncate-1 text-ink font-semibold">2026</li>
+        </ol>
+      </nav>
+      <button class="btn btn-ghost btn-sm gap-2" aria-label="Account menu for Marta Hryn">
+        <span class="grid place-items-center w-8 h-8 rounded-full bg-sun-fill text-sun-on font-bold text-sm">MH</span>
+        <span class="hidden md:inline">Marta Hryn</span><i data-icon="chevron-down" class="icon-sm"></i>
+      </button>
+    </header>
+
+    <main class="flex-1 px-4 lg:px-8 py-6 flex flex-col gap-5">
+      <div class="flex flex-wrap items-end gap-3">
+        <div class="basis-full sm:basis-auto sm:flex-1 min-w-0">
+          <h1 class="t-h1">2026</h1>
+          <p class="t-small num">2 folders, 22 files · 9.4 GB</p>
+        </div>
+        <button class="btn btn-secondary"><i data-icon="folder-plus"></i>New folder</button>
+        <button class="btn btn-primary"><i data-icon="upload"></i>Upload</button>
+      </div>
+
+      <div class="card">
+        <table class="ftable">
+          <thead><tr>
+            <th scope="col" class="w-11"><span class="sr-only">Select</span></th>
+            <th scope="col">Name</th>
+            <th scope="col" class="col-hide-sm w-24">Size</th>
+            <th scope="col" class="col-hide-sm w-32">Modified</th>
+            <th scope="col" class="w-14"><span class="sr-only">Actions</span></th>
+          </tr></thead>
+          <tbody>
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select Trips"></td>
+              <td><div class="name"><span class="thumb thumb-folder"><i data-icon="folder"></i></span><span class="min-w-0"><span class="block truncate-1">Trips</span><span class="block md:hidden t-small">Folder · 2 Nov</span></span></div></td>
+              <td class="col-hide-sm">—</td><td class="col-hide-sm num">2 Nov 2026</td>
+              <td class="relative"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for Trips" aria-haspopup="menu"><i data-icon="more"></i></button>
+                <!-- Folder share: v1.0 shares files only (decision 15); the control stays visible with its reason -->
+                <div class="menu menu-wide absolute right-3 top-11 z-30" role="menu" aria-label="Actions for Trips" data-state="folder">
+                  <div class="menu-item is-reason" role="menuitem" aria-disabled="true" aria-describedby="folder-share-reason" title="Folder sharing is not available in this version">
+                    <i data-icon="link" class="mt-0.5"></i>
+                    <span class="flex flex-col gap-0.5 whitespace-normal"><span>Share link…</span><span id="folder-share-reason" class="t-small font-medium text-ink-3">Folder sharing is not available in this version</span></span>
+                  </div>
+                  <button class="menu-item" role="menuitem"><i data-icon="file-text"></i>Rename…</button>
+                  <button class="menu-item" role="menuitem"><i data-icon="folder"></i>Move to…</button>
+                  <hr class="divider my-1">
+                  <button class="menu-item is-danger" role="menuitem"><i data-icon="trash"></i>Delete</button>
+                </div></td></tr>
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select Screenshots"></td>
+              <td><div class="name"><span class="thumb thumb-folder"><i data-icon="folder"></i></span><span class="min-w-0"><span class="block truncate-1">Screenshots</span><span class="block md:hidden t-small">Folder · 28 Oct</span></span></div></td>
+              <td class="col-hide-sm">—</td><td class="col-hide-sm num">28 Oct 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for Screenshots"><i data-icon="more"></i></button></td></tr>
+            <!-- Thumbnail colours below are photo content, not UI colours -->
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select beach-sunset.jpg"></td>
+              <td><div class="name"><span class="thumb thumb-img"><svg viewBox="0 0 40 40"><rect width="40" height="40" fill="#F4A259"/><rect y="22" width="40" height="18" fill="#3D6E99"/><circle cx="20" cy="22" r="7" fill="#FFE29A"/><rect y="22" width="40" height="2" fill="#F7C978"/></svg></span>
+                <span class="min-w-0"><span class="block truncate-1">beach-sunset.jpg</span><span class="block md:hidden t-small num">4.1 MB · 3 Nov</span></span>
+                <span class="chip chip-info"><i data-icon="link"></i>Shared</span></div></td>
+              <td class="col-hide-sm num">4.1 MB</td><td class="col-hide-sm num">3 Nov 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for beach-sunset.jpg"><i data-icon="more"></i></button></td></tr>
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select lake-morning.jpg"></td>
+              <td><div class="name"><span class="thumb thumb-img"><svg viewBox="0 0 40 40"><rect width="40" height="40" fill="#BFD7EA"/><path d="M0 26 10 12l7 9 6-7 17 12v14H0z" fill="#5C7A6B"/><rect y="28" width="40" height="12" fill="#7FA7C9"/></svg></span>
+                <span class="min-w-0"><span class="block truncate-1">lake-morning.jpg</span><span class="block md:hidden t-small num">3.8 MB · 3 Nov</span></span></div></td>
+              <td class="col-hide-sm num">3.8 MB</td><td class="col-hide-sm num">3 Nov 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for lake-morning.jpg"><i data-icon="more"></i></button></td></tr>
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select tax-return-2025.pdf"></td>
+              <td><div class="name"><span class="thumb"><i data-icon="file"></i></span>
+                <span class="min-w-0"><span class="block truncate-1">tax-return-2025.pdf</span><span class="block md:hidden t-small num">1.2 MB · 30 Oct</span></span></div></td>
+              <td class="col-hide-sm num">1.2 MB</td><td class="col-hide-sm num">30 Oct 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for tax-return-2025.pdf"><i data-icon="more"></i></button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Share dialog. Expiry default and maximum come from the API (share_default_ttl, share_max_ttl). -->
+<div data-state="create created revoke">
+  <div class="scrim scrim-page"></div>
+  <div class="absolute inset-x-0 top-0 z-40 flex justify-center px-4 pt-6 pb-16 lg:pt-14">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="share-h">
+      <header class="flex items-center gap-3 px-5 sm:px-6 h-16 border-b border-line">
+        <span class="thumb thumb-img w-8 h-8 rounded-md hidden sm:grid"><svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" fill="#F4A259"/><rect y="22" width="40" height="18" fill="#3D6E99"/><circle cx="20" cy="22" r="7" fill="#FFE29A"/></svg></span>
+        <h2 id="share-h" class="t-h2 flex-1 truncate-1" title="Share beach-sunset.jpg">Share beach-sunset.jpg</h2>
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Close share dialog"><i data-icon="x"></i></button>
+      </header>
+
+      <div class="flex flex-col gap-6 px-5 sm:px-6 py-5">
+        <!-- (a) New link -->
+        <form class="flex flex-col gap-4" aria-labelledby="new-h" data-state="create revoke">
+          <h3 id="new-h" class="t-h3">New link</h3>
+          <div class="field">
+            <label class="label" for="expires">Expires</label>
+            <select id="expires" class="select" aria-describedby="expires-help">
+              <option>1 day, until 5 Nov 2026</option>
+              <option selected>7 days, until 11 Nov 2026</option>
+              <option>30 days, until 4 Dec 2026</option>
+            </select>
+            <p id="expires-help" class="helper">This server allows links for up to 30 days.</p>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <label class="label" for="pw-switch">Require a password</label>
+            <input id="pw-switch" class="switch" type="checkbox" role="switch" checked data-state="create">
+            <input class="switch" type="checkbox" role="switch" aria-label="Require a password" data-state="revoke">
+          </div>
+          <div class="field" data-state="create">
+            <label class="label" for="pw">Password</label>
+            <div class="relative">
+              <input id="pw" class="input pr-12" type="password" value="sunset-at-lake" autocomplete="new-password" aria-describedby="pw-help">
+              <button type="button" class="btn btn-ghost btn-icon btn-sm absolute right-1 top-1" aria-label="Show password"><i data-icon="eye" class="icon-sm"></i></button>
+            </div>
+            <p id="pw-help" class="helper">Send the password separately from the link.</p>
+          </div>
+          <div class="flex flex-wrap justify-end gap-3">
+            <button type="button" class="btn btn-secondary">Cancel</button>
+            <button type="button" class="btn btn-primary"><i data-icon="link"></i>Create link</button>
+          </div>
+        </form>
+
+        <!-- (b) Link created: the full URL exists only in this response -->
+        <section class="sun-panel flex flex-col gap-3 p-4" aria-labelledby="created-h" data-state="created">
+          <h3 id="created-h" class="t-h3 flex items-center gap-2 text-sun-on"><i data-icon="check-circle"></i>Link created</h3>
+          <p class="share-url mono" id="share-url">https://cloud.example.org/s/sc_shr_Q7mVb4LpT8wZr1NcY6dHs3EjA5uG0oRkWiPqXe9fK2x</p>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <button class="btn btn-primary" aria-describedby="share-url"><i data-icon="copy"></i>Copy link</button>
+            <p class="t-small font-semibold">This is the only time the full link is shown.</p>
+          </div>
+          <p class="t-small num">Expires 11 Nov 2026 · Password required</p>
+        </section>
+
+        <hr class="divider" data-state="create revoke">
+
+        <!-- Links listed per file (node id), so they survive rename and move: AC-77 -->
+        <section class="flex flex-col gap-3" aria-labelledby="links-h">
+          <div class="flex items-baseline justify-between gap-3">
+            <h3 id="links-h" class="t-h3">Links for this file</h3>
+            <span class="t-small num" data-state="create revoke">2 active</span>
+            <span class="t-small num" data-state="created">3 active</span>
+          </div>
+          <ul class="card divide-y divide-line overflow-hidden">
+            <li class="flex items-center gap-3 px-4 py-3" data-state="created">
+              <span class="thumb w-9 h-9"><i data-icon="link" class="icon-sm"></i></span>
+              <div class="flex-1 min-w-0">
+                <p class="t-row num flex flex-wrap items-center gap-2">Expires 11 Nov 2026 <span class="chip chip-sun">New</span></p>
+                <p class="t-small num flex flex-wrap items-center gap-x-3"><span>Created today</span><span class="inline-flex items-center gap-1"><i data-icon="lock" class="icon-sm"></i>Password</span></p>
+              </div>
+              <button class="btn btn-danger-ghost btn-sm" aria-label="Revoke link created today">Revoke</button>
+            </li>
+            <li data-state="create created">
+              <div class="flex items-center gap-3 px-4 py-3">
+                <span class="thumb w-9 h-9"><i data-icon="link" class="icon-sm"></i></span>
+                <div class="flex-1 min-w-0">
+                  <p class="t-row num">Expires 10 Nov 2026</p>
+                  <p class="t-small num flex flex-wrap items-center gap-x-3"><span>Created 3 Nov 2026</span><span class="inline-flex items-center gap-1"><i data-icon="lock" class="icon-sm"></i>Password</span></p>
+                </div>
+                <button class="btn btn-danger-ghost btn-sm" aria-label="Revoke link created 3 Nov 2026">Revoke</button>
+              </div>
+            </li>
+            <!-- (c) Inline confirm in the row: no modal on a modal -->
+            <li class="row-confirm" data-state="revoke">
+              <div class="flex items-center gap-3 px-4 pt-3">
+                <span class="thumb w-9 h-9"><i data-icon="link" class="icon-sm"></i></span>
+                <div class="flex-1 min-w-0">
+                  <p class="t-row num">Expires 10 Nov 2026</p>
+                  <p class="t-small num flex flex-wrap items-center gap-x-3"><span>Created 3 Nov 2026</span><span class="inline-flex items-center gap-1"><i data-icon="lock" class="icon-sm"></i>Password</span></p>
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center gap-3 px-4 py-3" role="group" aria-labelledby="revoke-q">
+                <p id="revoke-q" class="confirm-text flex-1 basis-52 flex items-start gap-2 text-sm font-semibold"><i data-icon="alert-circle" class="icon-sm mt-0.5"></i>People who have this link lose access.</p>
+                <div class="flex gap-2 ml-auto">
+                  <button class="btn btn-secondary btn-sm">Keep</button>
+                  <button class="btn btn-danger btn-sm">Revoke link</button>
+                </div>
+              </div>
+            </li>
+            <li class="flex items-center gap-3 px-4 py-3">
+              <span class="thumb w-9 h-9"><i data-icon="link" class="icon-sm"></i></span>
+              <div class="flex-1 min-w-0">
+                <p class="t-row num">Expires 27 Nov 2026</p>
+                <p class="t-small num flex flex-wrap items-center gap-x-3"><span>Created 28 Oct 2026</span><span>No password</span></p>
+              </div>
+              <button class="btn btn-danger-ghost btn-sm" aria-label="Revoke link created 28 Oct 2026">Revoke</button>
+            </li>
+          </ul>
+          <p class="t-small flex items-start gap-2"><i data-icon="info" class="icon-sm mt-0.5"></i>Links follow the file: they keep working after you rename or move it. Deleting the file ends its links.</p>
+        </section>
+      </div>
+
+      <footer class="flex justify-end px-5 sm:px-6 py-4 border-t border-line" data-state="created">
+        <button class="btn btn-secondary">Done</button>
+      </footer>
+    </div>
+  </div>
+</div>
+
+<div class="toast" role="status" data-state="created"><i data-icon="check-circle"></i>Link copied</div>
+</div>
+</body>
+</html>

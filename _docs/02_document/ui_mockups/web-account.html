@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account · sunnycloud mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400..800&display=swap">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/mockup.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="assets/tw-config.js"></script>
+<script src="assets/mockup.js" defer></script>
+<style>
+  .dl > div { display: grid; gap: 4px 16px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .dl > div:last-child { border-bottom: 0; }
+  .dl dt { font-size: 0.875rem; font-weight: 650; color: var(--text-secondary); }
+  .dl dd { margin: 0; min-width: 0; }
+  @media (min-width: 640px) { .dl > div { grid-template-columns: 160px minmax(0, 1fr); align-items: center; } }
+  .pmark { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-primary); font-size: 0.6875rem; font-weight: 800; }
+  .dev-icon { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-secondary); }
+  .rows > li { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+  .rows > li + li { border-top: 1px solid var(--border); }
+  .confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; background: var(--danger-bg); color: var(--on-danger-bg); border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="review-bar" role="region" aria-label="Mockup controls">
+  <strong>Mockup · Web account</strong>
+  <a href="index.html">All screens</a>
+  <span>Theme</span>
+  <div class="seg"><button data-theme-set="system">System</button><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+  <span>State</span>
+  <div class="seg"><button data-show="default">Account</button><button data-show="revoke">Revoke confirm</button><button data-show="empty">No devices</button><button data-show="loading">Loading</button></div>
+</div>
+
+<div class="shell">
+  <aside class="sidebar" aria-label="Main">
+    <a class="brand mb-6 px-3" href="web-files.html">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>
+      sunnycloud
+    </a>
+    <nav class="flex flex-col gap-1" aria-label="Sections">
+      <a class="nav-item" href="web-files.html"><i data-icon="folder"></i>Files</a>
+      <a class="nav-item" href="#"><i data-icon="link"></i>Shared links</a>
+      <a class="nav-item" href="#devices"><i data-icon="laptop"></i>Devices</a>
+      <a class="nav-item" href="web-account.html" aria-current="page"><i data-icon="user"></i>Account</a>
+    </nav>
+    <p class="t-label nav-group">Admin</p>
+    <nav class="flex flex-col gap-1" aria-label="Admin">
+      <a class="nav-item" href="web-admin.html"><i data-icon="users"></i>Users</a>
+      <a class="nav-item" href="web-admin.html"><i data-icon="mail"></i>Invites</a>
+      <a class="nav-item" href="web-admin.html"><i data-icon="database"></i>Quotas</a>
+      <a class="nav-item" href="web-admin.html"><i data-icon="activity"></i>Health</a>
+    </nav>
+    <section class="mt-auto card p-4" aria-labelledby="storage-h">
+      <div class="flex items-baseline justify-between">
+        <h2 id="storage-h" class="t-label">Storage</h2>
+        <span class="t-small num">38%</span>
+      </div>
+      <p class="t-row num mt-2 mb-2">38.2 GB <span class="t-small">of 100 GB</span></p>
+      <div class="progress" role="progressbar" aria-valuenow="38" aria-valuemin="0" aria-valuemax="100" aria-label="Storage used"><span style="width:38%"></span></div>
+    </section>
+  </aside>
+
+  <div class="main-panel">
+    <header class="topbar">
+      <button class="btn btn-ghost btn-icon menu-button" aria-label="Open navigation"><i data-icon="menu"></i></button>
+      <nav aria-label="Breadcrumb" class="min-w-0 flex-1">
+        <ol class="flex items-center gap-1 t-small min-w-0"><li aria-current="page" class="truncate-1 text-ink font-semibold">Account</li></ol>
+      </nav>
+      <button class="btn btn-ghost btn-sm gap-2" aria-label="Account menu for Marta Hryn">
+        <span class="grid place-items-center w-8 h-8 rounded-full bg-sun-fill text-sun-on font-bold text-sm">MH</span>
+        <span class="hidden md:inline">Marta Hryn</span><i data-icon="chevron-down" class="icon-sm"></i>
+      </button>
+    </header>
+
+    <main class="flex-1 px-4 lg:px-8 py-6 flex flex-col gap-6">
+      <div>
+        <h1 class="t-h1">Account</h1>
+        <p class="t-small">Your profile, your storage, and the apps and browsers signed in as you.</p>
+      </div>
+
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] items-start">
+        <!-- Profile: AccountView (display name from the provider, identities, role) -->
+        <section class="flex flex-col gap-3 xl:col-start-1 xl:row-start-1" aria-labelledby="profile-h">
+          <h2 id="profile-h" class="t-h2">Profile</h2>
+          <dl class="dl card" data-state="default revoke empty">
+            <div><dt>Name</dt><dd class="t-row">Marta Hryn <span class="t-small font-normal">· from your sign-in provider</span></dd></div>
+            <div><dt>Email</dt><dd class="flex flex-wrap items-center gap-2 t-row"><span class="truncate-1">marta.hryn@example.org</span><span class="chip chip-success"><i data-icon="check"></i>Verified</span></dd></div>
+            <div><dt>Sign-in</dt><dd class="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span class="flex items-center gap-2 t-row"><span class="pmark" aria-hidden="true">GH</span>GitHub</span>
+              <span class="t-small num">last sign-in today, 09:12</span>
+              <button class="btn btn-secondary btn-sm sm:ml-auto"><i data-icon="link" class="icon-sm"></i>Link another provider</button></dd></div>
+            <div><dt>Role</dt><dd><span class="chip chip-sun"><i data-icon="shield"></i>Admin</span></dd></div>
+          </dl>
+          <dl class="dl card" data-state="loading" aria-hidden="true">
+            <div><dt>Name</dt><dd><span class="skeleton h-3.5 w-36"></span></dd></div>
+            <div><dt>Email</dt><dd><span class="skeleton h-3.5 w-56"></span></dd></div>
+            <div><dt>Sign-in</dt><dd><span class="skeleton h-3.5 w-28"></span></dd></div>
+            <div><dt>Role</dt><dd><span class="skeleton h-5 w-16 rounded-full"></span></dd></div>
+          </dl>
+        </section>
+
+        <!-- Storage: GET /accounts/me/quota (limit, used, reserved) -->
+        <section class="raised p-5 flex flex-col gap-4 xl:col-start-2 xl:row-start-1" aria-labelledby="usage-h">
+          <h2 id="usage-h" class="t-h2">Storage</h2>
+          <div class="flex flex-col gap-3" data-state="default revoke empty">
+            <p class="num"><span class="t-h1">38.2 GB</span> <span class="t-small">of 100 GB used</span></p>
+            <div class="progress" role="progressbar" aria-valuenow="38" aria-valuemin="0" aria-valuemax="100" aria-label="Storage used"><span style="width:38%"></span></div>
+            <ul class="t-small num flex flex-col gap-1">
+              <li class="flex justify-between gap-3"><span>Reserved for uploads in progress</span><span class="text-ink font-semibold">1.2 GB</span></li>
+              <li class="flex justify-between gap-3"><span>Quota</span><span class="text-ink font-semibold">100 GB · server default</span></li>
+            </ul>
+            <p class="t-small">Only the current version of each file counts. Previews and versions kept for recovery do not. Need more space? Ask your administrator.</p>
+          </div>
+          <div class="flex flex-col gap-3" data-state="loading" aria-hidden="true">
+            <span class="skeleton h-7 w-40"></span><span class="skeleton h-1.5 w-full"></span><span class="skeleton h-3 w-3/4"></span><span class="skeleton h-3 w-2/3"></span>
+          </div>
+        </section>
+
+        <!-- Devices: desktop device tokens plus phone sessions (client_kind android/ios) -->
+        <section id="devices" class="flex flex-col gap-3 scroll-mt-4 xl:col-start-1 xl:row-start-2" aria-labelledby="devices-h">
+          <div>
+            <h2 id="devices-h" class="t-h2">Devices</h2>
+            <p class="t-small">Desktop and phone apps signed in to your account. Revoking signs the app out within a few seconds.</p>
+          </div>
+          <div class="card" data-state="default revoke">
+            <ul class="rows">
+              <li class="flex-wrap !p-0 !gap-0">
+                <div class="flex items-center gap-3 w-full px-4 py-3">
+                  <span class="dev-icon"><i data-icon="laptop"></i></span>
+                  <div class="flex-1 min-w-0"><p class="t-row truncate-1">zx-thinkpad</p><p class="t-small num">Desktop app · Linux · added 4 Mar 2026</p><p class="md:hidden t-small">Last seen 2 min ago</p></div>
+                  <span class="hidden md:block w-40 t-small num">Last seen 2 min ago</span>
+                  <button class="btn btn-danger-ghost btn-sm">Revoke</button>
+                </div>
+                <div class="confirm w-full" role="alert" data-state="revoke">
+                  <i data-icon="alert-circle"></i>
+                  <p class="flex-1 min-w-[12rem] text-[0.9375rem]"><strong>Revoke zx-thinkpad?</strong> It stops syncing and needs a new approval to sign in again.</p>
+                  <div class="flex gap-2 ml-auto"><button class="btn btn-ghost btn-sm">Cancel</button><button class="btn btn-danger btn-sm">Revoke device</button></div>
+                </div>
+              </li>
+              <li>
+                <span class="dev-icon"><i data-icon="monitor"></i></span>
+                <div class="flex-1 min-w-0"><p class="t-row truncate-1">studio-mac</p><p class="t-small num">Desktop app · macOS · added 19 Jun 2026</p><p class="md:hidden t-small">Last seen 3 days ago</p></div>
+                <span class="hidden md:block w-40 t-small num">Last seen 3 days ago</span>
+                <button class="btn btn-danger-ghost btn-sm">Revoke</button>
+              </li>
+              <li>
+                <span class="dev-icon"><i data-icon="phone"></i></span>
+                <div class="flex-1 min-w-0"><p class="t-row truncate-1">Pixel 8</p><p class="t-small num">Android app · signed in 2 Apr 2026</p><p class="md:hidden t-small">Last seen 1 hour ago</p></div>
+                <span class="hidden md:block w-40 t-small num">Last seen 1 hour ago</span>
+                <button class="btn btn-danger-ghost btn-sm">Revoke</button>
+              </li>
+            </ul>
+          </div>
+          <div class="card" data-state="empty">
+            <div class="empty">
+              <svg class="art" viewBox="0 0 96 72" aria-hidden="true"><circle cx="62" cy="24" r="14" fill="var(--sun)"/><path d="M26 62a14 14 0 0 1-1.6-27.9A19 19 0 0 1 60.5 37 12.5 12.5 0 0 1 59 62z" fill="var(--action-subtle)" stroke="var(--action)" stroke-width="2"/></svg>
+              <h3 class="t-h3">No apps signed in yet</h3>
+              <p class="t-small">Install the desktop app to keep folders in sync, or the Android app to back up your photos.</p>
+              <div class="flex flex-wrap justify-center gap-3"><a class="btn btn-primary" href="#"><i data-icon="laptop"></i>Get the desktop app</a><a class="btn btn-ghost" href="#"><i data-icon="phone"></i>Get the Android app</a></div>
+            </div>
+          </div>
+          <div class="card" data-state="loading" aria-hidden="true">
+            <ul class="rows">
+              <li><span class="dev-icon skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-32"></span><span class="skeleton h-2.5 w-52"></span></span><span class="skeleton h-3 w-24 hidden md:block"></span></li>
+              <li><span class="dev-icon skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-24"></span><span class="skeleton h-2.5 w-44"></span></span><span class="skeleton h-3 w-24 hidden md:block"></span></li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- Browser sessions: GET /sessions with client_kind web; this browser is /sessions/current -->
+        <section class="flex flex-col gap-3 xl:col-start-1 xl:row-start-3" aria-labelledby="sessions-h">
+          <div>
+            <h2 id="sessions-h" class="t-h2">Browser sessions</h2>
+            <p class="t-small">Browsers signed in to this web app.</p>
+          </div>
+          <div class="card" data-state="default revoke empty">
+            <ul class="rows">
+              <li>
+                <span class="dev-icon"><i data-icon="globe"></i></span>
+                <div class="flex-1 min-w-0"><p class="t-row flex flex-wrap items-center gap-2"><span class="truncate-1">Firefox on Linux</span><span class="chip chip-sun">This browser</span></p><p class="t-small num">Signed in 1 Nov 2026 · 203.0.113.24</p><p class="md:hidden t-small">Active now</p></div>
+                <span class="hidden md:block w-40 t-small">Active now</span>
+                <span class="w-[74px] hidden sm:block" aria-hidden="true"></span>
+              </li>
+              <li>
+                <span class="dev-icon"><i data-icon="globe"></i></span>
+                <div class="flex-1 min-w-0"><p class="t-row truncate-1">Safari on iPhone</p><p class="t-small num">Signed in 28 Oct 2026 · 198.51.100.7</p><p class="md:hidden t-small">Last seen yesterday</p></div>
+                <span class="hidden md:block w-40 t-small">Last seen yesterday</span>
+                <button class="btn btn-danger-ghost btn-sm">Revoke</button>
+              </li>
+              <li>
+                <span class="dev-icon"><i data-icon="globe"></i></span>
+                <div class="flex-1 min-w-0"><p class="t-row truncate-1">Chrome on Windows</p><p class="t-small num">Signed in 12 Sep 2026 · 192.0.2.41</p><p class="md:hidden t-small">Last seen 3 weeks ago</p></div>
+                <span class="hidden md:block w-40 t-small">Last seen 3 weeks ago</span>
+                <button class="btn btn-danger-ghost btn-sm">Revoke</button>
+              </li>
+            </ul>
+          </div>
+          <div class="card" data-state="loading" aria-hidden="true">
+            <ul class="rows">
+              <li><span class="dev-icon skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-36"></span><span class="skeleton h-2.5 w-48"></span></span></li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- Sign out (DELETE /sessions/current) and self-service deletion (DELETE /accounts/me) -->
+        <section class="flex flex-col gap-5 xl:col-start-2 xl:row-start-2 xl:row-span-2 xl:pt-1" aria-labelledby="leave-h">
+          <h2 id="leave-h" class="sr-only">Sign out and delete</h2>
+          <div class="flex flex-col gap-2">
+            <h3 class="t-h3">Sign out</h3>
+            <p class="t-small">Ends the session in this browser. Your apps stay signed in.</p>
+            <button class="btn btn-secondary self-start"><i data-icon="log-out"></i>Sign out</button>
+          </div>
+          <hr class="divider">
+          <div class="flex flex-col gap-2">
+            <h3 class="t-h3">Delete account</h3>
+            <p class="t-small">Removes your files, links, devices and sessions within 15 minutes. Older server backups can still contain them.</p>
+            <button class="btn btn-danger-ghost self-start -ml-4"><i data-icon="trash"></i>Delete account…</button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · sunnycloud mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400..800&display=swap">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/mockup.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="assets/tw-config.js"></script>
+<script src="assets/mockup.js" defer></script>
+<style>
+  .auth { min-height: calc(100vh - 45px); }
+  .brand-panel { background: var(--action-subtle); color: var(--on-action-subtle); }
+  .brand-panel .brand { color: var(--on-action-subtle); }
+  .art .sun { fill: var(--sun); }
+  .art .ray { stroke: var(--sun); stroke-width: 6; stroke-linecap: round; }
+  .art .cloud-front { fill: light-dark(var(--g-0), var(--g-150)); stroke: var(--action); stroke-width: 4; }
+  .art .cloud-back { fill: var(--action); }
+  .art .cloud-far { fill: light-dark(var(--g-25), var(--g-300)); }
+  .pmark { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-primary); font-size: 0.75rem; font-weight: 800; letter-spacing: 0; }
+  .btn-provider { justify-content: flex-start; gap: 14px; }
+  .steps li { display: flex; align-items: center; gap: 10px; }
+  .step-num { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: var(--radius-full); background: var(--bg-sunken); color: var(--text-secondary); font-size: 0.8125rem; font-weight: 800; }
+  .steps [aria-current="step"] .step-num { background: var(--action); color: var(--on-action); }
+  .steps [aria-current="step"] { color: var(--text-primary); font-weight: 700; }
+  .steps .is-done .step-num { background: var(--success-bg); color: var(--success); }
+  .cmd { display: flex; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 12px; background: var(--bg-sunken); border-radius: var(--radius-sm); color: var(--text-primary); }
+  .cmd code { flex: 1; min-width: 0; padding-top: 6px; word-break: break-word; }
+</style>
+</head>
+<body>
+<div class="review-bar" role="region" aria-label="Mockup controls">
+  <strong>Mockup · Web sign-in</strong>
+  <a href="index.html">All screens</a>
+  <span>Theme</span>
+  <div class="seg"><button data-theme-set="system">System</button><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+  <span>State</span>
+  <div class="seg flex-wrap"><button data-show="signin">Sign in</button><button data-show="invite">Invite link</button><button data-show="not-invited">Not invited</button><button data-show="disabled">Deactivated</button><button data-show="setup">First run</button><button data-show="setup-error">Token error</button><button data-show="setup-signin">First run: sign in</button></div>
+</div>
+
+<div class="auth grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+  <!-- Brand panel: lg and up only -->
+  <aside class="brand-panel hidden lg:flex flex-col gap-8 p-10 xl:p-14" aria-label="About this server">
+    <span class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>
+      sunnycloud
+    </span>
+    <div class="flex-1 flex flex-col justify-center gap-10 max-w-[520px] w-full mx-auto">
+    <svg class="art w-full max-w-[440px]" viewBox="0 0 440 300" aria-hidden="true">
+      <g class="ray"><path d="M268 22v20M268 182v20M336 112h20M180 112h20M316 64l14-14M206 174l14-14M316 160l14 14M206 50l14 14"/></g>
+      <circle class="sun" cx="268" cy="112" r="58"/>
+      <path class="cloud-far" d="M318 268a26 26 0 0 1 2-52 34 34 0 0 1 64 8 22 22 0 0 1 6 44z"/>
+      <path class="cloud-back" d="M150 236a34 34 0 0 1-3-68 46 46 0 0 1 87-6 32 32 0 0 1 10 74z"/>
+      <path class="cloud-front" d="M108 286a40 40 0 0 1-4-80 54 54 0 0 1 102-8 38 38 0 0 1 12 88z"/>
+    </svg>
+    <div class="flex flex-col gap-2">
+      <p class="mono text-[0.9375rem] font-semibold">cloud.example.org</p>
+      <p class="t-h2 text-[inherit] max-w-md">Your files and photos, kept on your own server.</p>
+    </div>
+    </div>
+  </aside>
+
+  <main class="bg-surface flex flex-col items-center px-4 py-10 md:px-6 lg:justify-center lg:py-16">
+    <div class="w-full max-w-[400px] flex flex-col gap-6">
+      <!-- Compact brand on phones and tablets -->
+      <div class="lg:hidden flex flex-col gap-1">
+        <span class="brand">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>
+          sunnycloud
+        </span>
+        <span class="mono t-small">cloud.example.org</span>
+      </div>
+
+      <!-- (a) to (d): normal sign-in -->
+      <header class="flex flex-col gap-2" data-state="signin invite not-invited disabled">
+        <h1 class="t-display">Sign in to sunnycloud</h1>
+        <p class="t-small">Use the account your administrator set up for you.</p>
+      </header>
+
+      <!-- (b) arrived through an invite link; the token goes in the request body, never in a URL sent to the API -->
+      <div class="banner banner-info" role="status" data-state="invite">
+        <i data-icon="mail"></i>
+        <div><strong>You have an invite.</strong> Choose how to sign in. Your account is created on the first sign-in; the invite works once.</div>
+      </div>
+
+      <!-- (c) InvitationRequired: no account was created -->
+      <div class="banner banner-danger" role="alert" data-state="not-invited">
+        <i data-icon="alert-circle"></i>
+        <div><strong>This account is not invited.</strong> No account was created. Ask your administrator for an invite link, then sign in again.</div>
+      </div>
+
+      <!-- (d) disabled account fails authentication -->
+      <div class="banner banner-warning" role="alert" data-state="disabled">
+        <i data-icon="lock"></i>
+        <div><strong>This account is deactivated.</strong> Ask your administrator to turn it back on.</div>
+      </div>
+
+      <!-- (e) first run: setup_required from the providers list -->
+      <header class="flex flex-col gap-4" data-state="setup setup-error setup-signin">
+        <h1 class="t-display">Set up this server</h1>
+        <p class="t-small">This server has no accounts yet. The first person to sign in with the setup token becomes its administrator.</p>
+        <ol class="steps flex flex-col sm:flex-row gap-3 sm:gap-6 t-small" aria-label="Setup steps">
+          <li data-state="setup setup-error" aria-current="step"><span class="step-num">1</span>Setup token</li>
+          <li data-state="setup-signin" class="is-done"><span class="step-num"><i data-icon="check" class="icon-sm"></i></span>Setup token</li>
+          <li data-state="setup setup-error"><span class="step-num">2</span>Sign in as first admin</li>
+          <li data-state="setup-signin" aria-current="step"><span class="step-num">2</span>Sign in as first admin</li>
+        </ol>
+      </header>
+
+      <form class="flex flex-col gap-5" data-state="setup setup-error">
+        <div class="field">
+          <label class="label" for="setup-token">Setup token</label>
+          <input id="setup-token" class="input input-mono" data-state="setup" autocomplete="off" spellcheck="false" placeholder="Paste the token" aria-describedby="token-help">
+          <input class="input input-mono" data-state="setup-error" autocomplete="off" spellcheck="false" value="Kq7vR2mXp9tL4wB8nY3cD6fH1jA5sE0g" aria-invalid="true" aria-describedby="token-error token-help" aria-label="Setup token">
+          <p id="token-error" class="field-error" data-state="setup-error"><i data-icon="alert-circle" class="icon-sm mt-px"></i>This setup token is not valid. A token works once and changes when the server restarts.</p>
+          <p id="token-help" class="helper">The server prints it once in its log at first start. To print a new one, run this on the server:</p>
+          <div class="cmd mono">
+            <code>docker compose exec api sunnycloud admin setup-token</code>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm" aria-label="Copy command"><i data-icon="copy" class="icon-sm"></i></button>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-lg btn-block" type="button">Continue</button>
+      </form>
+
+      <p class="t-small flex items-center gap-2" data-state="setup-signin"><i data-icon="info" class="icon-sm"></i>Now sign in with the account that will be the administrator.</p>
+
+      <!-- Providers: only those the operator enabled (AC-19: any subset, at least one).
+           v1.0 ships GitHub and generic OIDC (Google is an OIDC preset); Apple arrives in v1.1; Facebook was dropped.
+           Production uses each provider's official mark; the mockup shows a neutral letter. -->
+      <section class="flex flex-col gap-3" aria-label="Sign-in options" data-state="signin invite not-invited disabled setup-signin">
+        <button class="btn btn-secondary btn-lg btn-block btn-provider"><span class="pmark" aria-hidden="true">G</span>Continue with Google</button>
+        <button class="btn btn-secondary btn-lg btn-block btn-provider"><span class="pmark" aria-hidden="true">A</span>Continue with Apple</button>
+        <button class="btn btn-secondary btn-lg btn-block btn-provider"><span class="pmark" aria-hidden="true">GH</span>Continue with GitHub</button>
+        <p class="t-small flex items-start gap-2 mt-1"><i data-icon="info" class="icon-sm mt-0.5"></i>Your administrator chose these sign-in options.</p>
+      </section>
+
+      <hr class="divider" data-state="signin not-invited disabled">
+      <p class="t-small" data-state="signin not-invited disabled"><strong class="text-ink font-bold">New here?</strong> You need an invite from your administrator.</p>
+      <p class="t-small" data-state="setup setup-error setup-signin">The token is valid only while the server has no accounts. Later users join by invite.</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

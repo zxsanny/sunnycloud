@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Android backup · sunnycloud mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400..800&display=swap">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/mockup.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="assets/tw-config.js"></script>
+<script src="assets/mockup.js" defer></script>
+<style>
+/* Flutter, Material 3 widgets restyled with the tokens: pill buttons, 44px+ touch targets, sun pill on the active tab */
+.phone .btn { height: 44px; border-radius: var(--radius-full); }
+.phone .input { height: 48px; }
+.phone.is-long { height: auto; }
+.appbar { display: flex; align-items: center; gap: 12px; height: 56px; flex: none; padding: 0 16px; }
+.appbar h3 { font-size: 1.375rem; font-weight: 700; letter-spacing: -0.01em; }
+.screen { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 16px; font-size: 0.9375rem; }
+.m-card { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+.m-list { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.m-list > * + * { border-top: 1px solid var(--border); }
+.m-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 16px; }
+.m-row .sub { font-size: 0.8125rem; color: var(--text-secondary); }
+.botnav { display: grid; grid-template-columns: 1fr 1fr; flex: none; height: 72px; background: var(--bg-surface); border-top: 1px solid var(--border); }
+.bn-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text-secondary); font-size: 0.75rem; font-weight: 650; text-decoration: none; }
+.bn-pill { display: grid; place-items: center; width: 56px; height: 30px; border-radius: var(--radius-full); }
+.bn-item[aria-current="page"] { color: var(--text-primary); font-weight: 750; }
+.bn-item[aria-current="page"] .bn-pill { background: var(--sun-fill); color: var(--on-sun); }
+.big-num { font-size: 1.75rem; font-weight: 750; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.good-sun { display: grid; place-items: center; width: 72px; height: 72px; border-radius: var(--radius-full); background: var(--sun-fill); color: var(--on-sun); }
+.good-sun .icon { width: 40px; height: 40px; }
+.banner-btn { width: 100%; border: 0; text-align: left; font: inherit; cursor: pointer; align-items: center; }
+.notif { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised); padding: 12px 14px; }
+</style>
+</head>
+<body>
+<div class="review-bar" role="region" aria-label="Mockup controls">
+  <strong>Mockup · Android backup</strong>
+  <a href="index.html">All screens</a>
+  <span>Theme</span>
+  <div class="seg"><button data-theme-set="system">System</button><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+</div>
+
+<main class="px-4 lg:px-8 py-6 max-w-[1240px] mx-auto flex flex-col gap-6">
+  <header class="max-w-3xl">
+    <h1 class="t-h1">Android backup</h1>
+    <p class="t-small mt-1">Flutter screens of the Android app (17): sign in, backup status and settings. There are two tabs only, Backup and Settings; Android v1.0 does not browse or download files. Kotlin and the shared Rust library do the work; these screens only show its status.</p>
+    <p class="t-small mt-2">iOS (v1.1) reuses these screens and hides Google and GitHub sign-in unless the server has Sign in with Apple enabled.</p>
+  </header>
+
+  <div class="grid gap-x-6 gap-y-10 justify-items-center grid-cols-[repeat(auto-fill,minmax(min(100%,360px),1fr))]">
+
+    <!-- 1 Sign in: http:// refused -->
+    <section class="w-full max-w-[360px] flex flex-col gap-3" aria-labelledby="f1-h">
+      <h2 id="f1-h" class="t-h3">1 · Sign in</h2>
+      <div class="phone">
+        <div class="phone-status"><span class="num">9:41</span><span class="flex items-center gap-1"><i data-icon="wifi" class="icon-sm"></i><i data-icon="battery" class="icon-sm"></i></span></div>
+        <header class="appbar"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg><h3>sunnycloud</h3></header>
+        <div class="screen pt-6">
+          <div><p class="t-h2">Back up your photos</p><p class="t-small mt-1">Photos and videos go to your own sunnycloud server.</p></div>
+          <div class="field mt-2">
+            <label class="label" for="f1-server">Server address</label>
+            <input class="input" id="f1-server" inputmode="url" value="http://192.168.1.20:8080" aria-invalid="true" aria-describedby="f1-err">
+            <p class="field-error" id="f1-err"><i data-icon="alert-circle" class="icon-sm mt-px"></i><span>Use an address that starts with https://. sunnycloud does not sign in over plain HTTP.</span></p>
+          </div>
+          <button class="btn btn-primary btn-block mt-2"><i data-icon="external"></i>Sign in with browser</button>
+          <p class="t-small">Your browser opens your server's sign-in page with the options that server offers, such as GitHub or Google. Then you come back here with a one-time code.</p>
+        </div>
+      </div>
+      <p class="t-small">The address must be https. The app checks it with the server before sign-in; sign-in options come from the server, not from the app.</p>
+    </section>
+
+    <!-- 2 Backing up -->
+    <section class="w-full max-w-[360px] flex flex-col gap-3" aria-labelledby="f2-h">
+      <h2 id="f2-h" class="t-h3">2 · Backing up</h2>
+      <div class="phone">
+        <div class="phone-status"><span class="num">9:41</span><span class="flex items-center gap-1"><i data-icon="wifi" class="icon-sm"></i><i data-icon="battery" class="icon-sm"></i></span></div>
+        <header class="appbar"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg><h3>Backup</h3></header>
+        <div class="screen">
+          <section class="m-card flex flex-col gap-3" aria-label="Backup status">
+            <div class="flex items-center gap-2"><i data-icon="sync" class="text-action"></i><p class="t-row font-bold flex-1">Backing up</p><span class="chip"><i data-icon="wifi"></i>Wi-Fi only</span></div>
+            <p class="big-num">342 <span class="t-small font-semibold">of 1,208</span></p>
+            <div class="progress" role="progressbar" aria-valuenow="28" aria-valuemin="0" aria-valuemax="100" aria-label="Photos backed up"><span style="width:28%"></span></div>
+            <p class="t-small">About 25 min left</p>
+          </section>
+          <section class="m-card flex flex-col gap-3" aria-labelledby="f2-big-h">
+            <h4 id="f2-big-h" class="t-row font-bold">Large first backup</h4>
+            <p class="t-small"><span class="num">866</span> photos and videos are left. Start a large backup to keep going while you use other apps. Android shows a notification while it runs.</p>
+            <button class="btn btn-primary btn-block"><i data-icon="upload"></i>Start large backup</button>
+          </section>
+          <div class="m-list">
+            <a class="m-row text-ink no-underline" href="#"><i data-icon="info" class="text-ink-2"></i><span class="flex-1"><span class="block">3 skipped</span><span class="sub block">1 gone, 2 names refused by the server</span></span><i data-icon="chevron-right" class="icon-sm text-ink-2"></i></a>
+          </div>
+        </div>
+        <nav class="botnav" aria-label="Main"><a class="bn-item" href="#" aria-current="page"><span class="bn-pill"><i data-icon="cloud"></i></span>Backup</a><a class="bn-item" href="#"><span class="bn-pill"><i data-icon="sliders"></i></span>Settings</a></nav>
+      </div>
+      <p class="t-small">Counts are photos the app can see. The large backup is started only by your tap and always shows a notification:</p>
+      <div class="notif" aria-label="Notification during a large backup">
+        <p class="flex items-center gap-2 text-xs text-ink-2"><svg class="brand-mark !w-4 !h-4" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>sunnycloud · now</p>
+        <p class="t-row font-semibold mt-1 mb-2">Backing up 342 of 1,208</p>
+        <div class="progress" aria-hidden="true"><span style="width:28%"></span></div>
+      </div>
+    </section>
+
+    <!-- 3 Up to date -->
+    <section class="w-full max-w-[360px] flex flex-col gap-3" aria-labelledby="f3-h">
+      <h2 id="f3-h" class="t-h3">3 · Up to date</h2>
+      <div class="phone">
+        <div class="phone-status"><span class="num">16:05</span><span class="flex items-center gap-1"><i data-icon="wifi" class="icon-sm"></i><i data-icon="battery" class="icon-sm"></i></span></div>
+        <header class="appbar"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg><h3>Backup</h3></header>
+        <div class="screen">
+          <section class="m-card flex flex-col items-center text-center gap-2 py-8" aria-label="Backup status">
+            <span class="good-sun"><i data-icon="sun"></i></span>
+            <p class="t-h2 mt-2">Up to date</p>
+            <p class="t-small">Last backup today at <span class="num">14:32</span></p>
+            <span class="chip mt-1"><i data-icon="wifi"></i>Wi-Fi only</span>
+          </section>
+          <div class="m-list">
+            <div class="m-row"><i data-icon="check-circle" class="text-success"></i><span class="flex-1"><span class="block num">1,205 backed up</span><span class="sub block">to Camera Uploads/Pixel 8</span></span></div>
+            <a class="m-row text-ink no-underline" href="#"><i data-icon="info" class="text-ink-2"></i><span class="flex-1"><span class="block">3 skipped</span><span class="sub block">1 gone, 2 names refused by the server</span></span><i data-icon="chevron-right" class="icon-sm text-ink-2"></i></a>
+          </div>
+        </div>
+        <nav class="botnav" aria-label="Main"><a class="bn-item" href="#" aria-current="page"><span class="bn-pill"><i data-icon="cloud"></i></span>Backup</a><a class="bn-item" href="#"><span class="bn-pill"><i data-icon="sliders"></i></span>Settings</a></nav>
+      </div>
+      <p class="t-small">The sun marks good news only. Backed up plus skipped always adds up to the photos the app can see (1,208).</p>
+    </section>
+
+    <!-- 4 Needs attention: limited access + quota pause -->
+    <section class="w-full max-w-[360px] flex flex-col gap-3" aria-labelledby="f4-h">
+      <h2 id="f4-h" class="t-h3">4 · Needs attention</h2>
+      <div class="phone">
+        <div class="phone-status"><span class="num">9:41</span><span class="flex items-center gap-1"><i data-icon="wifi" class="icon-sm"></i><i data-icon="battery" class="icon-sm"></i></span></div>
+        <header class="appbar"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg><h3>Backup</h3></header>
+        <div class="screen">
+          <button class="banner banner-info banner-btn"><i data-icon="image"></i><span class="flex-1 font-semibold">412 photos visible, tap to allow more</span><i data-icon="chevron-right" class="icon-sm"></i></button>
+          <section class="m-card flex flex-col gap-3" aria-label="Backup status">
+            <div class="flex items-center gap-2"><i data-icon="pause" class="text-warning"></i><p class="t-row font-bold flex-1">Backup paused</p><span class="chip chip-warning"><i data-icon="database"></i>Storage full</span></div>
+            <p class="t-small">Your storage on the server is full: <span class="num">100 GB of 100 GB</span>. Free up space or ask your admin for more. Backup tries again on its next run.</p>
+            <div class="progress is-paused" role="progressbar" aria-valuenow="92" aria-valuemin="0" aria-valuemax="100" aria-label="Photos backed up, paused"><span style="width:92%"></span></div>
+            <p class="t-small num">380 of 412 backed up · 28 waiting</p>
+          </section>
+          <section class="m-list" aria-labelledby="f4-skip-h">
+            <h4 id="f4-skip-h" class="px-4 pt-3 pb-1 t-label">Skipped · 4</h4>
+            <div class="m-row !min-h-0 !py-2"><span class="flex-1">Gone before upload</span><span class="num t-small">1</span></div>
+            <div class="m-row !min-h-0 !py-2"><span class="flex-1">Name refused by the server</span><span class="num t-small">2</span></div>
+            <div class="m-row !min-h-0 !py-2"><span class="flex-1">Too large</span><span class="num t-small">1</span></div>
+          </section>
+          <p class="t-small">Last error: storage quota reached. Reference <span class="mono text-ink">c-81</span></p>
+        </div>
+        <nav class="botnav" aria-label="Main"><a class="bn-item" href="#" aria-current="page"><span class="bn-pill"><i data-icon="cloud"></i></span>Backup</a><a class="bn-item" href="#"><span class="bn-pill"><i data-icon="sliders"></i></span>Settings</a></nav>
+      </div>
+      <p class="t-small">Limited access: the banner uses the exact text from AC-53 and opens the system photo picker. No library total is shown (Android 14 hides it). Newly picked photos back up on the next run.</p>
+    </section>
+
+    <!-- 5 Photo access denied -->
+    <section class="w-full max-w-[360px] flex flex-col gap-3" aria-labelledby="f5-h">
+      <h2 id="f5-h" class="t-h3">5 · Photo access denied</h2>
+      <div class="phone">
+        <div class="phone-status"><span class="num">9:41</span><span class="flex items-center gap-1"><i data-icon="wifi" class="icon-sm"></i><i data-icon="battery" class="icon-sm"></i></span></div>
+        <header class="appbar"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg><h3>Backup</h3></header>
+        <div class="screen">
+          <section class="m-card flex flex-col gap-3" aria-label="Backup status">
+            <div class="flex items-center gap-2"><i data-icon="lock" class="text-warning"></i><p class="t-row font-bold flex-1">Backup paused</p><span class="chip chip-warning"><i data-icon="pause"></i>No access</span></div>
+            <p>sunnycloud can't see your photos and videos. Allow access so it can back them up.</p>
+            <button class="btn btn-primary btn-block">Allow access</button>
+            <p class="t-small">You can also pick only some photos. Then only those are backed up.</p>
+          </section>
+          <div class="m-list">
+            <div class="m-row"><i data-icon="clock" class="text-ink-2"></i><span class="flex-1"><span class="block">Last backup yesterday at <span class="num">21:10</span></span><span class="sub block num">1,205 backed up</span></span></div>
+          </div>
+        </div>
+        <nav class="botnav" aria-label="Main"><a class="bn-item" href="#" aria-current="page"><span class="bn-pill"><i data-icon="cloud"></i></span>Backup</a><a class="bn-item" href="#"><span class="bn-pill"><i data-icon="sliders"></i></span>Settings</a></nav>
+      </div>
+      <p class="t-small">Access is read again at the start of every run, so the pause clears on its own once access is allowed.</p>
+    </section>
+
+    <!-- 6 Settings (full scroll height) -->
+    <section class="w-full max-w-[360px] flex flex-col gap-3" aria-labelledby="f6-h">
+      <h2 id="f6-h" class="t-h3">6 · Settings</h2>
+      <div class="phone is-long">
+        <div class="phone-status"><span class="num">9:41</span><span class="flex items-center gap-1"><i data-icon="wifi" class="icon-sm"></i><i data-icon="battery" class="icon-sm"></i></span></div>
+        <header class="appbar"><h3>Settings</h3></header>
+        <div class="screen">
+          <h4 class="t-label px-1">When to back up</h4>
+          <div class="m-list">
+            <div class="m-row"><span class="flex-1"><label class="block" for="f6-wifi">Wi-Fi only</label><span class="sub block" id="f6-wifi-help">Waits for Wi-Fi or another unmetered network.</span></span><input class="switch" type="checkbox" role="switch" id="f6-wifi" checked aria-describedby="f6-wifi-help"></div>
+            <div class="m-row"><span class="flex-1"><label class="block" for="f6-charge">Only while charging</label></span><input class="switch" type="checkbox" role="switch" id="f6-charge"></div>
+            <a class="m-row text-ink no-underline" href="#"><span class="flex-1"><span class="block">Albums to back up</span><span class="sub block">Camera, Screenshots</span></span><i data-icon="chevron-right" class="icon-sm text-ink-2"></i></a>
+          </div>
+          <h4 class="t-label px-1 mt-1">Battery</h4>
+          <section class="m-card flex flex-col gap-3" aria-label="Battery">
+            <div class="flex items-center gap-2"><i data-icon="battery" class="text-warning"></i><p class="font-semibold flex-1">Battery optimised</p><span class="chip chip-warning"><i data-icon="alert"></i>May delay</span></div>
+            <p class="t-small">Android may hold back background work, so new photos can wait until you open the app.</p>
+            <button class="btn btn-primary btn-block">Allow background activity</button>
+            <p class="t-small">Some phones add their own limits. Steps for:</p>
+            <p class="flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold"><a href="#">Samsung</a><a href="#">Xiaomi</a><a href="#">Huawei</a></p>
+          </section>
+          <h4 class="t-label px-1 mt-1">Account</h4>
+          <div class="m-list">
+            <div class="m-row"><i data-icon="globe" class="text-ink-2"></i><span class="flex-1 min-w-0"><span class="block">Server</span><span class="sub block truncate-1">https://cloud.hryn.family</span></span></div>
+            <div class="m-row"><i data-icon="user" class="text-ink-2"></i><span class="flex-1 min-w-0"><span class="block">Marta Hryn</span><span class="sub block">This phone backs up as Pixel 8</span></span></div>
+            <button class="m-row w-full border-0 bg-transparent font-[inherit] text-left text-danger font-semibold cursor-pointer"><i data-icon="log-out"></i>Sign out</button>
+          </div>
+          <h4 class="t-label px-1 mt-1">Help</h4>
+          <div class="m-list">
+            <button class="m-row w-full border-0 bg-transparent font-[inherit] text-left text-ink cursor-pointer"><i data-icon="activity" class="text-ink-2"></i><span class="flex-1"><span class="block">Share diagnostics</span><span class="sub block">Asks you first. Logs contain no file names or sign-in tokens.</span></span><i data-icon="chevron-right" class="icon-sm text-ink-2"></i></button>
+          </div>
+        </div>
+        <nav class="botnav" aria-label="Main"><a class="bn-item" href="#"><span class="bn-pill"><i data-icon="cloud"></i></span>Backup</a><a class="bn-item" href="#" aria-current="page"><span class="bn-pill"><i data-icon="sliders"></i></span>Settings</a></nav>
+      </div>
+      <p class="t-small">Shown at full scroll height. Defaults: Wi-Fi only on, charging only off. Sign out also works when the server can't be reached; the sign-in is still removed from the phone.</p>
+    </section>
+  </div>
+</main>
+</body>
+</html>

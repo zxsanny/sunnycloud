@@ -85,7 +85,7 @@ Mismatch never ends as a saved "good" file (`HashMismatch`, partial file discard
 
 **CSP requirement (edge config owned by deployment)**: `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'` (WASM only; vault page v1.2 must serve without `unsafe-inline`/`unsafe-eval` and review whether `wasm-unsafe-eval` is acceptable under AC-62), `style-src 'self'`, `img-src 'self' blob:` where needed, `connect-src 'self'`, `frame-ancestors 'none'`, `base-uri 'none'`, `form-action 'self'`, no third-party hosts, no inline handlers. Build fails if the bundle contains an inline script or a non-self URL.
 
-**Vault page (v1.2, placeholder in v1.0)**: route `/vault` exists behind a build flag and renders "not available in this version"; no vault code is shipped in v1.0 (FT-P-73). In v1.2 it uses 19_vault_core WASM in a module Worker with chunked decrypt, passphrase rules (12 characters, zxcvbn 3), locks by zeroing keys, share links put the key in the URL fragment.
+**Vault page (v1.2, placeholder in v1.0)**: route `/vault` exists behind a build flag and renders "not available in this version"; no vault code is shipped in v1.0 (FT-P-73). In v1.2 it uses 19_vault_core WASM in a module Worker with chunked decrypt, passphrase rules (12 characters, zxcvbn 3), locks by zeroing keys, and offers no share links for vault files (owner decision 2026-11-05: no vault share links in v1.2).
 
 **Key dependencies**: Svelte 5, Vite, TypeScript, generated OpenAPI client (openapi-typescript or equivalent), `sync_core_wasm` (wasm-bindgen, `--target web`, single-threaded; Vite integration needs a spike), Vitest + Playwright for tests.
 

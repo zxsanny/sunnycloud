@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockups · sunnycloud</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400..800&display=swap">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/mockup.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="assets/tw-config.js"></script>
+<script src="assets/mockup.js" defer></script>
+<style>
+  /* Each theme panel resolves the light-dark() tokens on its own */
+  /* Inherited colours resolve where they are declared, so re-declare text colour at each boundary */
+  .scheme-light, .scheme-dark { color: var(--text-primary); border: 1px solid var(--border); }
+  .scheme-light { color-scheme: light; }
+  .scheme-dark { color-scheme: dark; }
+  .swatch { height: 56px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="review-bar" role="region" aria-label="Mockup controls">
+  <strong>sunnycloud mockups</strong>
+  <span>Theme for the screens</span>
+  <div class="seg"><button data-theme-set="system">System</button><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+  <a href="DESIGN.md">Design system (DESIGN.md)</a>
+</div>
+
+<main class="max-w-6xl mx-auto px-4 lg:px-8 py-10 flex flex-col gap-12">
+  <header class="flex flex-col gap-3">
+    <a class="brand" href="#">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>
+      sunnycloud
+    </a>
+    <h1 class="t-display max-w-3xl">Sun over a cloud: one design for web, desktop and phone</h1>
+    <p class="text-ink-2 max-w-2xl">A slightly gray light theme and a graphite dark theme. Sky blue marks everything you can act on; sun yellow marks the brand, where you are, and good news. Status colours are green, orange and red, so yellow never means "careful".</p>
+  </header>
+
+  <!-- Both themes at once -->
+  <section aria-labelledby="themes-h" class="flex flex-col gap-4">
+    <h2 id="themes-h" class="t-h2">Themes</h2>
+    <div class="grid gap-4 md:grid-cols-2">
+      <div class="scheme-light rounded-lg p-5 flex flex-col gap-4" style="background: var(--bg-page)">
+        <p class="t-label">Light · a bit gray</p>
+        <div class="card p-4 flex flex-col gap-3">
+          <p class="t-h3">Photos / 2026</p>
+          <p class="t-small">22 files · 9.4 GB</p>
+          <div class="progress" aria-hidden="true"><span style="width:62%"></span></div>
+          <div class="flex flex-wrap gap-2"><button class="btn btn-primary btn-sm"><i data-icon="upload"></i>Upload</button><button class="btn btn-secondary btn-sm">New folder</button><button class="btn btn-ghost btn-sm">Cancel</button></div>
+          <div class="flex flex-wrap gap-2"><span class="chip chip-sun">Admin</span><span class="chip chip-info"><i data-icon="link"></i>Shared</span><span class="chip chip-success"><i data-icon="check"></i>Synced</span><span class="chip chip-warning"><i data-icon="pause"></i>Paused</span><span class="chip chip-danger"><i data-icon="alert-circle"></i>Failed</span></div>
+        </div>
+      </div>
+      <div class="scheme-dark rounded-lg p-5 flex flex-col gap-4" style="background: var(--bg-page)">
+        <p class="t-label">Dark · graphite</p>
+        <div class="card p-4 flex flex-col gap-3">
+          <p class="t-h3">Photos / 2026</p>
+          <p class="t-small">22 files · 9.4 GB</p>
+          <div class="progress" aria-hidden="true"><span style="width:62%"></span></div>
+          <div class="flex flex-wrap gap-2"><button class="btn btn-primary btn-sm"><i data-icon="upload"></i>Upload</button><button class="btn btn-secondary btn-sm">New folder</button><button class="btn btn-ghost btn-sm">Cancel</button></div>
+          <div class="flex flex-wrap gap-2"><span class="chip chip-sun">Admin</span><span class="chip chip-info"><i data-icon="link"></i>Shared</span><span class="chip chip-success"><i data-icon="check"></i>Synced</span><span class="chip chip-warning"><i data-icon="pause"></i>Paused</span><span class="chip chip-danger"><i data-icon="alert-circle"></i>Failed</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="grid gap-4 md:grid-cols-2">
+      <dl class="scheme-light grid grid-cols-3 sm:grid-cols-5 gap-3 rounded-lg p-4" style="background: var(--bg-raised)">
+        <div><dt class="swatch" style="background: var(--bg-page)"></dt><dd class="t-small mt-1">page</dd></div>
+        <div><dt class="swatch" style="background: var(--bg-surface)"></dt><dd class="t-small mt-1">surface</dd></div>
+        <div><dt class="swatch" style="background: var(--text-primary)"></dt><dd class="t-small mt-1">text</dd></div>
+        <div><dt class="swatch" style="background: var(--action)"></dt><dd class="t-small mt-1">action</dd></div>
+        <div><dt class="swatch" style="background: var(--sun)"></dt><dd class="t-small mt-1">sun</dd></div>
+      </dl>
+      <dl class="scheme-dark grid grid-cols-3 sm:grid-cols-5 gap-3 rounded-lg p-4" style="background: var(--bg-raised)">
+        <div><dt class="swatch" style="background: var(--bg-page)"></dt><dd class="t-small mt-1">page</dd></div>
+        <div><dt class="swatch" style="background: var(--bg-surface)"></dt><dd class="t-small mt-1">surface</dd></div>
+        <div><dt class="swatch" style="background: var(--text-primary)"></dt><dd class="t-small mt-1">text</dd></div>
+        <div><dt class="swatch" style="background: var(--action)"></dt><dd class="t-small mt-1">action</dd></div>
+        <div><dt class="swatch" style="background: var(--sun)"></dt><dd class="t-small mt-1">sun</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- Screens by client -->
+  <section aria-labelledby="screens-h" class="flex flex-col gap-6">
+    <h2 id="screens-h" class="t-h2">Screens</h2>
+
+    <div class="grid gap-6 lg:grid-cols-[14rem_1fr]">
+      <div><h3 class="t-h3">Web app</h3><p class="t-small">Svelte 5 · component 16</p></div>
+      <ul class="card divide-y divide-line">
+        <li><a class="flex items-center gap-4 p-4 no-underline hover:bg-[var(--bg-hover)]" href="web-files.html"><span class="thumb thumb-folder"><i data-icon="folder"></i></span><span class="flex-1 min-w-0"><span class="t-row text-ink block">Files and transfers</span><span class="t-small block">Folder listing, thumbnails, photo grid, upload resume, verified and unverified downloads, empty, loading, API errors</span></span><i data-icon="chevron-right" class="text-ink-3"></i></a></li>
+        <li><a class="flex items-center gap-4 p-4 no-underline hover:bg-[var(--bg-hover)]" href="web-share-dialog.html"><span class="thumb"><i data-icon="link"></i></span><span class="flex-1 min-w-0"><span class="t-row text-ink block">Share dialog</span><span class="t-small block">Create link, link shown once, list and revoke, folder sharing disabled in v1.0</span></span><i data-icon="chevron-right" class="text-ink-3"></i></a></li>
+        <li><a class="flex items-center gap-4 p-4 no-underline hover:bg-[var(--bg-hover)]" href="web-public-share.html"><span class="thumb"><i data-icon="globe"></i></span><span class="flex-1 min-w-0"><span class="t-row text-ink block">Public share page</span><span class="t-small block">Inline preview, download only, password, link not available, rate limited</span></span><i data-icon="chevron-right" class="text-ink-3"></i></a></li>
+        <li><a class="flex items-center gap-4 p-4 no-underline hover:bg-[var(--bg-hover)]" href="web-device-approval.html"><span class="thumb"><i data-icon="shield-check"></i></span><span class="flex-1 min-w-0"><span class="t-row text-ink block">Device approval</span><span class="t-small block">Enter code, location match and mismatch, approved, denied, expired</span></span><i data-icon="chevron-right" class="text-ink-3"></i></a></li>
+        <li><a class="flex items-center gap-4 p-4 no-underline hover:bg-[var(--bg-hover)]" href="web-sign-in.html"><span class="thumb"><i data-icon="key"></i></span><span class="flex-1 min-w-0"><span class="t-row text-ink block">Sign-in and first-run setup</span><span class="t-small block">Providers, invite, not invited, deactivated, first-run setup token</span></span><i data-icon="chevron-right" class="text-ink-3"></i></a></li>
+        <li><a class="flex items-center gap-4 p-4 no-underline hover:bg-[var(--bg-hover)]" href="web-account.html"><span class="thumb"><i data-icon="user"></i></span><span class="flex-1 min-w-0"><span class="t-row text-ink block">Account, devices and sessions</span><span class="t-small block">Profile, storage, revoke devices and browser sessions</span></span><i data-icon="chevron-right" class="text-ink-3"></i></a></li>
+        <li><a class="flex items-center gap-4 p-4 no-underline hover:bg-[var(--bg-hover)]" href="web-admin.html"><span class="thumb"><i data-icon="users"></i></span><span class="flex-1 min-w-0"><span class="t-row text-ink block">Admin</span><span class="t-small block">Users, invites, quotas, health; last-admin refusal</span></span><i data-icon="chevron-right" class="text-ink-3"></i></a></li>
+      </ul>
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-[14rem_1fr]">
+      <div><h3 class="t-h3">Desktop</h3><p class="t-small">Slint settings window · components 14, 15</p></div>
+      <ul class="card divide-y divide-line">
+        <li><a class="flex items-center gap-4 p-4 no-underline hover:bg-[var(--bg-hover)]" href="desktop-settings.html"><span class="thumb"><i data-icon="laptop"></i></span><span class="flex-1 min-w-0"><span class="t-row text-ink block">Settings window and tray menu</span><span class="t-small block">Account, folders, rules, settings, status, mass-delete hold, daemon not running</span></span><i data-icon="chevron-right" class="text-ink-3"></i></a></li>
+      </ul>
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-[14rem_1fr]">
+      <div><h3 class="t-h3">Phone</h3><p class="t-small">Flutter · components 17, 18</p></div>
+      <ul class="card divide-y divide-line">
+        <li><a class="flex items-center gap-4 p-4 no-underline hover:bg-[var(--bg-hover)]" href="android-backup.html"><span class="thumb"><i data-icon="phone"></i></span><span class="flex-1 min-w-0"><span class="t-row text-ink block">Camera backup</span><span class="t-small block">Sign-in, backing up, up to date, limited access and quota pause, settings with battery help</span></span><i data-icon="chevron-right" class="text-ink-3"></i></a></li>
+      </ul>
+    </div>
+  </section>
+
+  <footer class="t-small border-t border-line pt-6">Mockups are design references, not product code. Tailwind CDN and Google Fonts are used for preview only; the production web app self-hosts its fonts and styles under a strict CSP.</footer>
+</main>
+</body>
+</html>

@@ -45,7 +45,7 @@ Companion to `architecture.md` (the Architecture Vision is not changed here). Ev
 | F8 | part of F4, F5, F12 commit | F7, F12 |
 | F9 | F3, F4, F5, F6, F7 | LocalIndex, F14 |
 | F10 | F4 or F5 commit | F12 (derived blobs in GC) |
-| F11 | F2, F6 | F17 (fragment-key links) |
+| F11 | F2, F6 | none (no vault share links in v1.2, owner decision 2026-11-05) |
 | F12 | F4, F5, F8 | F14 (retention covers backup interval), F13 |
 | F13 | F2 | F12 (immediate GC), F10 (jobs erased) |
 | F14 | F7, F12 | F9, F16 (client resync) |
@@ -601,7 +601,7 @@ AC-9 (Pixel 60 s, Samsung and Xiaomi p95 5 min), AC-46, AC-52, AC-53, AC-54, AC-
 ## Flow F17: Vault [v1.2]
 
 ### Description
-An opt-in end-to-end encrypted folder tree. The server stores only ciphertext and wrapped keys; sharing is by link with the key in the URL fragment.
+An opt-in end-to-end encrypted folder tree. The server stores only ciphertext and wrapped keys; vault files cannot be link-shared in v1.2 (owner decision 2026-11-05, step 6).
 
 ### Preconditions
 - Release v1.2 after the external review; signed-in client with the shared Rust crypto core (native, WASM, UniFFI); one owner per vault.

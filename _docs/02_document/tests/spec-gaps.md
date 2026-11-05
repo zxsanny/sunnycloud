@@ -79,6 +79,8 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | IT-16-7 | `TooManyFiles` named but the limit that raises it is not stated | IT-16-7 | No | decompose |
 | IT-16-8 | Firefox/Safari download verified up to 2 GiB: mechanism fixed by spike S12; no expected behaviour writable yet | IT-16-8, AC-7 (FT-P-68, NFT-SEC-21) | No | implement |
 | IT-16-12 | Setup-token first-run page: route, fields and messages not specified (AC-23); only server behaviour is tested | IT-16-12, AC-23 | No | decompose |
+| G-AS-1 | Web admin "Delete account…" for another user: 16 §5 lists user deletion, but 07 exposes only `PATCH {role, state}` for another account (no delete operation); add the operation or drop the menu item (`ui_mockups/DESIGN.md` §9 #1) | web admin task; FT-N-46 unaffected | Yes | owner |
+| G-AS-2 | Desktop bandwidth limit has no unit (15 §5; tests use "5000"); the mockup shows KB/s (`ui_mockups/DESIGN.md` §9 #7) | FT-P-82 step 3, IT-15 settings tests | Yes | owner |
 | **17_android_app** | | | | |
 | IT-17-17 | Private-CA leg: description says user-added CAs work (`rustls-platform-verifier`), `environment.md` says release builds ignore user-installed CAs; intended behaviour undecided | IT-17-17 | Resolved | Step 5 owner decision |
 | **18_ios_app** | | | | |
@@ -130,7 +132,7 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | owner | 9 | 10 | 19 |
 | **Total** | 34 | 23 | 57 |
 
-Owner decision needed: 22 of 57. Resolved at this pass: 28 items (27 of them numbered gaps/BLOCKED tests).
+Owner decision needed: 24 of 59 (G-AS-1 and G-AS-2 added by the architecture-sync pass of 2026-11-04). Resolved at this pass: 28 items (27 of them numbered gaps/BLOCKED tests).
 
 ## 4. Notes
 

@@ -1,0 +1,17 @@
+[package]
+name = "sunnycloud-settings"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "sunnycloud-settings"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+ipc_schema = { path = "../../desktop/ipc_schema" }

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Files · sunnycloud mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400..800&display=swap">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/mockup.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="assets/tw-config.js"></script>
+<script src="assets/mockup.js" defer></script>
+</head>
+<body>
+<div class="review-bar" role="region" aria-label="Mockup controls">
+  <strong>Mockup · Web files</strong>
+  <a href="index.html">All screens</a>
+  <span>Theme</span>
+  <div class="seg"><button data-theme-set="system">System</button><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+  <span>State</span>
+  <div class="seg"><button data-show="default">Folder</button><button data-show="grid">Photo grid</button><button data-show="empty">Empty</button><button data-show="loading">Loading</button><button data-show="errors">Errors</button></div>
+</div>
+
+<div class="shell">
+  <aside class="sidebar" aria-label="Main">
+    <a class="brand mb-6 px-3" href="#">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>
+      sunnycloud
+    </a>
+    <nav class="flex flex-col gap-1" aria-label="Sections">
+      <a class="nav-item" href="#" aria-current="page"><i data-icon="folder"></i>Files</a>
+      <a class="nav-item" href="#"><i data-icon="link"></i>Shared links</a>
+      <a class="nav-item" href="web-account.html#devices"><i data-icon="laptop"></i>Devices</a>
+      <a class="nav-item" href="web-account.html"><i data-icon="user"></i>Account</a>
+    </nav>
+    <p class="t-label nav-group">Admin</p>
+    <nav class="flex flex-col gap-1" aria-label="Admin">
+      <a class="nav-item" href="web-admin.html"><i data-icon="users"></i>Users</a>
+      <a class="nav-item" href="web-admin.html"><i data-icon="mail"></i>Invites</a>
+      <a class="nav-item" href="web-admin.html"><i data-icon="database"></i>Quotas</a>
+      <a class="nav-item" href="web-admin.html"><i data-icon="activity"></i>Health</a>
+    </nav>
+    <section class="mt-auto card p-4" aria-labelledby="storage-h">
+      <div class="flex items-baseline justify-between">
+        <h2 id="storage-h" class="t-label">Storage</h2>
+        <span class="t-small num">38%</span>
+      </div>
+      <p class="t-row num mt-2 mb-2">38.2 GB <span class="t-small">of 100 GB</span></p>
+      <div class="progress" role="progressbar" aria-valuenow="38" aria-valuemin="0" aria-valuemax="100" aria-label="Storage used"><span style="width:38%"></span></div>
+    </section>
+  </aside>
+
+  <div class="main-panel">
+    <header class="topbar">
+      <button class="btn btn-ghost btn-icon menu-button" aria-label="Open navigation"><i data-icon="menu"></i></button>
+      <nav aria-label="Breadcrumb" class="min-w-0 flex-1">
+        <ol class="flex items-center gap-1 t-small min-w-0">
+          <li><a href="#">Files</a></li>
+          <li aria-hidden="true"><i data-icon="chevron-right" class="icon-sm"></i></li>
+          <li><a href="#">Photos</a></li>
+          <li aria-hidden="true"><i data-icon="chevron-right" class="icon-sm"></i></li>
+          <li aria-current="page" class="truncate-1 text-ink font-semibold">2026</li>
+        </ol>
+      </nav>
+      <button class="btn btn-ghost btn-sm gap-2" aria-label="Account menu for Marta Hryn">
+        <span class="grid place-items-center w-8 h-8 rounded-full bg-sun-fill text-sun-on font-bold text-sm">MH</span>
+        <span class="hidden md:inline">Marta Hryn</span><i data-icon="chevron-down" class="icon-sm"></i>
+      </button>
+    </header>
+
+    <main class="flex-1 px-4 lg:px-8 py-6 flex flex-col gap-5">
+      <div class="flex flex-wrap items-end gap-3">
+        <div class="basis-full sm:basis-auto sm:flex-1 min-w-0">
+          <h1 class="t-h1">2026</h1>
+          <p class="t-small num" data-state="default errors grid">2 folders, 22 files · 9.4 GB</p>
+          <p class="t-small" data-state="empty">Empty folder</p>
+        </div>
+        <button class="btn btn-secondary"><i data-icon="folder-plus"></i>New folder</button>
+        <button class="btn btn-primary"><i data-icon="upload"></i>Upload</button>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3" data-state="default errors grid loading">
+        <div class="seg" role="group" aria-label="View">
+          <button aria-pressed="true" data-state="default errors loading"><i data-icon="list" class="icon-sm"></i>List</button>
+          <button aria-pressed="false" data-state="default errors loading"><i data-icon="grid" class="icon-sm"></i>Grid</button>
+          <button aria-pressed="false" data-state="grid"><i data-icon="list" class="icon-sm"></i>List</button>
+          <button aria-pressed="true" data-state="grid"><i data-icon="grid" class="icon-sm"></i>Grid</button>
+        </div>
+        <label class="flex items-center gap-2 t-small ml-auto">Sort
+          <select class="select h-9 w-auto"><option>Name</option><option>Modified</option><option>Size</option></select>
+        </label>
+      </div>
+
+      <!-- Resume after the tab closed (FT-N-03, AC-50) -->
+      <div class="banner banner-info" role="status" data-state="default">
+        <i data-icon="info"></i>
+        <div class="flex-1"><strong>2 uploads stopped when the tab closed.</strong> Select the same files again to continue; only the missing parts are sent.</div>
+        <button class="btn btn-secondary btn-sm">Select files</button>
+      </div>
+
+      <!-- Mapped API errors -->
+      <div class="flex flex-col gap-3" data-state="errors">
+        <div class="banner banner-warning" role="alert"><i data-icon="refresh"></i><div class="flex-1"><strong>A newer version of sunnycloud is required.</strong> Reload the page to update the web app.</div><button class="btn btn-secondary btn-sm">Reload</button></div>
+        <div class="banner banner-warning" role="alert"><i data-icon="clock"></i><div class="flex-1"><strong>Too many requests.</strong> Try again in <span class="num">42</span> seconds.</div></div>
+        <div class="banner banner-danger" role="alert"><i data-icon="database"></i><div class="flex-1"><strong>Storage quota reached.</strong> You use <span class="num">100 GB of 100 GB</span>. Delete files or ask your administrator for more space.</div></div>
+        <div class="banner banner-danger" role="alert"><i data-icon="alert-circle"></i><div class="flex-1"><strong>Something went wrong on the server.</strong> If it keeps happening, send this reference to your administrator: <span class="mono">req 01JC8Z4V7K2M9QXT</span></div><button class="btn btn-ghost btn-sm" aria-label="Copy reference"><i data-icon="copy" class="icon-sm"></i>Copy</button></div>
+        <div class="banner banner-info" role="status"><i data-icon="lock"></i><div class="flex-1"><strong>Your session ended.</strong> Sign in again to continue; uploads in progress keep their place.</div><a class="btn btn-primary btn-sm" href="web-sign-in.html">Sign in</a></div>
+      </div>
+
+      <!-- File list (list view) -->
+      <div class="card" data-state="default errors loading">
+        <table class="ftable">
+          <thead><tr>
+            <th scope="col" class="w-11"><span class="sr-only">Select</span></th>
+            <th scope="col">Name</th>
+            <th scope="col" class="col-hide-sm w-24">Size</th>
+            <th scope="col" class="col-hide-sm w-32">Modified</th>
+            <th scope="col" class="w-14"><span class="sr-only">Actions</span></th>
+          </tr></thead>
+          <tbody data-state="default errors">
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select Trips"></td>
+              <td><div class="name"><span class="thumb thumb-folder"><i data-icon="folder"></i></span><span class="min-w-0"><span class="block truncate-1">Trips</span><span class="block md:hidden t-small">Folder · 2 Nov</span></span></div></td>
+              <td class="col-hide-sm">—</td><td class="col-hide-sm num">2 Nov 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for Trips"><i data-icon="more"></i></button></td></tr>
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select Screenshots"></td>
+              <td><div class="name"><span class="thumb thumb-folder"><i data-icon="folder"></i></span><span class="min-w-0"><span class="block truncate-1">Screenshots</span><span class="block md:hidden t-small">Folder · 28 Oct</span></span></div></td>
+              <td class="col-hide-sm">—</td><td class="col-hide-sm num">28 Oct 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for Screenshots"><i data-icon="more"></i></button></td></tr>
+            <!-- Thumbnail colours below are photo content, not UI colours -->
+            <tr aria-selected="true"><td><input type="checkbox" class="w-4 h-4" checked aria-label="Select beach-sunset.jpg"></td>
+              <td><div class="name"><span class="thumb thumb-img"><svg viewBox="0 0 40 40"><rect width="40" height="40" fill="#F4A259"/><rect y="22" width="40" height="18" fill="#3D6E99"/><circle cx="20" cy="22" r="7" fill="#FFE29A"/><rect y="22" width="40" height="2" fill="#F7C978"/></svg></span>
+                <span class="min-w-0"><span class="block truncate-1">beach-sunset.jpg</span><span class="block md:hidden t-small num">4.1 MB · 3 Nov</span></span>
+                <span class="chip chip-info"><i data-icon="link"></i>Shared</span></div></td>
+              <td class="col-hide-sm num">4.1 MB</td><td class="col-hide-sm num">3 Nov 2026</td>
+              <td class="relative"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for beach-sunset.jpg" aria-expanded="true"><i data-icon="more"></i></button>
+                <div class="menu absolute right-3 top-11 z-30" role="menu" aria-label="Actions for beach-sunset.jpg">
+                  <button class="menu-item" role="menuitem"><i data-icon="download"></i>Download</button>
+                  <a class="menu-item" role="menuitem" href="web-share-dialog.html"><i data-icon="link"></i>Share link…</a>
+                  <button class="menu-item" role="menuitem"><i data-icon="file-text"></i>Rename…</button>
+                  <button class="menu-item" role="menuitem"><i data-icon="folder"></i>Move to…</button>
+                  <hr class="divider my-1">
+                  <button class="menu-item is-danger" role="menuitem"><i data-icon="trash"></i>Delete</button>
+                </div></td></tr>
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select lake-morning.jpg"></td>
+              <td><div class="name"><span class="thumb thumb-img"><svg viewBox="0 0 40 40"><rect width="40" height="40" fill="#BFD7EA"/><path d="M0 26 10 12l7 9 6-7 17 12v14H0z" fill="#5C7A6B"/><rect y="28" width="40" height="12" fill="#7FA7C9"/></svg></span>
+                <span class="min-w-0"><span class="block truncate-1">lake-morning.jpg</span><span class="block md:hidden t-small num">3.8 MB · 3 Nov</span></span></div></td>
+              <td class="col-hide-sm num">3.8 MB</td><td class="col-hide-sm num">3 Nov 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for lake-morning.jpg"><i data-icon="more"></i></button></td></tr>
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select holiday-2026.mp4"></td>
+              <td><div class="name"><span class="thumb"><span class="skeleton absolute inset-0 rounded-none"></span></span>
+                <span class="min-w-0"><span class="block truncate-1">holiday-2026.mp4</span><span class="block t-small">Preview pending</span></span></div></td>
+              <td class="col-hide-sm num">4.2 GB</td><td class="col-hide-sm num">3 Nov 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for holiday-2026.mp4"><i data-icon="more"></i></button></td></tr>
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select scan-0042.heic"></td>
+              <td><div class="name"><span class="thumb thumb-failed" title="A preview could not be made for this file"><i data-icon="image"></i></span>
+                <span class="min-w-0"><span class="block truncate-1">scan-0042.heic</span><span class="block t-small">No preview</span></span></div></td>
+              <td class="col-hide-sm num">2.6 MB</td><td class="col-hide-sm num">1 Nov 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for scan-0042.heic"><i data-icon="more"></i></button></td></tr>
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select budget conflict copy"></td>
+              <td><div class="name"><span class="thumb"><i data-icon="file-text"></i></span>
+                <span class="min-w-0"><span class="block truncate-1" title="budget (conflict copy, zx-thinkpad, 2026-11-03).ods">budget (conflict copy, zx-thinkpad, 2026-11-03).ods</span><span class="block md:hidden t-small num">48 KB · 3 Nov</span></span></div></td>
+              <td class="col-hide-sm num">48 KB</td><td class="col-hide-sm num">3 Nov 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for budget conflict copy"><i data-icon="more"></i></button></td></tr>
+            <tr><td><input type="checkbox" class="w-4 h-4" aria-label="Select tax-return-2025.pdf"></td>
+              <td><div class="name"><span class="thumb"><i data-icon="file"></i></span>
+                <span class="min-w-0"><span class="block truncate-1">tax-return-2025.pdf</span><span class="block md:hidden t-small num">1.2 MB · 30 Oct</span></span></div></td>
+              <td class="col-hide-sm num">1.2 MB</td><td class="col-hide-sm num">30 Oct 2026</td>
+              <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for tax-return-2025.pdf"><i data-icon="more"></i></button></td></tr>
+          </tbody>
+          <!-- Next keyset page loading, and the initial load -->
+          <tbody aria-hidden="true" data-state="default errors loading">
+            <tr><td></td><td><div class="name"><span class="thumb skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-2/5"></span><span class="skeleton h-2.5 w-1/5 md:hidden"></span></span></div></td><td class="col-hide-sm"><span class="skeleton h-3 w-14"></span></td><td class="col-hide-sm"><span class="skeleton h-3 w-20"></span></td><td></td></tr>
+            <tr><td></td><td><div class="name"><span class="thumb skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-1/3"></span><span class="skeleton h-2.5 w-1/5 md:hidden"></span></span></div></td><td class="col-hide-sm"><span class="skeleton h-3 w-12"></span></td><td class="col-hide-sm"><span class="skeleton h-3 w-20"></span></td><td></td></tr>
+          </tbody>
+          <tbody aria-hidden="true" data-state="loading">
+            <tr><td></td><td><div class="name"><span class="thumb skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-1/2"></span></span></div></td><td class="col-hide-sm"><span class="skeleton h-3 w-14"></span></td><td class="col-hide-sm"><span class="skeleton h-3 w-20"></span></td><td></td></tr>
+            <tr><td></td><td><div class="name"><span class="thumb skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-1/4"></span></span></div></td><td class="col-hide-sm"><span class="skeleton h-3 w-10"></span></td><td class="col-hide-sm"><span class="skeleton h-3 w-20"></span></td><td></td></tr>
+            <tr><td></td><td><div class="name"><span class="thumb skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-2/5"></span></span></div></td><td class="col-hide-sm"><span class="skeleton h-3 w-12"></span></td><td class="col-hide-sm"><span class="skeleton h-3 w-20"></span></td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Photo grid view -->
+      <ul class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))]" data-state="grid" aria-label="Photos in 2026">
+        <li><figure class="m-0"><div class="aspect-square rounded-md overflow-hidden"><svg viewBox="0 0 40 40" class="w-full h-full" preserveAspectRatio="xMidYMid slice"><rect width="40" height="40" fill="#F4A259"/><rect y="22" width="40" height="18" fill="#3D6E99"/><circle cx="20" cy="22" r="7" fill="#FFE29A"/></svg></div><figcaption class="t-small truncate-1 mt-1">beach-sunset.jpg</figcaption></figure></li>
+        <li><figure class="m-0"><div class="aspect-square rounded-md overflow-hidden"><svg viewBox="0 0 40 40" class="w-full h-full" preserveAspectRatio="xMidYMid slice"><rect width="40" height="40" fill="#BFD7EA"/><path d="M0 26 10 12l7 9 6-7 17 12v14H0z" fill="#5C7A6B"/><rect y="28" width="40" height="12" fill="#7FA7C9"/></svg></div><figcaption class="t-small truncate-1 mt-1">lake-morning.jpg</figcaption></figure></li>
+        <li><figure class="m-0"><div class="aspect-square rounded-md overflow-hidden"><svg viewBox="0 0 40 40" class="w-full h-full" preserveAspectRatio="xMidYMid slice"><rect width="40" height="40" fill="#1F2A44"/><rect x="4" y="18" width="7" height="22" fill="#33476E"/><rect x="13" y="10" width="8" height="30" fill="#2B3B5C"/><rect x="23" y="15" width="7" height="25" fill="#3A5080"/><rect x="31" y="22" width="9" height="18" fill="#2B3B5C"/><circle cx="32" cy="7" r="3" fill="#F2E6B8"/></svg></div><figcaption class="t-small truncate-1 mt-1">city-night.jpg</figcaption></figure></li>
+        <li><figure class="m-0"><div class="relative aspect-square rounded-md overflow-hidden"><span class="skeleton absolute inset-0 rounded-none"></span><span class="chip absolute left-2 bottom-2"><i data-icon="video"></i><span class="num">4:12</span></span></div><figcaption class="t-small truncate-1 mt-1">holiday-2026.mp4 · preview pending</figcaption></figure></li>
+        <li><figure class="m-0"><div class="aspect-square rounded-md overflow-hidden"><svg viewBox="0 0 40 40" class="w-full h-full" preserveAspectRatio="xMidYMid slice"><rect width="40" height="40" fill="#A8C686"/><path d="M8 40 14 16l6 24zM20 40l7-28 7 28z" fill="#3E6B48"/><rect y="34" width="40" height="6" fill="#6E8F4E"/></svg></div><figcaption class="t-small truncate-1 mt-1">forest-walk.jpg</figcaption></figure></li>
+        <li><figure class="m-0"><div class="aspect-square rounded-md grid place-items-center bg-sunken text-ink-3" title="A preview could not be made for this file"><i data-icon="image" class="icon-lg"></i></div><figcaption class="t-small truncate-1 mt-1">scan-0042.heic · no preview</figcaption></figure></li>
+      </ul>
+
+      <!-- Empty folder -->
+      <div class="card" data-state="empty">
+        <div class="empty">
+          <svg class="art" viewBox="0 0 96 72" aria-hidden="true"><circle cx="62" cy="24" r="14" fill="var(--sun)"/><path d="M26 62a14 14 0 0 1-1.6-27.9A19 19 0 0 1 60.5 37 12.5 12.5 0 0 1 59 62z" fill="var(--action-subtle)" stroke="var(--action)" stroke-width="2"/></svg>
+          <h2 class="t-h2">This folder is empty</h2>
+          <p class="t-small">Drop files here or upload them. For large folders, the desktop app syncs faster and keeps them up to date.</p>
+          <div class="flex flex-wrap justify-center gap-3"><button class="btn btn-primary"><i data-icon="upload"></i>Upload files</button><a class="btn btn-ghost" href="#">Get the desktop app</a></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Transfers panel: bottom sheet on phones, floating panel on desktop -->
+<aside class="fixed z-20 inset-x-0 bottom-0 lg:inset-x-auto lg:right-6 lg:bottom-6 lg:w-[420px] raised rounded-b-none lg:rounded-b-md" aria-labelledby="transfers-h" data-state="default errors">
+  <header class="flex items-center gap-2 px-4 h-12 border-b border-line">
+    <i data-icon="sync"></i><h2 id="transfers-h" class="t-h3 flex-1">Transfers <span class="t-small num">· 2 active</span></h2>
+    <span class="lg:hidden t-small num">43%</span>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Collapse transfers"><i data-icon="chevron-down"></i></button>
+  </header>
+  <ul class="flex flex-col divide-y divide-line max-h-80 overflow-auto max-lg:hidden">
+    <li class="px-4 py-3 flex flex-col gap-2">
+      <div class="flex items-center gap-2"><i data-icon="upload" class="icon-sm text-ink-2"></i><span class="t-row truncate-1 flex-1">holiday-2026-raw.mov</span>
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Pause upload"><i data-icon="pause" class="icon-sm"></i></button><button class="btn btn-ghost btn-icon btn-sm" aria-label="Cancel upload"><i data-icon="x" class="icon-sm"></i></button></div>
+      <div class="progress" role="progressbar" aria-valuenow="43" aria-valuemin="0" aria-valuemax="100" aria-label="holiday-2026-raw.mov uploaded"><span style="width:43%"></span></div>
+      <p class="t-small num">21.6 GB of 50 GB · 4 lanes · 38 MB/s · about 13 min left</p>
+    </li>
+    <li class="px-4 py-3 flex flex-col gap-2">
+      <div class="flex items-center gap-2"><i data-icon="upload" class="icon-sm text-ink-2"></i><span class="t-row truncate-1 flex-1">Screenshots · 148 small files</span><span class="t-small num">92 of 148</span></div>
+      <div class="progress" role="progressbar" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100" aria-label="Screenshots uploaded"><span style="width:62%"></span></div>
+    </li>
+    <li class="px-4 py-3 flex flex-col gap-2">
+      <div class="flex items-center gap-2"><i data-icon="pause" class="icon-sm text-warning"></i><span class="t-row truncate-1 flex-1">archive-2019.zip</span><button class="btn btn-secondary btn-sm">Select file</button></div>
+      <div class="progress is-paused" role="progressbar" aria-valuenow="71" aria-valuemin="0" aria-valuemax="100" aria-label="archive-2019.zip uploaded"><span style="width:71%"></span></div>
+      <p class="t-small">Stopped when the tab closed. Select the same file to continue.</p>
+    </li>
+    <li class="px-4 py-3 flex items-start gap-2">
+      <i data-icon="alert-circle" class="icon-sm text-danger mt-0.5"></i>
+      <div class="flex-1 min-w-0"><p class="t-row truncate-1">raw-scan-big.tiff</p><p class="t-small text-danger font-semibold">Not uploaded: storage quota reached.</p></div>
+      <button class="btn btn-ghost btn-sm">Dismiss</button>
+    </li>
+    <li class="px-4 py-3 flex items-start gap-2">
+      <i data-icon="check-circle" class="icon-sm text-success mt-0.5"></i>
+      <div class="flex-1 min-w-0"><p class="t-row truncate-1">photos-2025.tar <span class="chip chip-success ml-1"><i data-icon="shield-check"></i>Verified</span></p><p class="t-small">Downloaded and checked in the browser.</p></div>
+    </li>
+    <li class="px-4 py-3 flex items-start gap-2">
+      <i data-icon="download" class="icon-sm text-ink-2 mt-0.5"></i>
+      <div class="flex-1 min-w-0"><p class="t-row truncate-1">backup-2026.tar <span class="chip chip-warning ml-1"><i data-icon="alert"></i>Not verified</span></p>
+        <p class="t-small">Saved by the browser without a check (over 2 GB in this browser). Compare its hash:</p>
+        <p class="flex items-center gap-2 mt-1"><span class="mono truncate-1 text-ink">blake3:4f2a9c0e7d1b…e83a</span><button class="btn btn-ghost btn-icon btn-sm" aria-label="Copy file hash"><i data-icon="copy" class="icon-sm"></i></button></p></div>
+    </li>
+  </ul>
+</aside>
+</body>
+</html>

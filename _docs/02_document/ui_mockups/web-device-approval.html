@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect a device · sunnycloud mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400..800&display=swap">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/mockup.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="assets/tw-config.js"></script>
+<script src="assets/mockup.js" defer></script>
+<style>
+  .icon-disc { display: grid; place-items: center; width: 56px; height: 56px; flex: none; border-radius: var(--radius-full); }
+  .icon-disc .icon { width: 28px; height: 28px; }
+  .code-input { height: 52px; font-size: 1.25rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+  .loc-row { display: grid; grid-template-columns: 10rem 1fr; align-items: center; gap: 4px 12px; padding: 12px 16px; }
+  .loc-row dd { margin: 0; color: var(--text-primary); font-weight: 550; }
+  .loc-row dt { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; font-weight: 650; color: var(--text-secondary); }
+  .loc-row .icon { color: var(--text-secondary); }
+  .loc-row.is-flagged { background: var(--warning-bg); }
+  .loc-row.is-flagged dt, .loc-row.is-flagged dd, .loc-row.is-flagged .t-small, .loc-row.is-flagged .icon { color: var(--on-warning-bg); }
+  @media (max-width: 479px) { .loc-row { grid-template-columns: 1fr; } .loc-row dd { padding-left: 30px; } }
+  .can-list li { display: flex; align-items: flex-start; gap: 10px; }
+  .can-list .icon { margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="review-bar" role="region" aria-label="Mockup controls">
+  <strong>Mockup · Device approval</strong>
+  <a href="index.html">All screens</a>
+  <span>Theme</span>
+  <div class="seg"><button data-theme-set="system">System</button><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+  <span>State</span>
+  <div class="seg flex-wrap"><button data-show="enter">Enter code</button><button data-show="match">Same location</button><button data-show="mismatch">Different location</button><button data-show="approved">Approved</button><button data-show="denied">Denied</button><button data-show="expired">Expired</button></div>
+</div>
+
+<!-- Approval needs a cookie session (SessionOnly); a device token gets 403 (AC-57). -->
+<header class="bg-surface border-b border-line">
+  <div class="max-w-[960px] mx-auto px-4 h-16 flex items-center justify-between gap-3">
+    <span class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>
+      sunnycloud
+    </span>
+    <span class="chip h-8 pl-1 pr-3 gap-2 text-[0.8125rem] min-w-0">
+      <span class="grid place-items-center w-6 h-6 flex-none rounded-full bg-sun-fill text-sun-on text-[0.6875rem] font-bold" aria-hidden="true">MH</span>
+      <span class="truncate-1">Signed in as Marta Hryn</span>
+    </span>
+  </div>
+</header>
+
+<main class="max-w-[560px] mx-auto px-4 py-6 sm:py-12">
+
+  <!-- (a) Enter the user code shown by the desktop app -->
+  <section class="card p-6 sm:p-8 flex flex-col gap-6" data-state="enter" aria-labelledby="enter-h">
+    <span class="icon-disc bg-action-subtle text-action"><i data-icon="laptop"></i></span>
+    <div class="flex flex-col gap-2">
+      <h1 id="enter-h" class="t-h1">Connect a device</h1>
+      <p class="text-ink-2">Enter the code that the sunnycloud desktop app shows when you sign in.</p>
+    </div>
+    <form class="flex flex-col gap-4">
+      <div class="field">
+        <label class="label" for="code">Code</label>
+        <input id="code" class="input input-mono code-input" value="WDJB-MJHT" placeholder="XXXX-XXXX" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" aria-describedby="code-help">
+        <p id="code-help" class="helper">You'll find it in the desktop app under Account.</p>
+      </div>
+      <button type="button" class="btn btn-primary btn-lg btn-block">Continue</button>
+    </form>
+    <p class="t-small flex items-start gap-2"><i data-icon="shield" class="icon-sm mt-0.5"></i>Only enter a code from a device you are signing in on right now.</p>
+  </section>
+
+  <!-- (b) and (c) ApprovalView: device, requester vs approver IP and location, mismatch flag, expiry -->
+  <section class="card p-6 sm:p-8 flex flex-col gap-6" data-state="match mismatch" aria-labelledby="review-h">
+    <div class="flex flex-col gap-2">
+      <h1 id="review-h" class="t-h1">Approve this sign-in?</h1>
+      <p class="t-small flex items-center gap-2 num"><i data-icon="clock" class="icon-sm"></i>Code expires in <span class="font-bold text-ink">8:42</span></p>
+    </div>
+
+    <div class="banner banner-warning" role="alert" data-state="mismatch">
+      <i data-icon="alert"></i>
+      <div class="flex-1"><strong>This request comes from a different place than you.</strong> If you didn't just start signing in on this device yourself, deny the request.</div>
+    </div>
+
+    <!-- Device name and platform are sent by the device: shown as text only -->
+    <div class="raised flex items-center gap-4 p-4">
+      <span class="thumb w-12 h-12"><i data-icon="laptop" class="icon-lg"></i></span>
+      <div class="flex-1 min-w-0">
+        <p class="t-h3 truncate-1" title="zx-thinkpad">zx-thinkpad</p>
+        <p class="t-small">sunnycloud desktop 1.0.3 · Linux</p>
+      </div>
+      <span class="chip mono hidden sm:inline-flex" title="Code you entered">WDJB-MJHT</span>
+    </div>
+
+    <section class="flex flex-col gap-2" aria-labelledby="loc-h">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="loc-h" class="t-label">Location</h2>
+        <span class="chip chip-success" data-state="match"><i data-icon="check-circle"></i>Same location</span>
+        <span class="chip chip-warning" data-state="mismatch"><i data-icon="alert"></i>Different location</span>
+      </div>
+      <dl class="card divide-y divide-line overflow-hidden m-0">
+        <div class="loc-row" data-state="match"><dt><i data-icon="globe"></i>Requested from</dt><dd><span class="block">Kyiv, Ukraine</span><span class="block t-small num">93.175.12.x</span></dd></div>
+        <div class="loc-row is-flagged" data-state="mismatch"><dt><i data-icon="globe"></i>Requested from</dt><dd><span class="block">Amsterdam, Netherlands</span><span class="block t-small num">185.107.56.x</span></dd></div>
+        <div class="loc-row"><dt><i data-icon="user"></i>You</dt><dd><span class="block">Kyiv, Ukraine</span><span class="block t-small num">93.175.12.x</span></dd></div>
+      </dl>
+    </section>
+
+    <!-- Device tokens are sync-only: no approve-device, create-share, delete-account or link-provider (AC-57) -->
+    <section class="flex flex-col gap-3 p-4 rounded-md bg-sunken" aria-labelledby="can-h">
+      <h2 id="can-h" class="t-h3">What this device can do</h2>
+      <ul class="can-list flex flex-col gap-2 text-[0.9375rem]">
+        <li><i data-icon="check" class="icon-sm text-success"></i><span>Sync, upload and download your files</span></li>
+        <li><i data-icon="x" class="icon-sm text-ink-2"></i><span>It can't create share links, connect other devices or change your account</span></li>
+      </ul>
+      <p class="t-small">You can disconnect it at any time in Devices.</p>
+    </section>
+
+    <!-- (b) Same location: Approve is primary -->
+    <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-3" data-state="match">
+      <button class="btn btn-secondary btn-lg">Deny</button>
+      <button class="btn btn-primary btn-lg"><i data-icon="check"></i>Approve</button>
+    </div>
+
+    <!-- (c) Different location: Deny is primary; Approve waits for an explicit confirmation -->
+    <div class="flex flex-col gap-4" data-state="mismatch">
+      <div class="flex flex-col gap-1">
+        <label class="check t-row"><input type="checkbox" aria-describedby="approve-reason"><span>I started this sign-in on that device</span></label>
+        <p id="approve-reason" class="t-small pl-7">Approve stays off until you tick this box.</p>
+      </div>
+      <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+        <button class="btn btn-secondary btn-lg" disabled aria-describedby="approve-reason" title="Tick “I started this sign-in on that device” to approve">Approve</button>
+        <button class="btn btn-primary btn-lg"><i data-icon="x"></i>Deny request</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- (d) Approved: the desktop app's next poll receives its token -->
+  <section class="card px-6 py-10 sm:px-10 flex flex-col items-center text-center gap-4" data-state="approved" aria-labelledby="ok-h" role="status">
+    <span class="icon-disc bg-success-bg text-success"><i data-icon="check-circle"></i></span>
+    <h1 id="ok-h" class="t-h1">zx-thinkpad is connected</h1>
+    <p class="text-ink-2">You can close this page. The desktop app finishes signing in by itself.</p>
+    <a class="font-semibold text-link underline" href="web-account.html#devices">Manage devices</a>
+  </section>
+
+  <!-- Denied: the desktop app's next poll gets access_denied -->
+  <section class="card px-6 py-10 sm:px-10 flex flex-col items-center text-center gap-4" data-state="denied" aria-labelledby="no-h" role="status">
+    <span class="icon-disc bg-sunken text-ink-2"><i data-icon="x"></i></span>
+    <h1 id="no-h" class="t-h1">Request denied</h1>
+    <p class="text-ink-2">zx-thinkpad wasn't connected, and this code can't be used again.</p>
+    <a class="font-semibold text-link underline" href="web-account.html#devices">Manage devices</a>
+  </section>
+
+  <!-- (e) Unknown or expired code: one message for both -->
+  <section class="card px-6 py-10 sm:px-10 flex flex-col items-center text-center gap-4" data-state="expired" aria-labelledby="exp-h">
+    <span class="icon-disc bg-sunken text-ink-2"><i data-icon="clock"></i></span>
+    <h1 id="exp-h" class="t-h1">This code has expired or isn't valid</h1>
+    <p class="text-ink-2">Codes only work for a few minutes. To get a new one, open Account in the sunnycloud desktop app and sign in again.</p>
+    <button type="button" class="btn btn-primary btn-lg">Enter a new code</button>
+  </section>
+</main>
+</body>
+</html>

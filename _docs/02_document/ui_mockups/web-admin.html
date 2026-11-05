@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin · sunnycloud mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400..800&display=swap">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/mockup.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="assets/tw-config.js"></script>
+<script src="assets/mockup.js" defer></script>
+<style>
+  .ftable .col-lg { display: none; }
+  @media (min-width: 1024px) { .ftable .col-lg { display: table-cell; } }
+  .card > .ftable th:first-child { border-top-left-radius: var(--radius-md); }
+  .card > .ftable th:last-child { border-top-right-radius: var(--radius-md); }
+  .ftable td.wrap { white-space: normal; padding-top: 10px; padding-bottom: 10px; }
+  .avatar { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: var(--radius-full); background: var(--bg-sunken); color: var(--text-secondary); font-size: 0.75rem; font-weight: 800; }
+  .avatar.is-me { background: var(--sun-fill); color: var(--on-sun); }
+  .sun-panel { background: var(--sun-fill); color: var(--on-sun); border-radius: var(--radius-md); }
+  .sun-panel .t-small { color: var(--on-sun); }
+  .once-url { padding: 10px 12px; background: var(--bg-raised); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); word-break: break-all; line-height: 1.5; }
+  .figures > div { display: flex; flex-direction: column; gap: 2px; padding: 16px 20px; }
+  .figures > div + div { border-top: 1px solid var(--border); }
+  .figures dt { font-size: 0.875rem; font-weight: 650; color: var(--text-secondary); }
+  .figures dd { margin: 0; }
+  @media (max-width: 639px) { .tabs .tab > .icon { display: none; } .tabs .tab { padding: 0 10px; } }
+</style>
+</head>
+<body>
+<div class="review-bar" role="region" aria-label="Mockup controls">
+  <strong>Mockup · Web admin</strong>
+  <a href="index.html">All screens</a>
+  <span>Theme</span>
+  <div class="seg"><button data-theme-set="system">System</button><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+  <span>State</span>
+  <div class="seg flex-wrap"><button data-show="default" data-tab="users-tab">Users</button><button data-show="last-admin" data-tab="users-tab">Last admin</button><button data-show="invite-created" data-tab="invites-tab">Invite created</button><button data-show="invites-empty" data-tab="invites-tab">No invites</button><button data-show="health-degraded" data-tab="health-tab">Health degraded</button><button data-show="loading" data-tab="users-tab">Loading</button></div>
+  <span>Tabs work in the page too.</span>
+</div>
+
+<div class="shell">
+  <aside class="sidebar" aria-label="Main">
+    <a class="brand mb-6 px-3" href="web-files.html">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>
+      sunnycloud
+    </a>
+    <nav class="flex flex-col gap-1" aria-label="Sections">
+      <a class="nav-item" href="web-files.html"><i data-icon="folder"></i>Files</a>
+      <a class="nav-item" href="#"><i data-icon="link"></i>Shared links</a>
+      <a class="nav-item" href="web-account.html#devices"><i data-icon="laptop"></i>Devices</a>
+      <a class="nav-item" href="web-account.html"><i data-icon="user"></i>Account</a>
+    </nav>
+    <p class="t-label nav-group">Admin</p>
+    <nav class="flex flex-col gap-1" aria-label="Admin">
+      <a class="nav-item" href="?tab=users-tab" data-nav-tab="users-tab" aria-current="page"><i data-icon="users"></i>Users</a>
+      <a class="nav-item" href="?tab=invites-tab" data-nav-tab="invites-tab"><i data-icon="mail"></i>Invites</a>
+      <a class="nav-item" href="?tab=quotas-tab" data-nav-tab="quotas-tab"><i data-icon="database"></i>Quotas</a>
+      <a class="nav-item" href="?tab=health-tab" data-nav-tab="health-tab"><i data-icon="activity"></i>Health</a>
+    </nav>
+    <section class="mt-auto card p-4" aria-labelledby="storage-h">
+      <div class="flex items-baseline justify-between">
+        <h2 id="storage-h" class="t-label">Storage</h2>
+        <span class="t-small num">38%</span>
+      </div>
+      <p class="t-row num mt-2 mb-2">38.2 GB <span class="t-small">of 100 GB</span></p>
+      <div class="progress" role="progressbar" aria-valuenow="38" aria-valuemin="0" aria-valuemax="100" aria-label="Storage used"><span style="width:38%"></span></div>
+    </section>
+  </aside>
+
+  <div class="main-panel">
+    <header class="topbar">
+      <button class="btn btn-ghost btn-icon menu-button" aria-label="Open navigation"><i data-icon="menu"></i></button>
+      <nav aria-label="Breadcrumb" class="min-w-0 flex-1">
+        <ol class="flex items-center gap-1 t-small min-w-0"><li aria-current="page" class="truncate-1 text-ink font-semibold">Admin</li></ol>
+      </nav>
+      <button class="btn btn-ghost btn-sm gap-2" aria-label="Account menu for Marta Hryn">
+        <span class="grid place-items-center w-8 h-8 rounded-full bg-sun-fill text-sun-on font-bold text-sm">MH</span>
+        <span class="hidden md:inline">Marta Hryn</span><i data-icon="chevron-down" class="icon-sm"></i>
+      </button>
+    </header>
+
+    <main class="flex-1 px-4 lg:px-8 py-6 flex flex-col gap-5">
+      <div>
+        <h1 class="t-h1">Admin</h1>
+        <p class="t-small">Who can use cloud.example.org, how much each person can store, and how the server is doing.</p>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Admin sections">
+        <button class="tab" role="tab" id="users-tab" aria-controls="users-panel" aria-selected="true"><i data-icon="users" class="icon-sm"></i>Users <span class="chip num">6</span></button>
+        <button class="tab" role="tab" id="invites-tab" aria-controls="invites-panel" aria-selected="false" tabindex="-1"><i data-icon="mail" class="icon-sm"></i>Invites</button>
+        <button class="tab" role="tab" id="quotas-tab" aria-controls="quotas-panel" aria-selected="false" tabindex="-1"><i data-icon="database" class="icon-sm"></i>Quotas</button>
+        <button class="tab" role="tab" id="health-tab" aria-controls="health-panel" aria-selected="false" tabindex="-1"><i data-icon="activity" class="icon-sm"></i>Health<span class="text-warning inline-flex" data-state="health-degraded"><i data-icon="alert" class="icon-sm"></i><span class="sr-only">needs attention</span></span></button>
+      </div>
+
+      <!-- ============ Users: GET /admin/users (AdminUserView: role, state, last_login, used, limit) ============ -->
+      <section id="users-panel" role="tabpanel" aria-labelledby="users-tab" class="flex flex-col gap-4">
+        <div class="flex flex-wrap items-center gap-3">
+          <label class="relative flex-1 min-w-[14rem] max-w-sm"><span class="sr-only">Search users</span>
+            <i data-icon="search" class="icon-sm absolute left-3 top-3 text-ink-3"></i>
+            <input class="input pl-9" placeholder="Search by name or email"></label>
+          <p class="t-small num">6 users · 1 admin</p>
+        </div>
+
+        <!-- 409 LastAdmin from PATCH /admin/users/{id}: the server's refusal, shown as such -->
+        <div class="banner banner-danger" role="alert" data-state="last-admin">
+          <i data-icon="alert-circle"></i>
+          <div class="flex-1"><strong>The server refused this change.</strong> Marta Hryn is the last active admin, so the role cannot be changed. Make another user an admin first.</div>
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Dismiss"><i data-icon="x" class="icon-sm"></i></button>
+        </div>
+
+        <div class="card">
+          <table class="ftable">
+            <thead><tr>
+              <th scope="col">User</th>
+              <th scope="col" class="col-hide-sm w-28">Role</th>
+              <th scope="col" class="col-hide-sm w-36">Status</th>
+              <th scope="col" class="col-lg w-52">Storage</th>
+              <th scope="col" class="col-lg w-32">Last sign-in</th>
+              <th scope="col" class="w-14"><span class="sr-only">Actions</span></th>
+            </tr></thead>
+            <tbody data-state="default last-admin invite-created invites-empty health-degraded">
+              <tr><td class="wrap"><div class="name"><span class="avatar is-me">MH</span><span class="min-w-0"><span class="block truncate-1">Marta Hryn <span class="t-small">(you)</span></span><span class="block t-small truncate-1">marta.hryn@example.org</span>
+                <span class="flex gap-1 mt-1 md:hidden"><span class="chip chip-sun"><i data-icon="shield"></i>Admin</span><span class="chip chip-success"><i data-icon="check-circle"></i>Active</span></span></span></div></td>
+                <td class="col-hide-sm"><span class="chip chip-sun"><i data-icon="shield"></i>Admin</span></td>
+                <td class="col-hide-sm"><span class="chip chip-success"><i data-icon="check-circle"></i>Active</span></td>
+                <td class="col-lg"><div class="flex items-center gap-3"><div class="progress w-20" role="progressbar" aria-valuenow="38" aria-valuemin="0" aria-valuemax="100" aria-label="Marta Hryn storage used"><span style="width:38%"></span></div><span class="num">38.2 / 100 GB</span></div></td>
+                <td class="col-lg num">Today</td>
+                <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for Marta Hryn"><i data-icon="more"></i></button></td></tr>
+              <tr><td class="wrap"><div class="name"><span class="avatar">OH</span><span class="min-w-0"><span class="block truncate-1">Oleh Hryn</span><span class="block t-small truncate-1">oleh@example.org</span>
+                <span class="flex gap-1 mt-1 md:hidden"><span class="chip">User</span><span class="chip chip-success"><i data-icon="check-circle"></i>Active</span></span></span></div></td>
+                <td class="col-hide-sm"><span class="chip">User</span></td>
+                <td class="col-hide-sm"><span class="chip chip-success"><i data-icon="check-circle"></i>Active</span></td>
+                <td class="col-lg"><div class="flex items-center gap-3"><div class="progress w-20" role="progressbar" aria-valuenow="71" aria-valuemin="0" aria-valuemax="100" aria-label="Oleh Hryn storage used"><span style="width:71%"></span></div><span class="num">71.4 / 100 GB</span></div></td>
+                <td class="col-lg num">2 Nov 2026</td>
+                <td class="relative"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for Oleh Hryn" aria-expanded="true"><i data-icon="more"></i></button>
+                  <div class="menu absolute right-3 top-11 z-30" role="menu" aria-label="Actions for Oleh Hryn" data-state="default">
+                    <button class="menu-item" role="menuitem"><i data-icon="shield"></i>Make admin</button>
+                    <button class="menu-item" role="menuitem"><i data-icon="database"></i>Set quota…</button>
+                    <button class="menu-item" role="menuitem"><i data-icon="lock"></i>Deactivate</button>
+                    <hr class="divider my-1">
+                    <button class="menu-item is-danger" role="menuitem"><i data-icon="trash"></i>Delete account…</button>
+                  </div></td></tr>
+              <tr><td class="wrap"><div class="name"><span class="avatar">SH</span><span class="min-w-0"><span class="block truncate-1">Sofiia Hryn</span><span class="block t-small truncate-1">sofiia.hryn@example.org</span>
+                <span class="flex gap-1 mt-1 md:hidden"><span class="chip">User</span><span class="chip chip-success"><i data-icon="check-circle"></i>Active</span></span></span></div></td>
+                <td class="col-hide-sm"><span class="chip">User</span></td>
+                <td class="col-hide-sm"><span class="chip chip-success"><i data-icon="check-circle"></i>Active</span></td>
+                <td class="col-lg"><div class="flex items-center gap-3"><div class="progress w-20" role="progressbar" aria-valuenow="85" aria-valuemin="0" aria-valuemax="100" aria-label="Sofiia Hryn storage used"><span style="width:85%"></span></div><span class="num">212.4 / 250 GB</span></div></td>
+                <td class="col-lg num">3 Nov 2026</td>
+                <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for Sofiia Hryn"><i data-icon="more"></i></button></td></tr>
+              <tr><td class="wrap"><div class="name"><span class="avatar">DK</span><span class="min-w-0"><span class="block truncate-1">Daria Koval</span><span class="block t-small truncate-1">No email · GitHub</span>
+                <span class="flex gap-1 mt-1 md:hidden"><span class="chip">User</span><span class="chip chip-success"><i data-icon="check-circle"></i>Active</span></span></span></div></td>
+                <td class="col-hide-sm"><span class="chip">User</span></td>
+                <td class="col-hide-sm"><span class="chip chip-success"><i data-icon="check-circle"></i>Active</span></td>
+                <td class="col-lg"><div class="flex items-center gap-3"><div class="progress w-20" role="progressbar" aria-valuenow="1" aria-valuemin="0" aria-valuemax="100" aria-label="Daria Koval storage used"><span style="width:1%"></span></div><span class="num">0.4 / 50 GB</span></div></td>
+                <td class="col-lg num">26 Oct 2026</td>
+                <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for Daria Koval"><i data-icon="more"></i></button></td></tr>
+              <tr><td class="wrap"><div class="name"><span class="avatar">IP</span><span class="min-w-0"><span class="block truncate-1">Ivan Petrenko</span><span class="block t-small truncate-1">ivan.p@example.org</span>
+                <span class="flex gap-1 mt-1 md:hidden"><span class="chip">User</span><span class="chip"><i data-icon="lock"></i>Deactivated</span></span></span></div></td>
+                <td class="col-hide-sm"><span class="chip">User</span></td>
+                <td class="col-hide-sm"><span class="chip"><i data-icon="lock"></i>Deactivated</span></td>
+                <td class="col-lg"><div class="flex items-center gap-3"><div class="progress w-20" role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100" aria-label="Ivan Petrenko storage used"><span style="width:60%"></span></div><span class="num">12.0 / 20 GB</span></div></td>
+                <td class="col-lg num">14 Sep 2026</td>
+                <td><button class="btn btn-ghost btn-icon btn-sm" aria-label="Actions for Ivan Petrenko"><i data-icon="more"></i></button></td></tr>
+              <tr><td class="wrap"><div class="name"><span class="avatar">TM</span><span class="min-w-0"><span class="block truncate-1">Taras Melnyk</span><span class="block t-small truncate-1">Removing data, done within 15 minutes</span>
+                <span class="flex gap-1 mt-1 md:hidden"><span class="chip">User</span><span class="chip chip-danger"><i data-icon="trash"></i>Deleting</span></span></span></div></td>
+                <td class="col-hide-sm"><span class="chip">User</span></td>
+                <td class="col-hide-sm"><span class="chip chip-danger"><i data-icon="trash"></i>Deleting</span></td>
+                <td class="col-lg">—</td>
+                <td class="col-lg num">1 Oct 2026</td>
+                <td><button class="btn btn-icon btn-sm" disabled aria-label="No actions while the account is being deleted" title="No actions while the account is being deleted"><i data-icon="more"></i></button></td></tr>
+            </tbody>
+            <tbody aria-hidden="true" data-state="loading">
+              <tr><td><div class="name"><span class="avatar skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-32"></span><span class="skeleton h-2.5 w-44"></span></span></div></td><td class="col-hide-sm"><span class="skeleton h-5 w-14 rounded-full"></span></td><td class="col-hide-sm"><span class="skeleton h-5 w-16 rounded-full"></span></td><td class="col-lg"><span class="skeleton h-3 w-32"></span></td><td class="col-lg"><span class="skeleton h-3 w-20"></span></td><td></td></tr>
+              <tr><td><div class="name"><span class="avatar skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-24"></span><span class="skeleton h-2.5 w-40"></span></span></div></td><td class="col-hide-sm"><span class="skeleton h-5 w-14 rounded-full"></span></td><td class="col-hide-sm"><span class="skeleton h-5 w-16 rounded-full"></span></td><td class="col-lg"><span class="skeleton h-3 w-28"></span></td><td class="col-lg"><span class="skeleton h-3 w-20"></span></td><td></td></tr>
+              <tr><td><div class="name"><span class="avatar skeleton"></span><span class="flex-1 flex flex-col gap-2"><span class="skeleton h-3 w-28"></span><span class="skeleton h-2.5 w-36"></span></span></div></td><td class="col-hide-sm"><span class="skeleton h-5 w-14 rounded-full"></span></td><td class="col-hide-sm"><span class="skeleton h-5 w-16 rounded-full"></span></td><td class="col-lg"><span class="skeleton h-3 w-32"></span></td><td class="col-lg"><span class="skeleton h-3 w-20"></span></td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ Invites: /admin/invites (single use, server-set expiry invite_ttl, revoke) ============ -->
+      <section id="invites-panel" role="tabpanel" aria-labelledby="invites-tab" class="flex flex-col gap-5" hidden>
+        <form class="raised p-5 flex flex-col gap-4 lg:flex-row lg:items-end">
+          <div class="field flex-1">
+            <label class="label" for="invite-note">Note <span class="t-small font-normal">(optional)</span></label>
+            <input id="invite-note" class="input" placeholder="Who is it for?" value="" aria-describedby="invite-help">
+            <p id="invite-help" class="helper">Only admins see the note. The link works once and expires after 7 days (server setting).</p>
+          </div>
+          <button type="button" class="btn btn-primary lg:mb-[26px]"><i data-icon="plus"></i>Create invite</button>
+        </form>
+
+        <!-- The plaintext token exists only in the create response -->
+        <section class="sun-panel flex flex-col gap-3 p-4" aria-labelledby="created-h" data-state="invite-created">
+          <h2 id="created-h" class="t-h3 flex items-center gap-2 text-sun-on"><i data-icon="check-circle"></i>Invite created for Lesia</h2>
+          <p class="once-url mono" id="invite-url">https://cloud.example.org/invite#sc_inv_Hm4Tq8VwZ2pLx7Rb1NcY6dKs3EjA5uG0oWiPfXe9</p>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <button type="button" class="btn btn-secondary" aria-describedby="invite-url"><i data-icon="copy"></i>Copy link</button>
+            <p class="t-small font-semibold">This is the only time the link is shown. Send it to Lesia directly.</p>
+          </div>
+          <p class="t-small num">Single use · expires 11 Nov 2026</p>
+        </section>
+
+        <div class="card" data-state="default last-admin invite-created health-degraded loading">
+          <table class="ftable">
+            <thead><tr>
+              <th scope="col">Invite</th>
+              <th scope="col" class="col-hide-sm w-32">Created</th>
+              <th scope="col" class="col-hide-sm w-32">Expires</th>
+              <th scope="col" class="w-28 md:w-56">Status</th>
+              <th scope="col" class="w-24"><span class="sr-only">Actions</span></th>
+            </tr></thead>
+            <tbody>
+              <tr data-state="invite-created"><td class="wrap"><span class="block t-row text-ink truncate-1">Lesia</span><span class="block md:hidden t-small num">Expires 11 Nov</span></td>
+                <td class="col-hide-sm num">Today</td><td class="col-hide-sm num">11 Nov 2026</td>
+                <td><span class="chip chip-info"><i data-icon="clock"></i>Pending</span></td>
+                <td><button class="btn btn-danger-ghost btn-sm">Revoke</button></td></tr>
+              <tr><td class="wrap"><span class="block t-row text-ink-3 truncate-1">No note</span><span class="block md:hidden t-small num">Expires 9 Nov</span></td>
+                <td class="col-hide-sm num">2 Nov 2026</td><td class="col-hide-sm num">9 Nov 2026</td>
+                <td><span class="chip chip-info"><i data-icon="clock"></i>Pending</span></td>
+                <td><button class="btn btn-danger-ghost btn-sm">Revoke</button></td></tr>
+              <tr><td class="wrap"><span class="block t-row text-ink truncate-1">Daria</span><span class="block md:hidden t-small num">Used 26 Oct</span></td>
+                <td class="col-hide-sm num">25 Oct 2026</td><td class="col-hide-sm">—</td>
+                <td class="wrap"><span class="chip chip-success"><i data-icon="check-circle"></i>Used</span> <span class="t-small hidden md:inline">by Daria Koval</span></td>
+                <td></td></tr>
+              <tr><td class="wrap"><span class="block t-row text-ink truncate-1">Book club</span><span class="block md:hidden t-small num">Expired 19 Oct</span></td>
+                <td class="col-hide-sm num">12 Oct 2026</td><td class="col-hide-sm num">19 Oct 2026</td>
+                <td><span class="chip"><i data-icon="clock"></i>Expired</span></td>
+                <td></td></tr>
+              <tr><td class="wrap"><span class="block t-row text-ink truncate-1">Old laptop</span><span class="block md:hidden t-small num">Revoked 4 Oct</span></td>
+                <td class="col-hide-sm num">3 Oct 2026</td><td class="col-hide-sm num">10 Oct 2026</td>
+                <td class="wrap"><span class="chip"><i data-icon="x"></i>Revoked</span> <span class="t-small hidden md:inline num">4 Oct</span></td>
+                <td></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" data-state="invites-empty">
+          <div class="empty">
+            <svg class="art" viewBox="0 0 96 72" aria-hidden="true"><circle cx="62" cy="24" r="14" fill="var(--sun)"/><path d="M26 62a14 14 0 0 1-1.6-27.9A19 19 0 0 1 60.5 37 12.5 12.5 0 0 1 59 62z" fill="var(--action-subtle)" stroke="var(--action)" stroke-width="2"/></svg>
+            <h2 class="t-h3">No invites yet</h2>
+            <p class="t-small">New people join only with an invite. Create one above; it shows here with its status.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Quotas: default from config (default_quota_bytes), per-user PUT /admin/users/{id}/quota ============ -->
+      <section id="quotas-panel" role="tabpanel" aria-labelledby="quotas-tab" class="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)] items-start" hidden>
+        <aside class="flex flex-col gap-4" aria-labelledby="default-q-h">
+          <h2 id="default-q-h" class="t-h3">Default quota</h2>
+          <p><span class="t-h1 num">100 GB</span></p>
+          <p class="t-small">Applies to every user without their own quota. The operator sets it in the server configuration (<span class="mono text-ink">default_quota_bytes</span>); it cannot be changed here.</p>
+          <hr class="divider">
+          <ul class="t-small flex flex-col gap-2">
+            <li class="flex gap-2"><i data-icon="info" class="icon-sm mt-0.5"></i>Only current versions of files count. Previews and versions kept for recovery do not.</li>
+            <li class="flex gap-2"><i data-icon="info" class="icon-sm mt-0.5"></i>A quota below what someone already uses blocks new uploads and deletes nothing.</li>
+            <li class="flex gap-2"><i data-icon="info" class="icon-sm mt-0.5"></i>A quota of 0 means no new data.</li>
+          </ul>
+        </aside>
+
+        <div class="flex flex-col gap-4">
+          <h2 class="t-h3">Per-user quotas</h2>
+          <form class="raised p-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+            <div class="field"><label class="label" for="q-user">User</label>
+              <select id="q-user" class="select"><option>Oleh Hryn</option><option>Sofiia Hryn</option><option>Daria Koval</option><option>Ivan Petrenko</option></select></div>
+            <div class="field"><label class="label" for="q-size">Quota</label>
+              <div class="flex gap-2"><input id="q-size" class="input num" inputmode="decimal" value="150"><select class="select w-24" aria-label="Unit"><option>GB</option><option>TB</option></select></div></div>
+            <button type="button" class="btn btn-primary">Save quota</button>
+          </form>
+          <div class="card">
+            <table class="ftable">
+              <thead><tr><th scope="col">User</th><th scope="col" class="w-24 md:w-28">Quota</th><th scope="col" class="col-hide-sm w-28">Used</th><th scope="col" class="w-20 md:w-44"><span class="sr-only">Actions</span></th></tr></thead>
+              <tbody>
+                <tr><td><div class="name"><span class="avatar max-sm:hidden">SH</span><span class="truncate-1">Sofiia Hryn</span></div></td><td class="num text-ink font-semibold">250 GB</td><td class="col-hide-sm num">212.4 GB</td>
+                  <td class="text-right"><button class="btn btn-ghost btn-sm">Edit</button><button class="btn btn-ghost btn-sm hidden md:inline-flex">Use default</button></td></tr>
+                <tr><td><div class="name"><span class="avatar max-sm:hidden">DK</span><span class="truncate-1">Daria Koval</span></div></td><td class="num text-ink font-semibold">50 GB</td><td class="col-hide-sm num">0.4 GB</td>
+                  <td class="text-right"><button class="btn btn-ghost btn-sm">Edit</button><button class="btn btn-ghost btn-sm hidden md:inline-flex">Use default</button></td></tr>
+                <tr><td><div class="name"><span class="avatar max-sm:hidden">IP</span><span class="truncate-1">Ivan Petrenko</span></div></td><td class="num text-ink font-semibold">20 GB</td><td class="col-hide-sm num">12.0 GB</td>
+                  <td class="text-right"><button class="btn btn-ghost btn-sm">Edit</button><button class="btn btn-ghost btn-sm hidden md:inline-flex">Use default</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="t-small">Everyone else uses the default quota.</p>
+        </div>
+      </section>
+
+      <!-- ============ Health: GET /admin/health (HealthItem status ok|degraded|down + detail per contributor) ============ -->
+      <section id="health-panel" role="tabpanel" aria-labelledby="health-tab" class="flex flex-col gap-5" hidden>
+        <div class="banner banner-success flex-wrap" role="status" data-state="default last-admin invite-created invites-empty loading">
+          <i data-icon="check-circle"></i>
+          <div class="flex-1 min-w-[14rem]"><strong>Ready.</strong> All checks pass. <span class="t-small text-[inherit] num">Checked 14:32</span></div>
+          <button class="btn btn-secondary btn-sm"><i data-icon="refresh" class="icon-sm"></i>Check again</button>
+        </div>
+        <div class="banner banner-warning flex-wrap" role="alert" data-state="health-degraded">
+          <i data-icon="alert"></i>
+          <div class="flex-1 min-w-[14rem]"><strong>Degraded: 1 check needs attention.</strong> Free space on the blob volume is below the floor, so new uploads are refused. The server reports not ready until it is fixed. <span class="num">Checked 14:32</span></div>
+          <button class="btn btn-secondary btn-sm"><i data-icon="refresh" class="icon-sm"></i>Check again</button>
+        </div>
+
+        <div class="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)] items-start">
+          <dl class="figures raised">
+            <div><dt>Storage free</dt>
+              <dd class="t-h1 num" data-state="default last-admin invite-created invites-empty loading">1.7 TiB</dd>
+              <dd class="t-h1 num text-warning" data-state="health-degraded">14.2 GiB</dd>
+              <dd class="t-small num">Floor 20 GiB on the blob volume</dd></div>
+            <div><dt>Queue depth</dt><dd class="t-h1 num">15 jobs</dd><dd class="t-small num">12 thumbnails · 3 transcodes · 0 dead</dd></div>
+            <div><dt>Workers</dt><dd class="t-h1 num">2 online</dd><dd class="t-small">Decoder check passed on both</dd></div>
+          </dl>
+
+          <div class="flex flex-col gap-3">
+            <h2 class="t-h3">Checks</h2>
+            <div class="card">
+              <table class="ftable">
+                <thead><tr><th scope="col" class="w-36 md:w-44">Check</th><th scope="col" class="w-32">Status</th><th scope="col" class="col-hide-sm">Detail</th></tr></thead>
+                <tbody>
+                  <tr><td class="text-ink font-semibold">Database</td><td><span class="chip chip-success"><i data-icon="check-circle"></i>OK</span></td><td class="col-hide-sm">Reachable · migrations current</td></tr>
+                  <tr data-state="default last-admin invite-created invites-empty loading"><td class="text-ink font-semibold">Blob volume</td><td><span class="chip chip-success"><i data-icon="check-circle"></i>OK</span></td><td class="col-hide-sm num">Writable · 1.7 TiB free, floor 20 GiB</td></tr>
+                  <tr data-state="health-degraded"><td class="text-ink font-semibold wrap">Blob volume<span class="block md:hidden t-small font-normal num">14.2 GiB free, below the 20 GiB floor</span></td><td><span class="chip chip-warning"><i data-icon="alert"></i>Degraded</span></td><td class="col-hide-sm num wrap">Writable · 14.2 GiB free, below the 20 GiB floor</td></tr>
+                  <tr><td class="text-ink font-semibold">Master key</td><td><span class="chip chip-success"><i data-icon="check-circle"></i>OK</span></td><td class="col-hide-sm">Key check passed</td></tr>
+                  <tr><td class="text-ink font-semibold">Scrub</td><td><span class="chip chip-success"><i data-icon="check-circle"></i>OK</span></td><td class="col-hide-sm num">Last run 2 Nov 2026 · 0 mismatches</td></tr>
+                  <tr><td class="text-ink font-semibold">Media jobs</td><td><span class="chip chip-success"><i data-icon="check-circle"></i>OK</span></td><td class="col-hide-sm num">15 queued · 0 dead</td></tr>
+                  <tr><td class="text-ink font-semibold">Janitors</td><td><span class="chip chip-success"><i data-icon="check-circle"></i>OK</span></td><td class="col-hide-sm">No task behind schedule</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2 class="t-h3 mt-2">Workers</h2>
+            <div class="card">
+              <table class="ftable">
+                <thead><tr><th scope="col">Worker</th><th scope="col" class="w-28">Last seen</th><th scope="col" class="col-hide-sm w-28">Image age</th><th scope="col" class="w-28">Decoder</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="mono text-ink truncate-1 block">media-a1f3</span></td><td class="num">8 s ago</td><td class="col-hide-sm num">9 days</td><td><span class="chip chip-success"><i data-icon="check-circle"></i>OK</span></td></tr>
+                  <tr><td><span class="mono text-ink truncate-1 block">media-c72e</span></td><td class="num">21 s ago</td><td class="col-hide-sm num">9 days</td><td><span class="chip chip-success"><i data-icon="check-circle"></i>OK</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<script>
+  // Mockup-only: a review state tied to a tab opens that tab; ?tab=<tab id> opens one directly; the Admin nav follows the open tab.
+  (function () {
+    function open(id) { var t = document.getElementById(id); if (t) t.click(); }
+    document.addEventListener("click", function (ev) {
+      var b = ev.target.closest("[data-show][data-tab]");
+      if (b) open(b.dataset.tab);
+      var t = ev.target.closest('[role="tab"]');
+      if (t) document.querySelectorAll("[data-nav-tab]").forEach(function (a) {
+        if (a.dataset.navTab === t.id) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+      });
+    });
+    window.addEventListener("load", function () {
+      var q = new URLSearchParams(location.search), b = document.querySelector('[data-show="' + q.get("state") + '"]');
+      open(q.get("tab") || (b && b.dataset.tab) || "users-tab");
+    });
+  })();
+</script>
+</body>
+</html>

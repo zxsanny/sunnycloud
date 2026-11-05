@@ -1,1 +1,8 @@
 _docs/_autodev_state.md
+target/
+*.log
+**/logs/
+e2e-results/
+.env
+secrets/
+secrets-dev/

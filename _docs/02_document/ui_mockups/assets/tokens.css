@@ -1,0 +1,99 @@
+/* sunnycloud design tokens. Single source of colour values; see ../DESIGN.md.
+   Themes: color-scheme follows the OS; html[data-theme] forces one. */
+:root {
+  color-scheme: light dark;
+
+  /* Primitives: graphite */
+  --g-0: #FFFFFF; --g-25: #F5F6F8; --g-50: #EEF0F3; --g-75: #E9ECF0;
+  --g-100: #DFE3E8; --g-150: #D3D8DF; --g-200: #BCC2CB; --g-250: #A4ABB5;
+  --g-300: #868E9B; --g-400: #757C87; --g-500: #5F6774; --g-600: #4F5763;
+  --g-700: #424850; --g-750: #30353B; --g-800: #262A2F; --g-850: #1E2125;
+  --g-900: #16181B; --g-950: #101114;
+
+  /* Primitives: sky blue */
+  --b-50: #EEF4FE; --b-100: #DCE7FD; --b-200: #B9D1FC; --b-300: #82AEFA;
+  --b-400: #5B95F8; --b-500: #2F6BE0; --b-600: #2257CC; --b-700: #1C47A8;
+  --b-800: #1B3F91; --b-900: #172F66; --b-950: #1C2A44; --b-ink: #0B1426;
+
+  /* Primitives: sun yellow */
+  --s-50: #FFF8E1; --s-100: #FFEFB8; --s-200: #FFE38A; --s-300: #FFD95A;
+  --s-400: #FFC72C; --s-500: #F2B705; --s-700: #A27600; --s-800: #6E4F00;
+  --s-900: #3A2C00; --s-950: #2A1F00;
+
+  /* Primitives: status */
+  --green-700: #17703F; --green-300: #5BD39A; --green-50: #E3F4EA; --green-950: #17301F;
+  --orange-800: #8F3409; --orange-700: #B4410B; --orange-300: #FF9F66; --orange-200: #FFB98F;
+  --orange-50: #FDEBDD; --orange-950: #3A2216;
+  --red-800: #912018; --red-700: #B42318; --red-300: #FF7A70; --red-200: #FF9A92;
+  --red-50: #FDE7E5; --red-950: #3D1C1C;
+
+  /* Semantic: light | dark */
+  --bg-page: light-dark(var(--g-75), var(--g-900));
+  --bg-surface: light-dark(var(--g-25), var(--g-850));
+  --bg-raised: light-dark(var(--g-0), var(--g-800));
+  --bg-sunken: light-dark(var(--g-100), var(--g-750));
+  --bg-hover: light-dark(rgb(22 24 27 / 0.05), rgb(233 236 240 / 0.06));
+  --bg-overlay: light-dark(rgb(16 17 20 / 0.45), rgb(0 0 0 / 0.6));
+
+  --text-primary: light-dark(var(--g-900), var(--g-75));
+  --text-secondary: light-dark(var(--g-600), var(--g-250));
+  --text-tertiary: light-dark(var(--g-500), var(--g-300));
+
+  --border: light-dark(var(--g-150), var(--g-750));
+  --border-strong: light-dark(var(--g-300), var(--g-400));
+
+  --action: light-dark(var(--b-600), var(--b-400));
+  --action-hover: light-dark(var(--b-700), var(--b-300));
+  --action-active: light-dark(var(--b-800), var(--b-200));
+  --on-action: light-dark(var(--g-0), var(--b-ink));
+  --action-subtle: light-dark(var(--b-100), var(--b-950));
+  --on-action-subtle: light-dark(var(--b-800), var(--b-200));
+  --link: light-dark(var(--b-700), var(--b-300));
+  --focus-ring: light-dark(var(--b-500), var(--b-400));
+
+  --sun: light-dark(var(--s-500), var(--s-400));
+  --sun-strong: light-dark(var(--s-700), var(--s-400));
+  --sun-fill: light-dark(var(--s-300), var(--s-400));
+  --on-sun: light-dark(var(--s-900), var(--s-950));
+
+  --success: light-dark(var(--green-700), var(--green-300));
+  --success-bg: light-dark(var(--green-50), var(--green-950));
+  --warning: light-dark(var(--orange-700), var(--orange-300));
+  --warning-bg: light-dark(var(--orange-50), var(--orange-950));
+  --on-warning-bg: light-dark(var(--orange-800), var(--orange-200));
+  --danger: light-dark(var(--red-700), var(--red-300));
+  --danger-bg: light-dark(var(--red-50), var(--red-950));
+  --on-danger-bg: light-dark(var(--red-800), var(--red-200));
+
+  --shadow-color: light-dark(rgb(16 17 20 / 0.08), rgb(0 0 0 / 0.45));
+  --shadow-raised: 0 1px 2px var(--shadow-color);
+  --shadow-float: 0 12px 32px var(--shadow-color);
+
+  /* Component tokens */
+  --btn-primary-bg: var(--action);
+  --btn-primary-text: var(--on-action);
+  --btn-secondary-bg: var(--bg-raised);
+  --btn-secondary-border: var(--border-strong);
+  --btn-danger-bg: var(--danger);
+  --btn-danger-text: var(--on-action);
+  --card-bg: var(--bg-surface);
+  --card-border: var(--border);
+  --input-bg: var(--bg-raised);
+  --input-border: var(--border-strong);
+  --nav-active-bg: var(--action-subtle);
+  --nav-active-text: var(--on-action-subtle);
+  --nav-indicator: var(--sun);
+  --progress-track: var(--bg-sunken);
+  --progress-fill: var(--action);
+
+  /* Shape and type */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+  --font-ui: "Manrope", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }

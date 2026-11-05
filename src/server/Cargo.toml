@@ -1,0 +1,31 @@
+[package]
+name = "sunnycloud-server"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "sunnycloud"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+contracts = { path = "../contracts" }
+sunnycloud-identity = { path = "../components/01_identity" }
+sunnycloud-tree = { path = "../components/02_tree" }
+sunnycloud-transfer = { path = "../components/03_transfer" }
+sunnycloud-blobstore = { path = "../components/04_blobstore" }
+sunnycloud-sync-feed = { path = "../components/05_sync_feed" }
+sunnycloud-sharing = { path = "../components/06_sharing" }
+sunnycloud-admin = { path = "../components/07_admin" }
+sunnycloud-quota = { path = "../components/07a_quota" }
+media-api = { path = "../components/08_media_jobs" }
+sunnycloud-http-api = { path = "../components/11_http_api" }
+sunnycloud-vault-service = { path = "../components/20_vault_service" }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -705,7 +705,7 @@ Black-box specifications (no test code). Attacks are mounted through public inte
 | 2 | Load the page with network logging | 100% of requests to the own origin; third-party hosts = 0 |
 | 3 | Unlock, open files, lock; snapshot the heap and worker/WASM memory; search for the vault key and passphrase | 0 matches |
 | 4 | Inspect local/session storage, IndexedDB, cookies | No vault key or passphrase |
-| 5 | Open the share link; capture all requests to the server | Fragment key in any request = 0; fragment removed from the address after load; `Referrer-Policy: no-referrer` |
+| 5 | Removed by owner decision 2026-11-05: no vault share links in v1.2 | — |
 | 6 | Release gate | Signed external review report present (manual) |
 
 **Pass criteria**: all counts 0 (exact); CSP tokens absent; review sign-off recorded.
@@ -848,6 +848,23 @@ The 8 worker operations are the routes of component 08: `POST /api/v1/worker-job
 
 ---
 
+<!-- architecture-sync 2026-11-04 (greenfield Step 5): NFT-SEC-51 covers the public-share password state in ui_mockups/web-public-share.html (06 `open` returns `PasswordRequired` with no file fields). -->
+
+### NFT-SEC-51: A password-protected link reveals nothing about its file before unlock [v1.0]
+
+**Traces to**: AC-12 | **Data**: small-fixtures (DS-23), the 5 MB file uploaded as `secret-plan.pdf` and shared with a password | **Env**: C (API client and Playwright Chromium), group P | **Status**: READY (the response status is open, G-9; this test asserts content only)
+
+| Step | Action | Expected Behavior |
+|------|--------|------------------|
+| 1 | Open the link without a password through the API and through the public page | Response and DOM contain no file name, size, media type or expiry: 0 occurrences of `secret-plan` and of the byte size |
+| 2 | Request the content with GET, HEAD and `Range: bytes=0-0` | No content bytes; no `Content-Disposition` naming the file |
+| 3 | Enter a wrong password | Same result as step 1, plus the wrong-password message |
+| 4 | Enter the right password | Name, size and media type shown; the download hash equals the file |
+
+**Pass criteria**: metadata fields exposed before unlock 0 (exact); content bytes before unlock 0 (exact); unlock with the right password 1 of 1.
+
+---
+
 ## Gaps
 
 No scenario in this file is BLOCKED.
@@ -867,7 +884,7 @@ No scenario in this file is BLOCKED.
 | AC-5 | NFT-SEC-26 |
 | AC-7 | NFT-SEC-14, -20, -21, -22, -25 |
 | AC-10 | NFT-SEC-28 |
-| AC-12 | NFT-SEC-06, -11, -16, -17, -18, -19 |
+| AC-12 | NFT-SEC-06, -11, -16, -17, -18, -19, NFT-SEC-51 |
 | AC-13 | NFT-SEC-39, -41, -42, -43 |
 | AC-14 | NFT-SEC-43 |
 | AC-19 | NFT-SEC-02, -30 |

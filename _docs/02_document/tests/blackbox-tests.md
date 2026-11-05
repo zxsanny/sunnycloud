@@ -1726,6 +1726,131 @@ Functional black-box scenarios for sunnycloud. Every scenario drives a public in
 **Expected outcome**: local edits lost = 0 (exact); downloads over a dirty path before the upload ack = 0; the clean remote delete lands in the trash (1 of 1).
 **Max execution time**: 120 s
 
+<!-- architecture-sync 2026-11-04 (greenfield Step 5): FT-P-78 to FT-P-82 and FT-N-45 to FT-N-51 come from system-flows.md error rows without a system-level test and from the approved ui_mockups/ states. -->
+
+### FT-P-78: The setup token can be re-issued only while no account exists [v1.0]
+
+**Summary**: An operator who lost the first-run token gets a new one from the CLI; the replaced token stops working, and the command refuses once an account exists (F1, "Token lost from log").
+**Traces to**: AC-23
+**Category**: Identity
+**Env**: C, group X (fresh stack with an empty database)
+
+**Preconditions**:
+- Fresh stack, 0 accounts; mock-idp with one fresh identity per sign-in step.
+
+**Input data**: oauth-mock (DS-20); T1 = the setup token issued at API start (DS-33).
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | Run `sunnycloud admin setup-token` (ctl operator command) | Exit code 0; one new token T2 printed once |
+| 2 | Sign in with a fresh identity presenting T1 | No account (probe: 0 accounts); same response as a login without a token (FT-N-20) |
+| 3 | Sign in with a fresh identity presenting T2 | First admin created (1 account, role admin) |
+| 4 | Run `sunnycloud admin setup-token` again | `SetupNotAvailable`, exit code 2, no token on stdout |
+| 5 | Sign in with another fresh identity presenting T2 | No account (still 1) |
+
+**Expected outcome**: 1 account after step 5 (exact); T1 accepted 0 times, T2 exactly once; step 4 exit code 2 with an empty token output.
+**Max execution time**: 60 s
+
+### FT-P-79: The web app shows stable messages for quota, rate-limit, upgrade and server errors [v1.0]
+
+**Summary**: Typed API errors become the messages drawn in `ui_mockups/web-files.html` (state "Errors") and `web-public-share.html` (state "Rate limited"), never a blank page or a raw error body (16 §5 error handling).
+**Traces to**: AC-64, AC-39, AC-20
+**Category**: Web client
+**Env**: C (Playwright Chromium and Firefox in `browsers`), group X (stops the database; changes the minimum client version)
+
+**Preconditions**:
+- Account A signed in through the web; A's quota set to 10 MiB with `sunnycloud admin`; A owns a password-protected link L.
+
+**Input data**: small-fixtures (DS-23) 5 MB file; a 12 MiB slice of big-file (DS-09).
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | Upload the 5 MB file, then the 12 MiB file | First succeeds; the second ends in the transfers panel as not uploaded (quota), and a banner states used and limit equal to the values of A's quota response |
+| 2 | In a second browser context open L and enter a wrong password 11 times | After the limit the page shows "Try again in N seconds" with N within 1 s of `Retry-After`; Unlock stays disabled, with its reason, until the countdown ends |
+| 3 | ctl sets the server minimum client version above the web build and restarts the API; reload | Upgrade banner with a reload action (exact text: G-19); no upload or listing request follows the 426 |
+| 4 | Restore the version; ctl stops the database; reload the folder | Danger banner containing the `X-Request-Id` of the failed listing response (from the network log); no stack trace or raw JSON in the DOM |
+| 5 | ctl starts the database; reload | Listing shown within 60 s of the database accepting connections |
+
+**Expected outcome**: 4 of 4 failure kinds show their message and control (exact); the request id in the banner equals the response header (exact); 0 uncaught page errors in the console.
+**Max execution time**: 5 min
+
+### FT-P-80: The share dialog shows the full link once and offers no sharing for folders [v1.0]
+
+**Summary**: The plaintext token exists only in the create response; folders have no share action in v1.0 (`ui_mockups/web-share-dialog.html`, states "Link created" and "Folder"; 06 `create` refuses folders with `TargetNotShareable`).
+**Traces to**: AC-12
+**Category**: Sharing
+**Env**: C (Playwright Chromium), group P
+
+**Preconditions**:
+- Account A with `/s/f.jpg` and folder `/s/d`.
+
+**Input data**: photos (DS-03), one JPEG.
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | Open the share dialog for f.jpg, keep the default expiry, create a link | The dialog shows one URL with the token; "Copy link" puts exactly that URL on the clipboard; the URL opens f.jpg (200, hash equal) |
+| 2 | Close and reopen the dialog; call the share list operation | The list shows the link with created date, expiry and password flag; the DOM and the list response contain the token string 0 times |
+| 3 | Open the row menu of folder d | "Share link" is disabled with its reason visible; no dialog opens |
+| 4 | Call create-share for d through the API with A's session | Typed error `TargetNotShareable` (4xx); A's share rows unchanged (probe) |
+| 5 | Revoke the link from the list (inline confirm, no second dialog) | The link answers as missing (FT-N-09 response) within 5 s |
+
+**Expected outcome**: token shown exactly once (exact); folder shares created 0; revoke effective within 5 s.
+**Max execution time**: 60 s
+
+### FT-P-81: The device approval page defaults to deny when the locations differ [v1.0]
+
+**Summary**: On a location mismatch Deny is the primary action and Approve needs an explicit confirmation (`ui_mockups/web-device-approval.html`, state "Different location", approved by the owner on 2026-11-04).
+**Traces to**: AC-57
+**Category**: Identity
+**Env**: C (Playwright Chromium as approver from consumer subnet Y; an API client in the daemon role from subnet X), group P
+
+**Preconditions**:
+- Approver signed in through the web; geoip-test maps X and Y to two cities.
+
+**Input data**: geoip-test (DS-32).
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | Daemon role starts a device grant from X; the approver opens the approval page from Y and enters the user code | Both locations and the mismatch warning shown (as NFT-SEC-07); Deny is the primary action; Approve is disabled and says why |
+| 2 | Tick "I started this sign-in on that device" | Approve becomes enabled |
+| 3 | Untick it and choose Deny | Denied result shown; the daemon role's next poll returns `access_denied` |
+| 4 | Start a second grant from Y | No warning; Approve enabled without a confirmation |
+| 5 | Approve | Approved page; the daemon role's next poll returns a device token |
+
+**Expected outcome**: approvals possible on a mismatch without the confirmation = 0 (exact); tokens minted: 0 for the denied grant, 1 for the matched grant.
+**Max execution time**: 2 min
+
+### FT-P-82: A settings change the daemon does not confirm reverts in the window [v1.0]
+
+**Summary**: The settings window shows only applied values: a change without an echo from the daemon within the 5 s request timeout reverts (15 §5 "No hidden state"; `ui_mockups/desktop-settings.html`, Settings tab).
+**Traces to**: AC-16
+**Category**: Desktop
+**Env**: H-LIN (LIN-VM, AT-SPI) and H-WIN (WIN-VM, UIA), group X
+
+**Preconditions**:
+- Daemon signed in with one pair; settings window open.
+
+**Input data**: none (behavioral).
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | Harness agent suspends the daemon process (`SIGSTOP`; Windows: suspend); toggle "Start at login" | Within 5 s the checkbox returns to its previous value and an inline error names the failed change |
+| 2 | Resume the daemon; toggle "Start at login" again | Within 5 s the window shows the value echoed by the daemon and an "Applied" mark; the autostart unit or logon task matches it |
+| 3 | Set the bandwidth limit to 5000 and apply | Echoed value shown within 5 s; daemon PID unchanged |
+
+**Expected outcome**: 1 of 1 unconfirmed change reverted; 2 of 2 confirmed changes shown within 5 s (threshold_max 5 s); 0 restarts.
+**Max execution time**: 2 min
+
 ## Negative Scenarios
 
 ### FT-N-01: A bit flipped in an upload block is rejected and re-sent [v1.0]
@@ -2706,6 +2831,172 @@ Functional black-box scenarios for sunnycloud. Every scenario drives a public in
 **Expected outcome**: S valid after 3 renames, 2 moves and 1 in-place edit (7 of 7 opens correct); missing within 5 s of the delete (exact); S2 unaffected.
 **Max execution time**: 90 s
 
+### FT-N-45: A denied or too-fast device login grants nothing [v1.0]
+
+**Summary**: Polling faster than the interval answers `slow_down`; a denied grant answers `access_denied` and cannot be approved later (F3 error rows).
+**Traces to**: AC-57, AC-76
+**Category**: Identity
+**Env**: C, group X (short poll interval by config, as for AC-76)
+
+**Preconditions**:
+- Approver signed in through the web.
+
+**Input data**: none (behavioral).
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | Start a device grant; poll 5 times at half the returned interval | `slow_down` on each early poll; grant still pending |
+| 2 | The approver denies the code | Next poll at the interval returns `access_denied` |
+| 3 | Approve the same user code after the deny | Refused; the page shows the code as no longer valid |
+| 4 | Poll again | `access_denied` or `expired_token`, never a token |
+
+**Expected outcome**: device tokens minted for this grant = 0 (probe, exact); `slow_down` on 5 of 5 early polls.
+**Max execution time**: 60 s
+
+### FT-N-46: The last active admin cannot be demoted, deactivated or deleted [v1.0]
+
+**Summary**: Every installation keeps an active admin; refusals are `LastAdmin` (HTTP 409) and the web admin shows them (`ui_mockups/web-admin.html`, state "Last admin").
+**Traces to**: AC-23
+**Category**: Admin
+**Env**: C, group X (fresh stack: A is the only admin)
+
+**Preconditions**:
+- Admin A and user B, both signed in through the web.
+
+**Input data**: oauth-mock (DS-20).
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | A demotes itself, deactivates itself and requests deletion of its account, each through the API | 409 `LastAdmin` for each; A's role, state and sessions unchanged |
+| 2 | Repeat the three actions in the web admin section and the account page | Each shows the server refusal inline; nothing changed |
+| 3 | A promotes B to admin, then demotes itself | 200 both; A is a user, B an admin |
+| 4 | B demotes itself | 409 `LastAdmin` |
+
+**Expected outcome**: 7 refusals with 0 changes (exact); the demotion after the promotion succeeds.
+**Max execution time**: 60 s
+
+### FT-N-47: Deleting an already deleted file succeeds and appears once in the feed [v1.0]
+
+**Summary**: A delete of a tombstoned node is an idempotent success (F8, "Delete of an already deleted node").
+**Traces to**: AC-8
+**Category**: Sync
+**Env**: C (API clients A and B with different device labels), group P
+
+**Preconditions**:
+- File h at revision r, listed by both devices.
+
+**Input data**: small-fixtures (DS-23), one 1 MiB file.
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | A deletes h with base r; then B deletes h with base r | 2xx both |
+| 2 | Read the change feed from the cursor taken before step 1 | Exactly 1 delete event for h; 0 conflict copies; h absent from the listing |
+| 3 | A repeats its delete request | 2xx; the feed gains no event |
+
+**Expected outcome**: 3 of 3 deletes succeed; 1 delete event (exact).
+**Max execution time**: 30 s
+
+### FT-N-48: One bad entry does not fail a batch commit; an oversized batch is refused whole [v1.0]
+
+**Summary**: Per-entry failures roll back only that entry; a batch over `batch_max_entries` is 413 (F5 error rows).
+**Traces to**: AC-40
+**Category**: Transfer
+**Env**: C, group P
+
+**Preconditions**:
+- Account A with an existing file e changed once after its revision r0 was read.
+
+**Input data**: many-small (DS-01), 50 files under 1 MiB.
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | Stage the 50 files | 50 staged |
+| 2 | Commit one batch where entry 10 is named `a<U+0007>b`, entry 20 targets e with base r0, entry 30 uses a staged key that was never staged | 47 committed; entries 10, 20 and 30 each carry a typed per-entry error; the listing shows exactly the 47 new files |
+| 3 | Re-send the three entries corrected (valid name, current base, staged file) in a new batch | 3 committed |
+| 4 | Commit a batch with `batch_max_entries + 1` entries (value from `GET /api/v1/server-info`) | 413; 0 of its entries committed |
+
+**Expected outcome**: 47 + 3 committed (exact); 0 committed from the oversized batch (exact).
+**Max execution time**: 60 s
+
+### FT-N-49: A media job for a replaced or deleted file ends as obsolete [v1.0]
+
+**Summary**: Jobs queued for a revision that was superseded or deleted close with outcome `obsolete` and leave no derived file (F10, 08 `complete_skipped`).
+**Traces to**: AC-10, AC-71
+**Category**: Media
+**Env**: C, group X (`docker pause worker-supervisor`, as in NFT-SEC-50)
+
+**Preconditions**:
+- Supervisor paused before the uploads.
+
+**Input data**: photos (DS-03), three JPEGs P, P2, Q.
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | Upload P and Q | Thumbnail state `pending` for both |
+| 2 | Overwrite P with P2; delete Q | |
+| 3 | Unpause the supervisor; wait until the queue is empty | Jobs for P's first revision and for Q end `succeeded` with outcome `obsolete` (probe); 0 derived rows for them |
+| 4 | List the folder | P's thumbnail is `ready` and decodes to P2 |
+
+**Expected outcome**: 2 obsolete jobs; derived files for obsolete revisions 0 (probe and blob-volume reconciliation, exact); 1 thumbnail for P.
+**Max execution time**: 2 min
+
+### FT-N-50: Android backup skips a vanished photo and pauses on a full quota [v1.0 Android]
+
+**Summary**: An asset deleted between listing and upload is skipped and counted; a 507 pauses backup with a visible message until quota is available (F16 error rows; `ui_mockups/android-backup.html`, frame "Needs attention").
+**Traces to**: AC-9, AC-52
+**Category**: Mobile
+**Env**: EMU, group X (changes the account quota)
+
+**Preconditions**:
+- App signed in, battery exemption granted, Wi-Fi.
+
+**Input data**: phone-fixtures (DS-21), 120 JPEGs.
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | Push 100 photos; during the run delete 5 that the server does not list yet | Run completes; 95 on the server; status shows 5 skipped as gone; no crash and no retry loop for them |
+| 2 | Set A's quota to current usage plus 10 MB; push 20 photos | Backup pauses with the quota message; the app stays responsive |
+| 3 | Raise the quota; open the app | The next run uploads the remaining photos |
+
+**Expected outcome**: 115 server files (exact); duplicates 0; skipped 5.
+**Max execution time**: 10 min
+
+### FT-N-51: The desktop reports a name the server rejects and keeps syncing the rest [v1.0 Linux and Windows]
+
+**Summary**: A local file whose name the server refuses is marked and reported, not retried in a loop; other files keep syncing (F9 "Server rejects a name"; 14 error handling).
+**Traces to**: AC-37 (negative case)
+**Category**: Desktop
+**Env**: C (`desktop-linux-a`, status read over IPC) and H-WIN (WIN-VM), group P
+
+**Preconditions**:
+- Daemon with one active pair.
+
+**Input data**: tricky-names (DS-12): `a<U+202E>b.txt` on both OS, `a<U+0007>b.txt` on Linux only; 10 ordinary files.
+
+**Steps**:
+
+| Step | Consumer Action | Expected System Response |
+|------|----------------|------------------------|
+| 1 | Create the ordinary and the rejected files in the pair | The 10 ordinary files are on the server within 5 s after settle |
+| 2 | Read the daemon status | Each rejected name listed with the server's reason; the pair stays active |
+| 3 | Count upload attempts for the rejected names at the proxy for 10 min | 0 further attempts after the first 4xx while the file is unchanged |
+| 4 | Rename `a<U+202E>b.txt` locally to `ab.txt` | Uploaded within 5 s; it leaves the status list |
+
+**Expected outcome**: 11 files uploaded, rejected names reported 2 of 2 on Linux and 1 of 1 on Windows (exact); retries 0.
+**Max execution time**: 12 min
+
 ## Gaps
 
 Resolved by the owner decisions of 2026-11-03 (rounds 1 and 2) and removed; numbers of open gaps are kept stable for traceability. Round 1: former G-4, G-13, G-17, G-18 (G-10 narrowed). Round 2: former G-3 (orientation, SSIM >= 0.95), G-6 (Samsung/Xiaomi p95 <= 5 min), G-11 (pattern grammar, AC-66), G-14 (2 GiB browser verification), G-16 (macOS permission, AC-67), G-20 (existing sessions), G-22 (`POST /test/clock`), G-23 (zxcvbn; the final rule is score 4 or generated, see FT-N-37). Former G-8 is not a gap: FT-P-33 (Live Photo) is DEFERRED to v1.1 and its fixture and expected result are written at v1.1 planning.
@@ -2734,20 +3025,21 @@ The only still-blocked item is the NFC/NFD sub-case of FT-P-15 (G-1); every othe
 | AC-5 | FT-P-07, FT-P-08 |
 | AC-6 | FT-P-09 |
 | AC-7 | FT-P-01, FT-P-02, FT-P-03, FT-P-68, FT-N-01, FT-N-02 |
-| AC-8 | FT-P-08, FT-P-10, FT-P-11, FT-P-12, FT-P-77 |
-| AC-9 | FT-P-29, FT-P-30, FT-P-31 |
-| AC-10 | FT-P-20, FT-P-21, FT-P-22, FT-N-07 |
+| AC-8 | FT-P-08, FT-P-10, FT-P-11, FT-P-12, FT-P-77, FT-N-47 |
+| AC-9 | FT-P-29, FT-P-30, FT-P-31, FT-N-50 |
+| AC-10 | FT-P-20, FT-P-21, FT-P-22, FT-N-07, FT-N-49 |
 | AC-11 | FT-P-23, FT-P-24, FT-P-25 |
-| AC-12 | FT-P-36, FT-P-37, FT-P-38, FT-N-09, FT-N-10, FT-N-44 |
+| AC-12 | FT-P-36, FT-P-37, FT-P-38, FT-N-09, FT-N-10, FT-N-44, FT-P-80 |
 | AC-13 | FT-P-44, FT-N-13 |
 | AC-14 | FT-P-44, FT-P-45, FT-N-14, FT-N-37 |
-| AC-16 | FT-P-48, FT-P-49 |
+| AC-16 | FT-P-48, FT-P-49, FT-P-82 |
 | AC-17 | FT-P-50 |
 | AC-18 | FT-P-51, FT-P-52 |
 | AC-19 | FT-P-62, FT-P-63, FT-N-25, FT-N-34 |
+| AC-20 | FT-P-79 |
 | AC-21 | FT-N-30 |
 | AC-22 | FT-P-69 |
-| AC-23 | FT-P-64, FT-P-65, FT-N-20, FT-N-21 |
+| AC-23 | FT-P-64, FT-P-65, FT-N-20, FT-N-21, FT-P-78, FT-N-46 |
 | AC-24 | FT-P-43 |
 | AC-25 | FT-N-07 |
 | AC-26 | FT-P-53 |
@@ -2760,9 +3052,10 @@ The only still-blocked item is the NFC/NFD sub-case of FT-P-15 (G-1); every othe
 | AC-33 | FT-P-56 |
 | AC-34 | FT-P-57 |
 | AC-35 | FT-P-58, FT-P-77 |
-| AC-37 | FT-N-19, FT-N-41 |
+| AC-37 | FT-N-19, FT-N-41, FT-N-51 |
 | AC-38 | FT-P-06 |
-| AC-40 | FT-P-04, FT-P-05, FT-N-38 |
+| AC-39 | FT-P-79 |
+| AC-40 | FT-P-04, FT-P-05, FT-N-38, FT-N-48 |
 | AC-41 | FT-P-13, FT-P-14 |
 | AC-42 | FT-P-15, FT-N-04, FT-N-05, FT-N-41 |
 | AC-43 | FT-P-40, FT-P-41, FT-P-42, FT-P-71, FT-N-12, FT-N-33, FT-N-43 |
@@ -2772,21 +3065,23 @@ The only still-blocked item is the NFC/NFD sub-case of FT-P-15 (G-1); every othe
 | AC-47 | FT-P-39, FT-N-11 |
 | AC-50 | FT-P-67, FT-N-03 |
 | AC-51 | FT-P-68 |
-| AC-52 | FT-P-34 |
+| AC-52 | FT-P-34, FT-N-50 |
 | AC-53 | FT-P-35 |
 | AC-54 | FT-N-26 |
 | AC-55 | FT-N-22 |
 | AC-56 | FT-N-23 |
-| AC-57 | FT-P-66, FT-N-24 |
+| AC-57 | FT-P-66, FT-N-24, FT-P-81, FT-N-45 |
 | AC-60 | FT-P-46, FT-N-15 |
 | AC-61 | FT-N-16 |
 | AC-62 | FT-P-47 |
-| AC-64 | FT-P-70, FT-N-27 |
+| AC-64 | FT-P-70, FT-N-27, FT-P-79 |
 | AC-65 | FT-P-71, FT-P-72, FT-N-33, FT-N-39 |
 | AC-66 | FT-P-60 |
 | AC-67 | FT-P-75 |
 | AC-70 | FT-N-42 |
+| AC-71 | FT-N-49 |
 | AC-72 | FT-N-43 |
+| AC-76 | FT-N-45 |
 | AC-77 | FT-N-44 |
 | AC-78 | FT-P-76 |
 

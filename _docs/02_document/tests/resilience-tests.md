@@ -631,6 +631,57 @@ Black-box specifications (no test code). Each scenario is a behavioral test: fau
 
 ---
 
+<!-- architecture-sync 2026-11-04 (greenfield Step 5): NFT-RES-40 to NFT-RES-42 cover system-flows.md error rows F9 (watch limit), F13 (in-flight upload) and F12 (crash between unlink and row delete). -->
+
+### NFT-RES-40: With the Linux watch limit exhausted, a pair falls back to rescan-only and still syncs [v1.0 Linux]
+
+**Traces to**: AC-15 | **Data**: tree-100k (DS-11) | **Env**: H-LIN (LIN-VM), group X; `desktop.rescan_interval` set to 60 s by config | **Status**: READY
+
+**Fault injection**: the harness agent lowers `fs.inotify.max_user_watches` to 512 before the daemon starts the pair.
+
+| Step | Action | Expected Behavior |
+|------|--------|------------------|
+| 1 | Start the daemon with a pair on DS-11 | Within 60 s the daemon status reports the pair as rescan-only and names the watch limit |
+| 2 | Create 10, edit 10 and delete 10 files (below the 200-deletion guard) | Server state equals the local tree within 70 s (rescan interval plus 10 s) |
+| 3 | Leave the daemon idle for 10 min | Average daemon CPU at most 1% of one core |
+
+**Pass criteria**: rescan-only reported 1 of 1 (exact); 30 of 30 changes on the server within 70 s (threshold_max); idle CPU at most 1%.
+
+---
+
+### NFT-RES-41: An upload in flight when its account is deleted never commits [v1.0]
+
+**Traces to**: AC-27, AC-21 | **Data**: big-file-1g (DS-25) | **Env**: C, group X | **Status**: READY
+
+**Fault injection**: none; the deletion races a running upload (F13, "In-flight upload commits").
+
+| Step | Action | Expected Behavior |
+|------|--------|------------------|
+| 1 | Start a 1 GiB upload on 4 lanes; at 50% request deletion of the account | Deletion accepted |
+| 2 | Keep sending blocks, then commit | Block PUTs and the commit are rejected (401 or `AccountNotActive`) within 5 s of the deletion request; no file appears |
+| 3 | Wait for the purge | ctl probe: 0 rows for the account; blob-volume reconciliation: 0 blob files of the account, including the blocks sent in steps 1 and 2 |
+
+**Pass criteria**: commits accepted after the deletion request 0 (exact); purge done within 15 min (threshold_max); leftover blob files 0 (exact).
+
+---
+
+### NFT-RES-42: Garbage collection killed mid-cycle completes on a later cycle [v1.0]
+
+**Traces to**: AC-30; RESTRICT-10 | **Data**: many-small (DS-01), 5,000 files plus 100 live control files | **Env**: C, group X (retention 0 by config, T-CLOCK) | **Status**: READY
+
+**Fault injection**: `kill -9` of the API 5 times, 2 to 5 s apart, while the GC cycle that collects the 5,000 deleted blobs runs; `docker start` after each kill (F12, "Crash between unlink and row delete").
+
+| Step | Action | Expected Behavior |
+|------|--------|------------------|
+| 1 | Upload and delete the 5,000 files; advance the clock past retention; let GC run with the kills | |
+| 2 | After the last restart wait for one complete GC cycle | Blob-volume reconciliation: 0 files and 0 `blobs` rows for the 5,000 |
+| 3 | Read the API logs and run `sunnycloud doctor` | 0 error-level events about missing blob files; `doctor` lists no missing blobs |
+| 4 | List and download the 100 control files | 200; hashes equal the manifest |
+
+**Pass criteria**: leftover files and rows 0 (exact); GC error events 0 (exact); control files intact 100 of 100.
+
+---
+
 ## Gaps
 
 No scenario in this file is BLOCKED. Remaining open items do not stop a verdict:
@@ -660,14 +711,15 @@ No scenario in this file is BLOCKED. Remaining open items do not stop a verdict:
 | AC-10 | NFT-RES-19, -23 |
 | AC-11 | NFT-RES-19, -23 |
 | AC-12 | NFT-RES-25 |
+| AC-15 | NFT-RES-40 |
 | AC-19 | NFT-RES-24, -32 |
-| AC-21 | NFT-RES-16, -20, -24, -26, -32 |
+| AC-21 | NFT-RES-16, -20, -24, -26, -32, NFT-RES-41 |
 | AC-24 | NFT-RES-04, -10, -39 |
 | AC-25 | NFT-RES-23 |
-| AC-27 | NFT-RES-30 |
+| AC-27 | NFT-RES-30, NFT-RES-41 |
 | AC-28 | NFT-RES-31 |
 | AC-29 | NFT-RES-11, -12 |
-| AC-30 | NFT-RES-08, -09, -10, -30 |
+| AC-30 | NFT-RES-08, -09, -10, -30, NFT-RES-42 |
 | AC-31 | NFT-RES-18 |
 | AC-32 | NFT-RES-17 |
 | AC-33 | NFT-RES-15 |
@@ -700,7 +752,7 @@ No scenario in this file is BLOCKED. Remaining open items do not stop a verdict:
 | RESTRICT-07 | NFT-RES-03, -04, -06, -34, -39 |
 | RESTRICT-08 | NFT-RES-13 |
 | RESTRICT-09 | NFT-RES-01, -03, -04, -05, -06, -07, -08, -20, -34, -35, -38 |
-| RESTRICT-10 | NFT-RES-09, -10, -30, -37, -38, -39 |
+| RESTRICT-10 | NFT-RES-09, -10, -30, -37, -38, -39, NFT-RES-42 |
 | RESTRICT-11 | NFT-RES-01, -02, -20, -21, -22, -25, -35 |
 | RESTRICT-13 | NFT-RES-19, -23, -36 |
 | RESTRICT-14 | NFT-RES-31 |

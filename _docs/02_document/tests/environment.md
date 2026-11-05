@@ -201,6 +201,8 @@ Calibration step before every AC-2 run: `iperf3` at the same RTT and 4 streams g
 | Provider faults | mock-idp control API: valid callback, each of the 12 negative callbacks, unverified victim email, slow provider (> 10 s) | AC-19, AC-55, AC-56, provider-timeout checks |
 | Database outage | `docker stop db`, wait, `docker start db`; recovery measured from the moment the database accepts connections (<= 60 s) | resilience (gap 7) |
 | Interrupted upgrade | `docker kill` of the new api during migration, restart | AC-65 (rolls back, refuses to start until re-run) |
+| Daemon suspend (desktop VMs) | Harness agent sends `SIGSTOP`/`SIGCONT` to the daemon (Windows: suspend and resume the process) | AC-16 (FT-P-82) |
+| Watch limit (LIN-VM) | Harness agent sets `fs.inotify.max_user_watches` before the daemon starts and restores it after the test | AC-15 (NFT-RES-40) |
 
 ## Hardware-dependency classification
 

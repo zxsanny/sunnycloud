@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desktop settings · sunnycloud mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400..800&display=swap">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/mockup.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="assets/tw-config.js"></script>
+<script src="assets/mockup.js" defer></script>
+<style>
+/* Slint window (software renderer): flat surfaces and borders only; no shadows, opacity, transforms or gradients.
+   Type is one step smaller than web: body and rows 14px, window h2 20px. */
+.win { font-size: 14px; line-height: 1.45; }
+.win-body { display: grid; grid-template-columns: 180px minmax(0, 1fr); min-height: 524px; }
+.win-center { display: grid; place-items: center; min-height: 524px; padding: 24px; }
+.vtabs { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; background: var(--bg-page); border-right: 1px solid var(--border); }
+.vtab { position: relative; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font: inherit; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; white-space: nowrap; }
+.vtab:hover { background: var(--bg-sunken); color: var(--text-primary); }
+.vtab[aria-selected="true"] { background: var(--nav-active-bg); color: var(--nav-active-text); font-weight: 700; }
+.vtab[aria-selected="true"]::before { content: ""; position: absolute; left: -10px; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--nav-indicator); }
+.vtab[disabled] { cursor: default; }
+.vtab .chip { margin-left: auto; }
+.panel { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 20px 24px 24px; }
+.win .t-h2 { font-size: 20px; }
+.win .t-h3 { font-size: 15px; }
+.win .t-row { font-size: 14px; }
+.win .t-small, .win .helper, .win .field-error { font-size: 13px; }
+.win .label { font-size: 13px; }
+.win .input, .win .select { height: 34px; font-size: 14px; }
+.win .btn { height: 34px; padding: 0 14px; font-size: 14px; }
+.win .btn-sm { height: 30px; padding: 0 10px; font-size: 13px; }
+.win .btn-icon.btn-sm { width: 30px; padding: 0; }
+.win .banner { padding: 10px 14px; font-size: 14px; }
+.win .chip { height: 22px; font-size: 11.5px; }
+.os-titlebar .ctl { border: 0; background: transparent; cursor: pointer; }
+.os-titlebar .ctl:hover { background: var(--bg-sunken); }
+.rows > * + * { border-top: 1px solid var(--border); }
+.pair { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 14px; }
+.pick-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; cursor: pointer; }
+.pick-row:hover { background: var(--bg-sunken); }
+.pick-row[aria-selected="true"] { background: var(--action-subtle); color: var(--on-action-subtle); font-weight: 650; }
+.applied { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 650; color: var(--success); }
+.code { padding: 1px 6px; border-radius: 4px; background: var(--bg-sunken); color: var(--text-primary); font-family: var(--font-mono); font-size: 13px; }
+.user-code { font-family: var(--font-mono); font-size: 30px; font-weight: 600; letter-spacing: 0.12em; color: var(--text-primary); }
+.count { font-size: 24px; font-weight: 750; line-height: 1.2; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+/* Rules editor: line numbers plus a plain multi-line field; the error line gets a flat band */
+.rules-ed { position: relative; display: grid; grid-template-columns: 36px 1fr; background: var(--input-bg); border: 1px solid var(--danger); border-radius: var(--radius-sm); overflow: hidden; font-family: var(--font-mono); font-size: 13px; line-height: 21px; }
+.rules-ed:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.rules-ed ol { margin: 0; padding: 8px 8px 8px 0; list-style: none; text-align: right; color: var(--text-tertiary); background: var(--bg-sunken); }
+.rules-ed ol .is-error { color: var(--danger); font-weight: 600; }
+.rules-ed .band { position: absolute; left: 36px; right: 0; top: calc(8px + 6 * 21px); height: 21px; background: var(--danger-bg); }
+.rules-ed textarea { position: relative; min-height: calc(8 * 21px + 16px); padding: 8px 10px; border: 0; background: transparent; color: var(--text-primary); font: inherit; line-height: 21px; resize: vertical; white-space: pre; overflow-x: auto; }
+.rules-ed textarea:focus-visible { outline: none; }
+.tip { display: inline-block; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-raised); font-size: 0.8125rem; color: var(--text-primary); }
+@media (max-width: 719px) {
+  .win-body { grid-template-columns: 1fr; }
+  .vtabs { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  .vtab { flex: none; }
+  .vtab[aria-selected="true"]::before { display: none; }
+  .panel { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<div class="review-bar" role="region" aria-label="Mockup controls">
+  <strong>Mockup · Desktop settings</strong>
+  <a href="index.html">All screens</a>
+  <span>Theme</span>
+  <div class="seg"><button data-theme-set="system">System</button><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+  <span>State</span>
+  <div class="seg"><button data-show="default">Folders</button><button data-show="daemon-off">Daemon not running</button><button data-show="signing">Signing in</button></div>
+</div>
+
+<main class="px-4 lg:px-8 py-6 max-w-[1240px] mx-auto flex flex-col gap-6">
+  <header class="max-w-3xl">
+    <h1 class="t-h1">Desktop settings and tray</h1>
+    <p class="t-small mt-1">The settings window (15, Slint) is a separate program that the tray or the start menu opens. It keeps no state: every change is one call to the running sunnycloud app (14), and the window shows the value the app confirms.</p>
+  </header>
+
+  <div class="flex flex-wrap items-start gap-6">
+    <div class="flex-1 min-w-0 max-w-[820px] flex flex-col gap-2">
+
+      <!-- A: connected, signed in. Default review state; tabs work. -->
+      <section class="os-window win" aria-labelledby="a-title" data-state="default">
+        <div class="os-titlebar">
+          <span id="a-title" class="flex items-center gap-2"><svg class="brand-mark !w-4 !h-4" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>sunnycloud settings</span>
+          <span class="flex gap-1"><button class="ctl" aria-label="Minimise"><i data-icon="minus" class="icon-sm"></i></button><button class="ctl" aria-label="Close"><i data-icon="x" class="icon-sm"></i></button></span>
+        </div>
+        <div class="win-body">
+          <div class="vtabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+            <button class="vtab" role="tab" id="a-t-account" aria-controls="a-p-account" aria-selected="false"><i data-icon="user"></i>Account</button>
+            <button class="vtab" role="tab" id="a-t-folders" aria-controls="a-p-folders" aria-selected="true"><i data-icon="folder"></i>Folders</button>
+            <button class="vtab" role="tab" id="a-t-rules" aria-controls="a-p-rules" aria-selected="false"><i data-icon="filter"></i>Rules</button>
+            <button class="vtab" role="tab" id="a-t-settings" aria-controls="a-p-settings" aria-selected="false"><i data-icon="sliders"></i>Settings</button>
+            <button class="vtab" role="tab" id="a-t-status" aria-controls="a-p-status" aria-selected="false"><i data-icon="activity"></i>Status</button>
+            <button class="vtab" role="tab" id="a-t-attention" aria-controls="a-p-attention" aria-selected="false"><i data-icon="alert"></i>Attention<span class="chip chip-warning num">2<span class="sr-only"> items</span></span></button>
+          </div>
+
+          <!-- 1 Account: signed in -->
+          <div class="panel" role="tabpanel" id="a-p-account" aria-labelledby="a-t-account" hidden>
+            <h2 class="t-h2">Account</h2>
+            <div class="field">
+              <label class="label" for="a-server">Server address</label>
+              <div class="flex gap-2"><input class="input" id="a-server" value="https://cloud.hryn.family" disabled aria-describedby="a-server-why"><button class="btn btn-secondary" disabled>Apply</button></div>
+              <p class="helper" id="a-server-why">Sign out to change the server.</p>
+            </div>
+            <div class="card p-4 flex flex-wrap items-center gap-3">
+              <span class="grid place-items-center w-10 h-10 rounded-full bg-sun-fill text-sun-on font-bold">MH</span>
+              <div class="flex-1 min-w-0"><p class="t-row font-bold">Signed in as Marta Hryn</p><p class="t-small">This computer appears as <strong class="text-ink">zx-thinkpad</strong> in your devices.</p></div>
+              <button class="btn btn-secondary"><i data-icon="log-out" class="icon-sm"></i>Sign out</button>
+            </div>
+            <p class="t-small">Signing out removes this computer's access on the server and deletes the sign-in from this computer. If the server can't be reached, the sign-in is still deleted here and you are told to remove the device on the web.</p>
+          </div>
+
+          <!-- 2 Folders -->
+          <div class="panel" role="tabpanel" id="a-p-folders" aria-labelledby="a-t-folders">
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="flex-1 min-w-0"><h2 class="t-h2">Folders</h2><p class="t-small">Each pair keeps a folder on this computer and a folder on the server the same.</p></div>
+              <button class="btn btn-secondary" aria-expanded="true" aria-controls="a-add"><i data-icon="folder-plus"></i>Add folder pair</button>
+            </div>
+            <ul class="card rows" aria-label="Folder pairs">
+              <li class="pair">
+                <div class="flex-1 min-w-[220px]"><p class="t-row truncate-1" title="C:\Users\Marta\Documents ⇄ /Documents">C:\Users\Marta\Documents <span aria-hidden="true" class="text-ink-3 px-1">⇄</span><span class="sr-only">synced with</span> /Documents</p>
+                  <p class="flex flex-wrap gap-1.5 mt-1"><span class="chip chip-success"><i data-icon="check"></i>Active</span><span class="chip"><i data-icon="refresh"></i>Rescan only</span></p></div>
+                <span class="flex gap-1"><button class="btn btn-ghost btn-sm" aria-label="Pause Documents"><i data-icon="pause" class="icon-sm"></i>Pause</button><button class="btn btn-danger-ghost btn-sm" aria-label="Remove Documents pair">Remove</button></span>
+              </li>
+              <li class="pair">
+                <div class="flex-1 min-w-[220px]"><p class="t-row truncate-1" title="C:\Users\Marta\Pictures ⇄ /Photos/Laptop">C:\Users\Marta\Pictures <span aria-hidden="true" class="text-ink-3 px-1">⇄</span><span class="sr-only">synced with</span> /Photos/Laptop</p>
+                  <p class="flex flex-wrap gap-1.5 mt-1"><span class="chip chip-warning"><i data-icon="pause"></i>Paused</span></p></div>
+                <span class="flex gap-1"><button class="btn btn-ghost btn-sm" aria-label="Resume Pictures"><i data-icon="play" class="icon-sm"></i>Resume</button><button class="btn btn-danger-ghost btn-sm" aria-label="Remove Pictures pair">Remove</button></span>
+              </li>
+              <li class="pair">
+                <div class="flex-1 min-w-[220px]"><p class="t-row truncate-1" title="C:\Users\Marta\Projects ⇄ /Projects">C:\Users\Marta\Projects <span aria-hidden="true" class="text-ink-3 px-1">⇄</span><span class="sr-only">synced with</span> /Projects</p>
+                  <p class="flex flex-wrap items-center gap-1.5 mt-1"><span class="chip chip-warning"><i data-icon="alert"></i>Deletes on hold</span><span class="t-small">238 deletions wait in Attention</span></p></div>
+                <span class="flex gap-1"><button class="btn btn-ghost btn-sm" aria-label="Pause Projects"><i data-icon="pause" class="icon-sm"></i>Pause</button><button class="btn btn-danger-ghost btn-sm" aria-label="Remove Projects pair">Remove</button></span>
+              </li>
+              <li class="pair">
+                <div class="flex-1 min-w-[220px]"><p class="t-row truncate-1" title="D:\Archive ⇄ /Archive">D:\Archive <span aria-hidden="true" class="text-ink-3 px-1">⇄</span><span class="sr-only">synced with</span> /Archive</p>
+                  <p class="flex flex-wrap items-center gap-1.5 mt-1"><span class="chip chip-danger"><i data-icon="alert-circle"></i>Folder missing</span><span class="t-small">Drive not found</span></p></div>
+                <span class="flex gap-1"><button class="btn btn-ghost btn-sm" aria-label="Pause Archive"><i data-icon="pause" class="icon-sm"></i>Pause</button><button class="btn btn-danger-ghost btn-sm" aria-label="Remove Archive pair">Remove</button></span>
+              </li>
+            </ul>
+            <section id="a-add" class="card p-4 flex flex-col gap-4" aria-labelledby="a-add-h">
+              <h3 id="a-add-h" class="t-h3">Add folder pair</h3>
+              <div class="field">
+                <label class="label" for="a-local">Folder on this computer</label>
+                <div class="flex gap-2"><input class="input min-w-0" id="a-local" value="C:\Users\Marta\Music" readonly><button class="btn btn-secondary flex-none">Choose folder…</button></div>
+                <p class="helper">Opens the system folder dialog.</p>
+              </div>
+              <fieldset class="field">
+                <legend class="label mb-1.5">Folder on the server</legend>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="flex flex-col gap-2">
+                    <label class="check"><input type="radio" name="a-srv" checked>Pick a folder</label>
+                    <div class="border border-line rounded-md overflow-hidden bg-raised">
+                      <p class="flex items-center gap-1 h-8 px-1 border-b border-line t-small"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Up to My files"><i data-icon="chevron-left" class="icon-sm"></i></button>My files / Media</p>
+                      <ul role="listbox" aria-label="Server folders in Media">
+                        <li class="pick-row" role="option" aria-selected="false"><i data-icon="folder" class="icon-sm"></i><span class="flex-1">Audiobooks</span><i data-icon="chevron-right" class="icon-sm"></i></li>
+                        <li class="pick-row" role="option" aria-selected="true"><i data-icon="folder" class="icon-sm"></i><span class="flex-1">Music</span><i data-icon="chevron-right" class="icon-sm"></i></li>
+                        <li class="pick-row" role="option" aria-selected="false"><i data-icon="folder" class="icon-sm"></i><span class="flex-1">Podcasts</span><i data-icon="chevron-right" class="icon-sm"></i></li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="check"><input type="radio" name="a-srv">Type a path</label>
+                    <input class="input" aria-label="Server folder path" placeholder="Photos/2026">
+                    <p class="helper">Created on the server if it doesn't exist.</p>
+                  </div>
+                </div>
+              </fieldset>
+              <div class="flex flex-wrap justify-end gap-2"><button class="btn btn-ghost">Cancel</button><button class="btn btn-primary">Add pair</button></div>
+            </section>
+          </div>
+
+          <!-- 3 Rules -->
+          <div class="panel" role="tabpanel" id="a-p-rules" aria-labelledby="a-t-rules" hidden>
+            <div><h2 class="t-h2">Rules</h2><p class="t-small">Patterns are relative to the pair's folder. An excluded path is never uploaded, downloaded or deleted.</p></div>
+            <div class="field">
+              <label class="label" for="a-rule-pair">Pair</label>
+              <select class="select" id="a-rule-pair"><option>C:\Users\Marta\Projects ⇄ /Projects</option><option>C:\Users\Marta\Documents ⇄ /Documents</option></select>
+            </div>
+            <div class="field">
+              <label class="label" for="a-rules">Patterns, one per line</label>
+              <div class="rules-ed">
+                <ol aria-hidden="true"><li>1</li><li>2</li><li>3</li><li>4</li><li>5</li><li>6</li><li class="is-error">7</li><li>8</li></ol>
+                <span class="band" aria-hidden="true"></span>
+                <textarea id="a-rules" rows="8" wrap="off" spellcheck="false" aria-invalid="true" aria-describedby="a-rules-err a-rules-def"># Build output and caches
+/target/
+node_modules/
+**/cache/
+*.log
+!keep.log
+drafts/[
+photo-??.jpg</textarea>
+              </div>
+              <p class="field-error" id="a-rules-err"><i data-icon="alert-circle" class="icon-sm"></i>Line 7 is not a valid pattern.</p>
+              <p class="helper" id="a-rules-def">Always excluded: <span class="code">~$*</span> <span class="code">.~lock.*#</span> <span class="code">*.tmp</span>, editor swap files and sunnycloud's own temporary files.</p>
+            </div>
+            <section class="card p-4" aria-labelledby="a-gram-h">
+              <h3 id="a-gram-h" class="t-h3 mb-2">Pattern help</h3>
+              <dl class="grid grid-cols-[auto_1fr] sm:grid-cols-[auto_1fr_auto_1fr] gap-x-3 gap-y-1.5 t-small">
+                <dt><span class="code">*</span></dt><dd>any characters inside one name</dd>
+                <dt><span class="code">**</span></dt><dd>any number of folders</dd>
+                <dt><span class="code">?</span></dt><dd>exactly one character</dd>
+                <dt><span class="code">/name</span></dt><dd>leading slash: only at the top of the pair</dd>
+                <dt><span class="code">name/</span></dt><dd>trailing slash: folders only</dd>
+                <dt><span class="code">!name</span></dt><dd>include again what an earlier line excluded</dd>
+              </dl>
+            </section>
+            <div class="flex flex-wrap items-center justify-end gap-3"><span class="t-small" id="a-save-why">Fix line 7 to save.</span><button class="btn btn-primary" disabled aria-describedby="a-save-why">Save rules</button></div>
+          </div>
+
+          <!-- 4 Settings -->
+          <div class="panel" role="tabpanel" id="a-p-settings" aria-labelledby="a-t-settings" hidden>
+            <h2 class="t-h2">Settings</h2>
+            <div class="card rows">
+              <div class="field p-4">
+                <label class="label" for="a-bw">Bandwidth limit (KB/s)</label>
+                <div class="flex flex-wrap items-center gap-2"><input class="input num w-32" id="a-bw" type="number" min="0" value="5000" aria-describedby="a-bw-help"><button class="btn btn-secondary">Apply</button><span class="applied" role="status"><i data-icon="check" class="icon-sm"></i>Applied</span></div>
+                <p class="helper" id="a-bw-help">0 = unlimited.</p>
+              </div>
+              <div class="flex items-start gap-3 p-4">
+                <input class="switch mt-0.5" type="checkbox" role="switch" id="a-throttle" checked aria-describedby="a-throttle-help">
+                <div><label class="label" for="a-throttle">Go easy on the first scan</label><p class="helper" id="a-throttle-help">While you use the computer, checking new files uses at most a quarter of one CPU core.</p></div>
+              </div>
+              <div class="flex flex-col gap-1.5 p-4">
+                <label class="check label"><input type="checkbox" aria-describedby="a-login-err">Start at login</label>
+                <p class="field-error ml-7" id="a-login-err" role="alert"><i data-icon="alert-circle" class="icon-sm"></i>Not applied: sunnycloud did not answer within 5 seconds, so this is back to off.</p>
+              </div>
+              <div class="flex flex-col gap-1.5 p-4">
+                <label class="check label"><input type="checkbox" checked aria-describedby="a-tray-help">Show tray icon</label>
+                <p class="helper ml-7" id="a-tray-help">Takes effect the next time sunnycloud starts. Sync runs with or without the icon.</p>
+              </div>
+              <div class="flex items-start gap-3 p-4">
+                <input class="switch mt-0.5" type="checkbox" role="switch" id="a-pause-all" aria-describedby="a-pause-help">
+                <div><label class="label" for="a-pause-all">Pause all folders</label><p class="helper" id="a-pause-help">Stops syncing every pair until you turn this off.</p></div>
+              </div>
+              <div class="field p-4">
+                <label class="label" for="a-lang">Language</label>
+                <select class="select w-48" id="a-lang" disabled aria-describedby="a-lang-why"><option>English</option></select>
+                <p class="helper" id="a-lang-why">Only English is available in this version.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5 Status -->
+          <div class="panel" role="tabpanel" id="a-p-status" aria-labelledby="a-t-status" hidden>
+            <h2 class="t-h2">Status</h2>
+            <div class="card p-4 flex items-start gap-3">
+              <i data-icon="sync" class="icon-lg text-action"></i>
+              <div><p class="t-row font-bold">Syncing</p><p class="t-small">Signed in to cloud.hryn.family as Marta Hryn. <span class="num">1</span> pair active, <span class="num">1</span> paused, <span class="num">2</span> waiting for you.</p></div>
+            </div>
+            <div class="banner banner-info" role="status"><i data-icon="download"></i><div><strong>Update available: sunnycloud 1.0.3.</strong> It installs the next time sunnycloud starts.</div></div>
+            <div class="banner banner-warning" role="status"><i data-icon="refresh"></i><div><strong>Documents: rescan only.</strong> Live change watching is not available for this folder, so sunnycloud rescans it every 15 minutes.</div></div>
+            <section aria-labelledby="a-skip-h">
+              <h3 id="a-skip-h" class="t-h3">Skipped <span class="t-small num">· 3</span></h3>
+              <p class="t-small">Not synced on purpose. These files stay as they are.</p>
+              <ul class="card rows mt-2">
+                <li class="flex flex-wrap justify-between gap-x-4 px-3.5 py-2"><span class="truncate-1">Documents\report-final.docx</span><span class="t-small">Online-only placeholder</span></li>
+                <li class="flex flex-wrap justify-between gap-x-4 px-3.5 py-2"><span class="truncate-1">Documents\Old taxes</span><span class="t-small">Junction (link)</span></li>
+                <li class="flex flex-wrap justify-between gap-x-4 px-3.5 py-2"><span class="truncate-1">Projects\tools\python.exe</span><span class="t-small">Symbolic link</span></li>
+              </ul>
+            </section>
+            <section aria-labelledby="a-esc-h">
+              <h3 id="a-esc-h" class="t-h3">Renamed on this computer <span class="t-small num">· 2</span></h3>
+              <p class="t-small">Windows does not allow these names, so they are saved with %XX codes. The server keeps the original name.</p>
+              <div class="card mt-2 overflow-x-auto">
+                <table class="w-full text-left"><thead><tr class="t-label"><th scope="col" class="px-3.5 py-2 font-bold">Original name</th><th scope="col" class="px-3.5 py-2 font-bold">Saved here as</th></tr></thead>
+                  <tbody class="border-t border-line"><tr><td class="px-3.5 py-1.5">Q3: plan?.docx</td><td class="px-3.5 py-1.5 mono">Q3%3A plan%3F.docx</td></tr><tr class="border-t border-line"><td class="px-3.5 py-1.5">notes &lt;draft&gt;.md</td><td class="px-3.5 py-1.5 mono">notes %3Cdraft%3E.md</td></tr></tbody></table>
+              </div>
+            </section>
+            <section aria-labelledby="a-err-h">
+              <h3 id="a-err-h" class="t-h3">Errors <span class="t-small num">· 2</span></h3>
+              <ul class="card rows mt-2">
+                <li class="flex items-start gap-2 px-3.5 py-2"><i data-icon="alert-circle" class="icon-sm text-danger mt-0.5"></i><span><span class="font-semibold">Projects\video\raw-4k.mov</span> <span class="t-small">is too large for the server.</span></span></li>
+                <li class="flex items-start gap-2 px-3.5 py-2"><i data-icon="alert-circle" class="icon-sm text-danger mt-0.5"></i><span>Something went wrong. Reference <span class="mono">c-77</span></span><button class="btn btn-ghost btn-icon btn-sm ml-auto" aria-label="Copy reference c-77"><i data-icon="copy" class="icon-sm"></i></button></li>
+              </ul>
+            </section>
+          </div>
+
+          <!-- 6 Attention -->
+          <div class="panel" role="tabpanel" id="a-p-attention" aria-labelledby="a-t-attention" hidden>
+            <div><h2 class="t-h2">Attention</h2><p class="t-small">Sync waits for your decision. Nothing here has been deleted on the server.</p></div>
+            <section class="card p-4 flex flex-col gap-3" aria-labelledby="a-hold-h">
+              <div class="flex flex-wrap items-center gap-2"><span class="chip chip-warning"><i data-icon="alert"></i>Deletes on hold</span><h3 id="a-hold-h" class="t-h3">C:\Users\Marta\Projects</h3></div>
+              <p>238 items were deleted in this folder at once. sunnycloud holds 200 or more deletions until you decide. New files keep uploading.</p>
+              <dl class="grid grid-cols-2 gap-3">
+                <div class="border border-line rounded-md px-3 py-2"><dt class="t-small">Deleted on this computer</dt><dd class="count">238</dd></div>
+                <div class="border border-line rounded-md px-3 py-2"><dt class="t-small">Deleted on the server</dt><dd class="count">0</dd></div>
+              </dl>
+              <div class="flex flex-wrap items-center gap-2"><button class="btn btn-primary"><i data-icon="download" class="icon-sm"></i>Restore from server</button><button class="btn btn-danger"><i data-icon="trash" class="icon-sm"></i>Delete on server too</button></div>
+              <p class="t-small">Restore brings the 238 items back. Delete on server too asks you once more first.</p>
+            </section>
+            <section class="card p-4 flex flex-col gap-2" aria-labelledby="a-root-h">
+              <div class="flex flex-wrap items-center gap-2"><span class="chip chip-danger"><i data-icon="alert-circle"></i>Folder missing</span><h3 id="a-root-h" class="t-h3">D:\Archive</h3></div>
+              <p>The folder is missing, not mounted or empty, while sunnycloud remembers files in it. This often means the drive is unplugged. Sync of this pair is paused and nothing is deleted on the server.</p>
+              <p class="t-small">Connect the drive or put the folder back, then sync continues.</p>
+            </section>
+          </div>
+        </div>
+      </section>
+      <p class="t-small" data-state="default">Default state: Folders tab. Click the tabs to see the other five screens.</p>
+
+      <!-- B: signing in (device login, RFC 8628) -->
+      <section class="os-window win" aria-labelledby="b-title" data-state="signing">
+        <div class="os-titlebar">
+          <span id="b-title" class="flex items-center gap-2"><svg class="brand-mark !w-4 !h-4" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>sunnycloud settings</span>
+          <span class="flex gap-1"><button class="ctl" aria-label="Minimise"><i data-icon="minus" class="icon-sm"></i></button><button class="ctl" aria-label="Close"><i data-icon="x" class="icon-sm"></i></button></span>
+        </div>
+        <div class="win-body">
+          <div class="vtabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+            <button class="vtab" role="tab" id="b-t-account" aria-controls="b-p-account" aria-selected="true"><i data-icon="user"></i>Account</button>
+            <button class="vtab" role="tab" disabled><i data-icon="folder"></i>Folders</button>
+            <button class="vtab" role="tab" disabled><i data-icon="filter"></i>Rules</button>
+            <button class="vtab" role="tab" disabled><i data-icon="sliders"></i>Settings</button>
+            <button class="vtab" role="tab" disabled><i data-icon="activity"></i>Status</button>
+            <button class="vtab" role="tab" disabled><i data-icon="alert"></i>Attention</button>
+          </div>
+          <div class="panel" role="tabpanel" id="b-p-account" aria-labelledby="b-t-account">
+            <h2 class="t-h2">Account</h2>
+            <div class="field">
+              <label class="label" for="b-server">Server address</label>
+              <div class="flex flex-wrap items-center gap-2"><input class="input flex-1 min-w-[200px]" id="b-server" value="https://cloud.hryn.family" aria-describedby="b-server-help"><button class="btn btn-secondary">Apply</button><span class="applied" role="status"><i data-icon="check" class="icon-sm"></i>Applied</span></div>
+              <p class="helper" id="b-server-help">Must start with https://</p>
+            </div>
+            <section class="card p-5 flex flex-col gap-4" aria-labelledby="b-sign-h">
+              <div><h3 id="b-sign-h" class="t-h3">Sign in with your browser</h3><p class="t-small">Your browser opened the server's sign-in page. Sign in there and enter the code when asked. This window never asks for a password.</p></div>
+              <div class="flex flex-col gap-3">
+                <div class="flex flex-col gap-1"><p class="label">1. Go to</p><p class="flex items-center gap-1"><span class="mono break-all text-ink">https://cloud.hryn.family/device</span><button class="btn btn-ghost btn-icon btn-sm" aria-label="Copy sign-in address"><i data-icon="copy" class="icon-sm"></i></button></p></div>
+                <div class="flex flex-col gap-1"><p class="label">2. Enter this code</p><p class="flex items-center gap-1"><span class="user-code">WDJB-MJHT</span><button class="btn btn-ghost btn-icon btn-sm" aria-label="Copy code"><i data-icon="copy" class="icon-sm"></i></button></p></div>
+              </div>
+              <div class="flex flex-wrap items-center gap-3">
+                <button class="btn btn-primary"><i data-icon="external" class="icon-sm"></i>Open browser</button>
+                <p class="flex items-center gap-2 t-small" role="status"><i data-icon="clock" class="icon-sm"></i><span>Waiting for approval. The code expires at <span class="num">14:37</span>.</span></p>
+              </div>
+              <p class="t-small">This computer will appear as <strong class="text-ink">zx-thinkpad</strong>. If the code expires or is denied, you can start again.</p>
+            </section>
+          </div>
+        </div>
+      </section>
+      <p class="t-small" data-state="signing">Signing in: the window shows only the address and the code, never a token. Other tabs are drawn in the default state.</p>
+
+      <!-- C: daemon not running -->
+      <section class="os-window win" aria-labelledby="c-title" data-state="daemon-off">
+        <div class="os-titlebar">
+          <span id="c-title" class="flex items-center gap-2"><svg class="brand-mark !w-4 !h-4" viewBox="0 0 32 32" aria-hidden="true"><circle class="sun" cx="20.5" cy="11.5" r="7"/><path class="cloud" d="M9 26a6 6 0 0 1-.7-11.96A8 8 0 0 1 23.6 15.6 5.2 5.2 0 0 1 23 26z"/></svg>sunnycloud settings</span>
+          <span class="flex gap-1"><button class="ctl" aria-label="Minimise"><i data-icon="minus" class="icon-sm"></i></button><button class="ctl" aria-label="Close"><i data-icon="x" class="icon-sm"></i></button></span>
+        </div>
+        <div class="win-center">
+          <div class="empty">
+            <svg class="art" viewBox="0 0 96 72" aria-hidden="true"><circle cx="62" cy="24" r="14" fill="var(--sun)"/><path d="M26 62a14 14 0 0 1-1.6-27.9A19 19 0 0 1 60.5 37 12.5 12.5 0 0 1 59 62z" fill="var(--bg-sunken)" stroke="var(--border-strong)" stroke-width="2"/></svg>
+            <h2 class="t-h2">sunnycloud isn't running</h2>
+            <p class="t-small">This window changes the settings of the sunnycloud app that syncs in the background. Start it to see your folders.</p>
+            <button class="btn btn-primary"><i data-icon="power" class="icon-sm"></i>Start sunnycloud</button>
+            <p class="t-small">It starts the same way as at login. This window connects as soon as it is ready.</p>
+          </div>
+        </div>
+      </section>
+      <p class="t-small" data-state="daemon-off">Daemon not running: the button runs the login start command; the window never starts a second copy itself.</p>
+    </div>
+
+    <!-- Tray menu: native OS menu, not Slint -->
+    <aside class="w-full sm:w-[280px] flex flex-col gap-3" aria-labelledby="tray-h">
+      <div><h2 id="tray-h" class="t-h3">Tray menu</h2><p class="t-small">Native OS tray menu, drawn by the system. The background app fills the items.</p></div>
+      <div class="menu" role="menu" aria-label="sunnycloud tray menu" data-state="default signing">
+        <div class="menu-item" role="menuitem" aria-disabled="true" data-state="default">Syncing · 2 waiting for you</div>
+        <div class="menu-item" role="menuitem" aria-disabled="true" data-state="signing">Not signed in</div>
+        <hr class="divider my-1">
+        <button class="menu-item" role="menuitem">Pause sync</button>
+        <button class="menu-item" role="menuitem">Open settings</button>
+        <button class="menu-item" role="menuitem" aria-haspopup="menu">Open folder<i data-icon="chevron-right" class="icon-sm ml-auto"></i></button>
+        <button class="menu-item" role="menuitem" data-state="default">Pending holds (2)…</button>
+        <hr class="divider my-1">
+        <button class="menu-item" role="menuitem">Quit sunnycloud</button>
+      </div>
+      <div data-state="default"><p class="t-small mb-1">Tray tooltip</p><span class="tip">sunnycloud · Syncing · Documents: rescan only</span></div>
+      <div class="card p-3 flex gap-2 t-small" data-state="daemon-off"><i data-icon="info" class="icon-sm mt-0.5"></i><p>No tray icon now: the tray belongs to the background app, so it is gone while sunnycloud isn't running.</p></div>
+      <p class="t-small">Without a tray host (for example GNOME with no tray extension), sunnycloud keeps syncing; open settings from the start menu.</p>
+    </aside>
+  </div>
+</main>
+</body>
+</html>
