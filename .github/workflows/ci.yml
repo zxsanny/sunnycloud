@@ -127,6 +127,8 @@ jobs:
         run: scripts/ci/watchdog.sh --name check-pinning -- scripts/ci/check-pinning.sh
       - name: Licence files
         run: scripts/ci/watchdog.sh --name check-licence -- scripts/ci/check-licence.sh
+      - name: No SQL now() in SQL files or query strings
+        run: scripts/ci/watchdog.sh --name check-no-sql-now -- scripts/ci/check-no-sql-now.sh
       - name: Install the pinned toolchain
         run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -162,3 +164,8 @@ jobs:
         env:
           BUILDX_CACHE_DIR: ${{ runner.temp }}/buildx-cache
         run: scripts/ci/watchdog.sh --name build-images -- scripts/ci/build-images.sh
+      - name: Release api and worker images contain no test-clock symbol
+        run: >-
+          scripts/ci/watchdog.sh --name check-release-symbols -- scripts/ci/check-release-symbols.sh
+          --image sunnycloud-api:ci /usr/local/bin/sunnycloud
+          --image sunnycloud-worker:ci /usr/local/bin/sunnycloud-worker

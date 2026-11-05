@@ -8,3 +8,17 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "sync", "time"] }
+tokio-util = { workspace = true }
+
+[dev-dependencies]
+# Self dev-dependency: `cargo test -p sc_clock` (and the workspace test run in CI) also compiles OffsetClock.
+# Dev-dependencies are never built into the release binaries.
+sc_clock = { path = ".", features = ["test-clock"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
+
+[features]
+test-clock = []
