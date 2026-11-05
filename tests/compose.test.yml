@@ -1,0 +1,69 @@
+# Black-box test stack (project sunnycloud-e2e), driven by tests/run.sh; do not call it directly: the
+# secrets directory, the results directory and the e2e-ctl gateway come from the script.
+#
+# Skeleton scope (AZ-3742): the `core` profile starts the database and the consumer only. The SUT
+# (proxy, api, worker, decoders), mock-idp, the WAN shaper and the other profiles join with the epics that make
+# them healthy (E-22, E-20, E-19, E-31); services whose sources do not exist yet are not declared.
+# Canonical service and network names are used (proxy, backend, worker), not the worker-supervisor /
+# proxy-net / backend-net spelling of tests/environment.md.
+name: sunnycloud-e2e
+
+secrets:
+  postgres_password: { file: "${E2E_SECRETS_DIR:?set by tests/run.sh}/postgres_password" }
+  db_api_url: { file: "${E2E_SECRETS_DIR}/db_api_url" }
+  db_migrator_url: { file: "${E2E_SECRETS_DIR}/db_migrator_url" }
+  ctl_token: { file: "${E2E_SECRETS_DIR}/ctl_token" }
+
+networks:
+  client-net: {}
+  edge-net: {}
+  ctl-net: { internal: true }
+  proxy: {}
+  backend: {}
+
+volumes:
+  pgdata: {}
+
+services:
+  db:
+    image: postgres:18-trixie@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
+    profiles: [core]
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=100"]
+    environment:
+      POSTGRES_DB: sunnycloud
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password, db_migrator_url, db_api_url]
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ../deploy/postgres/initdb.d:/docker-entrypoint-initdb.d:ro
+    networks: [backend]
+    shm_size: 128m
+    stop_grace_period: 20s
+    healthcheck:
+      # -h 127.0.0.1: the init-time server listens on the socket only, so this turns healthy after the role script ran.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U sunnycloud -d sunnycloud"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  consumer:
+    build: ./consumer
+    image: sunnycloud-e2e-consumer:local
+    profiles: [core]
+    user: "${E2E_UID:-1000}:${E2E_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp]
+    environment:
+      E2E_RESULTS_DIR: /results
+      E2E_PROFILE: ${E2E_PROFILE:-core}
+      SEED_FAIL: ${SEED_FAIL:-0}
+    secrets: [ctl_token]
+    volumes:
+      - ../e2e-results:/results
+      - ./tools/e2e-ctl/actions.json:/spec/e2e-ctl-actions.json:ro
+    networks: [client-net, ctl-net]
+    depends_on:
+      db: { condition: service_healthy }

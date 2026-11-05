@@ -1,0 +1,164 @@
+# PR gate (AZ-3761). YAML only checks out, caches and calls repository scripts (scripts/ci/*.sh); the same
+# scripts run on a laptop. Every action is pinned by commit SHA, the PostgreSQL service by digest.
+name: ci
+
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  rust-lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18-trixie@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          cache-on-failure: true
+      - name: Install sqlx-cli
+        run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh sqlx-cli
+      - name: fmt, clippy, offline query data
+        run: scripts/ci/watchdog.sh --name rust-lint -- scripts/ci/rust-lint.sh
+
+  rust-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18-trixie@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          cache-on-failure: true
+      - name: Install cargo-llvm-cov
+        run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-llvm-cov
+      - name: cargo test --workspace --locked under cargo llvm-cov (75% overall, 90% critical paths)
+        run: scripts/ci/watchdog.sh --name rust-test -- scripts/ci/check-coverage.sh
+
+  pg18-migrations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18-trixie@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          cache-on-failure: true
+      - name: Install sqlx-cli
+        run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh sqlx-cli
+      - name: Migrations up, down, up on an empty PostgreSQL 18
+        run: scripts/ci/watchdog.sh --name pg18-migrations -- scripts/ci/check-migrations.sh
+
+  supply-chain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Pinning check (actions, images, permissions)
+        run: scripts/ci/watchdog.sh --name check-pinning -- scripts/ci/check-pinning.sh
+      - name: Licence files
+        run: scripts/ci/watchdog.sh --name check-licence -- scripts/ci/check-licence.sh
+      - name: Install the pinned toolchain
+        run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          cache-on-failure: true
+      - name: Install cargo-deny, cargo-audit and gitleaks
+        run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-deny cargo-audit gitleaks
+      - name: Advisory ignores, cargo audit, cargo deny check advisories bans licenses sources
+        run: scripts/ci/watchdog.sh --name audit -- scripts/ci/audit.sh
+      - name: wasm32 build of sync-core-wasm and sc_ids
+        run: scripts/ci/watchdog.sh --name build-wasm -- scripts/ci/build-wasm.sh
+      - name: Secret scan (gitleaks, full history)
+        run: scripts/ci/watchdog.sh --name secret-scan -- scripts/ci/secret-scan.sh
+      - name: Tests of the CI scripts
+        run: scripts/ci/watchdog.sh --name script-tests -- scripts/ci/tests/run-script-tests.sh
+
+  images:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/buildx-cache
+          key: buildx-${{ hashFiles('src/Cargo.lock', 'src/rust-toolchain.toml', 'deploy/docker/*.Dockerfile') }}
+          restore-keys: buildx-
+      - name: Build api, worker, decoder and the -test images (no push)
+        env:
+          BUILDX_CACHE_DIR: ${{ runner.temp }}/buildx-cache
+        run: scripts/ci/watchdog.sh --name build-images -- scripts/ci/build-images.sh

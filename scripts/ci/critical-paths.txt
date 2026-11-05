@@ -1,0 +1,4 @@
+# Critical paths for the 90% line-coverage gate (scripts/ci/check-coverage.sh).
+# One path per line, relative to src/: a file or a directory prefix. Each entry is measured on its own.
+# A path where a bug would cause data loss, a security breach, a financial error or an outage belongs here
+# (quality-thresholds). The list starts empty and grows per epic; an entry that matches no measured file fails the gate.

@@ -1,0 +1,13 @@
+# gitleaks configuration for scripts/ci/secret-scan.sh: the built-in rules plus one narrow allowlist.
+title = "sunnycloud gitleaks"
+
+[extend]
+useDefault = true
+
+# Task ids such as AZ-3769_contracts_part2 in the "Dependencies:" lines of _docs/02_tasks/*.md have the shape of an
+# API key to the generic rule. The allowlist is limited to that rule and to values that are exactly a task id.
+[[allowlists]]
+description = "Jira task ids in task dependency lists"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^AZ-\d+_[a-z0-9_]+$''']

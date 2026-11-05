@@ -1,0 +1,7 @@
+# Pinned (python:3.13-slim, resolved 2026-11-05). The consumer talks to the SUT only over the wire;
+# HTTP/browser/device client libraries join with the epics that need them.
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+Pygments==2.21.0
+pytest==9.2.0

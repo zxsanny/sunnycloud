@@ -49,3 +49,26 @@ DATABASE_URL=... scripts/ci/tests/test-check-sqlx-prepare.sh      # builds a scr
 ```
 
 The database tests seed their files only in temporary directories and create and drop their own databases.
+
+## PR gate: `.github/workflows/ci.yml` and its scripts (AZ-3761)
+
+The workflow only checks out, caches and calls these scripts, each under `watchdog.sh`. Jobs: `rust-lint`, `rust-test`, `pg18-migrations`, `supply-chain`, `images`; triggers: pull request to `dev`, push to `dev`.
+
+| Script | Job | What it does |
+|--------|-----|--------------|
+| `setup-rust.sh` | all cargo jobs | `rustup toolchain install` from `src/rust-toolchain.toml`, verifies the pinned channel |
+| `install-tools.sh TOOL...` | all cargo jobs | pinned `cargo-deny`, `cargo-llvm-cov`, `gitleaks` (SHA-256 verified downloads), `cargo-audit`, `sqlx-cli` (`cargo install --locked --version`); the versions live in that script |
+| `rust-lint.sh` | `rust-lint` | `cargo fmt --check`, clippy `-D warnings`, `sqlx migrate run`, `check-sqlx-prepare.sh` (needs `DATABASE_URL`) |
+| `check-coverage.sh` | `rust-test` | `cargo llvm-cov test --workspace --locked` (lists every test), then 75% overall and 90% per entry of `critical-paths.txt` (starts empty); prints the measured values |
+| `check-migrations.sh` | `pg18-migrations` | see above |
+| `check-pinning.sh [ROOT]` | `supply-chain` | `uses:` = 40-hex SHA + `# vX.Y.Z`, images by digest, default `permissions: contents: read`, no fork checkout under `pull_request_target` |
+| `check-licence.sh` | `supply-chain` | `LICENSE` matches `licence.sha256`; `COPYING.iOS` checked once it exists |
+| `audit.sh` | `supply-chain` | validates the dated ignores in `src/deny.toml` (`added`, `expires`, `why`; not expired; `added` at most 90 days old), passes the same ids to `cargo audit --deny warnings`, runs `cargo deny check advisories bans licenses sources`. `DENY_TOML` and `AUDIT_TODAY` override the file and the date |
+| `build-wasm.sh` | `supply-chain` | wasm32 build of `sync-core-wasm` and `sc_ids` |
+| `secret-scan.sh` | `supply-chain` | gitleaks over the full history with `gitleaks.toml` (built-in rules plus a task-id allowlist); findings name the file, values are redacted; a shallow clone is refused |
+| `build-images.sh` | `images` | builds api, worker, decoder and the `-test` api and worker images, then runs `deploy/tests/check-images.sh`; never pushes |
+| `watchdog.sh [--name N] -- CMD...` | every long step | heartbeat every 30 s (`WATCHDOG_TICK`), STALLED and abort of the whole process group after 120 s without output (`WATCHDOG_STALL`), exit 124 |
+
+Tests: `tests/run-script-tests.sh` (run by `supply-chain`) covers the pinning, audit, coverage-threshold, watchdog (fast), secret-scan and quiet-flag checks. Run separately: `tests/test-watchdog-realtime.sh` (about 2.5 minutes, default 30 s / 120 s) and `tests/test-check-coverage-real.sh` (needs `cargo-llvm-cov`).
+
+Advisory ignore format in `src/deny.toml`: `{ id = "RUSTSEC-YYYY-NNNN", reason = "added=YYYY-MM-DD; expires=YYYY-MM-DD; why=..." }`.

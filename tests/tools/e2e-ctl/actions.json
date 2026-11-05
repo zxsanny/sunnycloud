@@ -1,0 +1,27 @@
+{
+  "_source": "_docs/02_document/tests/environment.md, section Fault injectors (e2e-ctl): one action per table row, named in kebab-case. Names the document gives itself (inspect, exec-operator, internal-http, alternate-key) are used as written; the others are derived from the row title.",
+  "actions": [
+    "process-kill",
+    "power-loss-crash",
+    "disk-fill",
+    "server-clock",
+    "db-restore",
+    "unmount-root",
+    "network-drop",
+    "bit-flip",
+    "raw-blob-read",
+    "inspect",
+    "db-probe",
+    "blob-reconcile",
+    "internal-http",
+    "alternate-key",
+    "exec-operator",
+    "resource-sample",
+    "proxy-bytes",
+    "provider-fault",
+    "db-outage",
+    "interrupted-upgrade",
+    "daemon-suspend",
+    "watch-limit"
+  ]
+}
