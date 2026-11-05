@@ -8,3 +8,12 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+icu_casemap = { workspace = true }
+icu_normalizer = { workspace = true }
+sc_clock = { path = "../clock" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

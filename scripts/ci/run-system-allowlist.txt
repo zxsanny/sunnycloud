@@ -1,0 +1,5 @@
+# Reviewed call sites of Db::run_system (system scope sees every account), checked by scripts/ci/check-db-gates.sh.
+# One path per line, relative to the repository root. Only a repository module may be listed (a file or a
+# directory named repo, repository, repositories, or a file ending _repo.rs or _repository.rs). A listed file
+# that has no run_system call fails the gate, so the list cannot go stale.
+# Adding a line is the review: state in the pull request which function runs in system scope and why.

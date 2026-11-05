@@ -8,3 +8,12 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+sc_clock = { path = "../clock" }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+sc_clock = { path = "../clock" }
+uuid = { workspace = true }

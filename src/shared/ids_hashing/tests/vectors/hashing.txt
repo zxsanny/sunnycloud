@@ -1,0 +1,17 @@
+# Shared known-answer vectors for sc_ids hashing. Consumers: native test (src/shared/ids_hashing/tests/vectors.rs),
+# the headless WASM test of the web hasher, and the Kotlin/Swift UniFFI tests. Changing any value is a protocol break.
+#
+# Test bytes: byte i of a file is (i mod 251). Blocks are 2097152 bytes, the last may be shorter.
+# Hashes are lower-case hex. Fields are separated by single spaces; lines starting with # are comments.
+#
+#   file <name> <length> <file_hash> <block_hash>[,<block_hash>...]   block list is - for a zero-length file
+#   oversize <name> <length>                                          one block of this length must be rejected
+#   client_key <name> <device_id> <asset_id> <file_hash> <commit_id>  asset_id has no spaces
+file empty 0 e8ed45c34e7d98f0507f8ba85084391d7f17bb8af7fde2299816a6e28db5991c -
+file one_byte 1 fe1f7bc3fa20f8b474a44830b7ab8404aa4762c3dbb363d5412164ceb47e6712 2d3adedff11b61f14c886e35afa036736dcd87a74d27b5c1510225d0f592e213
+file block_2mib 2097152 51070c1b49ac80cfb32ee0ee308a082eebefc7e4c2fb3aeb42a7d3e24573dd5a 96fbba37478c16b7614c890b26832f67b541cf14e69ab8ebf0c739818588c9f1
+file block_2mib_plus_1 2097153 5520a63b594dc404b23b16e8067eb38eb17fe84d938325af8c68e791235850ae 96fbba37478c16b7614c890b26832f67b541cf14e69ab8ebf0c739818588c9f1,329f85ac6e6310f8fc8148a48307002ad1ab5c493a815fd6116b2a52add807d9
+oversize block_2mib_plus_1_as_one_block 2097153
+client_key phone_a 0190c5f0-0000-7000-8000-000000000001 content://media/external/images/media/42 fe1f7bc3fa20f8b474a44830b7ab8404aa4762c3dbb363d5412164ceb47e6712 ef0de0ff-2cc8-8cbc-b934-4f912182fe32
+client_key phone_b 0190c5f0-0000-7000-8000-000000000002 IMG_0001.HEIC 5520a63b594dc404b23b16e8067eb38eb17fe84d938325af8c68e791235850ae 3f980e91-3cb3-8eab-afa8-de0d4ca70d23
+client_key unicode_asset 0190c5f0-0000-7000-8000-000000000001 фото-1.heic e8ed45c34e7d98f0507f8ba85084391d7f17bb8af7fde2299816a6e28db5991c 7e212012-3cf1-83f8-ac31-9f100cafdd53

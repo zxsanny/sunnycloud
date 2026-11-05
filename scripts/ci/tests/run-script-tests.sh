@@ -4,7 +4,7 @@
 set -euo pipefail
 
 tests_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for test in test-no-quiet-flags test-ci-no-quiet test-check-pinning test-audit test-check-coverage test-watchdog test-secret-scan test-check-no-sql-now test-check-release-symbols; do
+for test in test-no-quiet-flags test-ci-no-quiet test-check-pinning test-audit test-check-coverage test-watchdog test-secret-scan test-check-no-sql-now test-check-db-gates test-check-release-symbols; do
   echo "[run-script-tests] === $test"
   "$tests_dir/$test.sh"
 done

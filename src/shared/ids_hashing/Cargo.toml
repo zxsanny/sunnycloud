@@ -8,3 +8,20 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+sc_clock = { path = "../clock" }
+blake3 = { workspace = true }
+sha2 = { workspace = true }
+getrandom = { workspace = true }
+base64 = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+# Browser builds draw randomness from crypto.getRandomValues; native targets use the OS source.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { workspace = true, features = ["wasm_js"] }
+
+[dev-dependencies]
+base64 = { workspace = true }

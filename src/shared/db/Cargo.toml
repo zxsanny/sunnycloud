@@ -8,3 +8,14 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+sc_config = { path = "../config" }
+# `tls-none`: the API reaches PostgreSQL over the Compose network; any rustls feature would add ISC/OpenSSL-licensed crates outside deny.toml's allow list.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+uuid = { workspace = true, features = ["v4"] }
