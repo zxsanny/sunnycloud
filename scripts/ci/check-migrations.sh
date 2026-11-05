@@ -28,17 +28,17 @@ latest_installed_version() {
   sqlx migrate info --source "$migrations_dir" | grep '/installed' | tail -n 1 | cut -d/ -f1 || true
 }
 
-echo "$tag step 1/8: verify DATABASE_URL is set"
+echo "$tag step 1/9: verify DATABASE_URL is set"
 [ -n "${DATABASE_URL:-}" ] || { echo "$tag FAILED: DATABASE_URL is not set" >&2; exit 2; }
 
-echo "$tag step 2/8: verify sqlx is installed (need 0.9.x)"
+echo "$tag step 2/9: verify sqlx is installed (need 0.9.x)"
 sqlx --version || { echo "$tag FAILED: sqlx not found; see scripts/ci/README.md" >&2; exit 2; }
 case "$(sqlx --version)" in
   *" 0.9."*) ;;
   *) echo "$tag FAILED: sqlx-cli must be 0.9.x to match sqlx 0.9" >&2; exit 2 ;;
 esac
 
-echo "$tag step 3/8: verify $migrations_dir holds only reversible pairs"
+echo "$tag step 3/9: verify $migrations_dir holds only reversible pairs"
 [ -d "$migrations_dir" ] || fail "migrations directory $migrations_dir does not exist"
 shopt -s nullglob
 total=0
@@ -55,17 +55,20 @@ for file in "$migrations_dir"/*.sql; do
 done
 echo "$tag found $total reversible pairs"
 
-echo "$tag step 4/8: verify the database has no applied migrations"
+echo "$tag step 4/9: ensure the application roles exist (migrations grant to sunnycloud)"
+"$(dirname "${BASH_SOURCE[0]}")/ensure-db-roles.sh" || fail "ensure-db-roles.sh failed"
+
+echo "$tag step 5/9: verify the database has no applied migrations"
 read -r installed pending <<<"$(migration_counts)"
 echo "$tag installed=$installed pending=$pending"
 [ "$installed" -eq 0 ] || fail "database is not empty: $installed migrations already applied"
 
-echo "$tag step 5/8: apply all ($total) migrations"
+echo "$tag step 6/9: apply all ($total) migrations"
 sqlx migrate run --source "$migrations_dir" || fail "applying migrations failed (sqlx output above names the version)"
 read -r installed pending <<<"$(migration_counts)"
 [ "$installed" -eq "$total" ] || fail "expected $total applied after first run, found $installed"
 
-echo "$tag step 6/8: revert all migrations, newest first"
+echo "$tag step 7/9: revert all migrations, newest first"
 reverted=0
 while [ "$(latest_installed_version)" != "" ]; do
   version="$(latest_installed_version)"
@@ -76,10 +79,10 @@ while [ "$(latest_installed_version)" != "" ]; do
 done
 [ "$reverted" -eq "$total" ] || fail "expected to revert $total, reverted $reverted"
 
-echo "$tag step 7/8: apply all ($total) migrations again"
+echo "$tag step 8/9: apply all ($total) migrations again"
 sqlx migrate run --source "$migrations_dir" || fail "re-applying migrations failed (sqlx output above names the version)"
 read -r installed pending <<<"$(migration_counts)"
 [ "$installed" -eq "$total" ] || fail "expected $total applied after second run, found $installed"
 
-echo "$tag step 8/8: report"
+echo "$tag step 9/9: report"
 echo "$tag OK: $total migrations applied, reverted and re-applied"

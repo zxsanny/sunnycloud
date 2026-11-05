@@ -9,7 +9,7 @@ pub enum DbError {
     /// SQLSTATE 23505. `constraint` is the name the server reports.
     #[error("unique violation (constraint {constraint:?})")]
     UniqueViolation { constraint: Option<String> },
-    /// SQLSTATE 23503.
+    /// SQLSTATE 23503, and 23001 (`restrict_violation`), which `ON DELETE RESTRICT` raises in its place.
     #[error("foreign key violation")]
     ForeignKeyViolation,
     /// SQLSTATE 23514.
@@ -36,7 +36,7 @@ impl DbError {
             "23505" => DbError::UniqueViolation {
                 constraint: constraint.map(str::to_owned),
             },
-            "23503" => DbError::ForeignKeyViolation,
+            "23503" | "23001" => DbError::ForeignKeyViolation,
             "23514" => DbError::CheckViolation,
             "40001" => DbError::Serialization,
             "57P01" | "25P03" => DbError::Unavailable,
@@ -82,6 +82,7 @@ mod tests {
     fn sqlstate_table_maps_each_listed_code() {
         let cases = [
             ("23503", DbError::ForeignKeyViolation),
+            ("23001", DbError::ForeignKeyViolation),
             ("23514", DbError::CheckViolation),
             ("40001", DbError::Serialization),
             ("57P01", DbError::Unavailable),

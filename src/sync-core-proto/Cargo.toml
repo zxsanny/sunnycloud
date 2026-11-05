@@ -1,0 +1,18 @@
+[package]
+name = "sync-core-proto"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sc_error = { path = "../shared/error", default-features = false, features = ["client"] }
+sc_ids = { path = "../shared/ids_hashing", default-features = false }
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }

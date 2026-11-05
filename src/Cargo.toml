@@ -27,6 +27,7 @@ members = [
     "worker",
     "decoder",
     "sync-core",
+    "sync-core-proto",
     "sync-core-wasm",
     "desktop/ipc_schema",
     "desktop/daemon",

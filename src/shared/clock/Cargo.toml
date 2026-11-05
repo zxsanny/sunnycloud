@@ -11,8 +11,8 @@ workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["macros", "sync", "time"] }
-tokio-util = { workspace = true }
+tokio = { workspace = true, features = ["macros", "sync", "time"], optional = true }
+tokio-util = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Self dev-dependency: `cargo test -p sc_clock` (and the workspace test run in CI) also compiles OffsetClock.
@@ -21,4 +21,9 @@ sc_clock = { path = ".", features = ["test-clock"] }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
 
 [features]
-test-clock = []
+default = ["runtime"]
+# The clock trait, the system, manual and offset clocks and the shutdown token need tokio. Without it the
+# crate keeps only the plain value types (`Timestamp`, `MonotonicInstant`), the errors and `wake_gap_exceeded`,
+# so wasm32 client crates and `sc_names` stay free of an async runtime.
+runtime = ["dep:tokio", "dep:tokio-util"]
+test-clock = ["runtime"]

@@ -14,7 +14,8 @@ cargo fmt --all --check
 echo "$tag step 2/4: cargo clippy --workspace --all-targets --locked -- -D warnings"
 cargo clippy --workspace --all-targets --locked -- -D warnings
 
-echo "$tag step 3/4: apply migrations to the PG 18 service (input of the offline data check)"
+echo "$tag step 3/4: create the application roles, apply migrations to the PG 18 service (input of the offline data check)"
+"$repo_root/scripts/ci/ensure-db-roles.sh"
 sqlx migrate run --source migrations
 
 echo "$tag step 4/4: offline query data is current"

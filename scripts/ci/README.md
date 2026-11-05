@@ -30,6 +30,8 @@ MIGRATIONS_DIR=/path/to/dir DATABASE_URL=... scripts/ci/check-migrations.sh   # 
 
 The database is left in the fully migrated state. Drop and recreate it before the next run.
 
+Before step 5 the script runs `ensure-db-roles.sh`: the first migration (`accounts_base`) grants to the role `sunnycloud`, and a plain PostgreSQL service has no application roles (the Compose database gets them from `deploy/postgres/initdb.d/10-roles.sh`). `ensure-db-roles.sh` creates `sunnycloud_migrator` and `sunnycloud` when missing, with the attributes of that init script and no password; it needs `psql` and a superuser `DATABASE_URL`. `rust-lint.sh` calls it before its own `sqlx migrate run`.
+
 ## `check-sqlx-prepare.sh`: offline query data is current
 
 Runs `cargo sqlx prepare --check --workspace` in `src/` and fails when the committed `src/.sqlx/` data does not match the compile-time checked queries. The database behind `DATABASE_URL` must already have all migrations applied (run `check-migrations.sh` first, or `sqlx migrate run --source src/migrations`). To refresh the data after changing a query:

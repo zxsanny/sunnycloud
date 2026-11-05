@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[lib]
+name = "sunnycloud_daemon"
+path = "src/lib.rs"
+
 [[bin]]
 name = "sunnycloud-daemon"
 path = "src/main.rs"
@@ -16,3 +20,20 @@ workspace = true
 [dependencies]
 sync-core = { path = "../../sync-core" }
 ipc_schema = { path = "../../desktop/ipc_schema" }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["net", "io-util", "rt", "sync", "time", "macros"] }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -10,7 +10,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-sc_clock = { path = "../clock" }
+sc_clock = { path = "../clock", default-features = false, features = ["runtime"], optional = true }
 blake3 = { workspace = true }
 sha2 = { workspace = true }
 getrandom = { workspace = true }
@@ -23,5 +23,11 @@ uuid = { workspace = true }
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { workspace = true, features = ["wasm_js"] }
 
+[features]
+default = ["new-id"]
+# `new_id` takes the injected `Clock`, which needs tokio. Client and wasm32 crates that only hash turn it off.
+new-id = ["dep:sc_clock"]
+
 [dev-dependencies]
+sc_clock = { path = "../clock" }
 base64 = { workspace = true }

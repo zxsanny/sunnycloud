@@ -12,7 +12,7 @@ workspace = true
 [dependencies]
 icu_casemap = { workspace = true }
 icu_normalizer = { workspace = true }
-sc_clock = { path = "../clock" }
+sc_clock = { path = "../clock", default-features = false }
 thiserror = { workspace = true }
 
 [dev-dependencies]

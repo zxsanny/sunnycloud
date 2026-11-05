@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 
@@ -5,12 +8,16 @@ use crate::config::{DbConfig, DbRole};
 use crate::error::{DbError, RunError};
 use crate::roles;
 use crate::scope::{self, Scope};
+use crate::stats::Stats;
 use crate::tx::DbTx;
 
 /// The only owner of PostgreSQL connections. Cheap to clone; clones share one pool.
 #[derive(Debug, Clone)]
 pub struct Db {
     pub(crate) pool: PgPool,
+    pub(crate) role: DbRole,
+    pub(crate) acquire_timeout: Duration,
+    pub(crate) stats: Arc<Stats>,
 }
 
 impl Db {
@@ -40,7 +47,12 @@ impl Db {
             pool.close().await;
             return Err(error);
         }
-        Ok(Db { pool })
+        Ok(Db {
+            pool,
+            role,
+            acquire_timeout: cfg.db_acquire_timeout,
+            stats: Arc::default(),
+        })
     }
 
     /// One unit of work in one short transaction scoped to `scope`: the scope is the first statement, `Ok`
@@ -52,9 +64,15 @@ impl Db {
         f: impl AsyncFnOnce(&mut DbTx) -> Result<T, E>,
     ) -> Result<T, RunError<E>> {
         let Scope::Account(account) = scope;
-        let mut tx = self.begin().await?;
-        scope::apply_account(tx.conn(), account).await?;
-        Self::finish(tx, f).await
+        let started = Instant::now();
+        let result = async {
+            let mut tx = self.begin().await?;
+            scope::apply_account(tx.conn(), account).await?;
+            Self::finish(tx, f).await
+        }
+        .await;
+        self.stats.record("run", started.elapsed());
+        result
     }
 
     /// Like [`Db::run`] in system scope (all accounts). `op` names the operation in `pg_stat_activity`
@@ -64,9 +82,15 @@ impl Db {
         op: &'static str,
         f: impl AsyncFnOnce(&mut DbTx) -> Result<T, E>,
     ) -> Result<T, RunError<E>> {
-        let mut tx = self.begin().await?;
-        scope::apply_system(tx.conn(), op).await?;
-        Self::finish(tx, f).await
+        let started = Instant::now();
+        let result = async {
+            let mut tx = self.begin().await?;
+            scope::apply_system(tx.conn(), op).await?;
+            Self::finish(tx, f).await
+        }
+        .await;
+        self.stats.record(op, started.elapsed());
+        result
     }
 
     async fn begin(&self) -> Result<DbTx, DbError> {

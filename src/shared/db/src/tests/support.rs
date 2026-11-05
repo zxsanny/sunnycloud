@@ -255,6 +255,12 @@ impl TestDb {
             .expect("connect as the API role")
     }
 
+    pub async fn migrator(&self) -> Db {
+        Db::connect(&self.config(), DbRole::Migrator)
+            .await
+            .expect("connect as the migrator role")
+    }
+
     pub async fn count_notes(&self) -> i64 {
         let mut conn = self.admin().await;
         let count = sqlx::query_scalar("SELECT count(*) FROM notes")

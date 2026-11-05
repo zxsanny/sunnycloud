@@ -24,28 +24,37 @@
 //!   (`new()` creates a private token, `with_shutdown` shares the application's token).
 
 mod error;
+#[cfg(feature = "runtime")]
 mod manual;
 #[cfg(feature = "test-clock")]
 mod offset;
+#[cfg(feature = "runtime")]
 mod system;
 mod time;
 mod wake;
 
+#[cfg(feature = "runtime")]
 use std::future::Future;
+#[cfg(feature = "runtime")]
 use std::pin::Pin;
 
 pub use error::{Cancelled, ClockError};
+#[cfg(feature = "runtime")]
 pub use manual::ManualClock;
 #[cfg(feature = "test-clock")]
 pub use offset::OffsetClock;
+#[cfg(feature = "runtime")]
 pub use system::SystemClock;
 pub use time::{MonotonicInstant, Timestamp};
+#[cfg(feature = "runtime")]
 pub use tokio_util::sync::CancellationToken;
 pub use wake::wake_gap_exceeded;
 
+#[cfg(feature = "runtime")]
 /// Future returned by [`Clock::sleep_until_monotonic`]; boxed so a `dyn Clock` can be injected.
 pub type SleepFuture<'a> = Pin<Box<dyn Future<Output = Result<(), Cancelled>> + Send + 'a>>;
 
+#[cfg(feature = "runtime")]
 /// The one source of time.
 pub trait Clock: Send + Sync {
     /// Current UTC time, microsecond precision. Lock-free, no allocation.

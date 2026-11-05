@@ -727,6 +727,12 @@ dependencies = [
 [[package]]
 name = "media-shared"
 version = "0.1.0"
+dependencies = [
+ "sc_ids",
+ "serde",
+ "serde_json",
+ "uuid",
+]
 
 [[package]]
 name = "memchr"
@@ -1302,7 +1308,13 @@ name = "sunnycloud-daemon"
 version = "0.1.0"
 dependencies = [
  "ipc_schema",
+ "libc",
+ "serde_json",
  "sync-core",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1419,6 +1431,18 @@ dependencies = [
 [[package]]
 name = "sync-core"
 version = "0.1.0"
+
+[[package]]
+name = "sync-core-proto"
+version = "0.1.0"
+dependencies = [
+ "sc_error",
+ "sc_ids",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
 
 [[package]]
 name = "sync-core-wasm"

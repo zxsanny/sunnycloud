@@ -39,6 +39,7 @@ const WORKSPACE_PACKAGES: &[(&str, &str)] = &[
     ("sunnycloud-worker", "worker"),
     ("decoder-runner", "decoder"),
     ("sync-core", "sync-core"),
+    ("sync-core-proto", "sync-core-proto"),
     ("sync-core-wasm", "sync-core-wasm"),
     ("ipc_schema", "desktop/ipc_schema"),
     ("sunnycloud-daemon", "desktop/daemon"),
@@ -59,6 +60,7 @@ const WASM_FORBIDDEN: &[&str] = &["sync-core", "tokio", "reqwest", "mio"];
 
 const CLIENTS: &[&str] = &[
     "sync-core",
+    "sync-core-proto",
     "sync-core-wasm",
     "mobile_backup",
     "vault-core",

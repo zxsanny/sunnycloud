@@ -1,3 +1,5 @@
+#![cfg(feature = "new-id")]
+
 use std::time::Duration;
 
 use sc_clock::{ManualClock, Timestamp};
