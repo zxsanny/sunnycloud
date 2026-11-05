@@ -55,4 +55,4 @@ Docker builds were run by the AZ-3741 worker; CI does not run them yet.
 
 `[AZ-3739] [AZ-3740] [AZ-3741] [AZ-3744] [AZ-3763] [AZ-3764] Add helpers, scripts, images, licence` — Loop: 1
 
-## Next Batch: AZ-3761 (needs 3740, 3741, 3744), AZ-3765 (needs 3761), AZ-3782 (needs 3763, 3764, 3765, 3741), AZ-3785; AZ-3742 test harness (needs 3741)
+## Next Batch: AZ-3761 (CI skeleton) and AZ-3742 (test harness skeleton); then AZ-3765 sc_clock, which needs AZ-3761
