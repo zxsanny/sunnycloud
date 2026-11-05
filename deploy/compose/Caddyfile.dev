@@ -1,0 +1,23 @@
+{
+	servers {
+		protocols h1 h2
+	}
+	auto_https disable_redirects
+}
+
+{$PUBLIC_HOST} {
+	tls internal {
+		protocols tls1.3
+	}
+	request_body {
+		max_size 64GB
+	}
+	reverse_proxy api:8080 {
+		flush_interval -1
+		transport http {
+			versions h2c
+			response_header_timeout 60s
+		}
+		header_up X-Forwarded-For {remote_host}
+	}
+}

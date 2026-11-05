@@ -15,3 +15,6 @@ workspace = true
 
 [dependencies]
 media-shared = { path = "../media-shared" }
+
+[features]
+test-clock = []

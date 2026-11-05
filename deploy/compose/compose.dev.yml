@@ -1,0 +1,230 @@
+# Development stack (containerization.md "Local development", placed here per AZ-3652).
+# Run from anywhere: docker compose -f deploy/compose/compose.dev.yml up db
+# Fast loop: bring up `db` (127.0.0.1:5432) and run `cargo run -p sunnycloud-server` on the host.
+#
+# Throw-away secrets: ../../secrets-dev/<name> (gitignored). Create them, world-readable because the
+# containers read them as different uids (db 999, api and migrate 10001, worker 10002):
+#   mkdir -p secrets-dev && umask 022
+#   openssl rand -hex 24 > secrets-dev/postgres_password
+#   printf 'postgres://sunnycloud_migrator:%s@db:5432/sunnycloud' "$(openssl rand -hex 24)" > secrets-dev/db_migrator_url
+#   printf 'postgres://sunnycloud:%s@db:5432/sunnycloud' "$(openssl rand -hex 24)" > secrets-dev/db_api_url
+#   openssl rand -out secrets-dev/master_key 32
+#   openssl rand -hex 24 > secrets-dev/worker_api_token
+#   openssl rand -out secrets-dev/share_grant_key 32
+#
+# Not declared yet: mock-idp. containerization.md names `build tests/mocks/idp` (own build), and that
+# directory does not exist; the service is added by the task that creates the mock.
+name: sunnycloud-dev
+
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  init: true
+
+x-sunnycloud-env: &sunnycloud-env
+  SUNNYCLOUD_ENVIRONMENT: development
+  SUNNYCLOUD_PUBLIC_URL: https://sunnycloud.localhost:8443
+  SUNNYCLOUD_LOG: json
+  SUNNYCLOUD_RETENTION: 30s
+  SUNNYCLOUD_TOMBSTONE_HORIZON: 60s
+  SUNNYCLOUD_DEVICE_CODE_TTL: 20s
+  SUNNYCLOUD_JOB_LEASE: 10s
+  SUNNYCLOUD_UPLOAD_SESSION_TTL: 60s
+  SUNNYCLOUD_ORPHAN_SWEEP_AGE: 120s
+  SUNNYCLOUD_SHARE_DEFAULT_TTL: 30s
+  SUNNYCLOUD_SHARE_MAX_TTL: 60s
+  SUNNYCLOUD_REFRESH_REUSE_GRACE: 5s
+  SUNNYCLOUD_PROVIDER_TIMEOUT: 2s
+  SUNNYCLOUD_DECODER_STALL_KILL: 5s
+  SUNNYCLOUD_PHOTO_JOB_TIMEOUT: 10s
+  SUNNYCLOUD_VIDEO_JOB_TIMEOUT: 60s
+  SUNNYCLOUD_SCRUB_INTERVAL: 10s
+
+x-api-build: &api-build
+  context: ../..
+  dockerfile: deploy/docker/api.Dockerfile
+  args:
+    FEATURES: test-clock
+    TEST_CLOCK: "true"
+    VERSION: dev
+    REVISION: ${REVISION:-dev}
+
+x-decoder-image: &decoder-image
+  build:
+    context: ../..
+    dockerfile: deploy/docker/decoder.Dockerfile
+    args:
+      VERSION: dev
+      REVISION: ${REVISION:-dev}
+  image: sunnycloud-decoder:dev
+
+secrets:
+  postgres_password: { file: ../../secrets-dev/postgres_password }
+  db_api_url: { file: ../../secrets-dev/db_api_url }
+  db_migrator_url: { file: ../../secrets-dev/db_migrator_url }
+  master_key: { file: ../../secrets-dev/master_key }
+  worker_api_token: { file: ../../secrets-dev/worker_api_token }
+  share_grant_key: { file: ../../secrets-dev/share_grant_key }
+
+networks:
+  proxy: {}
+  backend: {}
+
+volumes:
+  pgdata-dev: {}
+  blobs-dev: {}
+  caddy_data_dev: {}
+  caddy_config_dev: {}
+  sock_interactive: {}
+  sock_general: {}
+  scratch_interactive:
+    driver_opts: { type: tmpfs, device: tmpfs, o: "size=1g" }
+  scratch_general_dev: {}
+
+services:
+  db:
+    image: postgres:18-trixie@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=200"]
+    environment:
+      POSTGRES_DB: sunnycloud
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password, db_migrator_url, db_api_url]
+    volumes:
+      - pgdata-dev:/var/lib/postgresql
+      - ../postgres/initdb.d:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks: [backend]
+    shm_size: 256m
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sunnycloud -d sunnycloud"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  caddy:
+    image: caddy:2@sha256:4fcafa98afd1c2e642e353e3c5cf9ddbe892fcee14bc990e7ba2c5b78e51f9cf
+    environment:
+      PUBLIC_HOST: sunnycloud.localhost
+    ports:
+      - "127.0.0.1:8443:443"
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - caddy_data_dev:/data
+      - caddy_config_dev:/config
+    networks: [proxy]
+    depends_on:
+      api: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  migrate:
+    build: *api-build
+    image: sunnycloud-api:dev-test
+    command: ["migrate"]
+    <<: *hardened
+    restart: "no"
+    environment: *sunnycloud-env
+    secrets: [db_migrator_url]
+    networks: [backend]
+    depends_on:
+      db: { condition: service_healthy }
+
+  api:
+    build: *api-build
+    image: sunnycloud-api:dev-test
+    <<: *hardened
+    read_only: true
+    tmpfs: [/tmp]
+    environment: *sunnycloud-env
+    secrets: [master_key, db_api_url, worker_api_token, share_grant_key]
+    volumes:
+      - blobs-dev:/var/lib/sunnycloud/blobs
+    networks: [proxy, backend]
+    stop_grace_period: 120s
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "sunnycloud", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/worker.Dockerfile
+      args:
+        FEATURES: test-clock
+        TEST_CLOCK: "true"
+        VERSION: dev
+        REVISION: ${REVISION:-dev}
+    image: sunnycloud-worker:dev-test
+    <<: *hardened
+    environment:
+      <<: *sunnycloud-env
+      SUNNYCLOUD_WORKER_SOCK_INTERACTIVE: /run/decoder-interactive/decoder.sock
+      SUNNYCLOUD_WORKER_SOCK_GENERAL: /run/decoder-general/decoder.sock
+      SUNNYCLOUD_WORKER_SCRATCH_INTERACTIVE: /scratch-interactive
+      SUNNYCLOUD_WORKER_SCRATCH_GENERAL: /scratch-general
+    secrets: [worker_api_token]
+    volumes:
+      - sock_interactive:/run/decoder-interactive
+      - sock_general:/run/decoder-general
+      - scratch_interactive:/scratch-interactive
+      - scratch_general_dev:/scratch-general
+    networks: [backend]
+    mem_limit: 512m
+    depends_on:
+      api: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "sunnycloud-worker", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  decoder-interactive:
+    <<: [*decoder-image, *hardened]
+    network_mode: none
+    read_only: true
+    user: "10003:10003"
+    volumes:
+      - sock_interactive:/run/decoder
+      - scratch_interactive:/scratch
+    cpus: 2
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "decoder-runner", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  decoder-general:
+    <<: [*decoder-image, *hardened]
+    network_mode: none
+    read_only: true
+    user: "10003:10003"
+    volumes:
+      - sock_general:/run/decoder
+      - scratch_general_dev:/scratch
+    cpus: ${WORKER_CPUS:-2}
+    mem_limit: ${WORKER_MEM:-4g}
+    memswap_limit: ${WORKER_MEM:-4g}
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "decoder-runner", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

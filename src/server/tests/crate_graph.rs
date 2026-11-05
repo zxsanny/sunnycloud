@@ -55,6 +55,8 @@ const NO_SQLX: &[&str] = &[
     "media-shared",
 ];
 
+const WASM_FORBIDDEN: &[&str] = &["sync-core", "tokio", "reqwest", "mio"];
+
 const CLIENTS: &[&str] = &[
     "sync-core",
     "sync-core-wasm",
@@ -134,6 +136,12 @@ fn violations(graph: &Graph) -> Vec<String> {
             }
             if dep == "sunnycloud-server" {
                 found.push(format!("{} depends on sunnycloud-server", package.name));
+            }
+            if dep == "wasm-bindgen" && package.name != "sync-core-wasm" {
+                found.push(format!("{} depends on wasm-bindgen", package.name));
+            }
+            if package.name == "sync-core-wasm" && WASM_FORBIDDEN.contains(&dep.as_str()) {
+                found.push(format!("sync-core-wasm depends on {dep}"));
             }
             if dep == "sqlx" && NO_SQLX.contains(&package.name.as_str()) {
                 found.push(format!("{} depends on sqlx", package.name));
@@ -224,4 +232,24 @@ fn dependency_on_the_composition_root_is_rejected() {
     let found = violations(&graph);
 
     assert!(found.contains(&"sunnycloud-http-api depends on sunnycloud-server".to_string()));
+}
+
+#[test]
+fn wasm_bindgen_outside_the_wasm_adapter_is_rejected() {
+    let mut graph = workspace_graph();
+    add_edge(&mut graph, "sync-core", "wasm-bindgen");
+
+    let found = violations(&graph);
+
+    assert_eq!(found, vec!["sync-core depends on wasm-bindgen"]);
+}
+
+#[test]
+fn wasm_adapter_depending_on_the_native_client_is_rejected() {
+    let mut graph = workspace_graph();
+    add_edge(&mut graph, "sync-core-wasm", "sync-core");
+
+    let found = violations(&graph);
+
+    assert_eq!(found, vec!["sync-core-wasm depends on sync-core"]);
 }

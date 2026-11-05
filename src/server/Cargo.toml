@@ -29,3 +29,6 @@ sunnycloud-vault-service = { path = "../components/20_vault_service" }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+
+[features]
+test-clock = []
