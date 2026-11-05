@@ -1,9 +1,9 @@
 //! Plain data types shared by the API side (08), the worker supervisor (09) and the untrusted
 //! decoder (10): worker job DTOs, transcode policy types and the decoder protocol v1 messages.
 //!
-//! Types only (ADR-009): no sqlx, no I/O, no queue, no behaviour. The policy functions, the
-//! `Params` values, the socket framing and the numeric range checks belong to the epics that
-//! consume these types.
+//! No sqlx, no I/O, no queue (ADR-009). The policy functions and the `Params` values belong to
+//! the media-jobs epic. `decoder_protocol` also holds the synchronous frame codec, the strict
+//! parser and the session rules of the decoder socket, working on byte streams it is given.
 
 pub mod decoder_protocol;
 pub mod policy;

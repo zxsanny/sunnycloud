@@ -1,0 +1,33 @@
+# Standalone cargo-fuzz package: not a member of the workspace (it needs nightly and
+# libfuzzer-sys). Run from `src/media-shared`:
+#   cargo +nightly fuzz run parse_message tests/corpus
+# The seed corpus is kept with the tests in `tests/corpus/`; `tests/fuzz_parser.rs` runs the
+# same property deterministically inside plain `cargo test`.
+[package]
+name = "media-shared-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+media-shared = { path = ".." }
+
+[[bin]]
+name = "parse_message"
+path = "fuzz_targets/parse_message.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+
+# A standalone package cannot inherit the workspace lints, so it sets the same denies itself.
+[lints.rust]
+unused_must_use = "deny"
+
+[lints.clippy]
+let_underscore_must_use = "deny"

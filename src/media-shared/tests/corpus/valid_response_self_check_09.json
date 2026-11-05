@@ -1,0 +1,1 @@
+{"response":{"self_check":[{"name":"network","ok":true},{"name":"root_filesystem_read_only","ok":false}]}}

@@ -131,6 +131,8 @@ jobs:
         run: scripts/ci/watchdog.sh --name check-no-sql-now -- scripts/ci/check-no-sql-now.sh
       - name: Scope settings only in sc_db, run_system allowlist, SQL text in repository modules
         run: scripts/ci/watchdog.sh --name check-db-gates -- scripts/ci/check-db-gates.sh
+      - name: audit_log statements limited to the audit crate's insert, export select and purge call
+        run: scripts/ci/watchdog.sh --name check-audit-sql -- scripts/ci/check-audit-sql.sh
       - name: Install the pinned toolchain
         run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3

@@ -12,3 +12,13 @@ Replay payload (cloudId 1598226f-845f-4705-bcd1-5ed0c82d6119, `transitionName: "
 - AZ-3914 (IPC server; AC-2 Windows pipe NOT RUN)
 
 Read back each issue after the transition; expected status `In Testing`.
+
+## Batch 7 (added 2026-11-05)
+
+The Atlassian MCP server is no longer connected in this session (its tools were removed), so no transition could be made for batch 7 either. None of these three was moved to `In Progress` before the work, so both transitions are pending.
+
+Replay: for each ticket, `In Progress` then `In Testing`, with a read-back after the last one:
+
+- AZ-3784 (sc_audit)
+- AZ-3852 (decoder protocol module)
+- AZ-3957 (upload planner)

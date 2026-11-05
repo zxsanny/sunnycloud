@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use sqlx::PgConnection;
 
-use super::accounts_base::BASE_VERSION;
+use super::accounts_base::EMBEDDED;
 use super::seeded::{self, SLOW_GATE, SLOW_MARKER};
 use super::support::TestDb;
 use crate::migrate::MigrationSet;
@@ -102,7 +102,7 @@ async fn a_killed_migration_rolls_back_and_the_next_run_applies_it() {
         "the killed migration leaves no change"
     );
     let status = set().status(&api).await.expect("status after the kill");
-    assert_eq!(status.applied, [BASE_VERSION]);
+    assert_eq!(status.applied, EMBEDDED);
     assert_eq!(status.pending, [SLOW]);
     assert_eq!(status.dirty, None);
     assert_eq!(

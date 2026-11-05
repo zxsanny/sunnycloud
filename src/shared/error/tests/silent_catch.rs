@@ -252,6 +252,15 @@ fn deny_lints_are_set_and_inherited_by_every_crate() {
         if !text.contains("[package]") {
             continue;
         }
+        if text.contains("\n[workspace]") {
+            // Standalone package (cargo-fuzz): it sets the same two denies itself.
+            if !(text.contains("unused_must_use = \"deny\"")
+                && text.contains("let_underscore_must_use = \"deny\""))
+            {
+                missing.push(path.display().to_string());
+            }
+            continue;
+        }
         let inherits = text
             .split("[lints]")
             .nth(1)

@@ -1,0 +1,1 @@
+{"request":{"self_check":{"forbidden_targets":["api:8080","db:5432"]}}}

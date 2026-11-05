@@ -4,7 +4,7 @@
 
 use sqlx::PgConnection;
 
-use super::accounts_base::BASE_VERSION;
+use super::accounts_base::{AUDIT_VERSION, BASE_VERSION, EMBEDDED};
 use super::seeded::{self, IRREVERSIBLE_DOWN};
 use super::support::TestDb;
 use crate::migrate::MigrationSet;
@@ -42,7 +42,7 @@ async fn check_version_tells_current_pending_and_unknown_newer_apart() {
     let status = Migrator::status(&api)
         .await
         .expect("status as the API role");
-    assert_eq!(status.applied, [BASE_VERSION, EXTRA]);
+    assert_eq!(status.applied, [BASE_VERSION, AUDIT_VERSION, EXTRA]);
     assert_eq!(status.unknown_newer, [EXTRA]);
     assert!(status.pending.is_empty() && status.dirty.is_none());
     let refused = Migrator::run_pending(&migrator).await;
@@ -86,7 +86,7 @@ async fn a_changed_applied_file_is_a_checksum_mismatch_and_nothing_is_applied() 
     let mut admin = db.admin().await;
     assert!(!table_exists(&mut admin, "probe_never").await);
     let status = Migrator::status(&api).await.expect("status");
-    assert_eq!(status.applied, [BASE_VERSION]);
+    assert_eq!(status.applied, EMBEDDED);
     db.drop_db().await;
 }
 
@@ -113,7 +113,7 @@ async fn revert_reports_an_irreversible_down_and_leaves_the_schema() {
     assert!(table_exists(&mut admin, "probe_irreversible").await);
     assert!(table_exists(&mut admin, "accounts").await);
     let status = set().status(&migrator).await.expect("status");
-    assert_eq!(status.applied, [BASE_VERSION, EXTRA]);
+    assert_eq!(status.applied, [BASE_VERSION, AUDIT_VERSION, EXTRA]);
     db.drop_db().await;
 }
 
@@ -142,7 +142,7 @@ async fn a_failing_migration_is_named_and_earlier_ones_stay() {
     assert!(table_exists(&mut admin, "accounts").await);
     assert!(!table_exists(&mut admin, "probe_half").await);
     let status = set().status(&migrator).await.expect("status");
-    assert_eq!(status.applied, [BASE_VERSION]);
+    assert_eq!(status.applied, EMBEDDED);
     assert_eq!(status.pending, [EXTRA]);
     db.drop_db().await;
 }
@@ -164,7 +164,10 @@ async fn the_api_role_cannot_migrate_but_can_read_the_version() {
     assert_eq!(revert, Err(MigrationError::WrongRole));
     assert_eq!(
         before,
-        (Ok(vec![BASE_VERSION]), Ok(SchemaState::Pending { n: 1 }))
+        (
+            Ok(EMBEDDED.to_vec()),
+            Ok(SchemaState::Pending { n: EMBEDDED.len() })
+        )
     );
     let mut admin = db.admin().await;
     assert!(!table_exists(&mut admin, "accounts").await);

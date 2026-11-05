@@ -8,3 +8,18 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+sc_clock = { path = "../clock" }
+sc_db = { path = "../db" }
+serde_json = { workspace = true }
+# Same features as sc_db: the audit SQL runs on the connection `DbTx::conn` hands out.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+thiserror = { workspace = true }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+uuid = { workspace = true }
+
+[dev-dependencies]
+sc_config = { path = "../config" }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+uuid = { workspace = true, features = ["v4"] }

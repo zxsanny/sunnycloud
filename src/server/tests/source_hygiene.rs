@@ -47,6 +47,11 @@ fn every_crate_inherits_the_workspace_lints() {
         .filter(|file| **file != workspace.join("Cargo.toml"))
         .filter(|file| {
             let text = fs::read_to_string(file).expect("manifest is readable");
+            if text.contains("\n[workspace]") {
+                // Standalone package (cargo-fuzz): it sets the same two denies itself.
+                return !(text.contains("unused_must_use = \"deny\"")
+                    && text.contains("let_underscore_must_use = \"deny\""));
+            }
             !text.contains("[lints]\nworkspace = true")
         })
         .collect();

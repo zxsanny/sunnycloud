@@ -11,6 +11,7 @@ mod feed;
 mod hashing;
 mod keys;
 mod page_check;
+mod planner;
 mod server_info;
 mod transfer;
 mod tree;
@@ -22,6 +23,7 @@ pub use feed::{ChangeItem, ChangePage, ChangeState, ResyncReason};
 pub use hashing::{ResumableFileHasher, ResumeHashState, hash_block};
 pub use keys::{BatchIdError, check_batch_ids, client_key_for_mobile, reuse_or_new_key};
 pub use page_check::{PageRule, PageViolation, check_page};
+pub use planner::{Action, BlockResult, CommitResult, RetryPolicy, UploadPlanner};
 pub use sc_ids::{BLOCK_SIZE, FileHash, FileHasher, Hash32, HashError, rollup};
 pub use server_info::{ServerInfo, effective_lanes};
 pub use transfer::{

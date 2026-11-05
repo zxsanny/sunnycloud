@@ -12,7 +12,5 @@ workspace = true
 [dependencies]
 sc_ids = { path = "../shared/ids_hashing", default-features = false }
 serde = { workspace = true, features = ["std"] }
-uuid = { workspace = true }
-
-[dev-dependencies]
 serde_json = { workspace = true }
+uuid = { workspace = true }

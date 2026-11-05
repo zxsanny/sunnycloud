@@ -12,8 +12,9 @@ use std::process::Command;
 
 const PACKAGE: &str = "media-shared";
 
-/// Direct production dependencies: serde-level crates, `Uuid` and `FileHash`.
-const ALLOWED_DIRECT: [&str; 3] = ["sc_ids", "serde", "uuid"];
+/// Direct production dependencies: serde-level crates (`serde_json` is the decoder frame
+/// payload codec), `Uuid` and `FileHash`.
+const ALLOWED_DIRECT: [&str; 4] = ["sc_ids", "serde", "serde_json", "uuid"];
 
 /// Workspace crates the graph may contain: the crate itself and `sc_ids` with its `sc_clock`.
 const ALLOWED_WORKSPACE: [&str; 3] = [PACKAGE, "sc_ids", "sc_clock"];
@@ -166,7 +167,7 @@ fn the_dependency_list_has_nothing_forbidden() {
 }
 
 #[test]
-fn the_direct_dependencies_are_serde_uuid_and_sc_ids_only() {
+fn the_direct_dependencies_are_serde_serde_json_uuid_and_sc_ids_only() {
     let graph = load_graph();
 
     assert_eq!(

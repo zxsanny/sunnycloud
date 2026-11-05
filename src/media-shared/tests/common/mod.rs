@@ -5,8 +5,9 @@
 #![allow(dead_code)]
 
 use media_shared::decoder_protocol::{
-    Capabilities, DecodeError, Event, ImageResult, LimitKind, Limits, Request, Response,
-    SelfCheckItem, SelfCheckReport, TranscodeResult,
+    Capabilities, DecodeError, Event, ImageResult, LimitKind, Limits, Message, ProtocolViolation,
+    Request, Response, SelfCheckItem, SelfCheckReport, TranscodeResult, ViolationKind,
+    parse_message,
 };
 use media_shared::policy::{
     AudioPlan, AudioStream, Decision, Encoder, MediaKind, OutputSpec, Params, Plan, Probe,
@@ -325,4 +326,77 @@ pub fn events() -> Vec<Event> {
             speed: 1.5,
         },
     ]
+}
+
+/// One message of every role and variant, as it travels in a frame.
+pub fn messages() -> Vec<Message> {
+    let mut all: Vec<Message> = requests().into_iter().map(Message::Request).collect();
+    all.extend(responses().into_iter().map(Message::Response));
+    all.extend(events().into_iter().map(Message::Event));
+    all
+}
+
+/// A frame with a correct big-endian prefix around `payload`.
+pub fn frame(payload: &[u8]) -> Vec<u8> {
+    let length = u32::try_from(payload.len()).expect("payload fits the prefix");
+    let mut bytes = length.to_be_bytes().to_vec();
+    bytes.extend_from_slice(payload);
+    bytes
+}
+
+/// The `limits` object of a request, as JSON text.
+pub const LIMITS_JSON: &str = r#"{"cpu":4,"memory_bytes":4294967296,"wall":2400000,"stall_timeout":90000,"max_output_bytes":10737418240}"#;
+
+pub fn refused(payload: &[u8]) -> ViolationKind {
+    match parse_message(payload) {
+        Err(ProtocolViolation(kind)) => kind,
+        Ok(message) => panic!(
+            "accepted {message:?} for {}",
+            String::from_utf8_lossy(payload)
+        ),
+    }
+}
+
+pub fn out_of_range(field: &'static str) -> ViolationKind {
+    ViolationKind::OutOfRange(field)
+}
+
+pub fn render_still(max_edge: &str) -> String {
+    format!(
+        r#"{{"request":{{"render_still":{{"job_dir":"/s/j","max_edge":{max_edge},"poster_at_ms":null,"limits":{LIMITS_JSON}}}}}}}"#
+    )
+}
+
+pub fn image_result(width: &str, height: &str, bytes: &str) -> String {
+    format!(
+        r#"{{"response":{{"image_result":{{"width":{width},"height":{height},"bytes":{bytes}}}}}}}"#
+    )
+}
+
+pub fn probe_reply(video: &str, duration_ms: &str) -> String {
+    format!(
+        r#"{{"response":{{"probe":{{"kind":"video","container":"mp4","moov_first":true,"video":{video},"audio":null,"duration_ms":{duration_ms}}}}}}}"#
+    )
+}
+
+pub fn video(width: &str, rotation: &str, bitrate: &str, codec: &str) -> String {
+    format!(
+        r#"{{"codec":{codec},"profile":null,"width":{width},"height":1080,"rotation":{rotation},"bitrate":{bitrate},"pix_fmt":null,"primaries":null,"transfer":null,"matrix":null}}"#
+    )
+}
+
+pub fn transcode(plan: &str) -> String {
+    format!(
+        r#"{{"request":{{"transcode":{{"job_dir":"/s/j","plan":{plan},"limits":{LIMITS_JSON}}}}}}}"#
+    )
+}
+
+pub fn accepted(payload: &str) -> Message {
+    parse_message(payload.as_bytes()).unwrap_or_else(|v| panic!("refused {payload}: {v}"))
+}
+
+pub fn limits_with(field: &str, value: &str) -> String {
+    let mut object: serde_json::Value = serde_json::from_str(LIMITS_JSON).expect("json");
+    object[field] = serde_json::from_str(value).expect("json");
+    object.to_string()
 }

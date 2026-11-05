@@ -1,0 +1,1 @@
+{"response":{"transcode_result":{"probe_of_output":{"kind":"video","container":"mov,mp4,m4a,3gp,3g2,mj2","moov_first":true,"video":{"codec":"h264","profile":"High","width":1920,"height":1080,"rotation":-90,"bitrate":8000000,"pix_fmt":"yuv420p","primaries":"bt709","transfer":"bt709","matrix":"bt709"},"audio":{"codec":"aac"},"duration_ms":61500},"bytes":40000000}}}

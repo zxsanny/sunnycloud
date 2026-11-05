@@ -7,6 +7,9 @@ use super::support::{API, MIGRATOR, TestDb};
 use crate::{Db, DbError, Migrator, RunError, Scope};
 
 pub const BASE_VERSION: i64 = 20_261_105_090_000;
+pub const AUDIT_VERSION: i64 = 20_261_105_100_000;
+/// Every embedded migration, oldest first: a new embedded migration is added here, not to each test.
+pub const EMBEDDED: [i64; 2] = [BASE_VERSION, AUDIT_VERSION];
 
 async fn column_rows(conn: &mut PgConnection) -> Vec<(String, String, String, Option<String>)> {
     sqlx::query_as(
@@ -60,7 +63,7 @@ async fn first_migration_creates_accounts_with_owner_grants_and_check() {
         .await
         .expect("run_pending on an empty database");
 
-    assert_eq!(report.applied, [BASE_VERSION]);
+    assert_eq!(report.applied, EMBEDDED);
     let mut admin = db.admin().await;
     assert_eq!(
         column_rows(&mut admin).await,
@@ -223,9 +226,9 @@ async fn up_down_up_leaves_the_same_schema() {
     let second = Migrator::run_pending(&migrator).await.expect("second up");
     let after_second = schema_fingerprint(&mut admin).await;
 
-    assert_eq!(first.applied, [BASE_VERSION]);
-    assert_eq!(down.reverted, [BASE_VERSION]);
-    assert_eq!(second.applied, [BASE_VERSION]);
+    assert_eq!(first.applied, EMBEDDED);
+    assert_eq!(down.reverted, [AUDIT_VERSION, BASE_VERSION]);
+    assert_eq!(second.applied, EMBEDDED);
     assert!(
         after_first
             .iter()
@@ -241,6 +244,6 @@ async fn up_down_up_leaves_the_same_schema() {
     );
     assert_eq!(after_first, after_second);
     let status = Migrator::status(&migrator).await.expect("status");
-    assert_eq!(status.applied, [BASE_VERSION]);
+    assert_eq!(status.applied, EMBEDDED);
     db.drop_db().await;
 }
