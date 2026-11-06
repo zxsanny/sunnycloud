@@ -8,6 +8,7 @@ members = [
     "shared/ids_hashing",
     "shared/names",
     "shared/db",
+    "shared/testdb",
     "shared/ratelimit",
     "shared/observability",
     "contracts",

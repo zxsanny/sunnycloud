@@ -28,7 +28,7 @@ async fn api_failure(db: &TestDb, statement: &'static str) -> Option<DbError> {
 
 #[tokio::test]
 async fn api_role_can_insert_and_select_but_not_update_delete_truncate_or_grant() {
-    let db = TestDb::migrated().await;
+    let db = TestDb::clone_template().await;
 
     assert_eq!(api_failure(&db, INSERT).await, None);
     assert_eq!(
@@ -62,7 +62,7 @@ async fn api_role_can_insert_and_select_but_not_update_delete_truncate_or_grant(
 /// WARNING ("no privileges were granted") instead of an error: the statement succeeds and changes nothing.
 #[tokio::test]
 async fn grant_by_the_api_role_changes_nothing() {
-    let db = TestDb::migrated().await;
+    let db = TestDb::clone_template().await;
     let before = grants(&db).await;
 
     for statement in [
@@ -98,7 +98,7 @@ async fn grants(db: &TestDb) -> Vec<(String, String, bool)> {
 
 #[tokio::test]
 async fn table_is_owned_by_the_migrator_and_the_api_role_holds_only_insert_and_select() {
-    let db = TestDb::migrated().await;
+    let db = TestDb::clone_template().await;
     let mut admin = db.admin().await;
 
     let owner: String = sqlx::query_scalar(
@@ -147,7 +147,7 @@ async fn table_is_owned_by_the_migrator_and_the_api_role_holds_only_insert_and_s
 
 #[tokio::test]
 async fn purge_function_is_security_definer_with_a_fixed_search_path_for_the_api_role_only() {
-    let db = TestDb::migrated().await;
+    let db = TestDb::clone_template().await;
     let mut admin = db.admin().await;
 
     let (owner, definer, config): (String, bool, Option<Vec<String>>) = sqlx::query_as(
@@ -184,7 +184,7 @@ async fn purge_function_is_security_definer_with_a_fixed_search_path_for_the_api
 
 #[tokio::test]
 async fn audit_migration_applies_reverts_and_applies_again() {
-    let db = TestDb::empty().await;
+    let db = TestDb::clone_empty().await;
     let migrator = db.migrator().await;
     let base = Migrator::run_pending(&migrator).await.expect("apply all");
     assert!(
@@ -216,7 +216,7 @@ async fn audit_migration_applies_reverts_and_applies_again() {
 
 #[tokio::test]
 async fn database_refuses_an_unknown_event_and_a_detail_over_2048_bytes() {
-    let db = TestDb::migrated().await;
+    let db = TestDb::clone_template().await;
 
     let unknown = api_failure(
         &db,

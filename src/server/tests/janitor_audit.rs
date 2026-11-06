@@ -1,20 +1,32 @@
 //! AC-6: the audit retention janitor removes only rows older than `now - audit_retention`, through the purge
-//! function, against real PostgreSQL. Provisioning is the `sc_audit` test fixture.
-
-#[path = "../../shared/audit/tests/support/mod.rs"]
-mod support;
+//! function, against real PostgreSQL. Provisioning is the `sc_testdb` harness; the rows go in through the real
+//! `sc_audit` writer.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use contracts::{Janitor, JanitorError};
-use sc_audit::{AuditEventKind, AuditWriter};
+use sc_audit::{AuditEvent, AuditEventKind, AuditWriter};
 use sc_clock::{ManualClock, Timestamp};
+use sc_db::Db;
+use sc_testdb::{START, TestDb};
 use sunnycloud_server::janitor::AuditRetentionJanitor;
-use support::{Fixture, START, event};
 
 const DAY: Duration = Duration::from_secs(86_400);
 const RETENTION: Duration = Duration::from_secs(365 * 86_400);
+
+struct Fixture {
+    db: TestDb,
+    api: Db,
+}
+
+impl Fixture {
+    async fn new() -> Fixture {
+        let db = TestDb::clone_template().await;
+        let api = db.api().await;
+        Fixture { db, api }
+    }
+}
 
 fn days_before_start(days: u32) -> Timestamp {
     START.checked_sub(DAY * days).expect("in range")
@@ -27,7 +39,7 @@ async fn seed(fx: &Fixture, days: u32, count: usize) {
     );
     for _ in 0..count {
         writer
-            .record(event(AuditEventKind::SignIn))
+            .record(AuditEvent::new(AuditEventKind::SignIn))
             .await
             .expect("seed row");
     }

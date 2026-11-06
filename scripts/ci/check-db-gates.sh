@@ -3,8 +3,8 @@
 #   1. scope-names:  the tenant and system scope setting names appear in Rust files only under src/shared/db/.
 #   2. run-system:   every file calling run_system is a repository module listed in the reviewed allowlist, and
 #                    every listed file still calls it.
-#   3. sql-text:     no sqlx query entry point and no SQL-looking string literal outside src/shared/db/, a tests/
-#                    directory or a repository module.
+#   3. sql-text:     no sqlx query entry point and no SQL-looking string literal outside src/shared/db/,
+#                    src/shared/testdb/ (dev-only), a tests/ directory or a repository module.
 # A repository module is a Rust file or directory named repo, repository or repositories, or a file ending in
 # _repo.rs or _repository.rs.
 # usage: check-db-gates.sh [ROOT]   (default: repository root; scans ROOT/src/**/*.rs)
@@ -29,6 +29,9 @@ is_repository_path() {
 }
 
 in_sc_db() { case "$1" in src/shared/db/*) return 0 ;; esac; return 1; }
+# The dev-only test database crate: its SQL provisions per-test databases. Exempt from the sql-text gate only;
+# the crate_graph test of the server keeps it out of every normal dependency.
+in_testdb() { case "$1" in src/shared/testdb/*) return 0 ;; esac; return 1; }
 
 # Prints "relative/path:line:text" of every line in ROOT/src/**/*.rs matching the ERE $1. With $2 = skip-comments,
 # lines that start with // (comments, doc comments) are dropped.
@@ -97,7 +100,7 @@ while IFS= read -r entry; do
 done <<<"$listed"
 report "run-system" "add the repository module to $(basename "$allowlist") in review, or drop the entry" "${system_hits%$'\n'}"
 
-echo "$tag step 3/3: SQL text only in sc_db, tests/ and repository modules"
+echo "$tag step 3/3: SQL text only in sc_db, sc_testdb, tests/ and repository modules"
 # Three shapes: a sqlx query entry point, a string literal that opens with a SQL verb, a line that starts with one
 # (the body of a multi-line literal). Verbs are upper case, so prose such as "Select a file" does not match.
 verbs='SELECT[[:space:]]|INSERT[[:space:]]+INTO[[:space:]]|DELETE[[:space:]]+FROM[[:space:]]|UPDATE[[:space:]]+[A-Za-z_."]+[[:space:]]+SET[[:space:]]|TRUNCATE[[:space:]]|CREATE[[:space:]]+TABLE[[:space:]]|ALTER[[:space:]]+TABLE[[:space:]]|DROP[[:space:]]+TABLE[[:space:]]'
@@ -110,6 +113,7 @@ while IFS= read -r hit; do
   [ -n "$hit" ] || continue
   file="$(file_of "$hit")"
   in_sc_db "$file" && continue
+  in_testdb "$file" && continue
   case "$file" in */tests/*) continue ;; esac
   is_repository_path "$file" && continue
   sql_hits+="$hit"$'\n'

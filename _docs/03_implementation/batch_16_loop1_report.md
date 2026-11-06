@@ -45,3 +45,15 @@ CI-parity: PASS with a local PostgreSQL 18 (`DATABASE_URL`, throwaway container,
 ## Next Batch
 
 Ready now: AZ-3749 quota skeleton and AZ-3723 blobstore skeleton (both add a migration and need the per-test database harness: extract a shared test-support crate first), AZ-3893 platform fs windows (cannot be compiled here); the ready list is short until the component crates are unblocked by the skeletons.
+
+## Follow-up: shared test-database crate (owner decision, no ticket)
+
+The per-test database harness (cluster and role setup, migrated template, per-test clone, connection-leak count) existed three times and the next crates (quota, blobstore, tree, ...) would have copied it again. It is now one dev-only crate, `src/shared/testdb` (package `sc_testdb`): `TestDb` with `clone_template`, `clone_empty`, `config`, `api`, `migrator`, `conn_as`, `admin`, `admin_exec`, `admin_count`, `open_connections`, `drop_db` and `finish` (the leak count), plus `START` and `clock_at_start`. The template name carries a hash of the migration files, stale templates and test databases are dropped, and the password and setup lock equal those of `sc_db`'s own tests, so all suites can run in parallel against one server.
+
+Migrated: `sc_audit` tests (support file 279 to 39 lines), identity tests (397 to 112 lines; `Harness`, fixtures and settings stay), and the two server janitor tests (their `#[path]` include of another crate's test file is gone; they use `sc_testdb` and the real `sc_audit` writer). Not migrated: `sc_db`'s own lib tests, which cannot depend on a crate that depends on `sc_db` (its `support.rs` stays at 295 lines; the constants are cross-referenced in the crate docs). Every test binary of the migrated suites has the same pass count as before; `crate_graph` went from 8 to 10 tests.
+
+Guards: `server/tests/crate_graph.rs` now rejects `sc_testdb` as a normal or build dependency of any workspace crate (a passing and a negative test). Owner decision: `scripts/ci/check-db-gates.sh` exempts `src/shared/testdb/` from the sql-text step only (not from the scope-names and run-system steps), through a new helper `in_testdb`.
+
+Gate: all 15 steps RC 0; 1529 passed, 0 failed, 3 ignored. Doc follow-ups: mention `shared/testdb` in the module map and in the 01 `tests.md` Test Data Management section; note the dev-only rule in the dependency rules; the header of `check-db-gates.sh` already names the exemption. Disk after the gate: 96%.
+
+Commit: `[no-ticket] shared dev-only test-database crate sc_testdb` — Loop: 1

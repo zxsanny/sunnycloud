@@ -46,7 +46,9 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 axum = { workspace = true }
-# Provisions the per-test PostgreSQL databases of the janitor tests; test code only (`crate_graph` bans it as a normal dependency).
+# Per-test PostgreSQL databases of the janitor tests; `crate_graph` bans it as a normal dependency.
+sc_testdb = { path = "../shared/testdb" }
+# The janitor tests read and seed their databases directly; test code only (`crate_graph` bans it as a normal dependency).
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 tower = { version = "0.5", default-features = false, features = ["util"] }
 uuid = { workspace = true, features = ["v4"] }

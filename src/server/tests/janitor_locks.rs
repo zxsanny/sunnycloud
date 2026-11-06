@@ -2,24 +2,22 @@
 //! scheduler while `pg_locks` is sampled. The full `serve` stack (IT-12-9) is not built yet, so the janitor is
 //! the audit retention janitor and the API process is this test process.
 
-#[path = "../../shared/audit/tests/support/mod.rs"]
-mod support;
-
 mod janitor_support;
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use janitor_support::{metrics, series, system_clock};
+use sc_testdb::TestDb;
 use sunnycloud_server::janitor::{AuditRetentionJanitor, JanitorMetrics, Scheduled, Scheduler};
-use support::Fixture;
 
 const SAMPLES: usize = 100;
 
 #[tokio::test]
 async fn no_advisory_lock_is_held_while_a_database_janitor_cycles() {
     // Arrange
-    let fx = Fixture::new().await;
+    let db = TestDb::clone_template().await;
+    let api = db.api().await;
     let metrics = metrics();
     let janitor_metrics = Arc::new(JanitorMetrics::new(&metrics).expect("janitor families"));
     let scheduler = Scheduler::start(
@@ -27,7 +25,7 @@ async fn no_advisory_lock_is_held_while_a_database_janitor_cycles() {
         janitor_metrics,
         vec![Scheduled {
             janitor: Arc::new(AuditRetentionJanitor::new(
-                fx.api.clone(),
+                api.clone(),
                 Duration::from_secs(86_400),
             )),
             interval: Duration::from_millis(5),
@@ -40,7 +38,7 @@ async fn no_advisory_lock_is_held_while_a_database_janitor_cycles() {
     // Act
     let mut samples = Vec::new();
     for _ in 0..SAMPLES {
-        samples.push(fx.db.admin_count(held).await);
+        samples.push(db.admin_count(held).await);
         tokio::time::sleep(Duration::from_millis(2)).await;
     }
     scheduler.stop().await;
@@ -55,5 +53,5 @@ async fn no_advisory_lock_is_held_while_a_database_janitor_cycles() {
     .expect("the janitor cycled");
     assert!(cycles >= 10.0, "only {cycles} cycles ran during sampling");
     assert_eq!(samples, vec![0; SAMPLES]);
-    fx.db.drop_db().await;
+    db.drop_db().await;
 }

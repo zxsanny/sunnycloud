@@ -21,6 +21,7 @@ const WORKSPACE_PACKAGES: &[(&str, &str)] = &[
     ("sc_ids", "shared/ids_hashing"),
     ("sc_names", "shared/names"),
     ("sc_db", "shared/db"),
+    ("sc_testdb", "shared/testdb"),
     ("sc_ratelimit", "shared/ratelimit"),
     ("sc_observability", "shared/observability"),
     ("contracts", "contracts"),
@@ -160,6 +161,13 @@ fn violations(graph: &Graph) -> Vec<String> {
             if package.name == "sync-core-wasm" && WASM_FORBIDDEN.contains(&dep.as_str()) {
                 found.push(format!("sync-core-wasm depends on {dep}"));
             }
+            // The test database harness is for tests: any normal or build edge ships it.
+            if dep == "sc_testdb" && !package.dev_only.contains(dep) {
+                found.push(format!(
+                    "{} depends on sc_testdb outside dev-dependencies",
+                    package.name
+                ));
+            }
             // A test database needs SQL; only a normal dependency puts sqlx into the shipped crate.
             if dep == "sqlx"
                 && !package.dev_only.contains(dep)
@@ -177,6 +185,15 @@ fn add_edge(graph: &mut Graph, from: &str, to: &str) {
         .get_mut(from)
         .unwrap_or_else(|| panic!("{from} missing from the graph"))
         .deps
+        .insert(to.to_string());
+}
+
+fn add_dev_edge(graph: &mut Graph, from: &str, to: &str) {
+    add_edge(graph, from, to);
+    graph
+        .get_mut(from)
+        .unwrap_or_else(|| panic!("{from} missing from the graph"))
+        .dev_only
         .insert(to.to_string());
 }
 
@@ -273,4 +290,31 @@ fn wasm_adapter_depending_on_the_native_client_is_rejected() {
     let found = violations(&graph);
 
     assert_eq!(found, vec!["sync-core-wasm depends on sync-core"]);
+}
+
+#[test]
+fn testdb_as_a_normal_or_build_dependency_is_rejected() {
+    let mut graph = workspace_graph();
+    add_edge(&mut graph, "sc_ratelimit", "sc_testdb");
+    add_edge(&mut graph, "sunnycloud-tree", "sc_testdb");
+
+    let found = violations(&graph);
+
+    assert_eq!(
+        found,
+        vec![
+            "sc_ratelimit depends on sc_testdb outside dev-dependencies",
+            "sunnycloud-tree depends on sc_testdb outside dev-dependencies",
+        ]
+    );
+}
+
+#[test]
+fn testdb_as_a_dev_dependency_is_accepted() {
+    let mut graph = workspace_graph();
+    add_dev_edge(&mut graph, "sunnycloud-tree", "sc_testdb");
+
+    let found = violations(&graph);
+
+    assert!(found.is_empty(), "forbidden edges: {found:?}");
 }

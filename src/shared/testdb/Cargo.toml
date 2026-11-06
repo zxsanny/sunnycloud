@@ -1,0 +1,23 @@
+[package]
+name = "sc_testdb"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Test support: only a dev-dependency of other crates (`crate_graph` in sunnycloud-server enforces it).
+[dependencies]
+sc_clock = { path = "../clock" }
+sc_config = { path = "../config" }
+sc_db = { path = "../db" }
+# Same features as sc_db.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+tokio = { workspace = true, features = ["sync", "time"] }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
