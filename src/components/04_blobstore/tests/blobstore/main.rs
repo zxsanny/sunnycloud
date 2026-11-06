@@ -6,3 +6,4 @@ mod errors;
 mod migration;
 mod rls;
 mod support;
+mod system_scope_repo;

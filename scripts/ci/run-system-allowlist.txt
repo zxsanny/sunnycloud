@@ -4,3 +4,5 @@
 # that has no run_system call fails the gate, so the list cannot go stale.
 # Adding a line is the review: state in the pull request which function runs in system scope and why.
 src/components/01_identity/src/auth_repo.rs
+src/components/04_blobstore/tests/blobstore/system_scope_repo.rs
+src/components/07a_quota/tests/rls/system_scope_repo.rs

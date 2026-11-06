@@ -1,11 +1,12 @@
 //! AC-2: the runtime role sees only the scoped account's quota row, and no row without a scope. Rows are
 //! written as the schema owner; every read is made as `sunnycloud`.
 //!
-//! The system-scope half of AC-2 (system scope sees both rows) is not covered here: `Db::run_system` may be
-//! called only from an allowlisted repository module (`scripts/ci/check-db-gates.sh`), and this crate has
-//! none until the admin task adds one.
+//! The system-scope half of AC-2 (system scope sees both rows) is in `rls/system_scope_repo.rs`, the only file of
+//! this crate on `scripts/ci/run-system-allowlist.txt`.
 
 mod support;
+#[path = "rls/system_scope_repo.rs"]
+mod system_scope_repo;
 
 use sc_db::Scope;
 use sqlx::Connection;
