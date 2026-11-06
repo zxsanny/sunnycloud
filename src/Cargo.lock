@@ -3305,7 +3305,14 @@ dependencies = [
 name = "sunnycloud-blobstore"
 version = "0.1.0"
 dependencies = [
+ "chacha20poly1305",
  "contracts",
+ "sc_config",
+ "sc_db",
+ "sc_testdb",
+ "sqlx",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -3388,6 +3395,12 @@ name = "sunnycloud-quota"
 version = "0.1.0"
 dependencies = [
  "contracts",
+ "sc_config",
+ "sc_db",
+ "sc_testdb",
+ "sqlx",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

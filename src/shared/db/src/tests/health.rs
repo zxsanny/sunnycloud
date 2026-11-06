@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use super::accounts_base::EMBEDDED;
+use super::accounts_base::embedded;
 use super::proxy::Proxy;
 use super::support::{TestDb, admin_options};
 use crate::{Db, DbConfig, DbError, DbRole, Migrator};
@@ -50,7 +50,7 @@ async fn health_reports_version_pending_and_pool_in_use() {
             .is_some_and(|version| version.starts_with("18")),
         "{idle:?}"
     );
-    assert_eq!(idle.migrations_pending, Some(EMBEDDED.len()));
+    assert_eq!(idle.migrations_pending, Some(embedded().len()));
     assert_eq!(idle.pool_in_use, 0);
     assert!(busy.reachable);
     assert_eq!(
@@ -58,7 +58,7 @@ async fn health_reports_version_pending_and_pool_in_use() {
         "the connection of the open transaction"
     );
     let stats = settled_idle_stats(&api).await;
-    assert_eq!(stats.migrations_pending, Some(EMBEDDED.len()));
+    assert_eq!(stats.migrations_pending, Some(embedded().len()));
     assert_eq!(stats.pool_max, 5);
     assert_eq!(stats.pool_in_use, 0);
     let busy_op = stats
@@ -111,7 +111,7 @@ async fn health_of_a_stopped_database_is_unreachable_within_the_acquire_timeout(
     );
     assert_eq!(
         api.stats().migrations_pending,
-        Some(EMBEDDED.len()),
+        Some(embedded().len()),
         "the last reading is kept"
     );
     drop(proxy);

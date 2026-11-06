@@ -11,3 +11,16 @@ workspace = true
 
 [dependencies]
 contracts = { path = "../../contracts" }
+sc_config = { path = "../../shared/config" }
+sc_db = { path = "../../shared/db" }
+# Names the cipher failure of the wrap and chunk AEADs the conversions accept.
+chacha20poly1305 = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+# Per-test PostgreSQL databases.
+sc_testdb = { path = "../../shared/testdb" }
+# The tests read and write the tables with plain statements on the transaction's connection.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+uuid = { workspace = true, features = ["v4"] }

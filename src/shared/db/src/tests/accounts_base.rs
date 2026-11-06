@@ -7,16 +7,27 @@ use super::support::{API, MIGRATOR, TestDb};
 use crate::{Db, DbError, Migrator, RunError, Scope};
 
 pub const BASE_VERSION: i64 = 20_261_105_090_000;
-pub const AUDIT_VERSION: i64 = 20_261_105_100_000;
-pub const IDENTITY_VERSION: i64 = 20_261_105_110_000;
-pub const SESSION_SUCCESSOR_VERSION: i64 = 20_261_106_100_000;
-/// Every embedded migration, oldest first: a new embedded migration is added here, not to each test.
-pub const EMBEDDED: [i64; 4] = [
-    BASE_VERSION,
-    AUDIT_VERSION,
-    IDENTITY_VERSION,
-    SESSION_SUCCESSOR_VERSION,
-];
+/// The versions of the migration files in `src/migrations`, oldest first: what the migrator must apply.
+pub fn embedded() -> Vec<i64> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations");
+    let mut versions: Vec<i64> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|error| panic!("cannot read {}: {error}", dir.display()))
+        .filter_map(|entry| {
+            let name = entry
+                .expect("migration entry")
+                .file_name()
+                .into_string()
+                .ok()?;
+            name.strip_suffix(".up.sql")?
+                .split('_')
+                .next()?
+                .parse()
+                .ok()
+        })
+        .collect();
+    versions.sort_unstable();
+    versions
+}
 
 async fn column_rows(conn: &mut PgConnection) -> Vec<(String, String, String, Option<String>)> {
     sqlx::query_as(
@@ -70,7 +81,7 @@ async fn first_migration_creates_accounts_with_owner_grants_and_check() {
         .await
         .expect("run_pending on an empty database");
 
-    assert_eq!(report.applied, EMBEDDED);
+    assert_eq!(report.applied, embedded());
     let mut admin = db.admin().await;
     let columns = column_rows(&mut admin).await;
     assert_eq!(
@@ -234,11 +245,11 @@ async fn up_down_up_leaves_the_same_schema() {
     let second = Migrator::run_pending(&migrator).await.expect("second up");
     let after_second = schema_fingerprint(&mut admin).await;
 
-    assert_eq!(first.applied, EMBEDDED);
-    let mut newest_first = EMBEDDED;
+    assert_eq!(first.applied, embedded());
+    let mut newest_first = embedded();
     newest_first.reverse();
     assert_eq!(down.reverted, newest_first);
-    assert_eq!(second.applied, EMBEDDED);
+    assert_eq!(second.applied, embedded());
     assert!(
         after_first
             .iter()
@@ -254,6 +265,6 @@ async fn up_down_up_leaves_the_same_schema() {
     );
     assert_eq!(after_first, after_second);
     let status = Migrator::status(&migrator).await.expect("status");
-    assert_eq!(status.applied, EMBEDDED);
+    assert_eq!(status.applied, embedded());
     db.drop_db().await;
 }

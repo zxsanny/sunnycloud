@@ -4,7 +4,7 @@
 
 use sqlx::PgConnection;
 
-use super::accounts_base::{BASE_VERSION, EMBEDDED};
+use super::accounts_base::{BASE_VERSION, embedded};
 use super::seeded::{self, IRREVERSIBLE_DOWN};
 use super::support::TestDb;
 use crate::migrate::MigrationSet;
@@ -22,7 +22,9 @@ async fn table_exists(conn: &mut PgConnection, table: &str) -> bool {
 
 /// Every embedded version, then the extra one the test adds.
 fn with_extra() -> Vec<i64> {
-    EMBEDDED.iter().copied().chain([EXTRA]).collect()
+    let mut versions = embedded();
+    versions.push(EXTRA);
+    versions
 }
 
 #[tokio::test]
@@ -91,7 +93,7 @@ async fn a_changed_applied_file_is_a_checksum_mismatch_and_nothing_is_applied() 
     let mut admin = db.admin().await;
     assert!(!table_exists(&mut admin, "probe_never").await);
     let status = Migrator::status(&api).await.expect("status");
-    assert_eq!(status.applied, EMBEDDED);
+    assert_eq!(status.applied, embedded());
     db.drop_db().await;
 }
 
@@ -147,7 +149,7 @@ async fn a_failing_migration_is_named_and_earlier_ones_stay() {
     assert!(table_exists(&mut admin, "accounts").await);
     assert!(!table_exists(&mut admin, "probe_half").await);
     let status = set().status(&migrator).await.expect("status");
-    assert_eq!(status.applied, EMBEDDED);
+    assert_eq!(status.applied, embedded());
     assert_eq!(status.pending, [EXTRA]);
     db.drop_db().await;
 }
@@ -170,8 +172,10 @@ async fn the_api_role_cannot_migrate_but_can_read_the_version() {
     assert_eq!(
         before,
         (
-            Ok(EMBEDDED.to_vec()),
-            Ok(SchemaState::Pending { n: EMBEDDED.len() })
+            Ok(embedded()),
+            Ok(SchemaState::Pending {
+                n: embedded().len()
+            })
         )
     );
     let mut admin = db.admin().await;
