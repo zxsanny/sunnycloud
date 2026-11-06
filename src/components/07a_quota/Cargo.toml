@@ -13,11 +13,16 @@ workspace = true
 contracts = { path = "../../contracts" }
 sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }
+sc_observability = { path = "../../shared/observability" }
+# The repository module runs its statements on the transaction's connection; same features as sc_db.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+thiserror = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
-# The tests read the table with plain statements on the transaction's connection.
-sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+# The WARN test installs the capturing subscriber of sc_observability on its thread.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 uuid = { workspace = true, features = ["v4"] }

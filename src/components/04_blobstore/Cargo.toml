@@ -13,11 +13,18 @@ workspace = true
 contracts = { path = "../../contracts" }
 sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }
-# Names the cipher failure of the wrap and chunk AEADs the conversions accept.
-chacha20poly1305 = { workspace = true }
+# Seals and opens the chunks; the cipher failure of the wrap and chunk AEADs is what the conversions accept.
+chacha20poly1305 = { workspace = true, features = ["zeroize"] }
+# Per-blob data keys and nonce prefixes.
+getrandom = { workspace = true }
+thiserror = { workspace = true }
 uuid = { workspace = true }
+# Data keys are wiped on drop.
+zeroize = { version = "1.8", default-features = false }
 
 [dev-dependencies]
+# Test oracle only: the sequential STREAM encryptor the hand-built nonces are compared with.
+aead-stream = { workspace = true, features = ["alloc"] }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
 # The tests read and write the tables with plain statements on the transaction's connection.

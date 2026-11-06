@@ -38,7 +38,7 @@ Then both return `Reserved`, `reserved_bytes` is 200 MiB and `used_bytes` stays 
 
 **AC-2: A refusal changes nothing**
 Given limit 1 GiB, used 800 MiB and reserved 100 MiB
-When `reserve(124 MiB)`, `reserve(123 MiB)` and `reserve(1)` run in turn
+When `reserve(125 MiB)`, `reserve(124 MiB)` and `reserve(1)` run in turn
 Then the first returns `QuotaExceeded{limit: 1 GiB, used: 800 MiB, reserved: 100 MiB}` with the row unchanged, the second returns `Reserved` (used + reserved equals the limit exactly), and the third returns `QuotaExceeded`
 
 **AC-3: Concurrent reservations cannot overshoot**

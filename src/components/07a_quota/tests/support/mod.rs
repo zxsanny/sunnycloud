@@ -6,10 +6,17 @@
 
 pub mod settings;
 
-use sc_db::Db;
-pub use sc_testdb::{API, MIGRATOR, START, TestDb};
+use std::time::Duration;
+
+use sc_db::{Db, DbError, DbRole, DbTx, Scope};
+pub use sc_testdb::{API, MIGRATOR, START, TestDb, clock_at_start};
 use sqlx::PgConnection;
+use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
 use uuid::Uuid;
+
+pub const MIB: i64 = 1 << 20;
+pub const GIB: i64 = 1 << 30;
+pub const TIB: i64 = 1 << 40;
 
 pub struct Harness {
     pub db: TestDb,
@@ -21,6 +28,16 @@ impl Harness {
         let db = TestDb::clone_template().await;
         let api = db.api().await;
         Harness { db, api }
+    }
+
+    /// The API role with a larger pool, for tests that hold many transactions open at once.
+    pub async fn api_with_pool(&self, max: u32) -> Db {
+        let mut config = self.db.config();
+        config.db_pool_max = max;
+        config.db_acquire_timeout = Duration::from_secs(30);
+        Db::connect(&config, DbRole::Api)
+            .await
+            .expect("connect as the API role")
     }
 
     pub async fn fixture_conn(&self) -> PgConnection {
@@ -78,4 +95,30 @@ pub async fn insert_quota(
     .execute(conn)
     .await
     .map(drop)
+}
+
+pub fn ledger(default_quota_bytes: i64) -> PgQuotaLedger {
+    PgQuotaLedger::new(QuotaConfig {
+        default_quota_bytes,
+    })
+}
+
+/// Runs `f` in one committed transaction scoped to `account`.
+pub async fn in_tx<T>(db: &Db, account: Uuid, f: impl AsyncFnOnce(&mut DbTx) -> T) -> T {
+    db.run(Scope::Account(account), async |tx| {
+        Ok::<_, DbError>(f(tx).await)
+    })
+    .await
+    .expect("transaction")
+}
+
+/// `(limit_bytes, used_bytes, reserved_bytes)` as the schema owner sees them.
+pub async fn quota_row(conn: &mut PgConnection, id: Uuid) -> (Option<i64>, i64, i64) {
+    sqlx::query_as(
+        "SELECT limit_bytes, used_bytes, reserved_bytes FROM quota WHERE account_id = $1",
+    )
+    .bind(id)
+    .fetch_one(conn)
+    .await
+    .expect("read quota row")
 }

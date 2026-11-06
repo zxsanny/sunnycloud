@@ -295,16 +295,16 @@ fn wasm_adapter_depending_on_the_native_client_is_rejected() {
 #[test]
 fn testdb_as_a_normal_or_build_dependency_is_rejected() {
     let mut graph = workspace_graph();
+    add_edge(&mut graph, "sc_names", "sc_testdb");
     add_edge(&mut graph, "sc_ratelimit", "sc_testdb");
-    add_edge(&mut graph, "sunnycloud-tree", "sc_testdb");
 
     let found = violations(&graph);
 
     assert_eq!(
         found,
         vec![
+            "sc_names depends on sc_testdb outside dev-dependencies",
             "sc_ratelimit depends on sc_testdb outside dev-dependencies",
-            "sunnycloud-tree depends on sc_testdb outside dev-dependencies",
         ]
     );
 }
