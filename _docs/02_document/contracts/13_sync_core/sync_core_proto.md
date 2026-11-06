@@ -40,6 +40,7 @@ Sources: `components/13_sync_core/description.md` §1, §2, §3, §7; `module-la
 | `UploadSession` | `upload_id`, `need_blocks: [u32]`, `lane_limit`, `expires_at` | answer of `start_upload` and `get_upload` |
 | `StartOutcome` | `Session(UploadSession)` \| `NothingToSend{revision}` | |
 | `CommitOutcome` | `Published{node, revision}` \| `ConflictCopy{node, copy}` \| `NothingToSend{revision}` | built from 03's `Committed{node_id, revision_id, conflict_copy?}`; exact field use follows the G-03-3 decision (E-14/c01) |
+| `Staged` | `staged_key: Uuid`, `size: u64` | answer of `stage_small`; added by AZ-3963 (owner approved 2026-11-06); the server-side `contracts::Staged` carries `size: i64` |
 | `BatchEntry` | `staged_key`, `parent`, `name`, `base_revision?`, `file_hash`, `client_meta?`, `import_hint?` | |
 | `BatchCommit` | `commit_id: Uuid`, `entries: [BatchEntry]` (<= `batch_max_entries`) | |
 | `BatchResult` | per entry `Committed{node, revision, conflict_copy?}` \| `EntryError{code}` | |

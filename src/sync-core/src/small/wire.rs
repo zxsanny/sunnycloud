@@ -2,20 +2,20 @@
 //! default number of sends.
 
 use bytes::Bytes;
-use sync_core_proto::{BatchCommit, BatchResult, Hash32};
+use sync_core_proto::{BatchCommit, BatchResult, Hash32, Staged};
 use uuid::Uuid;
 
 use crate::error::SyncError;
 use crate::request::{Method, Request, RequestPath};
 use crate::tree_ops::{decode, send};
 
-/// `PUT /api/v1/staged-uploads/{staged_key}`. The 2xx body is not read: the staged row is the server's.
-pub(super) async fn stage_small(
+/// `PUT /api/v1/staged-uploads/{staged_key}`; the 2xx body is the staged row.
+pub(crate) async fn stage_small(
     path: &RequestPath,
     staged_key: Uuid,
     bytes: Bytes,
     hash: &Hash32,
-) -> Result<(), SyncError> {
+) -> Result<Staged, SyncError> {
     let request = Request {
         method: Method::Put,
         target: format!("/api/v1/staged-uploads/{staged_key}"),
@@ -29,7 +29,7 @@ pub(super) async fn stage_small(
         body: bytes,
         max_attempts: path.default_attempts(),
     };
-    send(path, "stage_small", request).await.map(|_| ())
+    decode("stage_small", send(path, "stage_small", request).await?)
 }
 
 /// `POST /api/v1/commits:batch`. A repeated `commit_id` with the same entries returns the stored response.

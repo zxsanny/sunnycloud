@@ -4,11 +4,12 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -47,29 +48,42 @@ impl Drop for TokenFile {
 
 /// `(status, body)` of one GET with `Connection: close`.
 pub fn http_get(addr: SocketAddr, path: &str) -> (u16, String) {
-    let mut stream = TcpStream::connect(addr).expect("connects to the ops listener");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .expect("read timeout is settable");
+    try_get(addr, path).expect("the GET is answered")
+}
+
+/// One GET; any failure to connect, send or read, or an answer without a status line, is an error.
+fn try_get(addr: SocketAddr, path: &str) -> io::Result<(u16, String)> {
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2))?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     write!(
         stream,
         "GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
-    )
-    .expect("request is written");
+    )?;
     let mut response = String::new();
-    stream
-        .read_to_string(&mut response)
-        .expect("response is read");
+    stream.read_to_string(&mut response)?;
     let status = response
         .split_whitespace()
         .nth(1)
         .and_then(|code| code.parse().ok())
-        .expect("status line");
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no status line"))?;
     let body = response
         .split_once("\r\n\r\n")
         .map(|(_, body)| body.to_owned())
         .unwrap_or_default();
-    (status, body)
+    Ok((status, body))
+}
+
+/// Whether the worker answers `/healthz`. A bare TCP connect proves nothing: a port can accept a connection from
+/// a socket that is not the worker's (a transient listener of another test, a connect to itself).
+fn serves(addr: SocketAddr) -> bool {
+    matches!(try_get(addr, "/healthz"), Ok((200, _)))
+}
+
+/// A listener on a port nothing else uses, held by the caller. It takes the lock `Running::start` holds, so it
+/// cannot be given the port of a worker that is about to bind it.
+pub fn busy_port() -> TcpListener {
+    let _starting = STARTING.lock().unwrap_or_else(PoisonError::into_inner);
+    TcpListener::bind("127.0.0.1:0").expect("binds")
 }
 
 pub fn free_port() -> u16 {
@@ -112,20 +126,33 @@ pub struct Running {
     pub env: BTreeMap<String, String>,
 }
 
+/// A port that `free_port` returns is free again at once, so two tests starting workers together can be handed
+/// the same one. Only one worker starts at a time: its port is held until the worker listens on it.
+static STARTING: Mutex<()> = Mutex::new(());
+
 impl Running {
     pub fn start(token: &str) -> Self {
+        let _starting = STARTING.lock().unwrap_or_else(PoisonError::into_inner);
         let port = free_port();
         let token = TokenFile::new(token);
         let env = env_for(port, &token);
-        let child = worker_command(&env, &[])
+        let mut child = worker_command(&env, &[])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .expect("the worker binary starts");
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         let deadline = Instant::now() + Duration::from_secs(15);
-        while TcpStream::connect(addr).is_err() {
-            assert!(Instant::now() < deadline, "the ops listener never opened");
+        while !serves(addr) {
+            assert!(
+                Instant::now() < deadline,
+                "the worker never answered /healthz"
+            );
+            let exited = child.try_wait().expect("the worker's state is readable");
+            assert!(
+                exited.is_none(),
+                "the worker exited before it answered: {exited:?}"
+            );
             sleep(Duration::from_millis(50));
         }
         Self {
@@ -157,8 +184,18 @@ impl Running {
 impl Drop for Running {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
+            let exited = child.try_wait().expect("the worker's state is readable");
             child.kill().expect("the worker can be killed");
-            child.wait().expect("the killed worker is reaped");
+            let output = child
+                .wait_with_output()
+                .expect("the killed worker is reaped");
+            if std::thread::panicking() {
+                eprintln!(
+                    "worker at the end of a failed test: exited before the end {exited:?}, stdout {:?}, stderr {:?}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
         }
     }
 }

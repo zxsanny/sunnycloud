@@ -48,3 +48,13 @@ CI-parity: PASS with a local PostgreSQL 18 (`DATABASE_URL`, throwaway container,
 ## Next Batch
 
 Ready now: AZ-3749 quota skeleton (adds a migration; a shared test-database harness is advisable first), AZ-3684 provider sign-in callbacks, AZ-3964 verified download, AZ-3965 feed client, AZ-3966 token lifecycle, AZ-3961 sync hash file (all `sync-core`, one at a time), AZ-3870 and AZ-3871 worker scratch and decoder client, AZ-3893 platform fs windows; AZ-3963 completes once `Staged` is decided.
+
+## Follow-up: AZ-3963 completed (owner approved the `Staged` DTO)
+
+`Staged{staged_key: Uuid, size: u64}` is added to `sync-core-proto` (`transfer.rs`, exported, round-trip test, row in `sync_core_proto.md`). `stage_small(staged_key, bytes, hash) -> Staged` is now a public `SyncApi` method of `HttpSyncClient`; its answer body is decoded, and the batch executor refuses a staged row whose key or size is not the one it sent (`ProtocolViolation`). The fake server answers with the echoed key and size. 4 new tests in `tests/small_stage_one.rs`. The server-side `contracts::Staged` keeps `size: i64`; the doc row says so. The `Staged` JSON shape (`{staged_key, size}`) is still an assumption until E-21 pins it.
+
+Also fixed: the worker test `ac4_healthcheck_...` (and `ac2`, `ac3`, `sigterm_...`) failed in about 1 of 3 gate runs and in about 6% of runs under a light load. Cause: `Running::start` treated a bare TCP connect as "the worker is up", but a connect can succeed on a port that is not yet the worker's, so the next request was refused or reset. `start` now waits for a 200 on `/healthz`, checks that the child has not exited, takes a lock around choosing a port, and the busy-port test takes the same lock; a failing test prints what the worker wrote. 0 failures in 300 runs under the load that gave 6% before.
+
+Gate: all 15 steps RC 0; 1184 passed, 0 failed, 2 ignored. AZ-3963 is `In Testing`; the batch 12 commit table above lists it as partly done, this supersedes it.
+
+Commit: `[AZ-3963] Staged DTO, public stage_small, stable worker test start` — Loop: 1

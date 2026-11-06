@@ -5,8 +5,8 @@ use std::sync::Arc;
 use bytes::Bytes;
 use sc_clock::{Clock, SystemClock};
 use sync_core_proto::{
-    BatchCommit, BatchResult, FileHash, ListingPage, NodeView, PageToken, RevisionRef,
-    RevisionView, ServerInfo, ServerUrl, UrlError,
+    BatchCommit, BatchResult, FileHash, Hash32, ListingPage, NodeView, PageToken, RevisionRef,
+    RevisionView, ServerInfo, ServerUrl, Staged, UrlError,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -97,6 +97,15 @@ pub trait SyncApi: Send + Sync {
         node: Uuid,
         base_revision: Option<Uuid>,
     ) -> BoxFuture<'_, Result<(), SyncError>>;
+
+    /// Stages one file of at most `small_file_max` bytes in one request, idempotent by `staged_key`; `hash` is
+    /// the BLAKE3 of `bytes` (sent as `X-Blake3`). Errors: `QuotaExceeded`, `StagedCapReached`, `FreeSpaceFloor`.
+    fn stage_small(
+        &self,
+        staged_key: Uuid,
+        bytes: Bytes,
+        hash: Hash32,
+    ) -> BoxFuture<'_, Result<Staged, SyncError>>;
 
     /// Idempotent by `commit_id`: a repeated id with the same entries returns the stored response.
     /// Errors: `BatchTooLarge`, `CommitIdReused`.
@@ -268,6 +277,15 @@ impl SyncApi for HttpSyncClient {
         base_revision: Option<Uuid>,
     ) -> BoxFuture<'_, Result<(), SyncError>> {
         Box::pin(tree_ops::delete_node(&self.path, node, base_revision))
+    }
+
+    fn stage_small(
+        &self,
+        staged_key: Uuid,
+        bytes: Bytes,
+        hash: Hash32,
+    ) -> BoxFuture<'_, Result<Staged, SyncError>> {
+        Box::pin(async move { small::stage_small(&self.path, staged_key, bytes, &hash).await })
     }
 
     fn batch_commit(&self, commit: BatchCommit) -> BoxFuture<'_, Result<BatchResult, SyncError>> {

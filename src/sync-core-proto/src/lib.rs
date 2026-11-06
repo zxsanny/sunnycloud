@@ -27,7 +27,8 @@ pub use planner::{Action, BlockResult, CommitResult, RetryPolicy, UploadPlanner}
 pub use sc_ids::{BLOCK_SIZE, FileHash, FileHasher, Hash32, HashError, rollup};
 pub use server_info::{ServerInfo, effective_lanes};
 pub use transfer::{
-    BatchCommit, BatchEntry, BatchResult, CommitOutcome, EntryResult, StartOutcome, UploadSession,
+    BatchCommit, BatchEntry, BatchResult, CommitOutcome, EntryResult, Staged, StartOutcome,
+    UploadSession,
 };
 pub use tree::{
     ListingItem, ListingPage, NodeKind, NodeView, PageToken, RevisionRef, RevisionView,

@@ -9,7 +9,7 @@ mod tree_support;
 use batch_support::{RecordingSink, SpyStore, Timeline, files, id};
 use sc_error::ErrorCode;
 use serde_json::json;
-use support::{Answer, Route, Script};
+use support::{Answer, LoggedRequest, Route, Script};
 use sync_core::{BatchOutcome, BatchRunError, CheckpointStore, SyncApi, SyncError};
 use sync_core_proto::{BatchCommit, BatchEntry, BatchResult, EntryResult};
 use tree_support::{body_json, connected, file_hash, seen};
@@ -26,8 +26,13 @@ fn entry(n: u128) -> BatchEntry {
     }
 }
 
-fn staged_ok() -> Answer {
-    Answer::json(200, &json!({ "staged_key": id(1), "size": 64 }))
+/// The staged row the server holds for the request: its key from the route, the byte count of the body.
+fn echo_staged(request: &LoggedRequest) -> Answer {
+    let key = request.target.rsplit('/').next().expect("a route segment");
+    Answer::json(
+        200,
+        &json!({ "staged_key": key, "size": request.body.len() }),
+    )
 }
 
 fn committed(n: u128) -> EntryResult {
@@ -101,7 +106,7 @@ async fn batch_commit_reports_a_reused_id_and_an_oversized_batch_as_typed_errors
 #[tokio::test]
 async fn the_executor_hands_a_reused_id_to_the_host_and_then_clears_the_record() {
     // Arrange
-    let script = Script::new().always(Route::StagedUpload, staged_ok()).on(
+    let script = Script::new().respond(Route::StagedUpload, echo_staged).on(
         Route::BatchCommit,
         Answer::problem(ErrorCode::CommitIdReused),
     );
@@ -137,7 +142,7 @@ async fn the_executor_reports_the_failed_entry_next_to_the_committed_ones() {
         ],
     };
     let script = Script::new()
-        .always(Route::StagedUpload, staged_ok())
+        .respond(Route::StagedUpload, echo_staged)
         .on(Route::BatchCommit, Answer::json(200, &answer));
     let (api, _fixture) = connected(script).await;
     let timeline = Timeline::default();
@@ -161,7 +166,7 @@ async fn a_result_of_the_wrong_length_keeps_the_record_for_a_replay() {
         entries: vec![committed(1)],
     };
     let script = Script::new()
-        .always(Route::StagedUpload, staged_ok())
+        .respond(Route::StagedUpload, echo_staged)
         .on(Route::BatchCommit, Answer::json(200, &answer));
     let (api, _fixture) = connected(script).await;
     let timeline = Timeline::default();

@@ -2,7 +2,7 @@
 
 use std::process::Output;
 
-use support::{Running, TOKEN, TokenFile, env_for, free_port, http_get, worker_command};
+use support::{Running, TOKEN, TokenFile, busy_port, env_for, free_port, http_get, worker_command};
 
 mod support;
 
@@ -64,7 +64,13 @@ fn ac4_healthcheck_exits_0_for_a_running_worker_and_non_zero_for_a_stopped_one()
     let stopped_output = worker.stop();
     let stopped = worker.healthcheck();
 
-    assert_eq!(running.status.code(), Some(0), "{}", describe(&running));
+    assert_eq!(
+        running.status.code(),
+        Some(0),
+        "{} / worker: {}",
+        describe(&running),
+        describe(&stopped_output)
+    );
     assert_eq!(stopped_output.status.code(), Some(0));
     assert_eq!(stopped.status.code(), Some(1), "{}", describe(&stopped));
     assert!(text(&stopped.stderr).contains("not ready"));
@@ -113,7 +119,7 @@ fn an_unknown_argument_exits_3() {
 
 #[test]
 fn a_busy_ops_port_is_a_runtime_failure() {
-    let blocker = std::net::TcpListener::bind("127.0.0.1:0").expect("binds");
+    let blocker = busy_port();
     let port = blocker.local_addr().expect("address").port();
     let token = TokenFile::new(TOKEN);
     let env = env_for(port, &token);

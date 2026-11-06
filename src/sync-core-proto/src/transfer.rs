@@ -30,6 +30,13 @@ pub enum CommitOutcome {
     NothingToSend { revision_id: Uuid },
 }
 
+/// Answer of `stage_small`: the staged row the server holds for the request. `size` is the byte count it stored.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Staged {
+    pub staged_key: Uuid,
+    pub size: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BatchEntry {
     pub staged_key: Uuid,

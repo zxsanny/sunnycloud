@@ -17,7 +17,7 @@ use crate::error::SyncError;
 use crate::host::{BatchRecord, FileSource, StoreError};
 
 pub(crate) use run::Runner;
-pub(crate) use wire::batch_commit;
+pub(crate) use wire::{batch_commit, stage_small};
 
 /// Largest file that takes the staged path; a bigger one takes the block path. Zero bytes take the staged path.
 pub const SMALL_FILE_MAX: u64 = BLOCK_SIZE as u64;

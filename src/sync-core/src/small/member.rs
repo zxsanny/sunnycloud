@@ -41,7 +41,14 @@ pub(super) async fn stage_member(path: &RequestPath, member: &Member) -> Result<
     let source = Arc::clone(&member.file.source);
     let expected = member.file.entry.file_hash;
     let (bytes, hash) = blocking(move || read_checked(source.as_ref(), &expected)).await??;
-    stage_small(path, member.file.entry.staged_key, bytes, &hash).await
+    let (key, sent) = (member.file.entry.staged_key, bytes.len() as u64);
+    let staged = stage_small(path, key, bytes, &hash).await?;
+    if staged.staged_key != key || staged.size != sent {
+        return Err(SyncError::ProtocolViolation {
+            detail: "staged row does not match the upload",
+        });
+    }
+    Ok(())
 }
 
 fn read_checked(

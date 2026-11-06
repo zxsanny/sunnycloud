@@ -8,8 +8,8 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use sync_core_proto::{
     BatchResult, ChangePage, ChangeState, CommitOutcome, Cursor, DeviceAuthorization, DevicePoll,
-    EntryResult, ListingPage, NodeKind, RevisionView, ServerInfo, SessionTokens, StartOutcome,
-    UploadSession, effective_lanes,
+    EntryResult, ListingPage, NodeKind, RevisionView, ServerInfo, SessionTokens, Staged,
+    StartOutcome, UploadSession, effective_lanes,
 };
 
 const H1: &str = "2d3adedff11b61f14c886e35afa036736dcd87a74d27b5c1510225d0f592e213";
@@ -175,6 +175,15 @@ fn bad_digest_text_is_refused() {
             "{hash:?}"
         );
     }
+}
+
+#[test]
+fn staged_round_trips_and_ignores_unknown_fields() {
+    let wire = json!({"staged_key": NODE, "size": 1048576});
+
+    let staged: Staged = round_trip(wire);
+
+    assert_eq!(staged.size, 1_048_576);
 }
 
 #[test]
