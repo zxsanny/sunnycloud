@@ -1,15 +1,21 @@
 //! Ordered answers per route.
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
 
 use bytes::Bytes;
 
 use super::answer::Answer;
+use super::log::LoggedRequest;
 use super::route::Route;
+
+/// Computes the answer from the request, for fakes that keep state (staged rows, receipts).
+type Responder = Arc<dyn Fn(&LoggedRequest) -> Answer + Send + Sync>;
 
 #[derive(Default)]
 struct RouteScript {
     queue: VecDeque<Answer>,
+    responder: Option<Responder>,
     repeat: Option<Answer>,
 }
 
@@ -40,14 +46,28 @@ impl Script {
         self
     }
 
+    /// Answers every request that finds the queue empty by calling `responder`, which runs under the script lock.
+    pub fn respond(
+        mut self,
+        route: Route,
+        responder: impl Fn(&LoggedRequest) -> Answer + Send + Sync + 'static,
+    ) -> Self {
+        self.routes.entry(route).or_default().responder = Some(Arc::new(responder));
+        self
+    }
+
     pub fn always(mut self, route: Route, answer: Answer) -> Self {
         self.routes.entry(route).or_default().repeat = Some(answer);
         self
     }
 
-    pub(super) fn next(&mut self, route: Route) -> Option<Answer> {
+    pub(super) fn next(&mut self, route: Route, request: &LoggedRequest) -> Option<Answer> {
         let entry = self.routes.get_mut(&route)?;
-        entry.queue.pop_front().or_else(|| entry.repeat.clone())
+        entry
+            .queue
+            .pop_front()
+            .or_else(|| entry.responder.as_ref().map(|respond| respond(request)))
+            .or_else(|| entry.repeat.clone())
     }
 }
 

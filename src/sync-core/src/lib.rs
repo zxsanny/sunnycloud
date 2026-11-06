@@ -11,6 +11,7 @@ mod host;
 mod http_transport;
 mod negotiate;
 mod request;
+mod small;
 mod tls;
 mod tree_ops;
 mod wire_table;
@@ -26,4 +27,8 @@ pub use host::{
     UploadState,
 };
 pub use request::{BoxFuture, Method, Request, RequestPath, Transport, WireRequest, WireResponse};
+pub use small::{
+    BatchOutcome, BatchReport, BatchRunError, BatchSink, SMALL_FILE_MAX, SkippedFile, SmallFile,
+    SourceResolver, new_batch, takes_staged_path,
+};
 pub use wire_table::map_problem;

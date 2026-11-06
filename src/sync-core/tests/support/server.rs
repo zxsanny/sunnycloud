@@ -282,7 +282,7 @@ async fn handle(
         shared.record(Role::Catcher, entry);
         return Ok(plain(200, &ctx.control));
     }
-    let scripted = route.and_then(|route| locked(&shared.script).next(route));
+    let scripted = route.and_then(|route| locked(&shared.script).next(route, &entry));
     entry.scripted = scripted.is_some();
     let answer = scripted.unwrap_or_else(|| unscripted(route, &parts.method, &target));
     if let Some(error) = body_error {

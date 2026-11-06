@@ -4,7 +4,8 @@
 //!
 //! Contracts: `_docs/02_document/contracts/contracts/part1_registries_identity_admin_quota.md` (registries and
 //! lifecycle, 01 identity, 07 admin, 07a quota) and `part2_tree_transfer_feed.md` (02 tree and the
-//! `CommitEffect` protocol, 03 transfer, 05 sync feed, the blob data-plane value types).
+//! `CommitEffect` protocol, 03 transfer, 05 sync feed, the blob data-plane value types) and
+//! `part3_blob_share_media_vault.md` (04 blobstore, 06 sharing, 08 media jobs, 20 vault).
 //!
 //! # Conventions
 //!
@@ -27,13 +28,17 @@
 
 mod admin;
 mod blob;
+mod blobstore;
 mod common;
 mod feed;
 mod identity;
+mod media;
 mod quota;
 mod registries;
+mod sharing;
 mod transfer;
 mod tree;
+mod vault;
 
 pub use async_trait::async_trait;
 
@@ -43,6 +48,13 @@ pub use admin::{
     HealthReport, IdentityView,
 };
 pub use blob::{BlobRef, ByteRange, ByteStream, PlaintextStream, StreamError};
+pub use blobstore::{
+    BlobCatalog, BlobCatalogError, BlobError, BlobHandle, BlobInventory, BlobPlan, BlobReader,
+    BlobRegistry, BlobRegistryError, BlobWriter, ByteRate, Due, DurableToken, EpochMarker,
+    EpochMarkerError, GcQueue, GcQueueError, GcReason, InventoryError, KeyError, Keyring,
+    MasterKey, MasterKeyring, RegisterState, ReinstateOutcome, ScrubError, ScrubMode, ScrubRun,
+    ScrubStatus, ScrubSummary, Scrubber, StepResult, WrittenBlob, WrittenOrPlanned,
+};
 pub use common::{Fault, Page};
 pub use feed::{
     ChangeFeed, ChangeFeedError, ChangeItem, ChangePage, Cursor, EpochAdmin, EpochAdminError,
@@ -50,6 +62,13 @@ pub use feed::{
     MarkerStatus, ResyncReason, Seq, TouchedNodes,
 };
 pub use identity::*;
+pub use media::{
+    AcceptOutcome, ClaimedJob, DerivedError, DerivedKind, DerivedOpener, FailDisposition,
+    FailResult, JobCount, JobKind, JobStatus, Lane, LeaseExtended, MediaAdmin, MediaAdminError,
+    MediaStats, OutputMeta, RequeueFilter, SkipOutcome, ThumbState, ThumbnailStateError,
+    ThumbnailStateSource, WorkerAuthError, WorkerAuthenticator, WorkerIdentity, WorkerInput,
+    WorkerJobError, WorkerJobs, WorkerStatus,
+};
 pub use quota::{
     Drift, QuotaAdmin, QuotaAdminError, QuotaLedger, QuotaLedgerError, QuotaView, Reserved,
 };
@@ -58,6 +77,10 @@ pub use registries::{
     DoctorContext, DoctorTag, EraseProgress, Finding, FindingLevel, HealthContributor, HealthItem,
     HealthStatus, Janitor, JanitorError, LifecycleError, ReadinessCheck, ReadinessItem,
     ReadinessStatus,
+};
+pub use sharing::{
+    AccessGrant, CreatedShare, PublicShareError, PublicShareService, ShareContent, ShareError,
+    ShareInfo, ShareOpen, ShareService,
 };
 pub use transfer::{
     BatchCommit, BatchEntry, BatchEntryResult, BatchResult, BlockAck, CommitService,
@@ -74,3 +97,4 @@ pub use tree::{
     RevisionMatch, RevisionRef, RevisionView, StoredResponse, Target, TreeCommit, TreeCommitError,
     TreeMaintenance, TreeReader, TreeReaderError, TreeRestore, TreeService, TreeServiceError,
 };
+pub use vault::{CreatedVault, ETag, VaultError, VaultHeader, VaultService};

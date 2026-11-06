@@ -8,8 +8,9 @@ use std::fs;
 use std::path::Path;
 
 use contracts::{
-    AccountAdmin, AccountGuard, AccountLifecycleHook, AccountState, BlobOwnerCleanup, CommitEffect,
-    EntryOutcome, FeedHorizon, FeedStamp, PublishedEntry, QuotaLedger, Role, TouchedNodes,
+    AccountAdmin, AccountGuard, AccountLifecycleHook, AccountState, BlobOwnerCleanup, BlobPlan,
+    BlobRegistry, CommitEffect, Due, EntryOutcome, FeedHorizon, FeedStamp, GcQueue, GcReason,
+    PublishedEntry, QuotaLedger, RegisterState, Role, TouchedNodes, WrittenOrPlanned,
 };
 use sc_db::DbTx;
 use uuid::Uuid;
@@ -57,6 +58,35 @@ async fn joined_methods_part_two(
     effect.on_begin(tx).await?;
     effect.on_entry(tx, entry).await?;
     effect.on_batch(tx, outcomes).await?;
+    Ok(())
+}
+
+/// The part-3 methods that join the transaction. Never called.
+#[allow(dead_code)]
+async fn joined_methods_part_three(
+    tx: &mut DbTx,
+    registry: &dyn BlobRegistry,
+    queue: &dyn GcQueue,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let blob_id = Uuid::nil();
+    let plan = BlobPlan {
+        blob_id,
+        wrapped_key: Vec::new(),
+        master_key_id: 1,
+    };
+    registry
+        .register_in_tx(
+            tx,
+            WrittenOrPlanned::Planned(plan),
+            RegisterState::Uploading,
+        )
+        .await?;
+    registry.mark_committed_in_tx(tx, blob_id, 1).await?;
+    registry.reinstate_in_tx(tx, blob_id).await?;
+    registry.remove_row_in_tx(tx, blob_id).await?;
+    queue
+        .schedule_in_tx(tx, blob_id, GcReason::Deleted, Due::Now)
+        .await?;
     Ok(())
 }
 
@@ -115,7 +145,8 @@ fn methods_taking_a_transaction() -> Vec<String> {
 }
 
 #[test]
-fn exactly_the_listed_methods_of_parts_one_and_two_take_a_transaction() {
+fn exactly_the_listed_methods_of_the_three_parts_take_a_transaction() {
+    // Arrange
     let expected = [
         "AccountAdmin::begin_deletion",
         "AccountAdmin::finalize_deletion",
@@ -125,17 +156,82 @@ fn exactly_the_listed_methods_of_parts_one_and_two_take_a_transaction() {
         "AccountGuard::ensure_active",
         "AccountLifecycleHook::initialize",
         "BlobOwnerCleanup::remove_owner_rows",
+        "BlobRegistry::mark_committed_in_tx",
+        "BlobRegistry::register_in_tx",
+        "BlobRegistry::reinstate_in_tx",
+        "BlobRegistry::remove_row_in_tx",
         "CommitEffect::on_batch",
         "CommitEffect::on_begin",
         "CommitEffect::on_entry",
         "FeedHorizon::raise_purge_horizon",
         "FeedStamp::stamp",
+        "GcQueue::schedule_in_tx",
         "QuotaLedger::adjust_used",
         "QuotaLedger::release_reservation",
         "QuotaLedger::reserve",
     ];
 
+    // Act
     let found = methods_taking_a_transaction();
 
+    // Assert
+    assert_eq!(found, expected);
+}
+
+/// `Trait::method` of every trait method whose signature names `needle`.
+fn methods_naming(needle: &str) -> Vec<String> {
+    let mut files = Vec::new();
+    sources(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut files,
+    );
+    let mut found = Vec::new();
+    for text in files {
+        let mut current = String::new();
+        let mut signature = String::new();
+        for line in text.lines().map(str::trim) {
+            if let Some(rest) = line.strip_prefix("pub trait ") {
+                current = rest
+                    .split([':', ' ', '{'])
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned();
+            } else if line.starts_with("async fn ")
+                || line.starts_with("fn ")
+                || !signature.is_empty()
+            {
+                signature.push_str(line);
+                signature.push(' ');
+                if line.ends_with(';') {
+                    if signature
+                        .split(|c: char| !c.is_alphanumeric())
+                        .any(|w| w == needle)
+                    {
+                        let name = signature
+                            .trim_start_matches("async ")
+                            .trim_start_matches("fn ")
+                            .split(['(', '<'])
+                            .next()
+                            .unwrap_or_default();
+                        found.push(format!("{current}::{name}"));
+                    }
+                    signature.clear();
+                }
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+#[test]
+fn only_the_gc_queue_can_be_given_a_reason_to_write_the_gc_table() {
+    // Arrange
+    let expected = ["GcQueue::schedule_in_tx"];
+
+    // Act
+    let found = methods_naming("GcReason");
+
+    // Assert
     assert_eq!(found, expected);
 }

@@ -3,20 +3,23 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use sc_clock::SystemClock;
+use sc_clock::{Clock, SystemClock};
 use sync_core_proto::{
-    FileHash, ListingPage, NodeView, PageToken, RevisionRef, RevisionView, ServerInfo, ServerUrl,
-    UrlError,
+    BatchCommit, BatchResult, FileHash, ListingPage, NodeView, PageToken, RevisionRef,
+    RevisionView, ServerInfo, ServerUrl, UrlError,
 };
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::config::SyncConfig;
 use crate::error::{Mapped, SyncError};
-use crate::host::CredentialProvider;
+use crate::host::{CheckpointStore, CredentialProvider};
 use crate::http_transport::{HttpTransport, SERVER_INFO_PATH};
 use crate::negotiate::{Limits, identity, negotiate};
 use crate::request::{BoxFuture, Method, RequestPath, Transport, WireRequest};
+use crate::small::{
+    self, BatchRunError, BatchSink, Runner, SkippedFile, SmallFile, SourceResolver,
+};
 use crate::tree_ops;
 use crate::wire_table::map_problem;
 
@@ -94,11 +97,17 @@ pub trait SyncApi: Send + Sync {
         node: Uuid,
         base_revision: Option<Uuid>,
     ) -> BoxFuture<'_, Result<(), SyncError>>;
+
+    /// Idempotent by `commit_id`: a repeated id with the same entries returns the stored response.
+    /// Errors: `BatchTooLarge`, `CommitIdReused`.
+    fn batch_commit(&self, commit: BatchCommit) -> BoxFuture<'_, Result<BatchResult, SyncError>>;
 }
 
 pub struct HttpSyncClient {
     path: Arc<RequestPath>,
     limits: Limits,
+    clock: Arc<dyn Clock>,
+    batch_max_bytes_in_flight: u64,
 }
 
 impl HttpSyncClient {
@@ -131,6 +140,44 @@ impl HttpSyncClient {
         self.limits
     }
 
+    /// Uploads files of at most `SMALL_FILE_MAX` through the staged path in batches. Each batch record is saved
+    /// to `store` before its first file is staged and cleared after `sink` stored the results. Staging runs in
+    /// parallel; a batch stays within `batch_max_entries`, within `sync.batch_max_bytes_in_flight` and within
+    /// half of `max_staged_per_account`. Files that cannot be sent are returned, not retried.
+    /// Errors: the common set, `QuotaExceeded`, `FreeSpaceFloor`, `StagedCapReached` when nothing at all
+    /// could be staged, and `BatchRunError::Store`. A dropped or failed run is continued by
+    /// [`resume_batches`](Self::resume_batches).
+    pub async fn upload_small(
+        &self,
+        files: Vec<SmallFile>,
+        store: Arc<dyn CheckpointStore>,
+        sink: Arc<dyn BatchSink>,
+    ) -> Result<Vec<SkippedFile>, BatchRunError> {
+        self.small_runner(store, sink).upload(files).await
+    }
+
+    /// Replays the batches `store` still holds: same `commit_id`, same entries. `resolve` finds the source
+    /// of each entry.
+    pub async fn resume_batches(
+        &self,
+        store: Arc<dyn CheckpointStore>,
+        sink: Arc<dyn BatchSink>,
+        resolve: SourceResolver<'_>,
+    ) -> Result<Vec<SkippedFile>, BatchRunError> {
+        self.small_runner(store, sink).resume(resolve).await
+    }
+
+    fn small_runner(&self, store: Arc<dyn CheckpointStore>, sink: Arc<dyn BatchSink>) -> Runner {
+        Runner::new(
+            Arc::clone(&self.path),
+            self.limits,
+            self.batch_max_bytes_in_flight,
+            Arc::clone(&self.clock),
+            store,
+            sink,
+        )
+    }
+
     async fn establish(
         config: SyncConfig,
         credentials: Arc<dyn CredentialProvider>,
@@ -151,16 +198,19 @@ impl HttpSyncClient {
             })?;
         let info = fetch_server_info(&transport).await?;
         let limits = negotiate(&info, &config, own)?;
+        let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
         let path = RequestPath::new(
             Arc::new(transport),
             credentials,
-            Arc::new(SystemClock::new()),
+            Arc::clone(&clock),
             config.retry_policy(),
         );
         Ok((
             Self {
                 path: Arc::new(path),
                 limits,
+                clock,
+                batch_max_bytes_in_flight: config.batch_max_bytes_in_flight,
             },
             info,
         ))
@@ -218,6 +268,10 @@ impl SyncApi for HttpSyncClient {
         base_revision: Option<Uuid>,
     ) -> BoxFuture<'_, Result<(), SyncError>> {
         Box::pin(tree_ops::delete_node(&self.path, node, base_revision))
+    }
+
+    fn batch_commit(&self, commit: BatchCommit) -> BoxFuture<'_, Result<BatchResult, SyncError>> {
+        Box::pin(async move { small::batch_commit(&self.path, &commit).await })
     }
 }
 

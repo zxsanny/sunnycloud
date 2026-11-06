@@ -11,8 +11,10 @@
 
 #![allow(dead_code)]
 
+pub mod auth;
 pub mod fixtures;
 mod secrets;
+pub mod statements;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;

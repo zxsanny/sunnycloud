@@ -11,13 +11,17 @@ workspace = true
 
 [dependencies]
 contracts = { path = "../../contracts" }
+sc_clock = { path = "../../shared/clock" }
 sc_config = { path = "../../shared/config" }
+sc_db = { path = "../../shared/db" }
+sc_ids = { path = "../../shared/ids_hashing" }
+# Same features as sc_db: the repository module runs its statements on the transaction's connection.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 thiserror = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
-sc_clock = { path = "../../shared/clock" }
-sc_db = { path = "../../shared/db" }
-# Same features as sc_db: the harness runs fixture SQL on plain connections.
-sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+# The statement-capture subscriber of the harness reads sqlx's statement events.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 uuid = { workspace = true, features = ["v4"] }

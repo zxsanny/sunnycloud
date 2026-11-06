@@ -1,5 +1,6 @@
 //! AC-1 (listing), AC-4 (signatures only, server-only crate) and the HTTP-free half of AC-6.
-//! Part 3 adds its names beside `PART_ONE` and `PART_TWO`; the check is "0 names missing".
+//! The three parts' names sit in `PART_ONE`, `PART_TWO` and `PART_THREE` (E-00 § Interface specification);
+//! the check is "0 names missing".
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -49,6 +50,26 @@ const PART_TWO: &[&str] = &[
     "EpochAdmin",
 ];
 
+const PART_THREE: &[&str] = &[
+    "BlobWriter",
+    "BlobReader",
+    "BlobRegistry",
+    "BlobCatalog",
+    "GcQueue",
+    "Scrubber",
+    "BlobInventory",
+    "MasterKeyring",
+    "EpochMarker",
+    "ShareService",
+    "PublicShareService",
+    "ThumbnailStateSource",
+    "DerivedOpener",
+    "WorkerAuthenticator",
+    "WorkerJobs",
+    "MediaAdmin",
+    "VaultService",
+];
+
 fn source_files(dir: &Path, files: &mut Vec<(String, String)>) {
     for entry in fs::read_dir(dir).expect("read src dir") {
         let path = entry.expect("dir entry").path();
@@ -71,7 +92,7 @@ fn crate_sources() -> Vec<(String, String)> {
 }
 
 #[test]
-fn every_port_of_parts_one_and_two_is_a_public_trait_of_the_crate() {
+fn every_port_of_the_three_parts_is_a_public_trait_of_the_crate() {
     let declared: BTreeSet<String> = crate_sources()
         .iter()
         .flat_map(|(_, text)| {
@@ -93,6 +114,7 @@ fn every_port_of_parts_one_and_two_is_a_public_trait_of_the_crate() {
     let missing: Vec<_> = PART_ONE
         .iter()
         .chain(PART_TWO)
+        .chain(PART_THREE)
         .filter(|name| !declared.contains(**name))
         .collect();
 

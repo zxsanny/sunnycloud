@@ -130,7 +130,7 @@ fn with_json(method: Method, target: String, body: &Value, max_attempts: u32) ->
     }
 }
 
-async fn send(
+pub(crate) async fn send(
     path: &RequestPath,
     op: &'static str,
     request: Request,
@@ -143,7 +143,10 @@ async fn send(
     })
 }
 
-fn decode<T: DeserializeOwned>(op: &'static str, response: WireResponse) -> Result<T, SyncError> {
+pub(crate) fn decode<T: DeserializeOwned>(
+    op: &'static str,
+    response: WireResponse,
+) -> Result<T, SyncError> {
     serde_json::from_slice(&response.body).map_err(|error| {
         tracing::warn!(op, %error, "response body does not match its DTO");
         SyncError::ProtocolViolation {

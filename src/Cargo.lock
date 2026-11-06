@@ -2327,6 +2327,11 @@ name = "sunnycloud-admin"
 version = "0.1.0"
 dependencies = [
  "contracts",
+ "sc_config",
+ "sc_db",
+ "sc_error",
+ "sc_ids",
+ "uuid",
 ]
 
 [[package]]
@@ -2369,9 +2374,11 @@ dependencies = [
  "sc_clock",
  "sc_config",
  "sc_db",
+ "sc_ids",
  "sqlx",
  "thiserror",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -2531,6 +2538,7 @@ dependencies = [
  "sc_clock",
  "sc_config",
  "sc_error",
+ "sc_ids",
  "serde",
  "serde_json",
  "sync-core",

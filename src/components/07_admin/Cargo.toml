@@ -11,3 +11,11 @@ workspace = true
 
 [dependencies]
 contracts = { path = "../../contracts" }
+sc_config = { path = "../../shared/config" }
+sc_error = { path = "../../shared/error" }
+
+[dev-dependencies]
+# Names the types in the signatures of the port doubles.
+sc_db = { path = "../../shared/db" }
+sc_ids = { path = "../../shared/ids_hashing" }
+uuid = { workspace = true }

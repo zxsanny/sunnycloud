@@ -20,12 +20,13 @@ test-support = []
 sc_clock = { path = "../shared/clock" }
 sc_config = { path = "../shared/config" }
 sc_error = { path = "../shared/error", default-features = false, features = ["client"] }
+sc_ids = { path = "../shared/ids_hashing" }
 sync-core-proto = { path = "../sync-core-proto" }
 bytes = { workspace = true }
 getrandom = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 thiserror = { workspace = true }
 uuid = { workspace = true }
