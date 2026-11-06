@@ -10,8 +10,8 @@ use sqlx::{Connection, PgConnection};
 use support::auth::{FAR_FUTURE, authenticator, session};
 use support::fixtures;
 use support::sessions::{
-    all_rows, is_current_refresh, is_previous_refresh, refresh_token, revocation, sessions,
-    shared_sessions,
+    all_rows, forget_successor, is_current_refresh, is_previous_refresh, refresh_token, revocation,
+    sealed_successor, sessions, shared_sessions,
 };
 use support::{Harness, START};
 use uuid::Uuid;
@@ -134,7 +134,7 @@ async fn rotation_replaces_the_access_token_of_the_session() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn four_parallel_refreshes_give_one_successor_and_no_revocation() {
+async fn four_parallel_refreshes_give_the_same_one_successor_and_no_revocation() {
     // Arrange
     let mut world = world().await;
     let service = shared_sessions(&world.harness);
@@ -156,9 +156,18 @@ async fn four_parallel_refreshes_give_one_successor_and_no_revocation() {
 
     // Assert
     let successors: Vec<&SessionTokens> = results.iter().filter_map(|r| r.as_ref().ok()).collect();
-    let rejected = results.iter().filter(|r| is_unauthenticated(r)).count();
-    assert_eq!(successors.len(), 1, "exactly one successor: {results:?}");
-    assert_eq!(rejected, PARALLEL - 1, "{results:?}");
+    assert_eq!(
+        successors.len(),
+        PARALLEL,
+        "every call is answered: {results:?}"
+    );
+    assert!(
+        successors.iter().all(|pair| {
+            pair.access.expose() == successors[0].access.expose()
+                && pair.refresh.expose() == successors[0].refresh.expose()
+        }),
+        "one successor pair for all of them: {results:?}"
+    );
     let id = world.session_id;
     assert!(is_current_refresh(&mut world.conn, id, successors[0].refresh.expose()).await);
     assert!(is_previous_refresh(&mut world.conn, id, "a-refresh").await);
@@ -228,6 +237,12 @@ async fn replay_after_the_grace_revokes_the_session_and_every_token_stops_authen
         revocation(&mut world.conn, world.session_id).await,
         (true, Some("refresh_reuse".to_owned()))
     );
+    assert!(
+        sealed_successor(&mut world.conn, world.session_id)
+            .await
+            .is_none(),
+        "a revoked session keeps no sealed successor"
+    );
     let next = service.refresh(&successor.refresh).await;
     assert!(
         is_unauthenticated(&next),
@@ -239,11 +254,11 @@ async fn replay_after_the_grace_revokes_the_session_and_every_token_stops_authen
 }
 
 #[tokio::test]
-async fn previous_token_inside_the_grace_changes_no_row() {
+async fn previous_token_inside_the_grace_returns_the_same_pair_and_changes_no_row() {
     // Arrange
     let mut world = world().await;
     let service = sessions(&world.harness);
-    service
+    let first = service
         .refresh(&refresh_token("a-refresh"))
         .await
         .expect("refresh");
@@ -251,11 +266,110 @@ async fn previous_token_inside_the_grace_changes_no_row() {
     let before = all_rows(&mut world.conn).await;
 
     // Act
-    let replay = service.refresh(&refresh_token("a-refresh")).await;
+    let replay = service
+        .refresh(&refresh_token("a-refresh"))
+        .await
+        .expect("the retry inside the grace is answered");
 
     // Assert
-    assert!(is_unauthenticated(&replay), "{replay:?}");
+    assert_eq!(replay.access.expose(), first.access.expose());
+    assert_eq!(replay.refresh.expose(), first.refresh.expose());
+    assert!(
+        replay.expires_in < first.expires_in,
+        "{:?}",
+        replay.expires_in
+    );
+    assert!(!replay.expires_in.is_zero());
     assert_eq!(all_rows(&mut world.conn).await, before);
+    drop(service);
+    world.finish().await;
+}
+
+#[tokio::test]
+async fn a_pair_returned_by_the_retry_authenticates_and_rotates_on() {
+    // Arrange
+    let mut world = world().await;
+    let service = sessions(&world.harness);
+    let authenticator = authenticator(&world.harness);
+    service
+        .refresh(&refresh_token("a-refresh"))
+        .await
+        .expect("the rotation whose response is lost");
+    world.harness.clock.tick(Duration::from_millis(100));
+
+    // Act
+    let retried = service
+        .refresh(&refresh_token("a-refresh"))
+        .await
+        .expect("the retry");
+    let principal = authenticator
+        .authenticate(session(retried.access.expose()))
+        .await;
+    let next = service.refresh(&retried.refresh).await;
+
+    // Assert
+    assert!(principal.is_ok(), "{principal:?}");
+    assert!(next.is_ok(), "{next:?}");
+    assert!(is_previous_refresh(&mut world.conn, world.session_id, retried.refresh.expose()).await);
+    assert_eq!(
+        revocation(&mut world.conn, world.session_id).await,
+        (false, None)
+    );
+    drop(service);
+    drop(authenticator);
+    world.finish().await;
+}
+
+#[tokio::test]
+async fn the_sealed_successor_exists_after_a_rotation_and_holds_neither_token() {
+    // Arrange
+    let mut world = world().await;
+    let service = sessions(&world.harness);
+    let before = sealed_successor(&mut world.conn, world.session_id).await;
+
+    // Act
+    let tokens = service
+        .refresh(&refresh_token("a-refresh"))
+        .await
+        .expect("refresh");
+    let sealed = sealed_successor(&mut world.conn, world.session_id)
+        .await
+        .expect("sealed after the rotation");
+
+    // Assert
+    assert!(before.is_none());
+    let holds = |needle: &str| {
+        sealed
+            .windows(needle.len())
+            .any(|window| window == needle.as_bytes())
+    };
+    assert!(!holds(tokens.access.expose()));
+    assert!(!holds(tokens.refresh.expose()));
+    drop(service);
+    world.finish().await;
+}
+
+#[tokio::test]
+async fn a_row_without_a_sealed_successor_refuses_the_retry_inside_the_grace() {
+    // Arrange
+    let mut world = world().await;
+    let service = sessions(&world.harness);
+    service
+        .refresh(&refresh_token("a-refresh"))
+        .await
+        .expect("refresh");
+    forget_successor(&mut world.conn, world.session_id).await;
+    world.harness.clock.tick(Duration::from_millis(100));
+
+    // Act
+    let retry = service.refresh(&refresh_token("a-refresh")).await;
+
+    // Assert
+    assert!(is_unauthenticated(&retry), "{retry:?}");
+    assert_eq!(
+        revocation(&mut world.conn, world.session_id).await,
+        (false, None)
+    );
     drop(service);
     world.finish().await;
 }

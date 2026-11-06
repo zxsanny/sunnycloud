@@ -13,6 +13,7 @@ use crate::auth_repo;
 use crate::config::IdentityConfig;
 use crate::error::IdentityError;
 use crate::session_repo::{self, LockedSession, Rotation};
+use crate::successor::{self, Pair};
 
 const ACTIVE: &str = "active";
 
@@ -94,6 +95,18 @@ fn reason_text(reason: RevokeReason) -> &'static str {
     }
 }
 
+/// The result of the transaction of a refresh, with what the grace path needs to answer.
+enum Outcome {
+    Rotated,
+    /// The previous token inside the grace window: the sealed successor and when its access token expires.
+    Grace {
+        sealed: Option<Vec<u8>>,
+        access_expires_at_micros: i64,
+    },
+    Reuse,
+    Reject,
+}
+
 fn unexpected(error: impl std::error::Error + Send + Sync + 'static) -> SessionError {
     SessionError::Unexpected(Box::new(error))
 }
@@ -105,8 +118,9 @@ fn after(at: Timestamp, by: Duration) -> Result<Timestamp, SessionError> {
 
 #[async_trait]
 impl SessionService for IdentitySessions {
-    /// A second presentation of the previous token inside the grace window answers `Unauthenticated`: the
-    /// successor's plaintext is not stored (only its hash), so it cannot be handed out again.
+    /// The previous token inside the grace window (the response to a rotation was lost) is answered with the
+    /// same successor pair, opened from `successor_enc` with the presented token; nothing is created and
+    /// nothing is revoked. A row without a sealed successor (rotated before the column existed) is refused.
     async fn refresh(&self, refresh_token: &RawToken) -> Result<SessionTokens, SessionError> {
         let presented = sha256_token(refresh_token.expose());
         let owner = auth_repo::session_by_refresh_hash(&self.db, &presented)
@@ -115,6 +129,15 @@ impl SessionService for IdentitySessions {
             .ok_or(SessionError::Unauthenticated)?;
         let access = new_token(TokenKind::Session).map_err(unexpected)?;
         let refresh = new_token(TokenKind::Refresh).map_err(unexpected)?;
+        let sealed = successor::seal(
+            refresh_token.expose(),
+            owner.session_id,
+            &Pair {
+                access: access.expose().to_owned(),
+                refresh: refresh.expose().to_owned(),
+            },
+        )
+        .map_err(unexpected)?;
         let now = self.clock.now_utc();
         let rotation = Rotation {
             token_hash: sha256_token(access.expose()),
@@ -122,18 +145,19 @@ impl SessionService for IdentitySessions {
             refresh_hash: sha256_token(refresh.expose()),
             refresh_expires_at: after(now, self.refresh_token_ttl)?,
             rotated_at: now,
+            successor_enc: sealed,
         };
         let grace = self.refresh_reuse_grace;
-        let decision = self
+        let outcome = self
             .db
             .run(Scope::Account(owner.account_id), async |tx| {
                 let Some(row) = session_repo::lock(tx, owner.session_id).await? else {
-                    return Ok::<_, DbError>(Decision::Reject);
+                    return Ok::<_, DbError>(Outcome::Reject);
                 };
-                let decision = decide(&row, &presented, now, grace);
-                match decision {
+                Ok(match decide(&row, &presented, now, grace) {
                     Decision::Rotate => {
-                        session_repo::rotate(tx, owner.session_id, &rotation).await?
+                        session_repo::rotate(tx, owner.session_id, &rotation).await?;
+                        Outcome::Rotated
                     }
                     Decision::Reuse => {
                         session_repo::revoke(
@@ -144,21 +168,42 @@ impl SessionService for IdentitySessions {
                             reason_text(RevokeReason::RefreshReuse),
                         )
                         .await?;
+                        Outcome::Reuse
                     }
-                    Decision::WithinGrace | Decision::Reject => {}
-                }
-                Ok(decision)
+                    Decision::WithinGrace => Outcome::Grace {
+                        sealed: row.successor_enc,
+                        access_expires_at_micros: row.access_expires_at_micros,
+                    },
+                    Decision::Reject => Outcome::Reject,
+                })
             })
             .await
             .map_err(unexpected)?;
-        match decision {
-            Decision::Rotate => Ok(SessionTokens {
+        match outcome {
+            Outcome::Rotated => Ok(SessionTokens {
                 access,
                 refresh,
                 expires_in: self.access_token_ttl,
             }),
-            Decision::Reuse => Err(SessionError::ReuseDetected),
-            Decision::WithinGrace | Decision::Reject => Err(SessionError::Unauthenticated),
+            Outcome::Grace {
+                sealed,
+                access_expires_at_micros,
+            } => {
+                let pair = sealed
+                    .and_then(|sealed| {
+                        successor::open(refresh_token.expose(), owner.session_id, &sealed)
+                    })
+                    .ok_or(SessionError::Unauthenticated)?;
+                let remaining =
+                    u64::try_from(access_expires_at_micros - now.as_unix_micros()).unwrap_or(0);
+                Ok(SessionTokens {
+                    access: RawToken::from_presented(TokenKind::Session, pair.access),
+                    refresh: RawToken::from_presented(TokenKind::Refresh, pair.refresh),
+                    expires_in: Duration::from_micros(remaining),
+                })
+            }
+            Outcome::Reuse => Err(SessionError::ReuseDetected),
+            Outcome::Reject => Err(SessionError::Unauthenticated),
         }
     }
 
@@ -253,6 +298,8 @@ mod tests {
             refresh_expires_at_micros: NOW.as_unix_micros() + 1_000_000,
             revoked: false,
             account_state: ACTIVE.to_owned(),
+            successor_enc: None,
+            access_expires_at_micros: NOW.as_unix_micros() + 900_000_000,
         }
     }
 

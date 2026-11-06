@@ -103,3 +103,21 @@ pub async fn device_last_seen(conn: &mut PgConnection, id: Uuid) -> Option<i64> 
     .await
     .expect("read device last_seen_at")
 }
+
+/// The sealed successor pair of the last rotation, as stored.
+pub async fn sealed_successor(conn: &mut PgConnection, id: Uuid) -> Option<Vec<u8>> {
+    sqlx::query_scalar("SELECT successor_enc FROM sessions WHERE id = $1")
+        .bind(id)
+        .fetch_one(conn)
+        .await
+        .expect("read the sealed successor")
+}
+
+/// Makes the row look as if it was rotated before the column existed.
+pub async fn forget_successor(conn: &mut PgConnection, id: Uuid) {
+    sqlx::query("UPDATE sessions SET successor_enc = NULL WHERE id = $1")
+        .bind(id)
+        .execute(conn)
+        .await
+        .expect("clear the sealed successor");
+}

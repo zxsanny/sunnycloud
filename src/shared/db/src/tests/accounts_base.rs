@@ -9,8 +9,14 @@ use crate::{Db, DbError, Migrator, RunError, Scope};
 pub const BASE_VERSION: i64 = 20_261_105_090_000;
 pub const AUDIT_VERSION: i64 = 20_261_105_100_000;
 pub const IDENTITY_VERSION: i64 = 20_261_105_110_000;
+pub const SESSION_SUCCESSOR_VERSION: i64 = 20_261_106_100_000;
 /// Every embedded migration, oldest first: a new embedded migration is added here, not to each test.
-pub const EMBEDDED: [i64; 3] = [BASE_VERSION, AUDIT_VERSION, IDENTITY_VERSION];
+pub const EMBEDDED: [i64; 4] = [
+    BASE_VERSION,
+    AUDIT_VERSION,
+    IDENTITY_VERSION,
+    SESSION_SUCCESSOR_VERSION,
+];
 
 async fn column_rows(conn: &mut PgConnection) -> Vec<(String, String, String, Option<String>)> {
     sqlx::query_as(
@@ -229,10 +235,9 @@ async fn up_down_up_leaves_the_same_schema() {
     let after_second = schema_fingerprint(&mut admin).await;
 
     assert_eq!(first.applied, EMBEDDED);
-    assert_eq!(
-        down.reverted,
-        [IDENTITY_VERSION, AUDIT_VERSION, BASE_VERSION]
-    );
+    let mut newest_first = EMBEDDED;
+    newest_first.reverse();
+    assert_eq!(down.reverted, newest_first);
     assert_eq!(second.applied, EMBEDDED);
     assert!(
         after_first

@@ -18,9 +18,21 @@ pub(crate) struct LockedSession {
     pub refresh_expires_at_micros: i64,
     pub revoked: bool,
     pub account_state: String,
+    /// The successor pair of the last rotation, sealed (see `successor`); `None` before the first rotation.
+    pub successor_enc: Option<Vec<u8>>,
+    pub access_expires_at_micros: i64,
 }
 
-type LockedTuple = (Vec<u8>, Option<Vec<u8>>, Option<i64>, i64, bool, String);
+type LockedTuple = (
+    Vec<u8>,
+    Option<Vec<u8>>,
+    Option<i64>,
+    i64,
+    bool,
+    String,
+    Option<Vec<u8>>,
+    i64,
+);
 
 /// The successor credentials written by a rotation.
 pub(crate) struct Rotation {
@@ -29,6 +41,7 @@ pub(crate) struct Rotation {
     pub refresh_hash: TokenHash,
     pub refresh_expires_at: Timestamp,
     pub rotated_at: Timestamp,
+    pub successor_enc: Vec<u8>,
 }
 
 /// A listed session; revocation and expiry are decided by the caller.
@@ -45,20 +58,23 @@ type ListedTuple = (Uuid, String, i64, i64, bool, i64);
 
 const LOCK_SESSION: &str = "SELECT s.refresh_hash, s.prev_refresh_hash, \
     (extract(epoch FROM s.rotated_at) * 1000000)::bigint, \
-    (extract(epoch FROM s.refresh_expires_at) * 1000000)::bigint, s.revoked_at IS NOT NULL, a.state \
+    (extract(epoch FROM s.refresh_expires_at) * 1000000)::bigint, s.revoked_at IS NOT NULL, a.state, \
+    s.successor_enc, (extract(epoch FROM s.access_expires_at) * 1000000)::bigint \
     FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.id = $1 FOR UPDATE OF s";
 
 const ROTATE: &str = "UPDATE sessions SET prev_refresh_hash = refresh_hash, refresh_hash = $2, token_hash = $3, \
     access_expires_at = 'epoch'::timestamptz + $4::bigint * interval '1 microsecond', \
     refresh_expires_at = 'epoch'::timestamptz + $5::bigint * interval '1 microsecond', \
-    rotated_at = 'epoch'::timestamptz + $6::bigint * interval '1 microsecond' WHERE id = $1";
+    rotated_at = 'epoch'::timestamptz + $6::bigint * interval '1 microsecond', successor_enc = $7 WHERE id = $1";
 
 const REVOKE_ONE: &str = "UPDATE sessions \
-    SET revoked_at = 'epoch'::timestamptz + $3::bigint * interval '1 microsecond', revoke_reason = $4 \
+    SET revoked_at = 'epoch'::timestamptz + $3::bigint * interval '1 microsecond', revoke_reason = $4, \
+    successor_enc = NULL \
     WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL";
 
 const REVOKE_ALL: &str = "UPDATE sessions \
-    SET revoked_at = 'epoch'::timestamptz + $2::bigint * interval '1 microsecond', revoke_reason = $3 \
+    SET revoked_at = 'epoch'::timestamptz + $2::bigint * interval '1 microsecond', revoke_reason = $3, \
+    successor_enc = NULL \
     WHERE account_id = $1 AND revoked_at IS NULL";
 
 const LIST: &str = "SELECT id, label, \
@@ -92,6 +108,8 @@ pub(crate) async fn lock(tx: &mut DbTx, id: Uuid) -> Result<Option<LockedSession
             refresh_expires_at_micros,
             revoked,
             account_state,
+            successor_enc,
+            access_expires_at_micros,
         )| LockedSession {
             refresh_hash,
             prev_refresh_hash,
@@ -99,6 +117,8 @@ pub(crate) async fn lock(tx: &mut DbTx, id: Uuid) -> Result<Option<LockedSession
             refresh_expires_at_micros,
             revoked,
             account_state,
+            successor_enc,
+            access_expires_at_micros,
         },
     ))
 }
@@ -112,6 +132,7 @@ pub(crate) async fn rotate(tx: &mut DbTx, id: Uuid, rotation: &Rotation) -> Resu
         .bind(rotation.access_expires_at.as_unix_micros())
         .bind(rotation.refresh_expires_at.as_unix_micros())
         .bind(rotation.rotated_at.as_unix_micros())
+        .bind(rotation.successor_enc.as_slice())
         .execute(tx.conn())
         .await
         .map(drop)?;

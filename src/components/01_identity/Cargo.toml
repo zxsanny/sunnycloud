@@ -18,6 +18,9 @@ sc_error = { path = "../../shared/error" }
 sc_ids = { path = "../../shared/ids_hashing" }
 # The id-token verifier reads time from the injected clock, in chrono's type.
 chrono = { version = "0.4", default-features = false }
+# The successor pair of a refresh rotation is sealed with the workspace AEAD, the key derived with SHA-256.
+chacha20poly1305 = { workspace = true }
+sha2 = { workspace = true }
 # No bundled HTTP client: provider calls go through the guarded client of `outbound`.
 oauth2 = { workspace = true }
 openidconnect = { workspace = true }

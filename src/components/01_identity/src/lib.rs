@@ -17,6 +17,7 @@ mod session_cache;
 mod session_repo;
 mod session_service;
 mod sign_in;
+mod successor;
 
 pub use authenticator::IdentityAuthenticator;
 pub use config::{IdentityConfig, ProviderConfig};

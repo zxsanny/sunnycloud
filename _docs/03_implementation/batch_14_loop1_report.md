@@ -49,3 +49,13 @@ CI-parity: PASS with a local PostgreSQL 18 (`DATABASE_URL`, throwaway container,
 ## Next Batch
 
 Ready now: AZ-3687 device grant exact-once, AZ-3749 quota skeleton (adds a migration), AZ-3723 blobstore skeleton, AZ-3961 sync hash file and AZ-3965 feed client (`sync-core`, one at a time), AZ-3870 and AZ-3871 worker, AZ-3893 platform fs windows; AZ-3686 completes after the decision in #1.
+
+## Follow-up: AZ-3686 grace-path retry made recoverable (owner decision)
+
+A refresh that repeats the previous token inside `refresh_reuse_grace` (a lost response) now gets the same successor pair back instead of `Unauthenticated`; nothing is created and nothing is revoked, so sync-core's lost-response retry (AZ-3966 AC-4) is consistent with the server and R05 holds. How: migration `20261106100000_add_identity_session_successor` adds `sessions.successor_enc` (bytea) and the partial index `sessions_prev_refresh_hash_idx`. At rotation the successor access and refresh tokens are sealed with ChaCha20-Poly1305 (workspace pin `=0.11.0`) under a key derived as SHA-256 of a domain label and the previous refresh token, with the session id as associated data; the previous token is 256 random bits that the database holds only as a hash, so the database alone cannot open the ciphertext, and a key encrypts exactly one message, so the fixed nonce is never reused. The ciphertext is replaced by the next rotation and cleared on revocation. A row rotated before the column existed (no ciphertext) still answers `Unauthenticated`. Four concurrent refreshes now all receive the same one successor (AC-58 read literally). The data model section 4.3 is updated. Side effects: `sc_db` migration tests derive their version lists from `EMBEDDED` (the next migration will not break them); new transitive crates `chacha20poly1305`, `poly1305`, `cipher`, `inout`, `universal-hash`; `deny.toml` unchanged.
+
+Findings 1 (grace retry) and 2 (index) of the review are closed. Still open for AZ-3686: AC-2 clause "the old access token keeps working until its TTL" (rotation replaces the single `token_hash`; honouring it needs a `prev_token_hash` column and an authenticator change, or the clause is relaxed), `SessionInfo` without `client_kind` and `created_ip`, and the sliding refresh expiry without an absolute cap. The spec stays in `todo/`, the ticket stays `In Progress`.
+
+Gate: all 15 steps RC 0; 1383 passed, 0 failed, 2 ignored.
+
+Commit: `[AZ-3686] sealed successor for the refresh grace retry, session index` — Loop: 1
