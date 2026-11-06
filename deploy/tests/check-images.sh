@@ -40,6 +40,18 @@ check "$WORKER" '{{json .Config.Healthcheck.Test}}' '["CMD","sunnycloud-worker",
 check "$DECODER" '{{json .Config.Healthcheck.Test}}' '["CMD","decoder-runner","health"]'
 check "$API" '{{json .Config.Entrypoint}}{{json .Config.Cmd}}' '["sunnycloud"]["serve"]'
 
+# AZ-3868 AC-5 (image part): the worker holds a bearer only, no database, blob or media library
+for img in "$WORKER" "$WORKER_TEST"; do
+  size="$(inspect "$img" '{{.Size}}')"
+  if (( size < 50000000 )); then pass "$img size $size < 50 MB"; else fail "$img size $size is not under 50 MB"; fi
+  env_json="$(inspect "$img" '{{json .Config.Env}}')"
+  if grep -Eiq 'DB_|DATABASE|POSTGRES|PGPASSWORD|MASTER_KEY' <<<"$env_json"; then fail "$img environment names a database or key variable: $env_json"; else pass "$img environment has no database or key variable"; fi
+  cid="$(docker create "$img")"
+  files="$(docker export "$cid" | tar -t)"
+  docker rm "$cid" >/dev/null
+  if grep -Eiq '(^|/)(ffmpeg|ffprobe|vips[^/]*|libvips[^/]*|libheif[^/]*|libav[^/]*)$' <<<"$files"; then fail "$img holds an ffmpeg or vips binary or library"; else pass "$img holds no ffmpeg or vips binary"; fi
+done
+
 # AC-3: no planted or local file in any layer
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

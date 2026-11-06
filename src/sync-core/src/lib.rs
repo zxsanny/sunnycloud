@@ -1,11 +1,21 @@
 //! Native executor of the sunnycloud sync protocol: typed errors and the wire-code table, the host traits,
-//! the `sync` settings and the request path every operation uses.
+//! the `sync` settings, the request path every operation uses, and `HttpSyncClient::connect`.
 
+#[cfg(all(feature = "allow-plain-http", not(debug_assertions)))]
+compile_error!("the `allow-plain-http` feature is for debug builds only");
+
+mod client;
 mod config;
 mod error;
 mod host;
+mod http_transport;
+mod negotiate;
 mod request;
+mod tls;
 mod wire_table;
+
+pub use client::{ConnectError, HttpSyncClient, SyncApi};
+pub use negotiate::Limits;
 
 pub use config::SyncConfig;
 pub use error::{Mapped, PlannerInput, SyncError};

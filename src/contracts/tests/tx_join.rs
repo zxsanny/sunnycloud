@@ -8,8 +8,8 @@ use std::fs;
 use std::path::Path;
 
 use contracts::{
-    AccountAdmin, AccountGuard, AccountLifecycleHook, AccountState, BlobOwnerCleanup, QuotaLedger,
-    Role,
+    AccountAdmin, AccountGuard, AccountLifecycleHook, AccountState, BlobOwnerCleanup, CommitEffect,
+    EntryOutcome, FeedHorizon, FeedStamp, PublishedEntry, QuotaLedger, Role, TouchedNodes,
 };
 use sc_db::DbTx;
 use uuid::Uuid;
@@ -36,6 +36,27 @@ async fn joined_methods(
     ledger.adjust_used(tx, account, 1).await?;
     hook.initialize(tx, account).await?;
     cleanup.remove_owner_rows(tx, account).await?;
+    Ok(())
+}
+
+/// The part-2 methods that join the transaction. Never called.
+#[allow(dead_code)]
+async fn joined_methods_part_two(
+    tx: &mut DbTx,
+    stamp: &dyn FeedStamp,
+    horizon: &dyn FeedHorizon,
+    effect: &dyn CommitEffect,
+    entry: &PublishedEntry,
+    outcomes: &[EntryOutcome],
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let account = Uuid::nil();
+    stamp
+        .stamp(tx, account, TouchedNodes(vec![account]))
+        .await?;
+    horizon.raise_purge_horizon(tx, account, 1).await?;
+    effect.on_begin(tx).await?;
+    effect.on_entry(tx, entry).await?;
+    effect.on_batch(tx, outcomes).await?;
     Ok(())
 }
 
@@ -94,7 +115,7 @@ fn methods_taking_a_transaction() -> Vec<String> {
 }
 
 #[test]
-fn exactly_the_listed_part_one_methods_take_a_transaction() {
+fn exactly_the_listed_methods_of_parts_one_and_two_take_a_transaction() {
     let expected = [
         "AccountAdmin::begin_deletion",
         "AccountAdmin::finalize_deletion",
@@ -104,6 +125,11 @@ fn exactly_the_listed_part_one_methods_take_a_transaction() {
         "AccountGuard::ensure_active",
         "AccountLifecycleHook::initialize",
         "BlobOwnerCleanup::remove_owner_rows",
+        "CommitEffect::on_batch",
+        "CommitEffect::on_begin",
+        "CommitEffect::on_entry",
+        "FeedHorizon::raise_purge_horizon",
+        "FeedStamp::stamp",
         "QuotaLedger::adjust_used",
         "QuotaLedger::release_reservation",
         "QuotaLedger::reserve",

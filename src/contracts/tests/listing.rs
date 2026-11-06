@@ -1,5 +1,5 @@
 //! AC-1 (listing), AC-4 (signatures only, server-only crate) and the HTTP-free half of AC-6.
-//! Parts 2 and 3 add their names beside `PART_ONE`; the check is "0 names missing".
+//! Part 3 adds its names beside `PART_ONE` and `PART_TWO`; the check is "0 names missing".
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -30,6 +30,25 @@ const PART_ONE: &[&str] = &[
     "QuotaAdmin",
 ];
 
+const PART_TWO: &[&str] = &[
+    "TreeService",
+    "TreeReader",
+    "TreeCommit",
+    "TreeRestore",
+    "LiveUsageSource",
+    "TreeMaintenance",
+    "CommitEffect",
+    "UploadService",
+    "CommitService",
+    "DownloadService",
+    "ReservationSource",
+    "FeedStamp",
+    "FeedNotifier",
+    "FeedHorizon",
+    "ChangeFeed",
+    "EpochAdmin",
+];
+
 fn source_files(dir: &Path, files: &mut Vec<(String, String)>) {
     for entry in fs::read_dir(dir).expect("read src dir") {
         let path = entry.expect("dir entry").path();
@@ -52,7 +71,7 @@ fn crate_sources() -> Vec<(String, String)> {
 }
 
 #[test]
-fn every_part_one_port_is_a_public_trait_of_the_crate() {
+fn every_port_of_parts_one_and_two_is_a_public_trait_of_the_crate() {
     let declared: BTreeSet<String> = crate_sources()
         .iter()
         .flat_map(|(_, text)| {
@@ -73,6 +92,7 @@ fn every_part_one_port_is_a_public_trait_of_the_crate() {
 
     let missing: Vec<_> = PART_ONE
         .iter()
+        .chain(PART_TWO)
         .filter(|name| !declared.contains(**name))
         .collect();
 
@@ -188,6 +208,8 @@ fn contracts_depends_directly_only_on_helpers_and_plain_libraries() {
     let packages = workspace_packages();
     let allowed = [
         "async-trait",
+        "bytes",
+        "futures-core",
         "sc_clock",
         "sc_db",
         "sc_error",

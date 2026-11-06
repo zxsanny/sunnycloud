@@ -17,6 +17,9 @@ sc_ids = { path = "../shared/ids_hashing" }
 sc_observability = { path = "../shared/observability" }
 # The ports are async and held as `Arc<dyn Port>`; the macro is re-exported so implementers use the same version.
 async-trait = "0.1"
+# `ByteStream` is a boxed `Stream` of `Bytes`; no runtime is needed to name it.
+bytes = { workspace = true }
+futures-core = { version = "0.3", default-features = false, features = ["alloc"] }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 

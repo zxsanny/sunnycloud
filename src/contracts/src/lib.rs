@@ -2,8 +2,9 @@
 //! so no component crate imports another. Signatures only; the components implement them and `sunnycloud`
 //! (12) wires them as `Arc<dyn Port>`.
 //!
-//! Contract: `_docs/02_document/contracts/contracts/part1_registries_identity_admin_quota.md` (registries and
-//! lifecycle, 01 identity, 07 admin, 07a quota).
+//! Contracts: `_docs/02_document/contracts/contracts/part1_registries_identity_admin_quota.md` (registries and
+//! lifecycle, 01 identity, 07 admin, 07a quota) and `part2_tree_transfer_feed.md` (02 tree and the
+//! `CommitEffect` protocol, 03 transfer, 05 sync feed, the blob data-plane value types).
 //!
 //! # Conventions
 //!
@@ -25,10 +26,14 @@
 //! - A DTO that carries a token prints a placeholder in `Debug` (NFT-SEC-16).
 
 mod admin;
+mod blob;
 mod common;
+mod feed;
 mod identity;
 mod quota;
 mod registries;
+mod transfer;
+mod tree;
 
 pub use async_trait::async_trait;
 
@@ -37,7 +42,13 @@ pub use admin::{
     AdminService, AdminUserView, DeletionAccepted, DeletionError, DevSeed, DevSeedError,
     HealthReport, IdentityView,
 };
+pub use blob::{BlobRef, ByteRange, ByteStream, PlaintextStream, StreamError};
 pub use common::{Fault, Page};
+pub use feed::{
+    ChangeFeed, ChangeFeedError, ChangeItem, ChangePage, Cursor, EpochAdmin, EpochAdminError,
+    FeedHorizon, FeedHorizonError, FeedNotifier, FeedStamp, FeedStampError, HeadReport, Marker,
+    MarkerStatus, ResyncReason, Seq, TouchedNodes,
+};
 pub use identity::*;
 pub use quota::{
     Drift, QuotaAdmin, QuotaAdminError, QuotaLedger, QuotaLedgerError, QuotaView, Reserved,
@@ -47,4 +58,19 @@ pub use registries::{
     DoctorContext, DoctorTag, EraseProgress, Finding, FindingLevel, HealthContributor, HealthItem,
     HealthStatus, Janitor, JanitorError, LifecycleError, ReadinessCheck, ReadinessItem,
     ReadinessStatus,
+};
+pub use transfer::{
+    BatchCommit, BatchEntry, BatchEntryResult, BatchResult, BlockAck, CommitService,
+    CommitServiceError, CommitUpload, Committed, Disposition, Download, DownloadError,
+    DownloadOptions, DownloadService, DownloadStatus, EntryError, ReservationError,
+    ReservationSource, RevisionOrCurrent, Staged, StartUpload, StartUploadOutcome, Started,
+    UploadError, UploadService, UploadState,
+};
+pub use tree::{
+    Begin, CommitActor, CommitEffect, EffectError, EntryFailure, EntryOutcome, EntryResult,
+    ListingPage, LiveFile, LiveFileLookup, LiveUsageError, LiveUsageSource, MaintenanceError,
+    NewRevision, NodeKind, NodeOrPath, NodeRef, NodeSelector, NodeState, NodeView, Placement,
+    PublishEntry, PublishOutcome, PublishResult, PublishedEntry, RestoreError, RestoreOutcome,
+    RevisionMatch, RevisionRef, RevisionView, StoredResponse, Target, TreeCommit, TreeCommitError,
+    TreeMaintenance, TreeReader, TreeReaderError, TreeRestore, TreeService, TreeServiceError,
 };

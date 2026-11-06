@@ -26,6 +26,14 @@ pub fn map_problem(status: u16, headers: &[(&str, &str)], body: &[u8]) -> Mapped
             correlation_id,
         } => (code, params, correlation_id),
     };
+    // A 426 is `upgrade_required` whatever the body says, so a gateway's bare 426 still stops the client.
+    // Only a body that names the code is trusted for its text, minimum version and URL.
+    let declared_upgrade = code == ErrorCode::UpgradeRequired;
+    let code = if status == 426 {
+        ErrorCode::UpgradeRequired
+    } else {
+        code
+    };
     let raw = RawProblem::read(headers, body);
     let error = |error| Mapped::Error(error);
     let planner = |input| Mapped::Planner(input);
@@ -69,6 +77,11 @@ pub fn map_problem(status: u16, headers: &[(&str, &str)], body: &[u8]) -> Mapped
         ErrorCode::Unauthenticated => error(SyncError::Unauthorized),
         ErrorCode::RateLimited => error(SyncError::RateLimited {
             retry_after: params.retry_after,
+        }),
+        ErrorCode::UpgradeRequired if !declared_upgrade => error(SyncError::UpgradeRequired {
+            message: code.title().to_owned(),
+            min_version: None,
+            update_url: None,
         }),
         ErrorCode::UpgradeRequired => error(SyncError::UpgradeRequired {
             message: raw.message.unwrap_or_else(|| code.title().to_owned()),

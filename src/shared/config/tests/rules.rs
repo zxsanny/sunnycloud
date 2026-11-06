@@ -377,7 +377,7 @@ fn missing_config_file_is_unreadable() {
 fn a_binary_ignores_keys_it_does_not_read() {
     let mut sources = valid_sources(Reader::Worker);
     set_key(&mut sources, "retention", "91d");
-    set_key(&mut sources, "log", "yaml");
+    set_key(&mut sources, "h2_max_streams", "many");
 
     let section = load::<WorkerSettings>(&sources).expect("worker load");
 

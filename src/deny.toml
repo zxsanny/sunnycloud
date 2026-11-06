@@ -11,7 +11,11 @@ allow = [
     "Unicode-3.0",
     "BSD-3-Clause",
     "Zlib",
+    # ring, rustls-webpki and untrusted (the TLS stack of sync-core's HTTP client).
+    "ISC",
 ]
+# Only rustls-platform-verifier's wasm32 target pulls it (the Mozilla root bundle); no shipped host target links it.
+exceptions = [{ crate = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] }]
 private = { ignore = true }
 
 [bans]

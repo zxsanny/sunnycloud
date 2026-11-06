@@ -15,3 +15,10 @@ workspace = true
 
 [dependencies]
 media-shared = { path = "../media-shared" }
+sc_config = { path = "../shared/config" }
+sc_observability = { path = "../shared/observability" }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

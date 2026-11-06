@@ -19,4 +19,4 @@ pub use fixture::{Fixture, FixtureBuilder};
 pub use log::{AppliedFault, ConnInfo, LoggedRequest};
 pub use route::Route;
 pub use script::{Script, seeded_bytes};
-pub use tls::{TlsMode, client_config};
+pub use tls::{Pki, TlsMode, client_config, generate};

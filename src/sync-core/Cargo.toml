@@ -9,6 +9,13 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Debug builds only: accepts an `http://` server URL and speaks h2c. A release build refuses it at compile time.
+allow-plain-http = []
+# Test-only entry points (extra trust roots for the scripted fake server, the request path). Enabled only by this crate's
+# own dev-dependency below, so no release tree contains it; `tests/release_isolation.rs` checks that.
+test-support = []
+
 [dependencies]
 sc_clock = { path = "../shared/clock" }
 sc_config = { path = "../shared/config" }
@@ -21,8 +28,12 @@ tokio = { workspace = true, features = ["macros"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 thiserror = { workspace = true }
 uuid = { workspace = true }
+reqwest = { workspace = true, features = ["http2", "rustls-no-provider"] }
+rustls = { workspace = true }
+rustls-platform-verifier = "0.7.1"
 
 [dev-dependencies]
+sync-core = { path = ".", features = ["test-support"] }
 sc_error = { path = "../shared/error" }
 # The scripted fake server (tests/support) and its test CA live only here: dev-dependencies are never built into a release binary.
 bytes = { workspace = true }

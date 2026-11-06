@@ -63,8 +63,9 @@ settings_table! {
     trusted_proxies: List = dflt("", A);
     internal_addr: ListenAddr = dflt("0.0.0.0:8081", A);
     ops_addr: ListenAddr = dflt("0.0.0.0:9090", A);
-    log: Text = dflt("text", A).one_of(&["text", "json"]);
-    log_level: Text = dflt("info", A).one_of(LOG_LEVELS);
+    // `log` and `log_level` are also read by the worker (AZ-3868): its logging setup takes the same two keys.
+    log: Text = dflt("text", AW).one_of(&["text", "json"]);
+    log_level: Text = dflt("info", AW).one_of(LOG_LEVELS);
     shutdown_grace: Dur = dflt("25s", A);
     min_client_version: Opt<Text> = unset(A);
 
