@@ -59,3 +59,9 @@ Findings 1 (grace retry) and 2 (index) of the review are closed. Still open for 
 Gate: all 15 steps RC 0; 1383 passed, 0 failed, 2 ignored.
 
 Commit: `[AZ-3686] sealed successor for the refresh grace retry, session index` — Loop: 1
+
+## Closure: AZ-3686 (owner decision, 2026-11-06)
+
+The AC-2 clause "the old access token keeps working until its TTL" is relaxed: rotation replaces the session's single access hash, so the old access token stops authenticating within `session_cache_ttl` after a rotation, and a client that gets a 401 repeats its request with the new token (sync-core does). No `prev_token_hash` column is added. AZ-3686 is closed with this deviation; the spec records it. Still open as owner questions, not blocking: `SessionInfo` has no `client_kind` or `created_ip`, and the refresh expiry slides with no absolute cap. AZ-3686 is `In Testing`.
+
+Commit: `[AZ-3686] relax AC-2 old-access-token clause, close` — Loop: 1

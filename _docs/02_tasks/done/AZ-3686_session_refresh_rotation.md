@@ -48,7 +48,7 @@ Then it returns a new access token and refresh token T1, both authenticate as th
 **AC-2: Concurrent refreshes give one successor (AC-58)**
 Given one session with refresh token T0 and `refresh_reuse_grace = 300 ms`
 When 4 `refresh(T0)` calls run in parallel
-Then exactly 1 new refresh token exists for the session, the session is not revoked, and the old access token keeps working until its TTL
+Then exactly 1 new refresh token exists for the session, the session is not revoked, and all four calls receive that one successor pair (the old access token stops working at the next rotation, within `session_cache_ttl`: relaxed by the owner on 2026-11-06, because the session keeps one access hash; clients repeat a request that gets a 401)
 
 **AC-3: Replay after the grace revokes the family (AC-58)**
 Given the state after AC-2
