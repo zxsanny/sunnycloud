@@ -12,6 +12,7 @@ mod error;
 mod exit;
 mod guard;
 mod handler;
+pub mod janitor;
 mod log;
 mod outcome;
 mod output;

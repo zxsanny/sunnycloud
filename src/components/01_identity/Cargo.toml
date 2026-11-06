@@ -11,3 +11,13 @@ workspace = true
 
 [dependencies]
 contracts = { path = "../../contracts" }
+sc_config = { path = "../../shared/config" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+sc_clock = { path = "../../shared/clock" }
+sc_db = { path = "../../shared/db" }
+# Same features as sc_db: the harness runs fixture SQL on plain connections.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+uuid = { workspace = true, features = ["v4"] }

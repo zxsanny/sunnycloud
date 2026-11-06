@@ -30,17 +30,26 @@ sunnycloud-quota = { path = "../components/07a_quota" }
 media-api = { path = "../components/08_media_jobs" }
 sunnycloud-http-api = { path = "../components/11_http_api" }
 sunnycloud-vault-service = { path = "../components/20_vault_service" }
+sc_audit = { path = "../shared/audit" }
 sc_clock = { path = "../shared/clock" }
 sc_config = { path = "../shared/config" }
+sc_db = { path = "../shared/db" }
 sc_error = { path = "../shared/error" }
 sc_observability = { path = "../shared/observability", features = ["db"] }
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
 serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "signal", "sync", "time"] }
 tokio-util = { workspace = true }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+axum = { workspace = true }
+# Provisions the per-test PostgreSQL databases of the janitor tests; test code only (`crate_graph` bans it as a normal dependency).
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+uuid = { workspace = true, features = ["v4"] }
 
 [features]
 test-clock = []

@@ -4,15 +4,20 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use sc_clock::SystemClock;
-use sync_core_proto::{ServerInfo, ServerUrl, UrlError};
+use sync_core_proto::{
+    FileHash, ListingPage, NodeView, PageToken, RevisionRef, RevisionView, ServerInfo, ServerUrl,
+    UrlError,
+};
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::config::SyncConfig;
 use crate::error::{Mapped, SyncError};
 use crate::host::CredentialProvider;
 use crate::http_transport::{HttpTransport, SERVER_INFO_PATH};
 use crate::negotiate::{Limits, identity, negotiate};
-use crate::request::{Method, RequestPath, Transport, WireRequest};
+use crate::request::{BoxFuture, Method, RequestPath, Transport, WireRequest};
+use crate::tree_ops;
 use crate::wire_table::map_problem;
 
 /// Why `connect` gave no client. Messages are fixed strings: nothing from the server reaches `Display`.
@@ -44,6 +49,51 @@ pub enum ConnectError {
 pub trait SyncApi: Send + Sync {
     /// Ends every operation in flight with `Cancelled`; nothing is sent afterwards.
     fn cancel(&self);
+
+    /// `GET /api/v1/nodes/root`.
+    fn root_node(&self) -> BoxFuture<'_, Result<NodeView, SyncError>>;
+
+    /// One page of a folder, files with their `content_hash`; `after` is the previous page's `next`,
+    /// `None` for the first page. The last page has `next = None`. Errors: `NotFound`, `NotAFolder`.
+    fn list_children<'a>(
+        &'a self,
+        node: Uuid,
+        after: Option<&'a PageToken>,
+    ) -> BoxFuture<'a, Result<ListingPage, SyncError>>;
+
+    /// Error: `NotFound`.
+    fn get_revision(&self, revision: Uuid) -> BoxFuture<'_, Result<RevisionView, SyncError>>;
+
+    /// Current revisions of live files with these content hashes, in requests of at most `LOOKUP_CHUNK`;
+    /// unknown hashes return nothing. For the reinstall rebuild only, never to skip upload bytes.
+    fn lookup_revisions<'a>(
+        &'a self,
+        hashes: &'a [FileHash],
+    ) -> BoxFuture<'a, Result<Vec<RevisionRef>, SyncError>>;
+
+    /// Sent once, never retried. Errors: `NameConflict`, `InvalidName`, `ParentNotFound`, `ParentGone`, `NotAFolder`.
+    fn create_folder<'a>(
+        &'a self,
+        parent: Uuid,
+        name: &'a str,
+    ) -> BoxFuture<'a, Result<NodeView, SyncError>>;
+
+    /// Moves and/or renames; carries no base revision, so it never conflicts with an edit.
+    /// Errors: `NameConflict`, `InvalidName`, `Cycle`, `ParentNotFound`, `ParentGone`, `NotAFolder`, `NotFound`.
+    fn move_node<'a>(
+        &'a self,
+        node: Uuid,
+        new_parent: Uuid,
+        name: &'a str,
+    ) -> BoxFuture<'a, Result<NodeView, SyncError>>;
+
+    /// `base_revision` is the file's revision the caller last saw; `None` for a folder.
+    /// Errors: `EditedSince` (a file changed on the server meanwhile), `NotFound`.
+    fn delete_node(
+        &self,
+        node: Uuid,
+        base_revision: Option<Uuid>,
+    ) -> BoxFuture<'_, Result<(), SyncError>>;
 }
 
 pub struct HttpSyncClient {
@@ -120,6 +170,54 @@ impl HttpSyncClient {
 impl SyncApi for HttpSyncClient {
     fn cancel(&self) {
         self.path.cancel();
+    }
+
+    fn root_node(&self) -> BoxFuture<'_, Result<NodeView, SyncError>> {
+        Box::pin(tree_ops::root_node(&self.path))
+    }
+
+    fn list_children<'a>(
+        &'a self,
+        node: Uuid,
+        after: Option<&'a PageToken>,
+    ) -> BoxFuture<'a, Result<ListingPage, SyncError>> {
+        Box::pin(tree_ops::list_children(&self.path, node, after))
+    }
+
+    fn get_revision(&self, revision: Uuid) -> BoxFuture<'_, Result<RevisionView, SyncError>> {
+        Box::pin(tree_ops::get_revision(&self.path, revision))
+    }
+
+    fn lookup_revisions<'a>(
+        &'a self,
+        hashes: &'a [FileHash],
+    ) -> BoxFuture<'a, Result<Vec<RevisionRef>, SyncError>> {
+        Box::pin(tree_ops::lookup_revisions(&self.path, hashes))
+    }
+
+    fn create_folder<'a>(
+        &'a self,
+        parent: Uuid,
+        name: &'a str,
+    ) -> BoxFuture<'a, Result<NodeView, SyncError>> {
+        Box::pin(tree_ops::create_folder(&self.path, parent, name))
+    }
+
+    fn move_node<'a>(
+        &'a self,
+        node: Uuid,
+        new_parent: Uuid,
+        name: &'a str,
+    ) -> BoxFuture<'a, Result<NodeView, SyncError>> {
+        Box::pin(tree_ops::move_node(&self.path, node, new_parent, name))
+    }
+
+    fn delete_node(
+        &self,
+        node: Uuid,
+        base_revision: Option<Uuid>,
+    ) -> BoxFuture<'_, Result<(), SyncError>> {
+        Box::pin(tree_ops::delete_node(&self.path, node, base_revision))
     }
 }
 

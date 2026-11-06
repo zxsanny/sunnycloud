@@ -8,8 +8,9 @@ use crate::{Db, DbError, Migrator, RunError, Scope};
 
 pub const BASE_VERSION: i64 = 20_261_105_090_000;
 pub const AUDIT_VERSION: i64 = 20_261_105_100_000;
+pub const IDENTITY_VERSION: i64 = 20_261_105_110_000;
 /// Every embedded migration, oldest first: a new embedded migration is added here, not to each test.
-pub const EMBEDDED: [i64; 2] = [BASE_VERSION, AUDIT_VERSION];
+pub const EMBEDDED: [i64; 3] = [BASE_VERSION, AUDIT_VERSION, IDENTITY_VERSION];
 
 async fn column_rows(conn: &mut PgConnection) -> Vec<(String, String, String, Option<String>)> {
     sqlx::query_as(
@@ -42,7 +43,7 @@ fn closure_error<T: std::fmt::Debug>(result: Result<T, RunError<DbError>>) -> Db
 async fn insert_account(api: &Db, id: Uuid, state: &'static str) -> Result<(), RunError<DbError>> {
     api.run(Scope::Account(id), async |tx| {
         sqlx::query(
-            "INSERT INTO accounts (id, state, created_at) VALUES ($1, $2, '2026-11-05T00:00:00Z'::timestamptz)",
+            "INSERT INTO accounts (id, state, created_at, display_name, role) VALUES ($1, $2, '2026-11-05T00:00:00Z'::timestamptz, 'test', 'user')",
         )
         .bind(id)
         .bind(state)
@@ -65,8 +66,9 @@ async fn first_migration_creates_accounts_with_owner_grants_and_check() {
 
     assert_eq!(report.applied, EMBEDDED);
     let mut admin = db.admin().await;
+    let columns = column_rows(&mut admin).await;
     assert_eq!(
-        column_rows(&mut admin).await,
+        columns[..3],
         [
             ("id".into(), "uuid".into(), "NO".into(), None),
             ("state".into(), "text".into(), "NO".into(), None),
@@ -118,9 +120,9 @@ async fn first_migration_creates_accounts_with_owner_grants_and_check() {
     .fetch_all(&mut admin)
     .await
     .expect("read constraints");
-    assert_eq!(constraints.len(), 2, "{constraints:?}");
-    assert_eq!(constraints[0].0, "accounts_pkey");
-    assert_eq!(constraints[1].0, "accounts_state_check");
+    let names: Vec<&str> = constraints.iter().map(|(name, _)| name.as_str()).collect();
+    assert!(names.contains(&"accounts_pkey"), "{names:?}");
+    assert!(names.contains(&"accounts_state_check"), "{names:?}");
     for state in ["active", "disabled", "deleting"] {
         insert_account(&api, Uuid::new_v4(), state)
             .await
@@ -227,7 +229,10 @@ async fn up_down_up_leaves_the_same_schema() {
     let after_second = schema_fingerprint(&mut admin).await;
 
     assert_eq!(first.applied, EMBEDDED);
-    assert_eq!(down.reverted, [AUDIT_VERSION, BASE_VERSION]);
+    assert_eq!(
+        down.reverted,
+        [IDENTITY_VERSION, AUDIT_VERSION, BASE_VERSION]
+    );
     assert_eq!(second.applied, EMBEDDED);
     assert!(
         after_first

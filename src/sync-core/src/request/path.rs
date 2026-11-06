@@ -58,6 +58,11 @@ impl RequestPath {
         self.cancel.cancel();
     }
 
+    /// Sends allowed to an operation without a reason of its own to differ: `sync.max_attempts_per_block`, at least 1.
+    pub(crate) fn default_attempts(&self) -> u32 {
+        self.policy.max_attempts_per_block.max(1)
+    }
+
     /// Whether work may continue; executors call it between blocks, before building the next request.
     pub fn check(&self) -> Result<(), SyncError> {
         if self.cancel.is_cancelled() {

@@ -2340,10 +2340,14 @@ dependencies = [
 name = "sunnycloud-daemon"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "ipc_schema",
  "libc",
+ "rustix 1.1.6",
+ "sc_names",
  "serde_json",
  "sync-core",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",
@@ -2362,6 +2366,13 @@ name = "sunnycloud-identity"
 version = "0.1.0"
 dependencies = [
  "contracts",
+ "sc_clock",
+ "sc_config",
+ "sc_db",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -2375,15 +2386,19 @@ dependencies = [
 name = "sunnycloud-server"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "clap",
  "contracts",
  "media-api",
+ "sc_audit",
  "sc_clock",
  "sc_config",
+ "sc_db",
  "sc_error",
  "sc_observability",
  "serde",
  "serde_json",
+ "sqlx",
  "sunnycloud-admin",
  "sunnycloud-blobstore",
  "sunnycloud-http-api",
@@ -2397,7 +2412,9 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "tower",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

@@ -12,6 +12,7 @@ mod http_transport;
 mod negotiate;
 mod request;
 mod tls;
+mod tree_ops;
 mod wire_table;
 
 pub use client::{ConnectError, HttpSyncClient, SyncApi};

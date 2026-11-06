@@ -187,12 +187,18 @@ async fn audit_migration_applies_reverts_and_applies_again() {
     let db = TestDb::empty().await;
     let migrator = db.migrator().await;
     let base = Migrator::run_pending(&migrator).await.expect("apply all");
-    assert_eq!(base.applied.len(), 2, "accounts_base then audit: {base:?}");
-    let audit_version = base.applied[1];
+    assert!(
+        base.applied.len() >= 2,
+        "accounts_base then audit: {base:?}"
+    );
+    let from_audit = base.applied[1..].to_vec();
 
-    let reverted = Migrator::revert(&migrator, 1)
-        .await
-        .expect("revert the audit migration");
+    let reverted = Migrator::revert(
+        &migrator,
+        u32::try_from(from_audit.len()).expect("a few migrations"),
+    )
+    .await
+    .expect("revert the audit migration and the ones after it");
     let gone = db
         .admin_count("SELECT count(*) FROM pg_class WHERE relname = 'audit_log'")
         .await;
@@ -201,9 +207,10 @@ async fn audit_migration_applies_reverts_and_applies_again() {
         .await;
     let again = Migrator::run_pending(&migrator).await.expect("apply again");
 
-    assert_eq!(reverted.reverted, [audit_version]);
+    let newest_first: Vec<i64> = from_audit.iter().rev().copied().collect();
+    assert_eq!(reverted.reverted, newest_first);
     assert_eq!((gone, function_gone), (0, 0));
-    assert_eq!(again.applied, [audit_version]);
+    assert_eq!(again.applied, from_audit);
     db.drop_db().await;
 }
 

@@ -8,6 +8,7 @@ struct Package {
     name: String,
     dir: String,
     deps: BTreeSet<String>,
+    dev_only: BTreeSet<String>,
 }
 
 type Graph = BTreeMap<String, Package>;
@@ -109,13 +110,25 @@ fn load_graph() -> Graph {
             .and_then(Path::to_str)
             .expect("manifest outside the workspace")
             .replace('\\', "/");
-        let deps = raw["dependencies"]
-            .as_array()
-            .expect("dependencies")
-            .iter()
-            .map(|dep| dep["name"].as_str().expect("dependency name").to_string())
-            .collect();
-        graph.insert(name.clone(), Package { name, dir, deps });
+        let raw_deps = raw["dependencies"].as_array().expect("dependencies");
+        let names = |dev: bool| -> BTreeSet<String> {
+            raw_deps
+                .iter()
+                .filter(|dep| (dep["kind"].as_str() == Some("dev")) == dev)
+                .map(|dep| dep["name"].as_str().expect("dependency name").to_string())
+                .collect()
+        };
+        let deps = names(false).union(&names(true)).cloned().collect();
+        let dev_only = names(true).difference(&names(false)).cloned().collect();
+        graph.insert(
+            name.clone(),
+            Package {
+                name,
+                dir,
+                deps,
+                dev_only,
+            },
+        );
     }
     graph
 }
@@ -147,7 +160,11 @@ fn violations(graph: &Graph) -> Vec<String> {
             if package.name == "sync-core-wasm" && WASM_FORBIDDEN.contains(&dep.as_str()) {
                 found.push(format!("sync-core-wasm depends on {dep}"));
             }
-            if dep == "sqlx" && NO_SQLX.contains(&package.name.as_str()) {
+            // A test database needs SQL; only a normal dependency puts sqlx into the shipped crate.
+            if dep == "sqlx"
+                && !package.dev_only.contains(dep)
+                && NO_SQLX.contains(&package.name.as_str())
+            {
                 found.push(format!("{} depends on sqlx", package.name));
             }
         }
