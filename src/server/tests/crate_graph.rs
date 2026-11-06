@@ -44,6 +44,7 @@ const WORKSPACE_PACKAGES: &[(&str, &str)] = &[
     ("ipc_schema", "desktop/ipc_schema"),
     ("sunnycloud-daemon", "desktop/daemon"),
     ("sunnycloud-settings", "desktop/settings"),
+    ("sunnycloud-settings-testkit", "desktop/settings/test-tools"),
     ("mobile_backup", "mobile_backup"),
     ("vault-core", "vault-core"),
 ];
@@ -67,6 +68,7 @@ const CLIENTS: &[&str] = &[
     "ipc_schema",
     "sunnycloud-daemon",
     "sunnycloud-settings",
+    "sunnycloud-settings-testkit",
 ];
 
 fn is_component(package: &Package) -> bool {

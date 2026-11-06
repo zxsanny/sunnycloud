@@ -8,3 +8,23 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+sc_error = { path = "../shared/error", default-features = false, features = ["client"] }
+sync-core-proto = { path = "../sync-core-proto" }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+sc_error = { path = "../shared/error" }
+# The scripted fake server (tests/support) and its test CA live only here: dev-dependencies are never built into a release binary.
+bytes = { workspace = true }
+http-body-util = "0.1"
+hyper = { workspace = true, features = ["client", "http1", "http2", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+rustls = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
