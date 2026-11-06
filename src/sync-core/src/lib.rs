@@ -6,6 +6,7 @@ compile_error!("the `allow-plain-http` feature is for debug builds only");
 
 mod client;
 mod config;
+mod download;
 mod error;
 mod host;
 mod http_transport;
@@ -21,6 +22,7 @@ pub use client::{ConnectError, HttpSyncClient, SyncApi};
 pub use negotiate::Limits;
 
 pub use config::SyncConfig;
+pub use download::Verified;
 pub use error::{Mapped, PlannerInput, SyncError};
 pub use host::{
     BatchRecord, CheckpointStore, Credential, CredentialProvider, DownloadSink, FileIdentity,

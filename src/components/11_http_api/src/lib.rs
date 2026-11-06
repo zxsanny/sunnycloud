@@ -1,5 +1,5 @@
-//! The HTTP API library (11): the hand-built accept loop, the listeners and the surface the composition root
-//! (12) runs.
+//! The HTTP API library (11): the hand-built accept loop, the listeners (public, internal, ops) and the surface
+//! the composition root (12) runs.
 //!
 //! Contract: `_docs/02_document/contracts/11_http_api/http_server.md`. 11 builds no service and binds no
 //! configuration: it holds the ports of [`ApiServices`] and the typed [`HttpConfig`] it is given.
@@ -18,5 +18,6 @@ mod services;
 pub use accept::AcceptLoop;
 pub use config::{HttpConfig, ServerInfo};
 pub use error::{HttpServerError, Listener};
+pub use metrics::{HttpMetrics, RequestLabels, StatusClass};
 pub use server::{BoundServer, HttpServer, OpenApiDocument};
 pub use services::ApiServices;

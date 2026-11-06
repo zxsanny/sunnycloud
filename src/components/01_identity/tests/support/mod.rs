@@ -15,6 +15,7 @@ pub mod auth;
 pub mod fixtures;
 pub mod provider;
 mod secrets;
+pub mod sessions;
 pub mod sign_in;
 pub mod statements;
 

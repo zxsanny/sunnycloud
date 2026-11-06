@@ -7,3 +7,5 @@ mod harness;
 mod harness_scripting;
 mod keepalive;
 mod lifecycle;
+mod ops;
+mod ops_metrics;

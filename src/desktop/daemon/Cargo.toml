@@ -23,8 +23,9 @@ sync-core-proto = { path = "../../sync-core-proto" }
 sc_names = { path = "../../shared/names" }
 bytes = { workspace = true }
 rusqlite = { workspace = true, features = ["bundled"] }
+serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
-uuid = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 ipc_schema = { path = "../../desktop/ipc_schema" }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "io-util", "rt", "sync", "time", "macros"] }

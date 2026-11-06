@@ -29,6 +29,9 @@ pub(in crate::local_index) const NOT_SYNCED: &str = select_entry!(
     "INDEXED BY entry_not_synced WHERE pair_id = ?1 AND state <> 'synced' AND state = ?2"
 );
 pub(in crate::local_index) const SYNCED: &str = select_entry!("WHERE pair_id = ?1 AND state = ?2");
+/// Lookup keys that start with `<dir>/` are exactly `[<dir>/, <dir>0)`: `0` is the byte after `/`.
+pub(in crate::local_index) const UNDER: &str =
+    select_entry!("WHERE pair_id = ?1 AND rel_path >= ?2 AND rel_path < ?3");
 
 const UPSERT: &str = "INSERT INTO entry (pair_id, rel_path, disk_path, node_id, revision_id, content_hash, size, \
     mtime_ns, file_id, state, settle_until, escaped_from) \
@@ -76,6 +79,11 @@ pub(in crate::local_index) fn query(
     conn.prepare_cached(sql)?
         .query_map(params, from_row)?
         .collect()
+}
+
+pub(in crate::local_index) fn any(conn: &Connection, pair_id: i64) -> rusqlite::Result<bool> {
+    conn.prepare_cached("SELECT EXISTS (SELECT 1 FROM entry WHERE pair_id = ?1)")?
+        .query_row([pair_id], |row| row.get(0))
 }
 
 pub(in crate::local_index) fn file_id_text(id: FileId) -> String {

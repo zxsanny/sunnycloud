@@ -26,6 +26,8 @@ test-clock = ["sc_clock/test-clock"]
 [dev-dependencies]
 hyper = { workspace = true, features = ["client", "http1", "http2", "server"] }
 http-body-util = "0.1"
+prometheus-parse = "0.2"
+serde_json = { workspace = true }
 sc_ids = { path = "../../shared/ids_hashing" }
 uuid = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }

@@ -79,6 +79,47 @@ pub(crate) async fn by_hash(
     Ok(row.map(CredentialRow::from))
 }
 
+/// The session a presented refresh token belongs to, current or previous generation.
+pub(crate) struct RefreshOwner {
+    pub session_id: Uuid,
+    pub account_id: Uuid,
+}
+
+const SESSION_BY_REFRESH: &str = "SELECT id, account_id FROM sessions WHERE refresh_hash = $1";
+
+const SESSION_BY_PREV_REFRESH: &str =
+    "SELECT id, account_id FROM sessions WHERE prev_refresh_hash = $1";
+
+/// The session whose current refresh hash, else whose previous one, is `hash`. The account is not known yet,
+/// so the read runs in system scope. The current hash is indexed and answers a normal refresh alone; the
+/// previous hash is probed only when the first read finds nothing. Nothing is locked or decided here.
+pub(crate) async fn session_by_refresh_hash(
+    db: &Db,
+    hash: &TokenHash,
+) -> Result<Option<RefreshOwner>, RunError<DbError>> {
+    let row = db
+        .run_system("refresh_lookup", async |tx| {
+            let current = sqlx::query_as::<_, (Uuid, Uuid)>(SESSION_BY_REFRESH)
+                .bind(hash.as_bytes().as_slice())
+                .fetch_optional(tx.conn())
+                .await
+                .map_err(DbError::from)?;
+            if current.is_some() {
+                return Ok(current);
+            }
+            sqlx::query_as::<_, (Uuid, Uuid)>(SESSION_BY_PREV_REFRESH)
+                .bind(hash.as_bytes().as_slice())
+                .fetch_optional(tx.conn())
+                .await
+                .map_err(DbError::from)
+        })
+        .await?;
+    Ok(row.map(|(session_id, account_id)| RefreshOwner {
+        session_id,
+        account_id,
+    }))
+}
+
 /// The credential `id` of `account`.
 pub(crate) async fn by_id(
     db: &Db,

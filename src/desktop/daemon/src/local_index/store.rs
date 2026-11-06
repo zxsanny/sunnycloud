@@ -117,6 +117,23 @@ impl LocalIndexStore {
         self.read(|conn| Ok(entries::query(conn, sql, &[&pair_id, &state.as_str()])?))
     }
 
+    /// The entries strictly below the directory `rel_path`, at any depth. The directory's own entry is not included.
+    pub fn entries_under(&self, pair_id: i64, rel_path: &str) -> Result<Vec<Entry>, IndexError> {
+        self.read(|conn| {
+            let key = path_key(rel_path, is_case_insensitive(conn, pair_id)?)?;
+            let (from, to) = (format!("{key}/"), format!("{key}0"));
+            Ok(entries::query(
+                conn,
+                entries::UNDER,
+                &[&pair_id, &from, &to],
+            )?)
+        })
+    }
+
+    pub fn has_entries(&self, pair_id: i64) -> Result<bool, IndexError> {
+        self.read(|conn| Ok(entries::any(conn, pair_id)?))
+    }
+
     pub fn find_by_file_id(&self, pair_id: i64, file_id: FileId) -> Result<Vec<Entry>, IndexError> {
         let file_id = entries::file_id_text(file_id);
         self.read(|conn| {

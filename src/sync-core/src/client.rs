@@ -13,8 +13,9 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::config::SyncConfig;
+use crate::download::{self, Verified};
 use crate::error::{Mapped, SyncError};
-use crate::host::{CheckpointStore, CredentialProvider};
+use crate::host::{CheckpointStore, CredentialProvider, DownloadSink};
 use crate::http_transport::{HttpTransport, SERVER_INFO_PATH};
 use crate::negotiate::{Limits, identity, negotiate};
 use crate::request::{BoxFuture, Method, RequestPath, Transport, WireRequest};
@@ -111,6 +112,19 @@ pub trait SyncApi: Send + Sync {
     /// Idempotent by `commit_id`: a repeated id with the same entries returns the stored response.
     /// Errors: `BatchTooLarge`, `CommitIdReused`.
     fn batch_commit(&self, commit: BatchCommit) -> BoxFuture<'_, Result<BatchResult, SyncError>>;
+
+    /// Fetches the revision into `sink` by ranged requests of one block and continues at the block that holds
+    /// `resume_from`. The sink gets verified blocks only, in order; each block is checked against the
+    /// revision's blocklist before `write_verified` and the whole file against `content_hash` before
+    /// `finish(true)`; after any failure past the revision lookup it gets `finish(false)`. Errors: `NotFound`,
+    /// `BlobUnavailable`, `HashMismatch{block}` (the first bad block), `Io` (the sink),
+    /// `ProtocolViolation` (an answer that is not the requested range, a short body, an inconsistent revision).
+    fn download<'a>(
+        &'a self,
+        revision: &'a RevisionRef,
+        sink: Arc<dyn DownloadSink>,
+        resume_from: u64,
+    ) -> BoxFuture<'a, Result<Verified, SyncError>>;
 
     /// Starts a desktop sign-in: the user approves `user_code` elsewhere while the host polls with `device_code`.
     /// Sent without a credential.
@@ -324,6 +338,15 @@ impl SyncApi for HttpSyncClient {
 
     fn batch_commit(&self, commit: BatchCommit) -> BoxFuture<'_, Result<BatchResult, SyncError>> {
         Box::pin(async move { small::batch_commit(&self.path, &commit).await })
+    }
+
+    fn download<'a>(
+        &'a self,
+        revision: &'a RevisionRef,
+        sink: Arc<dyn DownloadSink>,
+        resume_from: u64,
+    ) -> BoxFuture<'a, Result<Verified, SyncError>> {
+        Box::pin(download::download(&self.path, revision, sink, resume_from))
     }
 
     fn device_grant_request<'a>(

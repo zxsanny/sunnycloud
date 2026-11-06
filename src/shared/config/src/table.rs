@@ -278,6 +278,8 @@ settings_table! {
     // Client test overrides (14)
     desktop_settle: Dur = dflt("2s", C).range("200ms", "30s");
     desktop_rescan_interval: Dur = dflt("15m", C).range("10s", "24h");
+    // Release value of the delete guard (14): a batch of this many deletions in one direction holds the pair.
+    desktop_mass_delete_threshold: Count = dflt("200", C).range("1", "1000000");
 
     // Release-fixed client values (helper 01 Rules). Row names are not in the helper table.
     updater_source: Opt<Text> = unset(C).fixed();

@@ -9,6 +9,7 @@ use sc_observability::ObsError;
 pub enum Listener {
     Public,
     Internal,
+    Ops,
 }
 
 impl fmt::Display for Listener {
@@ -16,6 +17,7 @@ impl fmt::Display for Listener {
         f.write_str(match self {
             Listener::Public => "public",
             Listener::Internal => "internal",
+            Listener::Ops => "ops",
         })
     }
 }
@@ -33,7 +35,7 @@ pub enum HttpServerError {
         #[source]
         source: io::Error,
     },
-    /// The connection metrics could not be registered (the registry already holds them).
-    #[error("connection metrics: {0}")]
+    /// The connection or HTTP metrics could not be registered (the registry already holds them).
+    #[error("http metrics: {0}")]
     Metrics(#[from] ObsError),
 }

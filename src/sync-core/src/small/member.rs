@@ -19,7 +19,7 @@ pub(super) struct Member {
 }
 
 /// Runs a blocking host callback off the async threads. A panic in it propagates; a cancelled task is `Cancelled`.
-pub(super) async fn blocking<T: Send + 'static>(
+pub(crate) async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, SyncError> {
     joined(tokio::task::spawn_blocking(work).await)

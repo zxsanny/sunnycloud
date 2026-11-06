@@ -1,6 +1,7 @@
 //! Mode S of `components/11_http_api/tests.md`: the real server over real TCP, with every port a scripted
 //! stub. A call nothing scripted fails as `Unexpected`, never as a default success.
 
+pub mod checks;
 pub mod clients;
 pub mod probe;
 pub mod raw_h2;
@@ -12,9 +13,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use sc_observability::{BuildInfo, Metrics};
+use sc_observability::{BuildInfo, Metrics, ReadinessCheck};
 use sunnycloud_http_api::{
-    AcceptLoop, ApiServices, HttpConfig, HttpServer, HttpServerError, ServerInfo,
+    AcceptLoop, ApiServices, HttpConfig, HttpMetrics, HttpServer, HttpServerError, ServerInfo,
 };
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -132,20 +133,35 @@ where
 pub struct Server {
     pub public: SocketAddr,
     pub internal: SocketAddr,
+    pub ops: SocketAddr,
     pub script: Script,
     pub metrics: Arc<Metrics>,
+    pub http_metrics: Arc<HttpMetrics>,
     shutdown: oneshot::Sender<()>,
     task: JoinHandle<Result<(), HttpServerError>>,
 }
 
 impl Server {
     pub async fn start(config: HttpConfig) -> Server {
+        Server::start_with_readiness(config, Vec::new()).await
+    }
+
+    /// Starts a server whose `/readyz` runs `readiness`.
+    pub async fn start_with_readiness(
+        config: HttpConfig,
+        readiness: Vec<Arc<dyn ReadinessCheck>>,
+    ) -> Server {
         let script = Script::default();
         let metrics = new_metrics();
-        let server = HttpServer::new(stub_services(&script, metrics.clone()), config)
-            .expect("server builds");
+        let services = ApiServices {
+            readiness,
+            ..stub_services(&script, metrics.clone())
+        };
+        let server = HttpServer::new(services, config).expect("server builds");
+        let http_metrics = server.http_metrics();
         let bound = server.bind().await.expect("listeners bind");
-        let (public, internal) = (bound.public_addr(), bound.internal_addr());
+        let (public, internal, ops) =
+            (bound.public_addr(), bound.internal_addr(), bound.ops_addr());
         let (shutdown, signal) = oneshot::channel::<()>();
         let task = tokio::spawn(bound.serve(async move {
             signal.await.ok();
@@ -153,8 +169,10 @@ impl Server {
         Server {
             public,
             internal,
+            ops,
             script,
             metrics,
+            http_metrics,
             shutdown,
             task,
         }
