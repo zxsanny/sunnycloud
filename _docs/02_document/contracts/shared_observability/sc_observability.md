@@ -3,7 +3,7 @@
 **Component**: shared/observability (crate `sc_observability`; declares `HealthContributor` and `ReadinessCheck`, which `contracts` re-exports; never imports `contracts`, owner decision 2026-11-05, module-layout exception 5)
 **Producer task**: E-09/c01 — `_docs/02_tasks/todo/B01-20_sc_observability.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c03 (`contracts` re-exports the two traits); other batches: 11 (E-21), 12 (E-22), 09 (E-20, its own ops listener), every component that registers a metric family
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft
 **Last Updated**: 2026-11-06
 
@@ -27,7 +27,7 @@ Sources: `epics/E-09_cross-cutting-observability.md`, `deployment/observability.
 | `ReadinessCheck` | `fn name(&self) -> &str`; `fn check(&self) -> CheckFuture<'_, ReadinessItem>` | none | |
 | `ReadinessRegistry::add` | `fn add(&mut self, check: Arc<dyn ReadinessCheck>)`; `with_timeout(Duration)` (default 2 s per check, checks run concurrently; a timeout is a `Failing` item) | none | sync |
 | `Liveness::shut_down` | turns `/readyz` to 503 on the shutdown signal (checks are then not run); `Liveness` is a clonable shared flag; `/healthz` ignores it | none | sync |
-| helper collectors | `db_collector(Db) -> DbCollector` (`.register(&Metrics)` registers the collector and the `db_up` probe), `audit_collector(impl Fn() -> AuditStats)`, `ratelimit_collector(impl Fn() -> LimiterStats)`: sources are closures over `AuditWriter::stats` / `AbuseLimiter::stats` | `Duplicate` | |
+| helper collectors | `ratelimit_collector(impl Fn() -> LimiterStats)` always; behind cargo feature `db`: `db_collector(Db) -> DbCollector` (`.register(&Metrics)` registers the collector and the `db_up` probe), `audit_collector(impl Fn() -> AuditStats)`; sources are closures over `AuditWriter::stats` / `AbuseLimiter::stats` | `Duplicate` | |
 
 | Type | Shape |
 |---|---|
@@ -45,6 +45,7 @@ Sources: `epics/E-09_cross-cutting-observability.md`, `deployment/observability.
 - `request_id` in a log line equals the `X-Request-Id` header and the error body field.
 - `/healthz` checks no dependency; `/readyz` runs every registered check with a timeout each.
 - `sc_db`, `sc_audit` and `sc_ratelimit` never depend on this crate; it reads their snapshots (no cycle).
+- Feature `db` (off by default) is the only edge to `sc_db` and `sc_audit`, so to `sqlx`. The server enables it; the worker and the decoder do not, and their dependency graph holds no `sqlx`, `sc_db` or `sc_audit` (AZ-3868 AC-5). The families `db_up`, `db_pool_connections`, `db_query_duration_seconds`, `migrations_pending` and `audit_write_failures_total` exist only with the feature.
 - This crate never imports `contracts`. `HealthContributor`, `ReadinessCheck`, `HealthItem` and `ReadinessItem` are declared here, object safe and `Send + Sync`; `contracts` re-exports them unchanged (owner decision 2026-11-05).
 
 ## Non-Goals
@@ -79,3 +80,4 @@ Sources: `epics/E-09_cross-cutting-observability.md`, `deployment/observability.
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
 | 1.1.0 | 2026-11-05 | `HealthContributor`, `ReadinessCheck` and their items declared here (moved from `contracts` part 1, which re-exports them); no `contracts` import (owner decision 2026-11-05) | decompose Step 4 |
 | 1.2.0 | 2026-11-06 | Implemented shape recorded: typed log macros and field schema order, `Metrics::new(BuildInfo)`, `LabelSet`, probes, boxed-future check traits, closure sources for the audit and rate limit collectors | AZ-3786 |
+| 1.3.0 | 2026-11-06 | Feature `db` added: `DbCollector`, `db_collector` and `audit_collector` and the `sc_db`/`sc_audit` dependencies are behind it so the worker and the decoder link no `sqlx` (owner decision 2026-11-06, option feature-gate) | AZ-3868 |

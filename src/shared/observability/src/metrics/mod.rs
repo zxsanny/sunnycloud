@@ -1,6 +1,8 @@
 //! The metrics registry: `sunnycloud_`-prefixed, enumeration-only labels, one histogram bucket set.
 
 mod collectors;
+#[cfg(feature = "db")]
+mod db;
 mod family;
 mod label;
 mod snapshot;
@@ -10,7 +12,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use prometheus::core::Collector;
 use prometheus::{Encoder, Registry, TextEncoder};
 
-pub use collectors::{DbCollector, audit_collector, db_collector, ratelimit_collector};
+pub use collectors::ratelimit_collector;
+#[cfg(feature = "db")]
+pub use db::{DbCollector, audit_collector, db_collector};
 pub use family::{Counter, Gauge, HISTOGRAM_BUCKETS, Histogram};
 pub use label::{LabelSet, MAX_LABELS, NoLabels};
 pub use snapshot::SnapshotCollector;

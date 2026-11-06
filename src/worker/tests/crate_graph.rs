@@ -1,11 +1,16 @@
-//! AC-5, crate part: the resolved dependency graph of the worker (normal and build edges, every transitive
-//! crate) and the symbols of its binary. Image checks are in `deploy/tests/check-images.sh`.
+//! AC-5, crate part: the dependency graph of the worker (normal and build edges, every transitive crate) and
+//! the symbols of its binary. Image checks are in `deploy/tests/check-images.sh`.
+//!
+//! The transitive set comes from `cargo tree -p sunnycloud-worker`, which resolves features for the worker
+//! alone; `cargo metadata` unifies the features of all workspace members (the server turns on the `db`
+//! feature of `sc_observability`), so it would show crates the worker binary does not link. For the same
+//! reason the binary scanned for symbols is built here with `-p sunnycloud-worker` into its own target
+//! folder, as the image build does, not the binary of a workspace-wide `cargo test`.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::path::Path;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 use std::process::Command;
-
-const BLOCKED_REASON: &str = "blocked: sc_observability depends on sc_db and sc_audit, which link sqlx (open flagged concern of AZ-3868, owners of E-09 and E-00); enable when the dependency is split";
+use std::sync::OnceLock;
 
 struct Graph {
     /// Package name -> workspace-relative manifest folder, for every package.
@@ -62,24 +67,38 @@ fn load() -> Graph {
 }
 
 impl Graph {
-    /// Every crate the worker reaches, with the first crate after the worker on the way to it.
-    fn reachable(&self) -> BTreeMap<String, String> {
-        let mut first_hop = BTreeMap::new();
-        let mut queue = VecDeque::new();
-        for dep in &self.edges["sunnycloud-worker"] {
-            first_hop.insert(dep.clone(), dep.clone());
-            queue.push_back(dep.clone());
-        }
-        while let Some(current) = queue.pop_front() {
-            let hop = first_hop[&current].clone();
-            for dep in self.edges.get(&current).into_iter().flatten() {
-                if !first_hop.contains_key(dep) {
-                    first_hop.insert(dep.clone(), hop.clone());
-                    queue.push_back(dep.clone());
-                }
-            }
-        }
-        first_hop
+    /// The name of every crate the worker links, as `cargo tree` resolves it for the worker alone.
+    fn reachable(&self) -> BTreeSet<String> {
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+        let output = Command::new(cargo)
+            .args([
+                "tree",
+                "--locked",
+                "-p",
+                "sunnycloud-worker",
+                "--edges",
+                "normal,build",
+                "--target",
+                "all",
+                "--prefix",
+                "none",
+                "--format",
+                "{p}",
+            ])
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .expect("cargo tree starts");
+        assert!(
+            output.status.success(),
+            "cargo tree failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout)
+            .expect("cargo tree is UTF-8")
+            .lines()
+            .filter_map(|line| line.split_whitespace().next())
+            .map(str::to_owned)
+            .collect()
     }
 
     fn is_component(&self, name: &str) -> bool {
@@ -87,6 +106,44 @@ impl Graph {
             .get(name)
             .is_some_and(|folder| folder.starts_with("components/"))
     }
+}
+
+/// The worker binary as `cargo build -p sunnycloud-worker` links it, built once per test run.
+fn isolated_binary() -> &'static Path {
+    static BINARY: OnceLock<PathBuf> = OnceLock::new();
+    BINARY.get_or_init(|| {
+        let workspace_binary = Path::new(env!("CARGO_BIN_EXE_sunnycloud-worker"));
+        let target_dir = workspace_binary
+            .parent()
+            .and_then(Path::parent)
+            .expect("the binary is in <target>/<profile>")
+            .join("ac5-isolated");
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+        let output = Command::new(cargo)
+            .args([
+                "build",
+                "--locked",
+                "-p",
+                "sunnycloud-worker",
+                "--target-dir",
+            ])
+            .arg(&target_dir)
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .expect("cargo build starts");
+        assert!(
+            output.status.success(),
+            "cargo build failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let profile = workspace_binary
+            .parent()
+            .and_then(Path::file_name)
+            .expect("profile folder");
+        target_dir
+            .join(profile)
+            .join(workspace_binary.file_name().expect("binary name"))
+    })
 }
 
 /// Crates that give a process a database, the audit log writer or a media library.
@@ -107,7 +164,7 @@ fn ac5_no_contracts_component_server_or_media_library_crate_in_the_graph() {
     let reached = graph.reachable();
 
     let found: Vec<&String> = reached
-        .keys()
+        .iter()
         .filter(|name| {
             name.as_str() == "contracts"
                 || name.as_str() == "sunnycloud-server"
@@ -129,47 +186,27 @@ fn ac5_the_worker_declares_no_database_dependency_itself() {
 }
 
 #[test]
-fn ac5_database_crates_reach_the_worker_only_through_sc_observability() {
-    let graph = load();
-
-    let reached = graph.reachable();
-
-    let other_paths: Vec<(&String, &String)> = reached
-        .iter()
-        .filter(|(name, hop)| is_database_path(name) && hop.as_str() != "sc_observability")
-        .collect();
-    assert!(
-        other_paths.is_empty(),
-        "database crates through another dependency: {other_paths:?}"
-    );
-}
-
-#[test]
-#[ignore = "blocked: sc_observability depends on sc_db and sc_audit, which link sqlx (open flagged concern of AZ-3868, owners of E-09 and E-00); enable when the dependency is split"]
 fn ac5_no_sqlx_sc_db_or_audit_crate_in_the_graph() {
     let graph = load();
 
     let reached = graph.reachable();
 
-    let found: Vec<&String> = reached.keys().filter(|n| is_database_path(n)).collect();
-    assert!(found.is_empty(), "{BLOCKED_REASON}: {found:?}");
+    let found: Vec<&String> = reached.iter().filter(|n| is_database_path(n)).collect();
+    assert!(found.is_empty(), "database crates in the graph: {found:?}");
 }
 
 #[test]
-#[ignore = "blocked: sc_observability depends on sc_db and sc_audit, which link sqlx (open flagged concern of AZ-3868, owners of E-09 and E-00); enable when the dependency is split"]
 fn ac5_no_sqlx_symbol_in_the_binary() {
-    let binary =
-        std::fs::read(env!("CARGO_BIN_EXE_sunnycloud-worker")).expect("binary is readable");
+    let binary = std::fs::read(isolated_binary()).expect("binary is readable");
 
     let hit = binary.windows(4).any(|window| window == b"sqlx");
 
-    assert!(!hit, "{BLOCKED_REASON}");
+    assert!(!hit, "the binary names sqlx");
 }
 
 #[test]
 fn ac5_no_media_library_symbol_in_the_binary() {
-    let binary =
-        std::fs::read(env!("CARGO_BIN_EXE_sunnycloud-worker")).expect("binary is readable");
+    let binary = std::fs::read(isolated_binary()).expect("binary is readable");
 
     let hits: Vec<&str> = ["libvips", "libheif", "libavcodec", "libavformat"]
         .into_iter()

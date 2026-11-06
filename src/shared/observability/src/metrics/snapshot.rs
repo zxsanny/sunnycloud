@@ -84,6 +84,7 @@ fn family(
     family
 }
 
+#[cfg(feature = "db")]
 pub(crate) fn gauge_family(
     name: &str,
     help: &str,
@@ -121,6 +122,7 @@ pub(crate) fn counter_family(
 }
 
 /// A summary with a count and a sum and no quantiles: all the snapshots record is how many and how long.
+#[cfg(feature = "db")]
 pub(crate) fn summary_family(
     name: &str,
     help: &str,

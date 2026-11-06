@@ -10,9 +10,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-sc_audit = { path = "../audit" }
+sc_audit = { path = "../audit", optional = true }
 sc_clock = { path = "../clock" }
-sc_db = { path = "../db" }
+sc_db = { path = "../db", optional = true }
 sc_error = { path = "../error" }
 sc_ratelimit = { path = "../ratelimit" }
 axum = { workspace = true }
@@ -28,9 +28,18 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "registry"] }
 uuid = { workspace = true }
 
+[features]
+# The database and audit collectors. Off for the worker and the decoder, which hold no database (sqlx);
+# the server (composition root) turns it on.
+db = ["dep:sc_audit", "dep:sc_db"]
+
 [dev-dependencies]
 prometheus-parse = "0.2"
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
 tower = { version = "0.5", default-features = false, features = ["util"] }
 sc_config = { path = "../config" }
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none"] }
+
+[[test]]
+name = "db_collector"
+required-features = ["db"]

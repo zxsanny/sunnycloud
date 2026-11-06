@@ -5,9 +5,10 @@
 //! - [`init_logging`] installs the one JSON (or text) line format; the typed field API and the formatter keep
 //!   secrets, tokens, names and paths out of it (see [`logging`]).
 //! - [`Metrics`] is the registry. Every family is exported as `sunnycloud_<name>`; constructors take a
-//!   [`LabelSet`], a static enumeration, so a label value cannot come from a request. [`db_collector`],
-//!   [`audit_collector`] and [`ratelimit_collector`] export the helper-owned families by reading the
-//!   helpers' snapshots, so `sc_db`, `sc_audit` and `sc_ratelimit` never depend on this crate.
+//!   [`LabelSet`], a static enumeration, so a label value cannot come from a request. `db_collector`,
+//!   `audit_collector` (feature `db`, off in the worker and the decoder so they link no `sqlx`) and
+//!   [`ratelimit_collector`] export the helper-owned families by reading the helpers' snapshots, so `sc_db`,
+//!   `sc_audit` and `sc_ratelimit` never depend on this crate.
 //! - [`ops_router`] serves `/healthz` (checks nothing), `/readyz` (every registered [`ReadinessCheck`] with a
 //!   timeout each, 503 on any not-ok check and after [`Liveness::shut_down`]) and `/metrics`.
 //! - [`HealthContributor`] and [`ReadinessCheck`] are declared here and re-exported by `contracts`; this crate
@@ -47,10 +48,11 @@ pub use logging::{
     request_span, subscriber,
 };
 pub use metrics::{
-    BuildInfo, Counter, DbCollector, Gauge, HISTOGRAM_BUCKETS, Histogram, LabelSet, MAX_LABELS,
-    Metrics, NoLabels, PREFIX, ScrapeProbe, SnapshotCollector, audit_collector, db_collector,
-    ratelimit_collector,
+    BuildInfo, Counter, Gauge, HISTOGRAM_BUCKETS, Histogram, LabelSet, MAX_LABELS, Metrics,
+    NoLabels, PREFIX, ScrapeProbe, SnapshotCollector, ratelimit_collector,
 };
+#[cfg(feature = "db")]
+pub use metrics::{DbCollector, audit_collector, db_collector};
 pub use ops::{DEFAULT_CHECK_TIMEOUT, Liveness, ReadinessRegistry, ops_router};
 pub use prometheus::Registry;
 pub use prometheus::core::Collector;

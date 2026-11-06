@@ -55,3 +55,13 @@ CI-parity: PASS with a local PostgreSQL 18 (`DATABASE_URL`, throwaway container,
 ## Next Batch
 
 Open decision first: split `sc_observability` so the worker has no sqlx (AZ-3868 stays in `todo/`, `In Progress`). Ready now besides it: AZ-3682 identity crate, AZ-3749 quota skeleton, AZ-3792 janitor scheduler, AZ-3816 admin crate skeleton, AZ-3892 platform fs linux, and the AZ-3960/3963/3964/3965/3966 sync client operations.
+
+## Follow-up: AZ-3868 AC-5 closed (owner decision: feature-gate)
+
+`sc_observability` gained cargo feature `db` (off by default): `DbCollector`, `db_collector`, `audit_collector` and the `sc_db`/`sc_audit` dependencies are behind it (`metrics/db.rs`). `sunnycloud-server` enables it; the worker and the decoder do not. `cargo tree -p sunnycloud-worker` and `-p decoder-runner` hold no `sqlx`, `sc_db` or `sc_audit`. The two ignored AC-5 tests in `worker/tests/crate_graph.rs` are enabled; the graph check now uses `cargo tree -p sunnycloud-worker` and the symbol checks scan a binary built with `-p sunnycloud-worker` into `target/ac5-isolated` (a workspace-wide `cargo test` unifies the server's `db` feature into the worker binary, which the first run showed). The test that database crates arrive only through `sc_observability` was removed (no database crate arrives at all). Contract `sc_observability` is 1.3.0.
+
+Gate: all 15 steps RC 0; 986 passed, 0 failed, 1 ignored. Also run: `cargo test -p sc_observability` without the feature and clippy of `sc_observability`, worker and decoder without it.
+
+Not run: AZ-3868 AC-5 image checks in `deploy/tests/check-images.sh` (no images built here); the image build uses `-p sunnycloud-worker`, so it links the same graph as the isolated binary. `ac4_healthcheck_exits_0_for_a_running_worker_and_non_zero_for_a_stopped_one` failed once (exit 1 from `healthcheck` on a running worker) in a run of two crates in parallel and passed 3 of 3 alone and in both full gates; cause not found. No `/code-review` of this follow-up.
+
+Commit: `[AZ-3868] feature-gate sc_observability db collectors so worker and decoder link no sqlx` — Loop: 1

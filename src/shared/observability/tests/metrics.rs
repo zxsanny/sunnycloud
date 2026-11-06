@@ -4,11 +4,11 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use prometheus_parse::{Scrape, Value};
+#[cfg(feature = "db")]
 use sc_audit::AuditStats;
 use sc_clock::{ManualClock, Timestamp};
 use sc_observability::{
-    BuildInfo, HISTOGRAM_BUCKETS, LabelSet, Metrics, NoLabels, ObsError, audit_collector,
-    ratelimit_collector,
+    BuildInfo, HISTOGRAM_BUCKETS, LabelSet, Metrics, NoLabels, ObsError, ratelimit_collector,
 };
 use sc_ratelimit::{AbuseLimiter, LimitId, LimitSpec, LimitTable, Subject};
 
@@ -205,8 +205,11 @@ async fn ac7_scrape_parses_every_name_has_the_prefix_once_and_helper_families_ar
             .register_collector(ratelimit_collector(move || limiter.stats()))
             .expect("ratelimit collector");
     }
+    #[cfg(feature = "db")]
     metrics
-        .register_collector(audit_collector(|| AuditStats { write_failures: 3 }))
+        .register_collector(sc_observability::audit_collector(|| AuditStats {
+            write_failures: 3,
+        }))
         .expect("audit collector");
     let jobs = metrics.counter::<Kind>("jobs_total").expect("counter");
     jobs.inc(Kind::Thumbnail);
@@ -256,6 +259,7 @@ async fn ac7_scrape_parses_every_name_has_the_prefix_once_and_helper_families_ar
             "{family}"
         );
     }
+    #[cfg(feature = "db")]
     assert_eq!(
         value_of(&scrape, "sunnycloud_audit_write_failures_total", None),
         Some(3.0)
@@ -341,11 +345,13 @@ async fn ac7_every_histogram_family_uses_the_one_bucket_set() {
 #[test]
 fn register_collector_refuses_a_second_registration_with_duplicate() {
     let metrics = metrics();
+    let limiter = limiter();
+    let first = Arc::clone(&limiter);
     metrics
-        .register_collector(audit_collector(|| AuditStats { write_failures: 0 }))
+        .register_collector(ratelimit_collector(move || first.stats()))
         .expect("first");
 
-    let second = metrics.register_collector(audit_collector(|| AuditStats { write_failures: 0 }));
+    let second = metrics.register_collector(ratelimit_collector(move || limiter.stats()));
 
     assert!(matches!(second, Err(ObsError::Duplicate(_))), "{second:?}");
 }
