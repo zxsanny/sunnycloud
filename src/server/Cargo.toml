@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[lib]
+name = "sunnycloud_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "sunnycloud"
 path = "src/main.rs"
@@ -26,9 +30,17 @@ sunnycloud-quota = { path = "../components/07a_quota" }
 media-api = { path = "../components/08_media_jobs" }
 sunnycloud-http-api = { path = "../components/11_http_api" }
 sunnycloud-vault-service = { path = "../components/20_vault_service" }
-
-[dev-dependencies]
+sc_clock = { path = "../shared/clock" }
+sc_config = { path = "../shared/config" }
+sc_error = { path = "../shared/error" }
+sc_observability = { path = "../shared/observability" }
+clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-util = { workspace = true }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [features]
 test-clock = []

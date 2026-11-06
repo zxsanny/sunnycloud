@@ -10,4 +10,16 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+sc_clock = { path = "../shared/clock" }
 sc_db = { path = "../shared/db" }
+sc_error = { path = "../shared/error" }
+sc_ids = { path = "../shared/ids_hashing" }
+sc_observability = { path = "../shared/observability" }
+# The ports are async and held as `Arc<dyn Port>`; the macro is re-exported so implementers use the same version.
+async-trait = "0.1"
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

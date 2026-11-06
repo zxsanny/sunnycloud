@@ -3,9 +3,9 @@
 **Component**: 12_operator_cli
 **Producer task**: B08-02_cli_skeleton (E-22/c02) for the streams, the `--json` envelope, the exit codes and the confirmation rule; each command row is implemented by the task named in its row
 **Consumer tasks**: this batch: E-22/c03, E-22/c04, E-22/c05, E-22/c07..c13, E-22/c14a, E-22/c15, E-22/c16, E-22/c17; other batches: the E-22 pipelines p01..p14 (they run the commands), E-31 system tests (FT-P-64, FT-P-65, FT-P-78, FT-N-25, FT-N-39, FT-N-46, FT-P-69, FT-P-71, FT-P-72, NFT-RES-13, NFT-RES-14, NFT-RES-37 and others), E-00/c08 (`e2e-ctl exec-operator`), E-00 Compose and deployment docs (`migrate` step, `healthcheck`)
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (freezes when the open points below are answered)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-06
 
 ## Purpose
 
@@ -126,8 +126,18 @@ Names not in this table (`key rewrap`, `media requeue`, a top-level `restore`) a
 6. `admin create --note --ttl` has no matching parameters in `OperatorIdentityOps::create_admin_invite()`.
 7. The accepted format of `admin audit export --since` is not stated.
 
+## Implemented skeleton (AZ-3788, proposals pending the open points above)
+
+- Open point 1: `result` is `ok`, `warnings`, `findings` or `failed`; `code` is `ok` or `warnings` on success, `findings` for findings, and the owner's code on failure.
+- Open point 2: with `--json` a one-time secret sits inside `data`, once, so the output stays one object.
+- Open point 4: SIGINT cancels the token given to the handler; the handler's return maps normally (no code of its own).
+- `cli_confirm_required = off` skips the guard entirely, including the non-TTY refusal. A declining TTY operator, and EOF, give exit 3.
+- `migrate revert --steps` defaults to 1, minimum 1. `--since`, `--at`, `<account>`, `<id>` and `--kind` are raw strings parsed by the command task; `<size>` uses `sc_config::parse_size`, `--backup-interval` and `--ttl` use `parse_duration`.
+- Log line: `route=/cli/<command>` and `duration_ms`, with the exit class in the level and message. `component=cli`, `command` and `exit_code` as fields need `sc_observability` to add `Component::Cli` and those fields.
+
 ## Change Log
 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B08) |
+| 1.1.0 | 2026-11-06 | Records the skeleton's proposed readings of open points 1, 2, 4 and the confirmation and log-line behaviour | AZ-3788 |

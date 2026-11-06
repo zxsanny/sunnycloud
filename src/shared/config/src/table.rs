@@ -254,8 +254,27 @@ settings_table! {
     cli_confirm_required: Flag = dflt("on", A);
     cli_progress_interval: Dur = dflt("2s", A);
 
-    // Client test overrides (13, 14)
-    sync_retry_base: Opt<Dur> = unset(C);
+    // Sync client (13, section `sync`). The first three are set by the host build or settings and are
+    // required by `SyncConfig`, not by the loader, so a client that never syncs starts without them.
+    // `sync_hash_cpu_share` is a percentage of one core: the table has no fractional type.
+    sync_server_url: Opt<Text> = unset(C);
+    sync_client_family: Opt<Text> = unset(C).one_of(&["desktop", "android", "ios"]);
+    sync_client_version: Opt<Text> = unset(C);
+    sync_retry_base: Dur = dflt("500ms", C).range("10ms", "1m");
+    sync_retry_max: Dur = dflt("30s", C).range("1s", "10m");
+    sync_max_attempts_per_block: Count = dflt("8", C).range("1", "100");
+    sync_connect_timeout: Dur = dflt("10s", C).range("1s", "2m");
+    sync_request_idle_timeout: Dur = dflt("60s", C).range("5s", "10m");
+    sync_longpoll_wait: Dur = dflt("30s", C).range("1s", "55s");
+    sync_longpoll_client_margin: Dur = dflt("10s", C).range("1s", "1m");
+    sync_h2_stream_window: Size = dflt("8MiB", C).range("64KiB", "256MiB");
+    sync_h2_conn_window: Size = dflt("32MiB", C).range("64KiB", "1GiB");
+    sync_keepalive_interval: Dur = dflt("20s", C).range("5s", "5m");
+    sync_hash_cpu_share: Count = dflt("25", C).range("1", "100");
+    sync_hash_checkpoint_blocks: Count = dflt("32", C).range("1", "1024");
+    sync_batch_max_bytes_in_flight: Size = dflt("64MiB", C).range("2MiB", "1GiB");
+
+    // Client test overrides (14)
     desktop_settle: Dur = dflt("2s", C).range("200ms", "30s");
     desktop_rescan_interval: Dur = dflt("15m", C).range("10s", "24h");
 
