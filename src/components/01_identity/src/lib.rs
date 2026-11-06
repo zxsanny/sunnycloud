@@ -3,13 +3,17 @@
 //! This crate holds the typed configuration section, its error type, the [`IdentityAuthenticator`]
 //! (`Authenticator` and `PrincipalRevalidator`) and [`IdentitySignIn`] (provider sign-in: `begin` and
 //! `complete` with the GitHub and generic OIDC [`ProviderClient`]s) and [`IdentitySessions`] (`SessionService`:
-//! refresh rotation, revocation, list, touch); the other ports of `contracts` are
+//! refresh rotation, revocation, list, touch) and [`IdentityDeviceGrants`] (`DeviceGrantService`: the RFC 8628
+//! device grant, the device list and revocation, over a [`GeoLookup`], production: [`MaxmindGeoLookup`]); the other ports of `contracts` are
 //! implemented by later tasks. The schema is `src/migrations/*_create_identity_tables.*.sql`.
 
 mod auth_repo;
 mod authenticator;
 mod config;
+mod device_grant_repo;
+mod device_grants;
 mod error;
+mod geo;
 mod outbound;
 mod provider;
 mod scope;
@@ -21,7 +25,9 @@ mod successor;
 
 pub use authenticator::IdentityAuthenticator;
 pub use config::{IdentityConfig, ProviderConfig};
+pub use device_grants::IdentityDeviceGrants;
 pub use error::IdentityError;
+pub use geo::{GeoLookup, MaxmindGeoLookup};
 pub use provider::{
     AuthorizationRequest, CodeExchange, ProviderClient, ProviderError, ProviderIdentity,
 };

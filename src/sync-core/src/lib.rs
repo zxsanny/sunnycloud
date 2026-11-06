@@ -8,10 +8,13 @@ mod client;
 mod config;
 mod download;
 mod error;
+mod feed_ops;
+mod hash_ops;
 mod host;
 mod http_transport;
 mod negotiate;
 mod request;
+mod server_info;
 mod small;
 mod tls;
 mod token_ops;
@@ -24,6 +27,7 @@ pub use negotiate::Limits;
 pub use config::SyncConfig;
 pub use download::Verified;
 pub use error::{Mapped, PlannerInput, SyncError};
+pub use hash_ops::{HashCheckpoint, HashedFile};
 pub use host::{
     BatchRecord, CheckpointStore, Credential, CredentialProvider, DownloadSink, FileIdentity,
     FileSource, MemoryCheckpointStore, PersistFailed, ProgressSink, StoreError, UploadCheckpoint,

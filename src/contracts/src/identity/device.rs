@@ -49,6 +49,10 @@ pub enum DeviceGrantError {
     AlreadyDecided,
     #[error("not found")]
     NotFound,
+    /// The principal's kind may not call the operation: a session principal calling `revoke_self`, or a device
+    /// principal calling `lookup_for_approval` or `decide`.
+    #[error("forbidden")]
+    Forbidden,
     #[error("unexpected failure")]
     Unexpected(#[source] Fault),
 }

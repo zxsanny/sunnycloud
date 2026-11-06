@@ -6,5 +6,6 @@ mod path;
 mod refresh;
 mod transport;
 
+pub(crate) use jitter::jitter;
 pub use path::{Request, RequestPath};
 pub use transport::{BoxFuture, Method, Transport, WireRequest, WireResponse};

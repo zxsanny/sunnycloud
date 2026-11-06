@@ -21,4 +21,7 @@ pub enum IdentityError {
     /// A mobile sign-in reached the callback; the one-time code outcome belongs to a later task.
     #[error("the mobile sign-in outcome is not implemented")]
     MobileSignInUnsupported,
+    /// The device grant could not draw an unused user code; the random source or the table is damaged.
+    #[error("no unused user code after repeated draws")]
+    UserCodeExhausted,
 }

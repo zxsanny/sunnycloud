@@ -236,14 +236,14 @@ settings_table! {
 
     // Decoder (10)
     decoder_socket_path: Text = dflt("/run/decoder/decoder.sock", R);
-    decoder_gid: Opt<Count> = unset(R);
+    decoder_gid: Opt<Count> = unset(WR);
     decoder_scratch_root: Text = dflt("/scratch", R);
     decoder_alive_interval: Dur = dflt("5s", R);
     decoder_watchdog: Dur = dflt("20s", R);
     decoder_memory_poll_interval: Dur = dflt("1s", R);
     photo_max_pixels: Count = dflt("250000000", R);
-    decoder_max_output_photo: Size = dflt("32MiB", R);
-    decoder_max_output_video: Size = dflt("10GiB", R);
+    decoder_max_output_photo: Size = dflt("32MiB", WR);
+    decoder_max_output_video: Size = dflt("10GiB", WR);
     decoder_format_whitelist: Opt<List> = unset(R);
     decoder_codec_whitelist: Opt<List> = unset(R);
 

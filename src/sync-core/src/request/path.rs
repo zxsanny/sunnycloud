@@ -246,6 +246,20 @@ impl RequestPath {
         wait.saturating_add(jitter(self.policy.base))
     }
 
+    /// Rests for `delay` on the injected clock; `Cancelled` ends it early. A delay beyond the clock's range
+    /// cannot be waited and is reported as `Cancelled`.
+    pub(crate) async fn pause(&self, delay: Duration) -> Result<(), SyncError> {
+        if delay.is_zero() {
+            return self.check();
+        }
+        self.sleep(delay, Mapped::Error(SyncError::Cancelled))
+            .await
+            .map_err(|mapped| match mapped {
+                Mapped::Error(error) => error,
+                Mapped::Planner(_) => SyncError::Cancelled,
+            })
+    }
+
     /// Sleeps on the injected clock; `last` is what the caller gets when the delay cannot be waited at all.
     async fn sleep(&self, delay: Duration, last: Mapped) -> Result<(), Mapped> {
         let Some(at) = self.clock.monotonic().checked_add(delay) else {

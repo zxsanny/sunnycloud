@@ -1,28 +1,31 @@
 //! `HttpSyncClient`, the one production [`SyncApi`], and `connect` (`sync_api.md` construction and negotiation).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::Bytes;
 use sc_clock::{Clock, SystemClock};
 use sync_core_proto::{
-    BatchCommit, BatchResult, DeviceAuthorization, DevicePoll, FileHash, Hash32, ListingPage,
-    NodeView, PageToken, RevisionRef, RevisionView, ServerInfo, ServerUrl, SessionTokens, Staged,
-    UrlError,
+    BatchCommit, BatchResult, ChangePage, Cursor, DeviceAuthorization, DevicePoll, FileHash,
+    Hash32, ListingPage, NodeView, PageToken, ResumeHashState, RevisionRef, RevisionView,
+    ServerInfo, ServerUrl, SessionTokens, Staged, UrlError,
 };
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::config::SyncConfig;
 use crate::download::{self, Verified};
-use crate::error::{Mapped, SyncError};
-use crate::host::{CheckpointStore, CredentialProvider, DownloadSink};
-use crate::http_transport::{HttpTransport, SERVER_INFO_PATH};
+use crate::error::SyncError;
+use crate::feed_ops::{self, Feed};
+use crate::hash_ops::{HashCheckpoint, HashedFile, Hashing};
+use crate::host::{CheckpointStore, CredentialProvider, DownloadSink, FileSource, ProgressSink};
+use crate::http_transport::HttpTransport;
 use crate::negotiate::{Limits, identity, negotiate};
-use crate::request::{BoxFuture, Method, RequestPath, Transport, WireRequest};
+use crate::request::{BoxFuture, RequestPath};
+use crate::server_info::fetch_server_info;
 use crate::small::{
     self, BatchRunError, BatchSink, Runner, SkippedFile, SmallFile, SourceResolver,
 };
-use crate::wire_table::map_problem;
 use crate::{token_ops, tree_ops};
 
 /// Why `connect` gave no client. Messages are fixed strings: nothing from the server reaches `Display`.
@@ -113,6 +116,19 @@ pub trait SyncApi: Send + Sync {
     /// Errors: `BatchTooLarge`, `CommitIdReused`.
     fn batch_commit(&self, commit: BatchCommit) -> BoxFuture<'_, Result<BatchResult, SyncError>>;
 
+    /// Hashes the host file block by block. With `resume`, only the blocks after `resume.blocks_done` are read.
+    /// The hash state is stored through `checkpoint` every `sync.hash_checkpoint_blocks` blocks (the last block
+    /// excepted) and the CPU use is held to `sync.hash_cpu_share`. `progress` counts hashed bytes.
+    /// Errors: `SourceChanged` (size or modification time differ at the end, the file is shorter than the
+    /// resume state or than its length), `Io` (the source; the last stored state stays valid).
+    fn hash_file<'a>(
+        &'a self,
+        source: Arc<dyn FileSource>,
+        resume: Option<ResumeHashState>,
+        progress: Arc<dyn ProgressSink>,
+        checkpoint: HashCheckpoint,
+    ) -> BoxFuture<'a, Result<HashedFile, SyncError>>;
+
     /// Fetches the revision into `sink` by ranged requests of one block and continues at the block that holds
     /// `resume_from`. The sink gets verified blocks only, in order; each block is checked against the
     /// revision's blocklist before `write_verified` and the whole file against `content_hash` before
@@ -125,6 +141,24 @@ pub trait SyncApi: Send + Sync {
         sink: Arc<dyn DownloadSink>,
         resume_from: u64,
     ) -> BoxFuture<'a, Result<Verified, SyncError>>;
+
+    /// One page of the change feed after `cursor`. The server holds an empty read for `wait`, clamped to its
+    /// `longpoll_max_wait`; the call gives up after the clamped wait plus `sync.longpoll_client_margin` with
+    /// `Transport(Timeout)`. `has_more` is returned as is: the caller polls again at once, the client adds no
+    /// delay. After a failure the next call first rests for the backoff delay (`sync.retry_base` doubling up
+    /// to `sync.retry_max`, or `Retry-After`, with jitter). Every page is checked with P1..P6 (`check_page`)
+    /// before it is returned. Errors: `ResyncRequired{reason}` (410, or 422 `invalid_cursor` as `InvalidCursor`:
+    /// read `head_cursor`, then list), `ProtocolViolation{detail}` naming the broken rule. The core never
+    /// stores the cursor; the host persists it after applying the page.
+    fn poll_changes(
+        &self,
+        cursor: Cursor,
+        wait: Duration,
+        limit: Option<u32>,
+    ) -> BoxFuture<'_, Result<ChangePage, SyncError>>;
+
+    /// The account's current cursor: the first step of a resync, before any listing.
+    fn head_cursor(&self) -> BoxFuture<'_, Result<Cursor, SyncError>>;
 
     /// Starts a desktop sign-in: the user approves `user_code` elsewhere while the host polls with `device_code`.
     /// Sent without a credential.
@@ -164,6 +198,8 @@ pub struct HttpSyncClient {
     path: Arc<RequestPath>,
     limits: Limits,
     clock: Arc<dyn Clock>,
+    hashing: Hashing,
+    feed: Feed,
     batch_max_bytes_in_flight: u64,
 }
 
@@ -256,6 +292,7 @@ impl HttpSyncClient {
         let info = fetch_server_info(&transport).await?;
         let limits = negotiate(&info, &config, own)?;
         let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
+        let feed = Feed::new(Arc::clone(&clock), &config, &info);
         let path = RequestPath::new(
             Arc::new(transport),
             credentials,
@@ -266,6 +303,8 @@ impl HttpSyncClient {
             Self {
                 path: Arc::new(path),
                 limits,
+                hashing: Hashing::new(Arc::clone(&clock), &config),
+                feed,
                 clock,
                 batch_max_bytes_in_flight: config.batch_max_bytes_in_flight,
             },
@@ -340,6 +379,19 @@ impl SyncApi for HttpSyncClient {
         Box::pin(async move { small::batch_commit(&self.path, &commit).await })
     }
 
+    fn hash_file<'a>(
+        &'a self,
+        source: Arc<dyn FileSource>,
+        resume: Option<ResumeHashState>,
+        progress: Arc<dyn ProgressSink>,
+        checkpoint: HashCheckpoint,
+    ) -> BoxFuture<'a, Result<HashedFile, SyncError>> {
+        Box::pin(
+            self.hashing
+                .hash_file(&self.path, source, resume, progress, checkpoint),
+        )
+    }
+
     fn download<'a>(
         &'a self,
         revision: &'a RevisionRef,
@@ -347,6 +399,19 @@ impl SyncApi for HttpSyncClient {
         resume_from: u64,
     ) -> BoxFuture<'a, Result<Verified, SyncError>> {
         Box::pin(download::download(&self.path, revision, sink, resume_from))
+    }
+
+    fn poll_changes(
+        &self,
+        cursor: Cursor,
+        wait: Duration,
+        limit: Option<u32>,
+    ) -> BoxFuture<'_, Result<ChangePage, SyncError>> {
+        Box::pin(self.feed.poll_changes(&self.path, cursor, wait, limit))
+    }
+
+    fn head_cursor(&self) -> BoxFuture<'_, Result<Cursor, SyncError>> {
+        Box::pin(feed_ops::head_cursor(&self.path))
     }
 
     fn device_grant_request<'a>(
@@ -386,54 +451,5 @@ impl SyncApi for HttpSyncClient {
 
     fn sign_out(&self) -> BoxFuture<'_, Result<(), SyncError>> {
         Box::pin(token_ops::sign_out(&self.path))
-    }
-}
-
-/// `GET /api/v1/server-info`: public, so it carries no credential and no version header.
-async fn fetch_server_info(transport: &HttpTransport) -> Result<ServerInfo, ConnectError> {
-    let response = transport
-        .send(WireRequest {
-            method: Method::Get,
-            target: SERVER_INFO_PATH.to_owned(),
-            headers: Vec::new(),
-            bearer: None,
-            body: Bytes::new(),
-        })
-        .await
-        .map_err(|kind| {
-            tracing::warn!(?kind, "server-info request failed");
-            ConnectError::Unreachable
-        })?;
-    if !(200..300).contains(&response.status) {
-        return Err(refused(&response));
-    }
-    serde_json::from_slice(&response.body).map_err(|_| ConnectError::ProtocolMismatch {
-        what: "server_info",
-    })
-}
-
-fn refused(response: &crate::request::WireResponse) -> ConnectError {
-    let headers: Vec<(&str, &str)> = response
-        .headers
-        .iter()
-        .map(|(name, value)| (name.as_str(), value.as_str()))
-        .collect();
-    tracing::warn!(status = response.status, "server-info refused");
-    match map_problem(response.status, &headers, &response.body) {
-        Mapped::Error(SyncError::Unauthorized) => ConnectError::Unauthorized,
-        Mapped::Error(SyncError::UpgradeRequired {
-            message,
-            update_url,
-            ..
-        }) => ConnectError::UpgradeRequired {
-            message,
-            update_url,
-        },
-        Mapped::Error(SyncError::Transport(_) | SyncError::RateLimited { .. }) => {
-            ConnectError::Unreachable
-        }
-        _ => ConnectError::ProtocolMismatch {
-            what: "server_info",
-        },
     }
 }

@@ -5,7 +5,7 @@ const CEILING: Duration = Duration::from_secs(1);
 
 /// A random delay in `[0, min(bound, 1 s))`. When the system has no randomness the delay is zero and
 /// the failure is logged: a retry without jitter is still a correct retry.
-pub(super) fn jitter(bound: Duration) -> Duration {
+pub(crate) fn jitter(bound: Duration) -> Duration {
     let bound = bound.min(CEILING);
     let mut bytes = [0u8; 4];
     match getrandom::fill(&mut bytes) {

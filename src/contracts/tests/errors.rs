@@ -64,6 +64,7 @@ fn device(e: &DeviceGrantError) -> &'static str {
         DeviceGrantError::Expired => "Expired",
         DeviceGrantError::AlreadyDecided => "AlreadyDecided",
         DeviceGrantError::NotFound => "NotFound",
+        DeviceGrantError::Forbidden => "Forbidden",
         DeviceGrantError::Unexpected(_) => "Unexpected",
     }
 }
@@ -211,6 +212,7 @@ fn device_grant_variants_are_the_poll_lookup_decide_and_revoke_failures() {
         DeviceGrantError::Expired,
         DeviceGrantError::AlreadyDecided,
         DeviceGrantError::NotFound,
+        DeviceGrantError::Forbidden,
         DeviceGrantError::Unexpected(fault()),
     ];
 
@@ -228,6 +230,7 @@ fn device_grant_variants_are_the_poll_lookup_decide_and_revoke_failures() {
             "Expired",
             "AlreadyDecided",
             "NotFound",
+            "Forbidden",
             "Unexpected"
         ]
     );

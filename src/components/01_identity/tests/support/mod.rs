@@ -12,7 +12,9 @@
 #![allow(dead_code)]
 
 pub mod auth;
+pub mod device;
 pub mod fixtures;
+pub mod geoip;
 pub mod provider;
 mod secrets;
 pub mod sessions;

@@ -1472,6 +1472,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
 
 [[package]]
+name = "ipnetwork"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf370abdafd54d13e54a620e8c3e1145f28e46cc9d704bc6d94414559df41763"
+
+[[package]]
 name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1679,6 +1685,28 @@ name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
+
+[[package]]
+name = "maxminddb"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b43d2458d977b610b04a3858e6504f06133663d303a1a0606601b530bfc9bc6"
+dependencies = [
+ "ipnetwork",
+ "memchr",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "maxminddb-writer"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6c7c40ae250626043025c6f20beea92ef702280ad53318d60357a85cb11db34"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
+]
 
 [[package]]
 name = "md-5"
@@ -3318,6 +3346,8 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "contracts",
+ "maxminddb",
+ "maxminddb-writer",
  "oauth2",
  "openidconnect",
  "reqwest",
@@ -3333,6 +3363,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "sqlx",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -3450,11 +3481,14 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "media-shared",
+ "rustix 1.1.6",
  "sc_config",
  "sc_observability",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

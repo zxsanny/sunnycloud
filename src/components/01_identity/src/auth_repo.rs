@@ -1,5 +1,6 @@
 //! The statements that run before the caller's account is known (system scope) and the session insert of a
-//! sign-in. The credential probes of the authenticator are one statement each: a read on a unique `*_hash` index
+//! sign-in. The four system-scope doors of the device grant are here too, because a pending grant has no
+//! account; their statements are in `device_grant_repo`. The credential probes of the authenticator are one statement each: a read on a unique `*_hash` index
 //! (authenticate) or on the primary key (revalidate), joined to the account. Expiry, revocation and account
 //! state are returned as columns and decided in code, never in the `WHERE` clause, so every dead credential
 //! costs the same database work.
@@ -9,7 +10,11 @@ use sc_db::{Db, DbError, RunError, Scope};
 use sc_ids::TokenHash;
 use uuid::Uuid;
 
-use contracts::PrincipalKind;
+use contracts::{Decision, PrincipalKind};
+
+use crate::device_grant_repo::{
+    self, Approver, DecideOutcome, NewDeviceToken, NewGrant, PendingGrant, PollStep,
+};
 
 /// Columns of a probe, undecided.
 pub(crate) struct CredentialRow {
@@ -315,6 +320,57 @@ pub(crate) async fn start_session(
             .await
             .map(drop)
             .map_err(DbError::from)
+    })
+    .await
+}
+
+/// Stores a new pending grant; a duplicate user code is a unique violation for the caller to retry. A pending
+/// grant has no account, so the insert runs in system scope.
+pub(crate) async fn insert_grant(db: &Db, grant: &NewGrant<'_>) -> Result<(), RunError<DbError>> {
+    db.run_system("device_request", async |tx| {
+        device_grant_repo::insert(tx, grant).await
+    })
+    .await
+}
+
+/// One poll by device-code hash, which is all the poller presents: the grant's account is unknown (NULL while
+/// pending), so the transaction runs in system scope.
+pub(crate) async fn poll_grant(
+    db: &Db,
+    code_hash: &TokenHash,
+    token: &NewDeviceToken<'_>,
+    now: Timestamp,
+    polled_before: Timestamp,
+) -> Result<PollStep, RunError<DbError>> {
+    db.run_system("device_poll", async |tx| {
+        device_grant_repo::poll(tx, code_hash, token, now, polled_before).await
+    })
+    .await
+}
+
+/// The pending grant of a user code: the approver is not its owner (a pending grant has no account), so the
+/// read runs in system scope.
+pub(crate) async fn pending_grant_by_user_code(
+    db: &Db,
+    user_code: &str,
+    now: Timestamp,
+) -> Result<Option<PendingGrant>, RunError<DbError>> {
+    db.run_system("device_lookup", async |tx| {
+        device_grant_repo::pending_by_user_code(tx, user_code, now).await
+    })
+    .await
+}
+
+/// The decision on a grant that is still pending and so belongs to no account: system scope.
+pub(crate) async fn decide_grant(
+    db: &Db,
+    id: Uuid,
+    decision: Decision,
+    approver: &Approver,
+    now: Timestamp,
+) -> Result<DecideOutcome, RunError<DbError>> {
+    db.run_system("device_decide", async |tx| {
+        device_grant_repo::decide(tx, id, decision, approver, now).await
     })
     .await
 }

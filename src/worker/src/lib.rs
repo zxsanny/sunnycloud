@@ -8,6 +8,7 @@
 mod error;
 mod probe;
 mod run;
+mod scratch;
 mod settings;
 
 use std::collections::BTreeMap;
@@ -17,6 +18,7 @@ use std::process::ExitCode;
 pub use error::WorkerError;
 pub use probe::{PROBE_TIMEOUT, ProbeError, get_ok, probe_target};
 pub use run::{healthcheck, serve, serve_ops};
+pub use scratch::{OutputFile, RejectReason, ScratchDir, ScratchError, ScratchRoot, sweep_all};
 pub use settings::{load_settings, ops_addr};
 
 /// Runs the process: no argument serves, `healthcheck` probes. Returns the exit code.

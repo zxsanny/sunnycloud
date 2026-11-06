@@ -21,6 +21,8 @@ chrono = { version = "0.4", default-features = false }
 # The successor pair of a refresh rotation is sealed with the workspace AEAD, the key derived with SHA-256.
 chacha20poly1305 = { workspace = true }
 sha2 = { workspace = true }
+# The production `GeoLookup` reads a MaxMind database file.
+maxminddb = { workspace = true }
 # No bundled HTTP client: provider calls go through the guarded client of `outbound`.
 oauth2 = { workspace = true }
 openidconnect = { workspace = true }
@@ -45,3 +47,6 @@ uuid = { workspace = true, features = ["v4"] }
 # The in-process provider signs its id tokens (ES256) with a generated key.
 base64 = { workspace = true }
 ring = "0.17"
+# The test GeoIP database is written at test time; no binary is committed.
+maxminddb-writer = { workspace = true }
+tempfile = "3"
