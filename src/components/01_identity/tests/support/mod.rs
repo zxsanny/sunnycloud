@@ -13,7 +13,9 @@
 
 pub mod auth;
 pub mod fixtures;
+pub mod provider;
 mod secrets;
+pub mod sign_in;
 pub mod statements;
 
 use std::collections::hash_map::DefaultHasher;

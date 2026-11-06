@@ -11,3 +11,21 @@ workspace = true
 
 [dependencies]
 contracts = { path = "../../contracts" }
+sc_clock = { path = "../../shared/clock" }
+sc_observability = { path = "../../shared/observability" }
+axum = { workspace = true }
+hyper-util = { version = "0.1", features = ["server-auto", "service", "tokio"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "sync", "time"] }
+tokio-util = { workspace = true }
+
+[features]
+# Adds the `OffsetClock` handle to `ApiServices` and, with E-21/c15, the test-clock routes and listener.
+test-clock = ["sc_clock/test-clock"]
+
+[dev-dependencies]
+hyper = { workspace = true, features = ["client", "http1", "http2", "server"] }
+http-body-util = "0.1"
+sc_ids = { path = "../../shared/ids_hashing" }
+uuid = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }

@@ -5,8 +5,9 @@ use std::sync::Arc;
 use bytes::Bytes;
 use sc_clock::{Clock, SystemClock};
 use sync_core_proto::{
-    BatchCommit, BatchResult, FileHash, Hash32, ListingPage, NodeView, PageToken, RevisionRef,
-    RevisionView, ServerInfo, ServerUrl, Staged, UrlError,
+    BatchCommit, BatchResult, DeviceAuthorization, DevicePoll, FileHash, Hash32, ListingPage,
+    NodeView, PageToken, RevisionRef, RevisionView, ServerInfo, ServerUrl, SessionTokens, Staged,
+    UrlError,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -20,8 +21,8 @@ use crate::request::{BoxFuture, Method, RequestPath, Transport, WireRequest};
 use crate::small::{
     self, BatchRunError, BatchSink, Runner, SkippedFile, SmallFile, SourceResolver,
 };
-use crate::tree_ops;
 use crate::wire_table::map_problem;
+use crate::{token_ops, tree_ops};
 
 /// Why `connect` gave no client. Messages are fixed strings: nothing from the server reaches `Display`.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
@@ -110,6 +111,39 @@ pub trait SyncApi: Send + Sync {
     /// Idempotent by `commit_id`: a repeated id with the same entries returns the stored response.
     /// Errors: `BatchTooLarge`, `CommitIdReused`.
     fn batch_commit(&self, commit: BatchCommit) -> BoxFuture<'_, Result<BatchResult, SyncError>>;
+
+    /// Starts a desktop sign-in: the user approves `user_code` elsewhere while the host polls with `device_code`.
+    /// Sent without a credential.
+    fn device_grant_request<'a>(
+        &'a self,
+        device_name: &'a str,
+        platform: &'a str,
+    ) -> BoxFuture<'a, Result<DeviceAuthorization, SyncError>>;
+
+    /// One poll; the host owns the interval and the slow-down. `Token` holds the device token, which the host
+    /// stores. Sent without a credential.
+    fn device_grant_poll<'a>(
+        &'a self,
+        device_code: &'a str,
+    ) -> BoxFuture<'a, Result<DevicePoll, SyncError>>;
+
+    /// Exchanges the one-time code of a mobile browser sign-in; the host stores the returned tokens.
+    /// Errors: `InvalidCode` (reused, expired or wrong verifier). Sent without a credential.
+    fn exchange_mobile_code<'a>(
+        &'a self,
+        code: &'a str,
+        code_verifier: &'a str,
+    ) -> BoxFuture<'a, Result<SessionTokens, SyncError>>;
+
+    /// Rotates a mobile session's tokens now, joined with a rotation already running. The new pair reaches the
+    /// host only through `CredentialProvider::on_rotated`, which returned `Ok` before this does. A 401 on any
+    /// other call does the same by itself; this is for a host that refreshes ahead of expiry.
+    /// `Unauthorized` (revoked, expired, reused, or the pair could not be stored) stops all work until a new
+    /// sign-in.
+    fn refresh(&self) -> BoxFuture<'_, Result<(), SyncError>>;
+
+    /// Revokes this device token or session on the server; the host clears its copy afterwards.
+    fn sign_out(&self) -> BoxFuture<'_, Result<(), SyncError>>;
 }
 
 pub struct HttpSyncClient {
@@ -290,6 +324,45 @@ impl SyncApi for HttpSyncClient {
 
     fn batch_commit(&self, commit: BatchCommit) -> BoxFuture<'_, Result<BatchResult, SyncError>> {
         Box::pin(async move { small::batch_commit(&self.path, &commit).await })
+    }
+
+    fn device_grant_request<'a>(
+        &'a self,
+        device_name: &'a str,
+        platform: &'a str,
+    ) -> BoxFuture<'a, Result<DeviceAuthorization, SyncError>> {
+        Box::pin(token_ops::device_grant_request(
+            &self.path,
+            device_name,
+            platform,
+        ))
+    }
+
+    fn device_grant_poll<'a>(
+        &'a self,
+        device_code: &'a str,
+    ) -> BoxFuture<'a, Result<DevicePoll, SyncError>> {
+        Box::pin(token_ops::device_grant_poll(&self.path, device_code))
+    }
+
+    fn exchange_mobile_code<'a>(
+        &'a self,
+        code: &'a str,
+        code_verifier: &'a str,
+    ) -> BoxFuture<'a, Result<SessionTokens, SyncError>> {
+        Box::pin(token_ops::exchange_mobile_code(
+            &self.path,
+            code,
+            code_verifier,
+        ))
+    }
+
+    fn refresh(&self) -> BoxFuture<'_, Result<(), SyncError>> {
+        Box::pin(self.path.refresh_now())
+    }
+
+    fn sign_out(&self) -> BoxFuture<'_, Result<(), SyncError>> {
+        Box::pin(token_ops::sign_out(&self.path))
     }
 }
 

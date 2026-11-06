@@ -13,6 +13,7 @@ mod negotiate;
 mod request;
 mod small;
 mod tls;
+mod token_ops;
 mod tree_ops;
 mod wire_table;
 

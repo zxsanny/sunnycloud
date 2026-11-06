@@ -135,12 +135,17 @@ pub(crate) async fn send(
     op: &'static str,
     request: Request,
 ) -> Result<WireResponse, SyncError> {
-    path.send(op, request).await.map_err(|mapped| match mapped {
+    path.send(op, request).await.map_err(into_error)
+}
+
+/// A planner input outside the upload routes is a server bug, not an operation error.
+pub(crate) fn into_error(mapped: Mapped) -> SyncError {
+    match mapped {
         Mapped::Error(error) => error,
         Mapped::Planner(_) => SyncError::ProtocolViolation {
             detail: "upload answer on a tree route",
         },
-    })
+    }
 }
 
 pub(crate) fn decode<T: DeserializeOwned>(

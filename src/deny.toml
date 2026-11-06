@@ -2,7 +2,9 @@
 yanked = "deny"
 # Each entry: { id = "RUSTSEC-YYYY-NNNN", reason = "added=YYYY-MM-DD; expires=YYYY-MM-DD; why=..." }
 # scripts/ci/audit.sh reads this list; there is no second one.
-ignore = []
+ignore = [
+    { id = "RUSTSEC-2023-0071", reason = "added=2026-11-06; expires=2027-02-04; why=rsa (Marvin timing side channel, no patched version) enters through openidconnect, which uses it only to verify id-token signatures with the issuer's public key; no private-key operation runs in sunnycloud" },
+]
 
 [licenses]
 allow = [

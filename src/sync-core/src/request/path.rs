@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -24,16 +24,30 @@ pub struct Request {
     pub max_attempts: u32,
 }
 
+/// Whether a request carries the session credential and is answered to a 401 by a token rotation.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Auth {
+    Session,
+    Anonymous,
+}
+
 /// The one way a request leaves the client. It reads the credential per request, ends with `Cancelled`
 /// after [`cancel`](Self::cancel), stops all work after `account_not_active`, waits out `Retry-After`,
-/// and turns every non-2xx answer into a value through the wire table.
+/// rotates a mobile session's tokens once on a 401 and repeats the request (`refresh.rs`), stops all work
+/// when the session or device token is revoked, and turns every non-2xx answer into a value through the wire table.
 pub struct RequestPath {
     transport: Arc<dyn Transport>,
-    credentials: Arc<dyn CredentialProvider>,
+    pub(super) credentials: Arc<dyn CredentialProvider>,
     clock: Arc<dyn Clock>,
     policy: RetryPolicy,
-    cancel: CancellationToken,
+    pub(super) cancel: CancellationToken,
     account_stopped: AtomicBool,
+    /// Set when the session is revoked, the device token is refused or the rotated pair could not be stored.
+    pub(super) auth_stopped: AtomicBool,
+    /// Written by the one rotation in flight (later 401s wait on it); read while a request takes its credential.
+    pub(super) refresh_gate: tokio::sync::RwLock<()>,
+    /// Counts completed rotations: a 401 older than the current value is answered by the rotation that finished.
+    pub(super) generation: AtomicU64,
 }
 
 impl RequestPath {
@@ -50,6 +64,9 @@ impl RequestPath {
             policy,
             cancel: CancellationToken::new(),
             account_stopped: AtomicBool::new(false),
+            auth_stopped: AtomicBool::new(false),
+            refresh_gate: tokio::sync::RwLock::new(()),
+            generation: AtomicU64::new(0),
         }
     }
 
@@ -65,29 +82,76 @@ impl RequestPath {
 
     /// Whether work may continue; executors call it between blocks, before building the next request.
     pub fn check(&self) -> Result<(), SyncError> {
+        self.check_for(Auth::Session)
+    }
+
+    fn check_for(&self, auth: Auth) -> Result<(), SyncError> {
         if self.cancel.is_cancelled() {
             Err(SyncError::Cancelled)
         } else if self.account_stopped.load(Ordering::Acquire) {
             Err(SyncError::AccountNotActive)
+        } else if auth == Auth::Session && self.auth_stopped.load(Ordering::Acquire) {
+            Err(SyncError::Unauthorized)
         } else {
             Ok(())
         }
     }
 
+    pub(super) fn stop_auth(&self) {
+        self.auth_stopped.store(true, Ordering::Release);
+    }
+
+    /// A new sign-in ended the stop: the host holds fresh tokens now.
+    pub(crate) fn resume_auth(&self) {
+        self.auth_stopped.store(false, Ordering::Release);
+    }
+
+    /// Whether the host's credential is a desktop device token, which has no refresh token.
+    pub(crate) fn is_device_credential(&self) -> bool {
+        self.credentials.bearer().refresh.is_none()
+    }
+
     /// Sends `request`, retrying transport failures and 429 up to `max_attempts` sends. `op` names the
-    /// operation in logs.
+    /// operation in logs. A 401 rotates the session's tokens and repeats the request once, outside `max_attempts`.
     pub async fn send(&self, op: &'static str, request: Request) -> Result<WireResponse, Mapped> {
+        self.run(op, request, Auth::Session).await
+    }
+
+    /// `send` without credential and without token rotation: the sign-in routes and the rotation itself.
+    pub(crate) async fn send_anonymous(
+        &self,
+        op: &'static str,
+        request: Request,
+    ) -> Result<WireResponse, Mapped> {
+        self.run(op, request, Auth::Anonymous).await
+    }
+
+    async fn run(
+        &self,
+        op: &'static str,
+        request: Request,
+        auth: Auth,
+    ) -> Result<WireResponse, Mapped> {
         let max_attempts = request.max_attempts.max(1);
         let mut attempt = 0;
+        let mut rotated = false;
         loop {
             attempt += 1;
-            self.check().map_err(Mapped::Error)?;
-            let failure = match self.send_once(&request).await {
+            self.check_for(auth).map_err(Mapped::Error)?;
+            // Read before the credential: a rotation that finishes in between only makes the next step a no-op.
+            let generation = self.generation.load(Ordering::Acquire);
+            let failure = match self.send_once(&request, auth).await {
                 Ok(response) => return Ok(response),
                 Err(failure) => failure,
             };
             if let Mapped::Error(error) = &failure.mapped {
                 self.note_failure(op, attempt, &failure, error);
+                if auth == Auth::Session && *error == SyncError::Unauthorized && !rotated {
+                    self.renew(generation).await.map_err(Mapped::Error)?;
+                    rotated = true;
+                    attempt -= 1;
+                    continue;
+                }
                 if error.is_retryable() && attempt < max_attempts {
                     let delay = self.delay_for(error, attempt);
                     tracing::warn!(
@@ -106,19 +170,11 @@ impl RequestPath {
         }
     }
 
-    async fn send_once(&self, request: &Request) -> Result<WireResponse, Failure> {
-        let credential = self.credentials.bearer();
-        let wire = WireRequest {
-            method: request.method,
-            target: request.target.clone(),
-            headers: request.headers.clone(),
-            bearer: Some(credential.access),
-            body: request.body.clone(),
-        };
+    async fn send_once(&self, request: &Request, auth: Auth) -> Result<WireResponse, Failure> {
         let sent = tokio::select! {
             biased;
             () = self.cancel.cancelled() => return Err(Failure::error(SyncError::Cancelled)),
-            sent = self.transport.send(wire) => sent,
+            sent = self.transmit(request, auth) => sent,
         };
         let response = sent.map_err(|kind| Failure::error(SyncError::Transport(kind)))?;
         if (200..300).contains(&response.status) {
@@ -137,6 +193,31 @@ impl RequestPath {
                 .and_then(CorrelationId::parse)
                 .map(|id| id.to_string()),
         })
+    }
+
+    /// The credential is read only while no rotation is in flight, so no request carries a new access token
+    /// before the host stored it.
+    async fn transmit(
+        &self,
+        request: &Request,
+        auth: Auth,
+    ) -> Result<WireResponse, sc_error::TransportKind> {
+        let bearer = match auth {
+            Auth::Session => {
+                let _idle = self.refresh_gate.read().await;
+                Some(self.credentials.bearer().access)
+            }
+            Auth::Anonymous => None,
+        };
+        self.transport
+            .send(WireRequest {
+                method: request.method,
+                target: request.target.clone(),
+                headers: request.headers.clone(),
+                bearer,
+                body: request.body.clone(),
+            })
+            .await
     }
 
     /// Stops the account's work on `account_not_active`; logs an answer the table does not know.

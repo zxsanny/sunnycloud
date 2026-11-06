@@ -1,8 +1,10 @@
-//! The credential probes of the authenticator. Each is one statement: a read on a unique `*_hash` index
+//! The statements that run before the caller's account is known (system scope) and the session insert of a
+//! sign-in. The credential probes of the authenticator are one statement each: a read on a unique `*_hash` index
 //! (authenticate) or on the primary key (revalidate), joined to the account. Expiry, revocation and account
 //! state are returned as columns and decided in code, never in the `WHERE` clause, so every dead credential
 //! costs the same database work.
 
+use sc_clock::Timestamp;
 use sc_db::{Db, DbError, RunError, Scope};
 use sc_ids::TokenHash;
 use uuid::Uuid;
@@ -98,4 +100,180 @@ pub(crate) async fn by_id(
         })
         .await?;
     Ok(row.map(CredentialRow::from))
+}
+
+/// The columns of a consumed sign-in state that `complete` reads. The invite hash and the mobile code challenge
+/// are consumed with the row and read by the tasks that redeem them.
+pub(crate) struct StateRow {
+    pub provider: String,
+    pub nonce: String,
+    pub pkce_verifier: String,
+    pub return_to: String,
+    pub client_kind: String,
+    pub expires_at_micros: i64,
+}
+
+pub(crate) struct NewState<'a> {
+    pub state_hash: &'a TokenHash,
+    pub provider: &'a str,
+    pub nonce: &'a str,
+    pub pkce_verifier: &'a str,
+    pub return_to: &'a str,
+    pub client_kind: &'a str,
+    pub invite_token_hash: Option<TokenHash>,
+    pub code_challenge: Option<&'a str>,
+    pub created_at: Timestamp,
+    pub expires_at: Timestamp,
+}
+
+const INSERT_STATE: &str = "INSERT INTO oauth_states (state_hash, provider, nonce, pkce_verifier, return_to, \
+    client_kind, invite_token_hash, code_challenge, created_at, expires_at) \
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, \
+    'epoch'::timestamptz + $9::bigint * interval '1 microsecond', \
+    'epoch'::timestamptz + $10::bigint * interval '1 microsecond')";
+
+// Expiry is returned and decided in code: an expired state is consumed like a live one and fails the same way.
+const CONSUME_STATE: &str = "DELETE FROM oauth_states WHERE state_hash = $1 \
+    RETURNING provider, nonce, pkce_verifier, return_to, client_kind, \
+    (extract(epoch FROM expires_at) * 1000000)::bigint";
+
+const IDENTITY_BY_PROVIDER_ID: &str = "SELECT i.id, i.account_id, a.state FROM identities i \
+    JOIN accounts a ON a.id = i.account_id WHERE i.provider = $1 AND i.provider_user_id = $2";
+
+const INSERT_SESSION: &str = "INSERT INTO sessions (id, account_id, client_kind, label, token_hash, \
+    access_expires_at, refresh_hash, refresh_expires_at, created_at) \
+    VALUES ($1, $2, $3, $4, $5, \
+    'epoch'::timestamptz + $6::bigint * interval '1 microsecond', $7, \
+    'epoch'::timestamptz + $8::bigint * interval '1 microsecond', \
+    'epoch'::timestamptz + $9::bigint * interval '1 microsecond')";
+
+const TOUCH_IDENTITY: &str = "UPDATE identities \
+    SET last_login_at = 'epoch'::timestamptz + $2::bigint * interval '1 microsecond' WHERE id = $1";
+
+type StateTuple = (String, String, String, String, String, i64);
+
+/// The identity a provider user id belongs to, with the state of its account.
+pub(crate) struct KnownIdentity {
+    pub identity_id: Uuid,
+    pub account_id: Uuid,
+    pub account_state: String,
+}
+
+pub(crate) struct NewSession<'a> {
+    pub id: Uuid,
+    pub client_kind: &'a str,
+    pub label: &'a str,
+    pub token_hash: TokenHash,
+    pub access_expires_at: Timestamp,
+    pub refresh_hash: TokenHash,
+    pub refresh_expires_at: Timestamp,
+    pub created_at: Timestamp,
+}
+
+/// States are read before any account is known, and `oauth_states` carries no row policy: system scope.
+pub(crate) async fn insert_state(db: &Db, state: NewState<'_>) -> Result<(), RunError<DbError>> {
+    db.run_system("sign_in_begin", async |tx| {
+        sqlx::query(INSERT_STATE)
+            .bind(state.state_hash.as_bytes().as_slice())
+            .bind(state.provider)
+            .bind(state.nonce)
+            .bind(state.pkce_verifier)
+            .bind(state.return_to)
+            .bind(state.client_kind)
+            .bind(
+                state
+                    .invite_token_hash
+                    .map(|hash| hash.into_bytes().to_vec()),
+            )
+            .bind(state.code_challenge)
+            .bind(state.created_at.as_unix_micros())
+            .bind(state.expires_at.as_unix_micros())
+            .execute(tx.conn())
+            .await
+            .map(drop)
+            .map_err(DbError::from)
+    })
+    .await
+}
+
+/// Consumes the state: `DELETE ... RETURNING`, so a replay, a foreign binding or a second callback finds
+/// nothing.
+pub(crate) async fn consume_state(
+    db: &Db,
+    state_hash: &TokenHash,
+) -> Result<Option<StateRow>, RunError<DbError>> {
+    let row = db
+        .run_system("sign_in_callback", async |tx| {
+            sqlx::query_as::<_, StateTuple>(CONSUME_STATE)
+                .bind(state_hash.as_bytes().as_slice())
+                .fetch_optional(tx.conn())
+                .await
+                .map_err(DbError::from)
+        })
+        .await?;
+    Ok(row.map(|row| StateRow {
+        provider: row.0,
+        nonce: row.1,
+        pkce_verifier: row.2,
+        return_to: row.3,
+        client_kind: row.4,
+        expires_at_micros: row.5,
+    }))
+}
+
+/// Looks the identity up by `(provider, provider_user_id)`; never by email. The account is not known yet,
+/// so the read runs in system scope.
+pub(crate) async fn identity_by_provider_id(
+    db: &Db,
+    provider: &str,
+    provider_user_id: &str,
+) -> Result<Option<KnownIdentity>, RunError<DbError>> {
+    let row = db
+        .run_system("sign_in_identity", async |tx| {
+            sqlx::query_as::<_, (Uuid, Uuid, String)>(IDENTITY_BY_PROVIDER_ID)
+                .bind(provider)
+                .bind(provider_user_id)
+                .fetch_optional(tx.conn())
+                .await
+                .map_err(DbError::from)
+        })
+        .await?;
+    Ok(
+        row.map(|(identity_id, account_id, account_state)| KnownIdentity {
+            identity_id,
+            account_id,
+            account_state,
+        }),
+    )
+}
+
+/// The new session and the identity's `last_login_at`, in one transaction of the account.
+pub(crate) async fn start_session(
+    db: &Db,
+    identity: &KnownIdentity,
+    session: NewSession<'_>,
+) -> Result<(), RunError<DbError>> {
+    db.run(Scope::Account(identity.account_id), async |tx| {
+        sqlx::query(INSERT_SESSION)
+            .bind(session.id)
+            .bind(identity.account_id)
+            .bind(session.client_kind)
+            .bind(session.label)
+            .bind(session.token_hash.as_bytes().as_slice())
+            .bind(session.access_expires_at.as_unix_micros())
+            .bind(session.refresh_hash.as_bytes().as_slice())
+            .bind(session.refresh_expires_at.as_unix_micros())
+            .bind(session.created_at.as_unix_micros())
+            .execute(tx.conn())
+            .await
+            .map_err(DbError::from)?;
+        sqlx::query(TOUCH_IDENTITY)
+            .bind(identity.identity_id)
+            .bind(session.created_at.as_unix_micros())
+            .execute(tx.conn())
+            .await
+            .map(drop)
+            .map_err(DbError::from)
+    })
+    .await
 }

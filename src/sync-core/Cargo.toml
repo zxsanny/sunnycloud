@@ -26,7 +26,7 @@ bytes = { workspace = true }
 getrandom = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 thiserror = { workspace = true }
 uuid = { workspace = true }

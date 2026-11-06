@@ -294,3 +294,24 @@ pub async fn login_code(conn: &mut PgConnection, account: Uuid, code: &str, at: 
     .await
     .expect("insert login code");
 }
+
+/// An identity of `account` at `provider` with the provider's user id.
+pub async fn identity_at(
+    conn: &mut PgConnection,
+    account: Uuid,
+    provider: &str,
+    provider_user_id: &str,
+    at: i64,
+) {
+    sqlx::query(
+        "INSERT INTO identities (id, account_id, provider, provider_user_id, email_verified, created_at) \
+         VALUES (gen_random_uuid(), $1, $2, $3, false, 'epoch'::timestamptz + $4::bigint * interval '1 microsecond')",
+    )
+    .bind(account)
+    .bind(provider)
+    .bind(provider_user_id)
+    .bind(at)
+    .execute(conn)
+    .await
+    .expect("insert identity");
+}

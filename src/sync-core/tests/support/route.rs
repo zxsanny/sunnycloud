@@ -27,6 +27,7 @@ pub enum Route {
     MobileCodeExchange,
     RefreshTokens,
     SignOut,
+    SignOutSession,
 }
 
 /// The route a request addresses, or `None` for a path or method outside the list.
@@ -59,6 +60,7 @@ pub fn resolve(method: &Method, path: &str) -> Option<Route> {
         ("POST", ["auth", "mobile-code-exchanges"]) => Route::MobileCodeExchange,
         ("POST", ["auth", "refresh-tokens"]) => Route::RefreshTokens,
         ("DELETE", ["devices", "me"]) => Route::SignOut,
+        ("DELETE", ["sessions", "current"]) => Route::SignOutSession,
         _ => return None,
     };
     Some(route)

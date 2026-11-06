@@ -10,4 +10,13 @@ pub enum IdentityError {
     /// A stored value outside the set its CHECK constraint allows; a bug or a damaged database.
     #[error("unexpected value {value:?} in column {column}")]
     UnexpectedColumnValue { column: &'static str, value: String },
+    /// The outbound HTTP client (TLS roots, client builder) could not be built.
+    #[error("outbound HTTP client setup failed")]
+    OutboundSetup(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// A configured duration added to the clock leaves the representable range.
+    #[error("a configured duration is out of the clock's range")]
+    TimeOutOfRange,
+    /// A mobile sign-in reached the callback; the one-time code outcome belongs to a later task.
+    #[error("the mobile sign-in outcome is not implemented")]
+    MobileSignInUnsupported,
 }

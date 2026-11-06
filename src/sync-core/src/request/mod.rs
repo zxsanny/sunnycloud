@@ -3,6 +3,7 @@
 
 mod jitter;
 mod path;
+mod refresh;
 mod transport;
 
 pub use path::{Request, RequestPath};

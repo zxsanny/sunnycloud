@@ -21,7 +21,6 @@ fn sentinels_in(text: &str) -> usize {
 
 fn script() -> Script {
     Script::new()
-        .always(Route::RootNode, Answer::problem(ErrorCode::Unauthenticated))
         .always(
             Route::GetNode,
             Answer::problem(ErrorCode::RateLimited).retry_after(1),
@@ -73,7 +72,6 @@ async fn no_token_reaches_a_url_an_error_text_or_a_log_line() {
         },
     ));
     let calls = [
-        (Method::Get, "/api/v1/nodes/root", 1),
         (Method::Get, "/api/v1/nodes/n1", 2),
         (Method::Get, "/api/v1/nodes/n1/children", 1),
         (Method::Get, "/api/v1/revisions/r1", 1),
@@ -101,13 +99,12 @@ async fn no_token_reaches_a_url_an_error_text_or_a_log_line() {
             other => panic!("expected a typed error, got {other:?}"),
         })
         .collect();
-    assert!(matches!(errors[0], SyncError::Unauthorized));
-    assert!(matches!(errors[1], SyncError::RateLimited { .. }));
-    assert!(matches!(errors[2], SyncError::UpgradeRequired { .. }));
-    assert!(matches!(errors[3], SyncError::Unexpected { .. }));
-    assert!(matches!(errors[4], SyncError::Transport(_)));
-    assert_eq!(errors[5], SyncError::AccountNotActive);
-    assert_eq!(errors[6], SyncError::Cancelled);
+    assert!(matches!(errors[0], SyncError::RateLimited { .. }));
+    assert!(matches!(errors[1], SyncError::UpgradeRequired { .. }));
+    assert!(matches!(errors[2], SyncError::Unexpected { .. }));
+    assert!(matches!(errors[3], SyncError::Transport(_)));
+    assert_eq!(errors[4], SyncError::AccountNotActive);
+    assert_eq!(errors[5], SyncError::Cancelled);
 
     let error_texts: String = errors.iter().map(|e| format!("{e} {e:?}\n")).collect();
     let requests = fixture.requests();
