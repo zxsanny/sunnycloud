@@ -12,9 +12,13 @@ use uuid::Uuid;
 
 use contracts::{Decision, PrincipalKind};
 
+use crate::account_repo::{self, ListedAccount};
 use crate::device_grant_repo::{
     self, Approver, DecideOutcome, NewDeviceToken, NewGrant, PendingGrant, PollStep,
 };
+use crate::janitor_repo::{self, Target};
+use crate::login_code_repo;
+use crate::session_repo::{self, NewSession};
 
 /// Columns of a probe, undecided.
 pub(crate) struct CredentialRow {
@@ -148,14 +152,16 @@ pub(crate) async fn by_id(
     Ok(row.map(CredentialRow::from))
 }
 
-/// The columns of a consumed sign-in state that `complete` reads. The invite hash and the mobile code challenge
-/// are consumed with the row and read by the tasks that redeem them.
+/// The columns of a consumed sign-in state that `complete` reads. The invite hash is consumed with the row and
+/// read by the task that redeems it.
 pub(crate) struct StateRow {
     pub provider: String,
     pub nonce: String,
     pub pkce_verifier: String,
     pub return_to: String,
     pub client_kind: String,
+    /// The PKCE challenge of a mobile sign-in, copied to its login code.
+    pub code_challenge: Option<String>,
     pub expires_at_micros: i64,
 }
 
@@ -180,40 +186,19 @@ const INSERT_STATE: &str = "INSERT INTO oauth_states (state_hash, provider, nonc
 
 // Expiry is returned and decided in code: an expired state is consumed like a live one and fails the same way.
 const CONSUME_STATE: &str = "DELETE FROM oauth_states WHERE state_hash = $1 \
-    RETURNING provider, nonce, pkce_verifier, return_to, client_kind, \
+    RETURNING provider, nonce, pkce_verifier, return_to, client_kind, code_challenge, \
     (extract(epoch FROM expires_at) * 1000000)::bigint";
 
 const IDENTITY_BY_PROVIDER_ID: &str = "SELECT i.id, i.account_id, a.state FROM identities i \
     JOIN accounts a ON a.id = i.account_id WHERE i.provider = $1 AND i.provider_user_id = $2";
 
-const INSERT_SESSION: &str = "INSERT INTO sessions (id, account_id, client_kind, label, token_hash, \
-    access_expires_at, refresh_hash, refresh_expires_at, created_at) \
-    VALUES ($1, $2, $3, $4, $5, \
-    'epoch'::timestamptz + $6::bigint * interval '1 microsecond', $7, \
-    'epoch'::timestamptz + $8::bigint * interval '1 microsecond', \
-    'epoch'::timestamptz + $9::bigint * interval '1 microsecond')";
-
-const TOUCH_IDENTITY: &str = "UPDATE identities \
-    SET last_login_at = 'epoch'::timestamptz + $2::bigint * interval '1 microsecond' WHERE id = $1";
-
-type StateTuple = (String, String, String, String, String, i64);
+type StateTuple = (String, String, String, String, String, Option<String>, i64);
 
 /// The identity a provider user id belongs to, with the state of its account.
 pub(crate) struct KnownIdentity {
     pub identity_id: Uuid,
     pub account_id: Uuid,
     pub account_state: String,
-}
-
-pub(crate) struct NewSession<'a> {
-    pub id: Uuid,
-    pub client_kind: &'a str,
-    pub label: &'a str,
-    pub token_hash: TokenHash,
-    pub access_expires_at: Timestamp,
-    pub refresh_hash: TokenHash,
-    pub refresh_expires_at: Timestamp,
-    pub created_at: Timestamp,
 }
 
 /// States are read before any account is known, and `oauth_states` carries no row policy: system scope.
@@ -263,7 +248,8 @@ pub(crate) async fn consume_state(
         pkce_verifier: row.2,
         return_to: row.3,
         client_kind: row.4,
-        expires_at_micros: row.5,
+        code_challenge: row.5,
+        expires_at_micros: row.6,
     }))
 }
 
@@ -300,26 +286,8 @@ pub(crate) async fn start_session(
     session: NewSession<'_>,
 ) -> Result<(), RunError<DbError>> {
     db.run(Scope::Account(identity.account_id), async |tx| {
-        sqlx::query(INSERT_SESSION)
-            .bind(session.id)
-            .bind(identity.account_id)
-            .bind(session.client_kind)
-            .bind(session.label)
-            .bind(session.token_hash.as_bytes().as_slice())
-            .bind(session.access_expires_at.as_unix_micros())
-            .bind(session.refresh_hash.as_bytes().as_slice())
-            .bind(session.refresh_expires_at.as_unix_micros())
-            .bind(session.created_at.as_unix_micros())
-            .execute(tx.conn())
-            .await
-            .map_err(DbError::from)?;
-        sqlx::query(TOUCH_IDENTITY)
-            .bind(identity.identity_id)
-            .bind(session.created_at.as_unix_micros())
-            .execute(tx.conn())
-            .await
-            .map(drop)
-            .map_err(DbError::from)
+        session_repo::insert(tx, identity.account_id, &session).await?;
+        account_repo::touch_identity(tx, identity.identity_id, session.created_at).await
     })
     .await
 }
@@ -371,6 +339,47 @@ pub(crate) async fn decide_grant(
 ) -> Result<DecideOutcome, RunError<DbError>> {
     db.run_system("device_decide", async |tx| {
         device_grant_repo::decide(tx, id, decision, approver, now).await
+    })
+    .await
+}
+
+/// One batch of the janitor: it spans every account, so it runs in system scope.
+pub(crate) async fn sweep_batch(
+    db: &Db,
+    target: Target,
+    cutoff: Timestamp,
+    limit: i64,
+) -> Result<u64, RunError<DbError>> {
+    db.run_system("identity_janitor", async |tx| {
+        janitor_repo::delete_batch(tx, target, cutoff, limit).await
+    })
+    .await
+}
+
+/// Consumes a mobile login code and mints its session in one transaction. The code is looked up by hash
+/// before its account is known, so the transaction runs in system scope.
+pub(crate) async fn exchange_login_code(
+    db: &Db,
+    code_hash: &TokenHash,
+    attempt: &login_code_repo::Attempt<'_>,
+) -> Result<login_code_repo::Exchange, RunError<DbError>> {
+    db.run_system("mobile_code_exchange", async |tx| {
+        login_code_repo::exchange(tx, code_hash, attempt).await
+    })
+    .await
+}
+
+/// The accounts page of the admin list. The last login is read from the identities of every account, so the
+/// read runs in system scope.
+pub(crate) async fn list_accounts(
+    db: &Db,
+    role: Option<&str>,
+    state: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<ListedAccount>, RunError<DbError>> {
+    db.run_system("account_list", async |tx| {
+        account_repo::list(tx, role, state, limit, offset).await
     })
     .await
 }

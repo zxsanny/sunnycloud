@@ -134,6 +134,14 @@ const REVOKE_DEVICE: &str = "UPDATE device_tokens \
     SET revoked_at = 'epoch'::timestamptz + $3::bigint * interval '1 microsecond', revoke_reason = 'user' \
     WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL";
 
+const REVOKE_ALL_DEVICES: &str = "UPDATE device_tokens \
+    SET revoked_at = 'epoch'::timestamptz + $2::bigint * interval '1 microsecond', revoke_reason = $3 \
+    WHERE account_id = $1 AND revoked_at IS NULL";
+
+// A pending grant has no account yet; an approved one that was not polled yet is the account's open grant.
+const DENY_OPEN_GRANTS: &str =
+    "UPDATE device_grants SET status = 'denied' WHERE account_id = $1 AND status = 'approved'";
+
 pub(crate) async fn insert(tx: &mut DbTx, grant: &NewGrant<'_>) -> Result<(), DbError> {
     sqlx::query(INSERT_GRANT)
         .bind(grant.id)
@@ -303,4 +311,31 @@ pub(crate) async fn revoke_device(
         .execute(tx.conn())
         .await?;
     Ok(revoked.rows_affected() == 1)
+}
+
+/// Revokes every live device token of `account`.
+pub(crate) async fn revoke_all_devices(
+    tx: &mut DbTx,
+    account: Uuid,
+    at: Timestamp,
+    reason: &str,
+) -> Result<(), DbError> {
+    sqlx::query(REVOKE_ALL_DEVICES)
+        .bind(account)
+        .bind(at.as_unix_micros())
+        .bind(reason)
+        .execute(tx.conn())
+        .await
+        .map(drop)?;
+    Ok(())
+}
+
+/// Closes the approved grants of `account` that no device has collected, so a later poll mints nothing.
+pub(crate) async fn deny_open_grants(tx: &mut DbTx, account: Uuid) -> Result<(), DbError> {
+    sqlx::query(DENY_OPEN_GRANTS)
+        .bind(account)
+        .execute(tx.conn())
+        .await
+        .map(drop)?;
+    Ok(())
 }

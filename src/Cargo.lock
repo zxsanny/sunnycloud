@@ -3480,6 +3480,7 @@ name = "sunnycloud-worker"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "decoder-runner",
  "media-shared",
  "rustix 1.1.6",
  "sc_config",

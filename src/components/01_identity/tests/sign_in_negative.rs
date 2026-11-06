@@ -1,5 +1,5 @@
 //! AC-3 (IT-01-5 cases 1 to 11, FT-N-23): every negative callback ends in its documented error and creates no
-//! session, account, identity or login code. Case 12 (wrong code verifier) belongs to the mobile exchange.
+//! session, account, identity or login code. Case 12 (wrong code verifier) is in `mobile_code.rs`.
 //! A known identity exists in every test, so a failure is caused by the mutation and not by a missing identity.
 
 mod support;

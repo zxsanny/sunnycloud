@@ -1,7 +1,10 @@
 //! The pure rules of sign-in: the return path, the public URL and host, and the state hash.
 
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use reqwest::Url;
 use sc_ids::{TokenHash, sha256_token};
+use sha2::{Digest, Sha256};
 
 /// A path the browser may be sent to after sign-in: one leading slash, no second slash or backslash right
 /// after it (`//host` and `/\host` are network-path references), no control character anywhere (a CR or LF
@@ -18,6 +21,11 @@ pub(crate) fn is_relative_return_path(path: &str) -> bool {
 /// that is not stored.
 pub(crate) fn state_hash(state: &str, browser_binding: &str) -> TokenHash {
     sha256_token(format!("{state}{browser_binding}"))
+}
+
+/// The PKCE `S256` challenge of `verifier` (RFC 7636 section 4.2): `BASE64URL(SHA-256(verifier))`.
+pub(crate) fn s256_challenge(verifier: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
 }
 
 /// The configured `public_url`: the only source of the redirect URI and of the expected host.
@@ -123,6 +131,22 @@ mod tests {
 
         // Assert
         assert_eq!(results, [true, true, false, false, true, false]);
+    }
+
+    #[test]
+    fn s256_challenge_matches_the_rfc_7636_vector_and_changes_with_any_edit() {
+        // Arrange: RFC 7636 appendix B
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+
+        // Act
+        let challenge = s256_challenge(verifier);
+        let edited = s256_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXl");
+        let appended = s256_challenge(&format!("{verifier}x"));
+
+        // Assert
+        assert_eq!(challenge, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+        assert_ne!(edited, challenge);
+        assert_ne!(appended, challenge);
     }
 
     #[test]

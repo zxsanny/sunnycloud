@@ -44,6 +44,18 @@ pub(crate) struct Rotation {
     pub successor_enc: Vec<u8>,
 }
 
+/// A session row at sign-in; `token_hash` and `refresh_hash` are the only stored form of its tokens.
+pub(crate) struct NewSession<'a> {
+    pub id: Uuid,
+    pub client_kind: &'a str,
+    pub label: &'a str,
+    pub token_hash: TokenHash,
+    pub access_expires_at: Timestamp,
+    pub refresh_hash: TokenHash,
+    pub refresh_expires_at: Timestamp,
+    pub created_at: Timestamp,
+}
+
 /// A listed session; revocation and expiry are decided by the caller.
 pub(crate) struct ListedSession {
     pub id: Uuid,
@@ -55,6 +67,13 @@ pub(crate) struct ListedSession {
 }
 
 type ListedTuple = (Uuid, String, i64, i64, bool, i64);
+
+const INSERT_SESSION: &str = "INSERT INTO sessions (id, account_id, client_kind, label, token_hash, \
+    access_expires_at, refresh_hash, refresh_expires_at, created_at) \
+    VALUES ($1, $2, $3, $4, $5, \
+    'epoch'::timestamptz + $6::bigint * interval '1 microsecond', $7, \
+    'epoch'::timestamptz + $8::bigint * interval '1 microsecond', \
+    'epoch'::timestamptz + $9::bigint * interval '1 microsecond')";
 
 const LOCK_SESSION: &str = "SELECT s.refresh_hash, s.prev_refresh_hash, \
     (extract(epoch FROM s.rotated_at) * 1000000)::bigint, \
@@ -93,6 +112,27 @@ const TOUCH_DEVICE: &str = "UPDATE device_tokens \
     SET last_seen_at = 'epoch'::timestamptz + $2::bigint * interval '1 microsecond' \
     WHERE id = $1 AND revoked_at IS NULL \
     AND (last_seen_at IS NULL OR last_seen_at <= 'epoch'::timestamptz + $3::bigint * interval '1 microsecond')";
+
+pub(crate) async fn insert(
+    tx: &mut DbTx,
+    account: Uuid,
+    session: &NewSession<'_>,
+) -> Result<(), DbError> {
+    sqlx::query(INSERT_SESSION)
+        .bind(session.id)
+        .bind(account)
+        .bind(session.client_kind)
+        .bind(session.label)
+        .bind(session.token_hash.as_bytes().as_slice())
+        .bind(session.access_expires_at.as_unix_micros())
+        .bind(session.refresh_hash.as_bytes().as_slice())
+        .bind(session.refresh_expires_at.as_unix_micros())
+        .bind(session.created_at.as_unix_micros())
+        .execute(tx.conn())
+        .await
+        .map(drop)?;
+    Ok(())
+}
 
 /// Takes the row lock of session `id` until the transaction ends; concurrent rotations of the session queue here.
 pub(crate) async fn lock(tx: &mut DbTx, id: Uuid) -> Result<Option<LockedSession>, DbError> {

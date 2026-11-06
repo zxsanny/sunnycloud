@@ -1,10 +1,12 @@
 //! Provider sign-in: `begin` stores a hashed one-time state and builds the provider redirect, `complete`
-//! consumes the state, has the provider client validate the callback and signs a known identity in.
+//! consumes the state, has the provider client validate the callback and signs a known identity in (a web
+//! client gets a session, a mobile one a one-time code that `exchange_mobile_code` turns into one).
 //!
-//! Invite and setup-token redemption, the mobile one-time code, linking and abuse limits are other tasks. This
+//! Invite and setup-token redemption, linking and abuse limits are other tasks. This
 //! type implements `begin` and `complete` with the signatures of `contracts::SignInService`; the trait is
 //! implemented once its remaining methods exist.
 
+mod mobile;
 mod rules;
 
 use std::collections::HashMap;
@@ -23,13 +25,14 @@ use sc_db::Db;
 use sc_error::ErrorCode;
 use sc_ids::{TokenKind, new_id, new_token, sha256_token};
 
-use crate::auth_repo::{self, KnownIdentity, NewSession, NewState, StateRow};
+use crate::auth_repo::{self, KnownIdentity, NewState, StateRow};
 use crate::config::IdentityConfig;
 use crate::error::IdentityError;
 use crate::outbound::OutboundClient;
 use crate::provider::{
     self, AuthorizationRequest, CodeExchange, ProviderClient, ProviderError, ProviderIdentity,
 };
+use crate::session_repo::NewSession;
 
 const ACTIVE: &str = "active";
 
@@ -45,6 +48,7 @@ pub struct IdentitySignIn {
     providers: HashMap<String, Arc<dyn ProviderClient>>,
     public_url: PublicUrl,
     oauth_state_ttl: Duration,
+    login_code_ttl: Duration,
     access_token_ttl: Duration,
     refresh_token_ttl: Duration,
     provider_timeout: Duration,
@@ -79,6 +83,7 @@ impl IdentitySignIn {
             providers,
             public_url,
             oauth_state_ttl: config.oauth_state_ttl,
+            login_code_ttl: config.login_code_ttl,
             access_token_ttl: config.access_token_ttl,
             refresh_token_ttl: config.refresh_token_ttl,
             provider_timeout: config.provider_timeout,
@@ -190,7 +195,14 @@ impl IdentitySignIn {
             });
         }
         if client_kind.is_mobile() {
-            return Err(unexpected(IdentityError::MobileSignInUnsupported));
+            let challenge = stored.code_challenge.ok_or_else(invalid_request)?;
+            let code = self
+                .store_login_code(&known, &stored.client_kind, &challenge)
+                .await?;
+            return Ok(SignInOutcome::MobileCode {
+                code,
+                return_to: stored.return_to,
+            });
         }
         let tokens = self.start_session(&known, &stored.client_kind).await?;
         Ok(SignInOutcome::Session {

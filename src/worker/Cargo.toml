@@ -24,10 +24,11 @@ sc_observability = { path = "../shared/observability" }
 axum = { workspace = true }
 rustix = { version = "1.1", features = ["fs"] }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "net", "rt", "rt-multi-thread", "signal", "time"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
+decoder-runner = { path = "../decoder" }
 rustix = { version = "1.1", features = ["fs", "process"] }
 tempfile = "3"
 serde_json = { workspace = true }

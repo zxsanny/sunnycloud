@@ -4,10 +4,10 @@
 
 mod support;
 
-use contracts::{Authenticator, ClientKind, Credential, SignInError, SignInOutcome};
+use contracts::{Authenticator, Credential, SignInError, SignInOutcome};
 use sc_error::ErrorCode;
 use support::auth::authenticator;
-use support::sign_in::{GITHUB, OIDC, World, begin_request, params, world};
+use support::sign_in::{GITHUB, OIDC, World, params, world};
 use uuid::Uuid;
 
 /// `begin`, the provider login of `subject` (with `email` for OIDC) and `complete`.
@@ -152,38 +152,6 @@ async fn sign_in_of_a_disabled_account_is_refused_without_a_session() {
         "{result:?}"
     );
     assert_eq!(world.counts().await.sessions, 0);
-    world.finish().await;
-}
-
-#[tokio::test]
-async fn a_mobile_callback_fails_closed_until_the_one_time_code_outcome_exists() {
-    // Arrange
-    let mut world = world().await;
-    world.known_identity(OIDC, "sub-mobile").await;
-    let mut request = begin_request(OIDC, "/files");
-    request.client_kind = ClientKind::Android;
-    request.code_challenge = Some("app-challenge".to_owned());
-    let redirect = world.service.begin(request).await.expect("begin");
-    let callback = world.idp.authorize(&redirect.url, "sub-mobile");
-
-    // Act
-    let result = world
-        .service
-        .complete(
-            OIDC,
-            params(callback),
-            &redirect.browser_binding,
-            support::sign_in::HOST,
-        )
-        .await;
-
-    // Assert
-    assert!(
-        matches!(result, Err(SignInError::Unexpected(_))),
-        "{result:?}"
-    );
-    let counts = world.counts().await;
-    assert_eq!((counts.sessions, counts.login_codes), (0, 0));
     world.finish().await;
 }
 

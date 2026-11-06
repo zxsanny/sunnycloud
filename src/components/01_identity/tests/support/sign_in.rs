@@ -1,8 +1,9 @@
 //! The sign-in service on the harness, with the in-process provider as both configured providers (`github`
 //! and `oidc`), and row counts to show that a failed callback creates nothing.
 
-use contracts::{BeginSignIn, BrowserBinding, CallbackParams, ClientKind};
+use contracts::{BeginSignIn, BrowserBinding, CallbackParams, ClientKind, SignInOutcome};
 use sc_config::Secret;
+use sc_ids::RawToken;
 use sqlx::{Connection, PgConnection};
 use sunnycloud_identity::{IdentityConfig, IdentitySignIn, ProviderConfig};
 use uuid::Uuid;
@@ -13,6 +14,10 @@ use super::{Harness, START, fixtures};
 pub const HOST: &str = "sunnycloud.test";
 pub const GITHUB: &str = "github";
 pub const OIDC: &str = "oidc";
+
+/// RFC 7636 appendix B: a code verifier and its S256 challenge.
+pub const VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+pub const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 
 pub struct World {
     pub harness: Harness,
@@ -93,6 +98,25 @@ impl World {
             .await
             .expect("begin");
         (redirect.url, redirect.browser_binding)
+    }
+
+    /// A mobile sign-in of the known identity `subject` at `kind` bound to `challenge`: the code `complete`
+    /// returns.
+    pub async fn mobile_code(&self, kind: ClientKind, subject: &str, challenge: &str) -> RawToken {
+        let mut request = begin_request(OIDC, "/files");
+        request.client_kind = kind;
+        request.code_challenge = Some(challenge.to_owned());
+        let redirect = self.service.begin(request).await.expect("begin");
+        let callback = self.idp.authorize(&redirect.url, subject);
+        let outcome = self
+            .service
+            .complete(OIDC, params(callback), &redirect.browser_binding, HOST)
+            .await
+            .expect("complete");
+        match outcome {
+            SignInOutcome::MobileCode { code, .. } => code,
+            other => panic!("expected a mobile code, got {other:?}"),
+        }
     }
 
     pub async fn finish(self) {

@@ -1,4 +1,5 @@
 use sc_config::KeyProblem;
+use sc_db::{DbError, RunError};
 use thiserror::Error;
 
 /// Failures of the identity component that are not port outcomes.
@@ -18,9 +19,19 @@ pub enum IdentityError {
     /// A configured duration added to the clock leaves the representable range.
     #[error("a configured duration is out of the clock's range")]
     TimeOutOfRange,
-    /// A mobile sign-in reached the callback; the one-time code outcome belongs to a later task.
-    #[error("the mobile sign-in outcome is not implemented")]
-    MobileSignInUnsupported,
+    /// An account operation named an account that does not exist.
+    #[error("account not found")]
+    AccountNotFound,
+    /// An account operation the account's current state does not allow (state `deleting` cannot be changed,
+    /// only a `deleting` account can be finalized).
+    #[error("{operation} refused for an account in state {state}")]
+    AccountStateRefused {
+        operation: &'static str,
+        state: String,
+    },
+    /// A statement of a job that has no port error to carry it failed.
+    #[error("database operation failed")]
+    Database(#[source] RunError<DbError>),
     /// The device grant could not draw an unused user code; the random source or the table is damaged.
     #[error("no unused user code after repeated draws")]
     UserCodeExhausted,

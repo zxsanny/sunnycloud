@@ -208,7 +208,19 @@ fn ac5_no_sqlx_symbol_in_the_binary() {
 fn ac5_no_media_library_symbol_in_the_binary() {
     let binary = std::fs::read(isolated_binary()).expect("binary is readable");
 
-    let hits: Vec<&str> = ["libvips", "libheif", "libavcodec", "libavformat"]
+    // The library files a dynamic link names, and one API function of each library for a static link. The bare
+    // word `libheif` is no needle: it is a field of the decoder protocol's capabilities message.
+    let needles = [
+        "libvips.so",
+        "libheif.so",
+        "libavcodec.so",
+        "libavformat.so",
+        "vips_init",
+        "heif_context_alloc",
+        "avcodec_open2",
+        "av_read_frame",
+    ];
+    let hits: Vec<&str> = needles
         .into_iter()
         .filter(|needle| {
             binary
@@ -219,6 +231,6 @@ fn ac5_no_media_library_symbol_in_the_binary() {
 
     assert!(
         hits.is_empty(),
-        "media library names in the binary: {hits:?}"
+        "media library files or functions in the binary: {hits:?}"
     );
 }
