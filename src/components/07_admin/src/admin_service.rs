@@ -11,7 +11,7 @@ use crate::AdminConfig;
 pub struct AdminServiceImpl {
     pub(crate) accounts: Arc<dyn AccountAdmin>,
     pub(crate) quota: Arc<dyn QuotaAdmin>,
-    health: Vec<Arc<dyn HealthContributor>>,
+    pub(crate) health: Vec<Arc<dyn HealthContributor>>,
     pub(crate) config: AdminConfig,
     pub(crate) audit: AuditWriter,
     pub(crate) db: Db,

@@ -7,6 +7,7 @@
 pub mod accounts_double;
 pub mod doubles;
 pub mod harness;
+pub mod health_doubles;
 pub mod quota_double;
 pub mod seed;
 pub mod settings;

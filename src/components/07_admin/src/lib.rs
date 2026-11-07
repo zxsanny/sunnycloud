@@ -2,7 +2,7 @@
 //! deletion purger (component 07).
 //!
 //! This crate holds the typed settings section, the wire codes of the 07 errors, the constructors of the
-//! services and the user administration of `AdminServiceImpl`; the other port behaviour comes with later
+//! services, the user administration and the health aggregation of `AdminServiceImpl`; the other port behaviour comes with later
 //! tasks. 07 owns no table and issues no SQL. The services take every port and
 //! list through their constructors and keep the list order they are given: there is no global registry.
 
@@ -13,6 +13,7 @@ mod config;
 mod deletion_purger;
 mod deletion_service;
 mod error;
+mod health;
 mod listing;
 mod user_admin;
 

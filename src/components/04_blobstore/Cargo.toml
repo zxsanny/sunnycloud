@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 contracts = { path = "../../contracts" }
 sc_audit = { path = "../../shared/audit" }
+sc_clock = { path = "../../shared/clock" }
 sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }
 # Seals and opens the chunks; the cipher failure of the wrap and chunk AEADs is what the conversions accept.

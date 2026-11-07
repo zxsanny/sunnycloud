@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use contracts::{Actor, Principal, PrincipalKind, Role};
+use contracts::{Actor, HealthContributor, Principal, PrincipalKind, Role};
 use sc_audit::AuditWriter;
 use sc_config::Environment;
 use sc_db::Db;
@@ -32,6 +32,13 @@ impl Harness {
     }
 
     pub async fn with_settings(extra: &[(&str, &str)]) -> Harness {
+        Harness::with_health(extra, Vec::new()).await
+    }
+
+    pub async fn with_health(
+        extra: &[(&str, &str)],
+        contributors: Vec<Arc<dyn HealthContributor>>,
+    ) -> Harness {
         let settings = load_settings(Environment::Test, extra)
             .unwrap_or_else(|error| panic!("the test settings do not load: {error}"));
         let db = TestDb::clone_template().await;
@@ -43,7 +50,7 @@ impl Harness {
         let service = AdminServiceImpl::new(
             accounts.clone(),
             quota.clone(),
-            Vec::new(),
+            contributors,
             AdminConfig::from_settings(&settings),
             audit,
             api,

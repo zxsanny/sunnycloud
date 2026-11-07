@@ -26,6 +26,7 @@ pub struct BlobIds {
 enum Cause {
     Io(ErrorKind),
     Database(&'static str),
+    Row(&'static str),
     Cipher,
 }
 
@@ -52,6 +53,7 @@ impl fmt::Display for BlobFault {
         match self.cause {
             Cause::Io(kind) => write!(f, "i/o failure ({kind})")?,
             Cause::Database(class) => write!(f, "database failure ({class})")?,
+            Cause::Row(what) => write!(f, "row failure ({what})")?,
             Cause::Cipher => f.write_str("cipher failure")?,
         }
         if let Some(blob_id) = self.ids.blob_id {
@@ -102,6 +104,26 @@ pub(crate) fn blob_io_failure(kind: ErrorKind, ids: BlobIds) -> BlobError {
 /// The row of a blob could not be read or written: `Io`, the only variant that carries a fault.
 pub fn blob_error_from_db(error: RunError<DbError>, ids: BlobIds) -> BlobError {
     BlobError::Io(fault(ids, database_cause(error)))
+}
+
+/// The payload of a registry, catalog or queue failure on a statement of the caller's transaction.
+pub(crate) fn db_fault(error: DbError, ids: BlobIds) -> Fault {
+    fault(ids, Cause::Database(database_class(&error)))
+}
+
+/// The payload of a failure of a pooled unit of work (`Db::run`).
+pub(crate) fn run_fault(error: RunError<DbError>, ids: BlobIds) -> Fault {
+    fault(ids, database_cause(error))
+}
+
+/// The payload of a registry failure on the blob file.
+pub(crate) fn io_fault(error: &io::Error, ids: BlobIds) -> Fault {
+    fault(ids, Cause::Io(error.kind()))
+}
+
+/// A row the statement needed is absent or in a state the operation does not accept.
+pub(crate) fn row_fault(what: &'static str, ids: BlobIds) -> Fault {
+    fault(ids, Cause::Row(what))
 }
 
 /// A chunk whose tag does not verify. The cipher error is opaque and carries no data.

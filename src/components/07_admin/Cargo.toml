@@ -15,7 +15,10 @@ sc_audit = { path = "../../shared/audit" }
 sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }
 sc_error = { path = "../../shared/error" }
+sc_observability = { path = "../../shared/observability" }
 thiserror = { workspace = true }
+# `time` bounds each health check, `rt` runs the checks as concurrent tasks.
+tokio = { workspace = true, features = ["rt", "time"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
@@ -26,5 +29,6 @@ sc_testdb = { path = "../../shared/testdb" }
 sc_ids = { path = "../../shared/ids_hashing" }
 # The port doubles of the tests run their statements on the transaction's connection; same features as sc_db.
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# `test-util` gives the health tests a virtual clock.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 uuid = { workspace = true, features = ["v4"] }

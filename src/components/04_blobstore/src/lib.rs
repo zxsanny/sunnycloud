@@ -3,24 +3,28 @@
 //! This crate holds the typed configuration section, the conversions of I/O, database and cipher failures
 //! into the `BlobError` and `KeyError` of `contracts`, and the blob file format: path, header, layout
 //! arithmetic, the per-blob data key and the per-chunk sealing, the group-commit `fdatasync` barrier, and the master
-//! keyring (key check, data-key wrap), and the `BlobWriter` port. The other ports are implemented by later tasks. The
+//! keyring (key check, data-key wrap), and the `BlobWriter` port, the blob rows (`BlobRegistry`, `BlobCatalog`) and the GC queue writer (`GcQueue`). The other ports are implemented by later tasks. The
 //! schema is `src/migrations/*_create_blob_tables.*.sql`.
 
 mod barrier;
+mod catalog;
 mod chunk;
 mod config;
 mod data_key;
 mod error;
 mod format_error;
+mod gc_queue;
 mod header;
 mod keyring;
 mod layout;
 mod path;
+mod registry;
 mod writer;
 
 pub use barrier::SyncBarrier;
 #[cfg(feature = "sync-hook")]
 pub use barrier::{SyncHook, SyncRecord};
+pub use catalog::BlobCatalog;
 pub use chunk::ChunkCipher;
 pub use config::BlobstoreConfig;
 pub use data_key::{DATA_KEY_LEN, DataKey};
@@ -30,8 +34,10 @@ pub use error::{
     key_error_from_io, operator_message,
 };
 pub use format_error::FormatError;
+pub use gc_queue::GcQueue;
 pub use header::{FORMAT_VERSION, HEADER_LEN, Header, NONCE_PREFIX_LEN, NoncePrefix};
 pub use keyring::MasterKeyring;
 pub use layout::{BlobLayout, CHUNK_SIZE, COUNTER_LIMIT, RangeSpan, SEALED_CHUNK_LEN, TAG_LEN};
 pub use path::{blob_path, parse_blob_id};
+pub use registry::BlobRegistry;
 pub use writer::FileBlobWriter;
