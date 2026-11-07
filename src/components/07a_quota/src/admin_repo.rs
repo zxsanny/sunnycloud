@@ -17,6 +17,11 @@ const SET_LIMIT: &str = "UPDATE quota SET limit_bytes = $2 WHERE account_id = $1
 
 const INSERT: &str = "INSERT INTO quota (account_id) VALUES ($1)";
 
+const LOCK_COUNTERS: &str =
+    "SELECT used_bytes, reserved_bytes FROM quota WHERE account_id = $1 FOR UPDATE";
+
+const REPAIR: &str = "UPDATE quota SET used_bytes = $2, reserved_bytes = $3 WHERE account_id = $1";
+
 const DELETE: &str = "DELETE FROM quota WHERE account_id = $1";
 
 fn quota_view(
@@ -78,6 +83,37 @@ pub async fn set_limit(tx: &mut DbTx, account: Uuid, limit: Option<i64>) -> Resu
         .execute(tx.conn())
         .await?;
     Ok(done.rows_affected() == 1)
+}
+
+/// Stored `(used_bytes, reserved_bytes)` before the call, or `None` when the account has no row. Runs in system
+/// scope because the operator names the account; with `repair` the supplied values replace the stored ones in
+/// the same transaction, under the row lock taken by the read.
+pub async fn recompute(
+    db: &Db,
+    account: Uuid,
+    live_bytes: i64,
+    reserved_bytes: i64,
+    repair: bool,
+) -> Result<Option<(i64, i64)>, RunError<DbError>> {
+    db.run_system("quota_recompute", async |tx| {
+        let stored: Option<(i64, i64)> = sqlx::query_as(LOCK_COUNTERS)
+            .bind(account)
+            .fetch_optional(tx.conn())
+            .await?;
+        if let Some((used, reserved)) = stored
+            && repair
+            && (used, reserved) != (live_bytes, reserved_bytes)
+        {
+            sqlx::query(REPAIR)
+                .bind(account)
+                .bind(live_bytes)
+                .bind(reserved_bytes)
+                .execute(tx.conn())
+                .await?;
+        }
+        Ok::<_, DbError>(stored)
+    })
+    .await
 }
 
 pub async fn insert(tx: &mut DbTx, account: Uuid) -> Result<(), DbError> {

@@ -23,3 +23,8 @@ pub fn horizon_error(error: DbError) -> FeedHorizonError {
 pub fn read_error(error: DbError) -> ChangeFeedError {
     ChangeFeedError::Unexpected(Box::new(error))
 }
+
+/// A touched set with no node: with nothing changed there is no stamp.
+#[derive(Debug, thiserror::Error)]
+#[error("touched nodes are empty")]
+pub struct EmptyTouchedNodes;

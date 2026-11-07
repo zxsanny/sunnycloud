@@ -8,7 +8,14 @@ const EXPECTED: &[(u16, &[&str])] = &[
     (403, &["account_not_active", "forbidden"]),
     (
         404,
-        &["parent_not_found", "not_found", "content_unavailable"],
+        &[
+            "parent_not_found",
+            "not_found",
+            "content_unavailable",
+            "revision_obsolete",
+            "thumbnail_not_ready",
+            "thumbnail_unavailable",
+        ],
     ),
     (
         409,
@@ -21,13 +28,14 @@ const EXPECTED: &[(u16, &[&str])] = &[
             "last_admin",
             "session_cap_exceeded",
             "staged_cap_reached",
+            "lease_lost",
         ],
     ),
     (
         410,
         &["upload_session_gone", "parent_deleted", "resync_required"],
     ),
-    (413, &["size_too_large"]),
+    (413, &["size_too_large", "output_too_large"]),
     (416, &["range_not_satisfiable"]),
     (
         422,
@@ -41,6 +49,8 @@ const EXPECTED: &[(u16, &[&str])] = &[
             "target_not_shareable",
             "block_hash_mismatch",
             "block_length_mismatch",
+            "output_type_rejected",
+            "output_kind_rejected",
         ],
     ),
     (426, &["upgrade_required"]),

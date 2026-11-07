@@ -98,7 +98,14 @@ pub fn map_problem(status: u16, headers: &[(&str, &str)], body: &[u8]) -> Mapped
         | ErrorCode::BlockLengthMismatch
         | ErrorCode::Internal
         | ErrorCode::ServiceUnavailable
-        | ErrorCode::Overloaded => unexpected(code, &raw, &correlation),
+        | ErrorCode::Overloaded
+        | ErrorCode::LeaseLost
+        | ErrorCode::RevisionObsolete
+        | ErrorCode::ThumbnailNotReady
+        | ErrorCode::ThumbnailUnavailable
+        | ErrorCode::OutputTooLarge
+        | ErrorCode::OutputTypeRejected
+        | ErrorCode::OutputKindRejected => unexpected(code, &raw, &correlation),
     }
 }
 

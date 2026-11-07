@@ -11,6 +11,7 @@ use std::io::{self, ErrorKind};
 
 use chacha20poly1305::aead;
 use contracts::{BlobError, Fault, KeyError};
+use sc_audit::AuditError;
 use sc_db::{DbError, RunError};
 use uuid::Uuid;
 
@@ -128,4 +129,32 @@ pub fn key_error_from_db(error: RunError<DbError>, ids: BlobIds) -> KeyError {
 /// A cipher failure outside the key-check constant and the sample unwrap, which have their own variants.
 pub fn key_error_from_cipher(_: aead::Error, ids: BlobIds) -> KeyError {
     KeyError::Unexpected(fault(ids, Cause::Cipher))
+}
+
+/// An I/O failure on the blob volume or the key check file. Unlike [`key_error_from_io`], an absent path is
+/// `Unexpected`, because `FileMissing` means the master key file.
+pub(crate) fn key_error_from_volume(error: io::Error) -> KeyError {
+    KeyError::Unexpected(fault(BlobIds::default(), Cause::Io(error.kind())))
+}
+
+/// A refused audit write; the audit text is dropped like any other cause.
+pub(crate) fn key_error_from_audit(error: AuditError) -> KeyError {
+    match error {
+        AuditError::Store(error) => key_error_from_db(RunError::Db(error), BlobIds::default()),
+        AuditError::Rejected(_) => key_error_from_volume(io::Error::from(ErrorKind::InvalidInput)),
+    }
+}
+
+/// The sentence an operator reads next to a refusal to start; the typed errors of `contracts` do not carry it.
+pub const KEY_OPERATOR_TEXT: &str = "data is unreadable without the master key";
+
+/// The text for the console and the log: the four refusals of a start carry [`KEY_OPERATOR_TEXT`].
+pub fn operator_message(error: &KeyError) -> String {
+    match error {
+        KeyError::FileMissing
+        | KeyError::WrongLength
+        | KeyError::KeyCheckMismatch
+        | KeyError::KeyCheckAbsentButBlobsExist => format!("{error}: {KEY_OPERATOR_TEXT}"),
+        KeyError::KeyCheckSampleFailed { .. } | KeyError::Unexpected(_) => error.to_string(),
+    }
 }

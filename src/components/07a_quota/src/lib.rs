@@ -7,7 +7,7 @@ mod error;
 mod ledger;
 mod ledger_repo;
 
-pub use admin::PgQuotaAdmin;
+pub use admin::{CounterDrift, PgQuotaAdmin};
 pub use config::{MAX_LIMIT_BYTES, QuotaConfig};
 pub use error::{LedgerFault, admin_error, db_error, ledger_error, lifecycle_error};
 pub use ledger::PgQuotaLedger;

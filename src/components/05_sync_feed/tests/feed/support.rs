@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use sc_config::{ApiSettings, ConfigError, ConfigSources, Environment, TABLE, load};
-use sc_db::Db;
+use sc_db::{Db, DbConfig, DbRole};
 pub use sc_testdb::{API, MIGRATOR, START, TestDb};
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -20,6 +20,19 @@ impl Fixture {
     pub async fn new() -> Fixture {
         let db = TestDb::clone_template().await;
         let api = db.api().await;
+        Fixture { db, api }
+    }
+
+    /// One pooled connection per concurrent writer.
+    pub async fn with_pool_max(pool_max: u32) -> Fixture {
+        let db = TestDb::clone_template().await;
+        let config = DbConfig {
+            db_pool_max: pool_max,
+            ..db.config()
+        };
+        let api = Db::connect(&config, DbRole::Api)
+            .await
+            .expect("connect as the API role");
         Fixture { db, api }
     }
 
@@ -79,6 +92,26 @@ pub async fn root_node(conn: &mut PgConnection, account: Uuid) -> Uuid {
     .await
     .expect("insert root node");
     id
+}
+
+/// `count` folders under `parent`, with names of their own so concurrent inserts never collide.
+pub async fn insert_folders(
+    conn: &mut PgConnection,
+    account: Uuid,
+    parent: Uuid,
+    count: i32,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "WITH ids AS (SELECT gen_random_uuid() AS id FROM generate_series(1, $3::int)) \
+         INSERT INTO nodes (id, account_id, parent_id, kind, name, name_key, name_key_version, created_at, updated_at) \
+         SELECT id, $1, $2, 'folder', 'f' || id::text, 'f' || id::text, 1, 'epoch'::timestamptz, 'epoch'::timestamptz \
+         FROM ids RETURNING id",
+    )
+    .bind(account)
+    .bind(parent)
+    .bind(count)
+    .fetch_all(conn)
+    .await
 }
 
 pub fn sqlstate(error: &sqlx::Error) -> String {

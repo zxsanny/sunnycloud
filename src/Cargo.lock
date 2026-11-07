@@ -1735,6 +1735,14 @@ version = "0.1.0"
 dependencies = [
  "contracts",
  "media-shared",
+ "sc_config",
+ "sc_db",
+ "sc_error",
+ "sc_testdb",
+ "sqlx",
+ "thiserror 2.0.21",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -3320,13 +3328,16 @@ dependencies = [
  "chacha20poly1305",
  "contracts",
  "getrandom 0.4.3",
+ "sc_audit",
  "sc_config",
  "sc_db",
+ "sc_observability",
  "sc_testdb",
  "sqlx",
  "sunnycloud-blobstore",
  "thiserror 2.0.21",
  "tokio",
+ "tracing",
  "uuid",
  "zeroize",
 ]
@@ -3503,6 +3514,7 @@ dependencies = [
  "sc_observability",
  "sc_testdb",
  "sqlx",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "uuid",

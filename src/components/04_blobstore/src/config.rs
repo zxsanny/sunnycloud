@@ -5,7 +5,7 @@ use sc_config::{KeyProblem, Reason, Secret, Settings};
 
 const ORPHAN_MODES: [&str; 3] = ["off", "report", "delete"];
 /// The id of the key in `master_key_file`; the ring adds the others.
-const FILE_KEY_ID: i16 = 1;
+pub(crate) const FILE_KEY_ID: i16 = 1;
 
 /// The blobstore section of the key table, typed. Defaults and per-key ranges (`retention` 0 to 90 days in
 /// production) come from `sc_config`.
@@ -102,8 +102,17 @@ impl BlobstoreConfig {
     fn check_keys(&self, problems: &mut Vec<KeyProblem>) {
         let mut known = BTreeSet::from([FILE_KEY_ID]);
         if let Some(ring) = &self.master_key_ring {
-            match ring_key_ids(ring) {
-                Some(ids) => known.extend(ids),
+            match parse_ring(ring) {
+                Some(entries) => {
+                    let file = self.master_key_file.expose().as_str();
+                    if entries
+                        .iter()
+                        .any(|(id, path)| *id == FILE_KEY_ID && *path != file)
+                    {
+                        problems.push(KeyProblem::new("master_key_ring", Reason::WrongType));
+                    }
+                    known.extend(entries.iter().map(|(id, _)| *id));
+                }
                 None => problems.push(KeyProblem::new("master_key_ring", Reason::WrongType)),
             }
         }
@@ -126,17 +135,18 @@ fn at_least_one(key: &str, min: &str) -> KeyProblem {
     )
 }
 
-/// The key ids of a ring written `id=path,...`; `None` when an entry is not `<positive id>=<path>` or an id
-/// repeats.
-fn ring_key_ids(ring: &str) -> Option<Vec<i16>> {
-    let mut ids = Vec::new();
+/// The `(id, path)` entries of a ring written `id=path,...`; `None` when an entry is not `<positive id>=<path>`
+/// or an id repeats.
+pub(crate) fn parse_ring(ring: &str) -> Option<Vec<(i16, &str)>> {
+    let mut entries: Vec<(i16, &str)> = Vec::new();
     for entry in ring.split(',') {
         let (id, path) = entry.split_once('=')?;
         let id = id.trim().parse::<i16>().ok().filter(|id| *id > 0)?;
-        if path.trim().is_empty() || ids.contains(&id) {
+        let path = path.trim();
+        if path.is_empty() || entries.iter().any(|(seen, _)| *seen == id) {
             return None;
         }
-        ids.push(id);
+        entries.push((id, path));
     }
-    Some(ids)
+    Some(entries)
 }

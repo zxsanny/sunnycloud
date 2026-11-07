@@ -51,6 +51,9 @@ error_codes! {
     ParentNotFound => "parent_not_found", 404, "Parent not found";
     NotFound => "not_found", 404, "Not found";
     ContentUnavailable => "content_unavailable", 404, "Content unavailable";
+    RevisionObsolete => "revision_obsolete", 404, "Revision obsolete";
+    ThumbnailNotReady => "thumbnail_not_ready", 404, "Thumbnail not ready";
+    ThumbnailUnavailable => "thumbnail_unavailable", 404, "Thumbnail unavailable";
 
     NameConflict => "name_conflict", 409, "Name conflict";
     EditedSince => "edited_since", 409, "Edited since";
@@ -60,12 +63,14 @@ error_codes! {
     LastAdmin => "last_admin", 409, "Last admin";
     SessionCapExceeded => "session_cap_exceeded", 409, "Upload session cap exceeded";
     StagedCapReached => "staged_cap_reached", 409, "Staged file cap reached";
+    LeaseLost => "lease_lost", 409, "Lease lost";
 
     UploadSessionGone => "upload_session_gone", 410, "Upload session gone";
     ParentDeleted => "parent_deleted", 410, "Parent deleted";
     ResyncRequired => "resync_required", 410, "Resync required";
 
     SizeTooLarge => "size_too_large", 413, "Size too large";
+    OutputTooLarge => "output_too_large", 413, "Output too large";
 
     RangeNotSatisfiable => "range_not_satisfiable", 416, "Range not satisfiable";
 
@@ -78,6 +83,8 @@ error_codes! {
     TargetNotShareable => "target_not_shareable", 422, "Target not shareable";
     BlockHashMismatch => "block_hash_mismatch", 422, "Block hash mismatch";
     BlockLengthMismatch => "block_length_mismatch", 422, "Block length mismatch";
+    OutputTypeRejected => "output_type_rejected", 422, "Output type rejected";
+    OutputKindRejected => "output_kind_rejected", 422, "Output kind rejected";
 
     UpgradeRequired => "upgrade_required", 426, "Upgrade required";
 
