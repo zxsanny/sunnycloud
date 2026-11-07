@@ -8,6 +8,7 @@
 mod api;
 mod decoder_client;
 mod error;
+mod policy_step;
 mod probe;
 mod run;
 mod scratch;
@@ -23,6 +24,7 @@ pub use decoder_client::{
     GatedConn, PROTOCOL_VERSION, Slot, SlotConfig, SlotName, SlotReadiness, SlotState,
 };
 pub use error::WorkerError;
+pub use policy_step::{OutputInvalid, Step, StepError, StillRender, check_output, choose_step};
 pub use probe::{PROBE_TIMEOUT, ProbeError, get_ok, probe_target};
 pub use run::{healthcheck, serve, serve_ops};
 pub use scratch::{OutputFile, RejectReason, ScratchDir, ScratchError, ScratchRoot, sweep_all};

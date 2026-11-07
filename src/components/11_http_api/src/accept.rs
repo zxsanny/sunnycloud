@@ -202,6 +202,10 @@ mod tests {
             shutdown_grace: Duration::from_secs(25),
             min_client_version: None,
             server_info: crate::ServerInfo::default(),
+            credentials: crate::CredentialFormat {
+                session_cookie: "__Host-test".to_owned(),
+                device_token_prefix: "dev-".to_owned(),
+            },
         }
     }
 

@@ -97,6 +97,7 @@ impl HttpServer {
             services: Arc::clone(&self.services),
             openapi: self.openapi.clone(),
             server_info: self.config.server_info.clone(),
+            credentials: self.config.credentials.clone(),
         };
         let routers = mount(&self.routes, &context, self.spa.clone());
         Ok(BoundServer {

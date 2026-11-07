@@ -23,6 +23,7 @@ use sc_observability::log_error;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
+use crate::activity::{ActivityGauge, ActivityGuard};
 use crate::barrier::SyncBarrier;
 use crate::config::BlobstoreConfig;
 use crate::data_key::DataKey;
@@ -44,6 +45,8 @@ pub struct FileBlobWriter {
     /// The declared size of each blob between `plan` and `create_file`: the port's `create_file` takes the plan
     /// only, and the file length, the reserved space and the handle all depend on the size.
     planned: Mutex<HashMap<Uuid, i64>>,
+    /// Counts the block writes in flight for the scrub's pause; absent in a process that has no scrub gauge.
+    activity: Option<ActivityGauge>,
     #[cfg(feature = "sync-hook")]
     directory_syncs: AtomicU64,
 }
@@ -77,9 +80,20 @@ impl FileBlobWriter {
             barrier,
             io: Arc::new(Semaphore::new(threads.clamp(1, Semaphore::MAX_PERMITS))),
             planned: Mutex::new(HashMap::new()),
+            activity: None,
             #[cfg(feature = "sync-hook")]
             directory_syncs: AtomicU64::new(0),
         })
+    }
+
+    /// Every block write, from its first byte to its durability, counts in `gauge`.
+    pub fn with_activity(mut self, gauge: ActivityGauge) -> Self {
+        self.activity = Some(gauge);
+        self
+    }
+
+    fn active(&self) -> Option<ActivityGuard> {
+        self.activity.as_ref().map(ActivityGauge::enter)
     }
 
     /// Directory entries synced by completed file creations; the test hook of IT-04-5.
@@ -243,6 +257,7 @@ impl BlobWriter for FileBlobWriter {
         block_index: u32,
         plaintext: Bytes,
     ) -> Result<DurableToken, BlobError> {
+        let _active = self.active();
         let layout = layout_of(handle.plaintext_size)?;
         check_block(&layout, block_index, plaintext.len())?;
         let root = self.root.clone();
@@ -259,6 +274,7 @@ impl BlobWriter for FileBlobWriter {
     }
 
     async fn await_durable(&self, token: DurableToken) -> Result<(), BlobError> {
+        let _active = self.active();
         self.barrier.await_durable(token).await
     }
 

@@ -1,6 +1,7 @@
 //! Integration tests of the HTTP API crate over real TCP (Mode S harness). Later E-21 tasks add modules here.
 
 mod abuse;
+mod auth;
 mod cap;
 mod errors;
 mod h2_settings;

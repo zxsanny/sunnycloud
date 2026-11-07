@@ -18,6 +18,7 @@ pub use naming::{NamingViolation, lint_path};
 pub use spec::{Mount, Param, ParamLocation, ParamType, RouteDef, RouteSpec, SchemaRef};
 pub use validate::{RegistryError, validate};
 
+use crate::auth::CredentialFormat;
 use crate::config::ServerInfo;
 use crate::services::ApiServices;
 
@@ -26,6 +27,7 @@ pub struct RouteContext {
     pub services: Arc<ApiServices>,
     pub openapi: OpenApiDocument,
     pub server_info: ServerInfo,
+    pub credentials: CredentialFormat,
 }
 
 /// Every operation the server offers. Each group of E-21 adds its own list here.

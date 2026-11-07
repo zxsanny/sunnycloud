@@ -24,6 +24,23 @@ pub(crate) struct Document {
 
 /// Loads a section from compiled defaults, the config files, the environment and secret files.
 pub fn load<T: ConfigSection>(sources: &ConfigSources) -> Result<Arc<T>, ConfigError> {
+    load_documents_for(sources, &read_documents(sources)?, None)
+}
+
+/// Like [`load`], for a command that uses only the `wanted` table keys. A key outside the list is not
+/// bound: nothing about it can refuse the start (not a missing value, a wrong type or range, nor an
+/// unreadable secret file), and a cross-field rule of the section counts only when it names a wanted key.
+/// Unknown `SUNNYCLOUD_*` variables and unreadable config files still refuse. Every missing wanted
+/// secret is listed in one [`ConfigError::Invalid`]; a single missing secret with nothing else wrong is
+/// [`ConfigError::MissingSecret`] as in [`load`].
+pub fn load_keys<T: ConfigSection>(
+    sources: &ConfigSources,
+    wanted: &[&str],
+) -> Result<Arc<T>, ConfigError> {
+    load_documents_for(sources, &read_documents(sources)?, Some(wanted))
+}
+
+fn read_documents(sources: &ConfigSources) -> Result<Vec<Document>, ConfigError> {
     let mut documents = Vec::with_capacity(sources.files.len());
     for path in &sources.files {
         let text = fs::read_to_string(path)
@@ -33,14 +50,22 @@ pub fn load<T: ConfigSection>(sources: &ConfigSources) -> Result<Arc<T>, ConfigE
             text,
         });
     }
-    load_documents(sources, &documents)
+    Ok(documents)
 }
 
 pub(crate) fn load_documents<T: ConfigSection>(
     sources: &ConfigSources,
     documents: &[Document],
 ) -> Result<Arc<T>, ConfigError> {
-    let mut binder = Binder::new(T::READER, sources, documents);
+    load_documents_for(sources, documents, None)
+}
+
+fn load_documents_for<T: ConfigSection>(
+    sources: &ConfigSources,
+    documents: &[Document],
+    wanted: Option<&[&str]>,
+) -> Result<Arc<T>, ConfigError> {
+    let mut binder = Binder::new(T::READER, sources, documents, wanted);
     let settings = Settings::bind(&mut binder);
     binder.finish(T::from_settings(settings))
 }
@@ -48,6 +73,7 @@ pub(crate) fn load_documents<T: ConfigSection>(
 pub(crate) struct Binder<'a> {
     reader: Reader,
     sources: &'a ConfigSources,
+    wanted: Option<&'a [&'a str]>,
     environment: Environment,
     /// Text per key after the file and environment layers.
     layered: BTreeMap<String, String>,
@@ -57,10 +83,16 @@ pub(crate) struct Binder<'a> {
 }
 
 impl<'a> Binder<'a> {
-    fn new(reader: Reader, sources: &'a ConfigSources, documents: &[Document]) -> Self {
+    fn new(
+        reader: Reader,
+        sources: &'a ConfigSources,
+        documents: &[Document],
+        wanted: Option<&'a [&'a str]>,
+    ) -> Self {
         let mut binder = Binder {
             reader,
             sources,
+            wanted,
             environment: sources.environment,
             layered: BTreeMap::new(),
             problems: Vec::new(),
@@ -78,6 +110,15 @@ impl<'a> Binder<'a> {
 
     fn problem(&mut self, key: &str, reason: Reason) {
         self.problems.push(KeyProblem::new(key, reason));
+    }
+
+    fn is_wanted(&self, key: &str) -> bool {
+        self.wanted.is_none_or(|wanted| wanted.contains(&key))
+    }
+
+    /// Problems of a table key the command does not use are dropped; unknown names stay.
+    fn counts(&self, key: &str) -> bool {
+        self.is_wanted(key) || !TABLE.iter().any(|spec| spec.key == key)
     }
 
     fn layer_document(&mut self, document: &Document) {
@@ -145,7 +186,7 @@ impl<'a> Binder<'a> {
     }
 
     pub(crate) fn bind<T: SettingType>(&mut self, spec: &KeySpec) -> T {
-        if !spec.read_by.contains(self.reader) {
+        if !spec.read_by.contains(self.reader) || !self.is_wanted(spec.key) {
             return spec
                 .default
                 .and_then(|default| T::parse(default, spec))
@@ -245,7 +286,14 @@ impl<'a> Binder<'a> {
                 self.problems.push(problem);
             }
         }
-        if self.problems.is_empty() {
+        if self.wanted.is_some() {
+            let kept: Vec<KeyProblem> = std::mem::take(&mut self.problems)
+                .into_iter()
+                .filter(|problem| self.counts(&problem.key))
+                .collect();
+            self.problems = kept;
+        }
+        if self.problems.is_empty() && (self.wanted.is_none() || self.missing_secrets.len() < 2) {
             return match self.missing_secrets.into_iter().next() {
                 Some(key) => Err(ConfigError::MissingSecret(key)),
                 None => Ok(Arc::new(section)),

@@ -17,14 +17,14 @@ use crate::keyring::MasterKeyring;
 use crate::layout::{BlobLayout, TAG_LEN};
 use crate::path::blob_path;
 
-pub(super) fn blob_ids(blob_id: Uuid) -> BlobIds {
+pub(crate) fn blob_ids(blob_id: Uuid) -> BlobIds {
     BlobIds {
         blob_id: Some(blob_id),
         account_id: None,
     }
 }
 
-pub(super) struct OpenedBlob {
+pub(crate) struct OpenedBlob {
     file: File,
     cipher: ChunkCipher,
     layout: BlobLayout,

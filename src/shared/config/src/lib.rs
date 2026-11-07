@@ -61,7 +61,7 @@ mod spec;
 mod table;
 mod value;
 
-pub use bind::load;
+pub use bind::{load, load_keys};
 pub use client::ClientSettingsHandle;
 pub use error::{ConfigError, KeyProblem, Reason};
 pub use section::{ApiSettings, ClientSettings, ConfigSection, DecoderSettings, WorkerSettings};

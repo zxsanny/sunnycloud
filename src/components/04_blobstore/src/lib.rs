@@ -3,9 +3,10 @@
 //! This crate holds the typed configuration section, the conversions of I/O, database and cipher failures
 //! into the `BlobError` and `KeyError` of `contracts`, and the blob file format: path, header, layout
 //! arithmetic, the per-blob data key and the per-chunk sealing, the group-commit `fdatasync` barrier, and the master
-//! keyring (key check, data-key wrap), and the `BlobWriter` port, the blob rows (`BlobRegistry`, `BlobCatalog`) the GC queue writer (`GcQueue`) and the GC sweeper (`GcSweeper`) and the orphan sweeper (`OrphanSweeper`). The reader (`FileBlobReader`) is the only decrypt path. The other ports are implemented by later tasks. The
+//! keyring (key check, data-key wrap), and the `BlobWriter` port, the blob rows (`BlobRegistry`, `BlobCatalog`) the GC queue writer (`GcQueue`) and the GC sweeper (`GcSweeper`) the orphan sweeper (`OrphanSweeper`) and the scrubber (`BlobScrubber`, `ScrubJanitor`). The reader (`FileBlobReader`) is the only decrypt path. The other ports are implemented by later tasks. The
 //! schema is `src/migrations/*_create_blob_tables.*.sql`.
 
+mod activity;
 mod barrier;
 mod catalog;
 mod chunk;
@@ -22,8 +23,10 @@ mod orphan_sweeper;
 mod path;
 mod reader;
 mod registry;
+mod scrub;
 mod writer;
 
+pub use activity::{ActivityGauge, ActivityGuard};
 pub use barrier::SyncBarrier;
 #[cfg(feature = "sync-hook")]
 pub use barrier::{SyncHook, SyncRecord};
@@ -52,4 +55,7 @@ pub use reader::FileBlobReader;
 #[cfg(feature = "sync-hook")]
 pub use reader::ReadProbe;
 pub use registry::BlobRegistry;
+pub use scrub::{BlobScrubber, ScrubCycle, ScrubJanitor, ScrubMetrics};
+#[cfg(feature = "sync-hook")]
+pub use scrub::{ScrubHook, ScrubPoint};
 pub use writer::FileBlobWriter;

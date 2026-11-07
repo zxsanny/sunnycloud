@@ -13,7 +13,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use super::{EVENT_BOUND, Script, default_config, new_metrics, stub_services};
+use super::{EVENT_BOUND, Script, default_config, new_metrics, stub_services, test_credentials};
 
 /// What a request got back.
 pub struct Answer {
@@ -31,17 +31,29 @@ impl Answer {
 
 /// One request over a fresh HTTP/1.1 connection.
 pub async fn request(addr: SocketAddr, method: &str, path: &str) -> Answer {
+    request_with(addr, method, path, &[]).await
+}
+
+/// [`request`] with extra request headers.
+pub async fn request_with(
+    addr: SocketAddr,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+) -> Answer {
     let stream = TcpStream::connect(addr).await.expect("tcp connect");
     let (mut sender, connection) = http1::handshake(TokioIo::new(stream))
         .await
         .expect("h1 handshake");
     tokio::spawn(connection);
-    let request = Request::builder()
+    let mut builder = Request::builder()
         .method(method)
         .uri(path)
-        .header("host", "sunnycloud.test")
-        .body(Empty::<Bytes>::new())
-        .expect("request");
+        .header("host", "sunnycloud.test");
+    for (name, value) in headers {
+        builder = builder.header(*name, *value);
+    }
+    let request = builder.body(Empty::<Bytes>::new()).expect("request");
     let response = sender.send_request(request).await.expect("h1 response");
     let status = response.status().as_u16();
     let header = |name: &str| {
@@ -66,12 +78,13 @@ pub async fn request(addr: SocketAddr, method: &str, path: &str) -> Answer {
     }
 }
 
-/// A handler context on stub ports, for mounting a registry under test.
-pub fn route_context(openapi: OpenApiDocument) -> RouteContext {
+/// A handler context on stub ports whose ports read `script`, for mounting a registry under test.
+pub fn route_context_with(openapi: OpenApiDocument, script: &Script) -> RouteContext {
     RouteContext {
-        services: Arc::new(stub_services(&Script::default(), new_metrics())),
+        services: Arc::new(stub_services(script, new_metrics())),
         openapi,
         server_info: ServerInfo::default(),
+        credentials: test_credentials(),
     }
 }
 

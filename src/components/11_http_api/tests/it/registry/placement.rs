@@ -1,8 +1,21 @@
+use contracts::{WorkerAuthError, WorkerIdentity};
 use serde_json::Value;
 use sunnycloud_http_api::registry::{ListenerKind, document, mount};
 
-use super::support::{def, sample_routers, sample_surface};
-use crate::harness::router_server::{RouterServer, request, route_context};
+use super::support::{def, sample_routers, sample_routers_with, sample_surface};
+use crate::harness::Script;
+use crate::harness::router_server::{RouterServer, request, request_with, route_context_with};
+
+const WORKER_BEARER: [(&str, &str); 1] = [("authorization", "Bearer worker-secret")];
+
+fn accepting_worker() -> Script {
+    let script = Script::default();
+    script.push(
+        "WorkerAuthenticator::authenticate",
+        Ok::<WorkerIdentity, WorkerAuthError>(WorkerIdentity),
+    );
+    script
+}
 
 fn without_request_id(mut body: Value) -> Value {
     body.as_object_mut()
@@ -15,7 +28,7 @@ fn without_request_id(mut body: Value) -> Value {
 #[tokio::test]
 async fn an_internal_route_is_absent_from_the_public_router_and_answered_by_the_internal_one() {
     // Arrange
-    let (routers, _) = sample_routers(&sample_surface());
+    let (routers, _) = sample_routers_with(&sample_surface(), &accepting_worker());
     let public = RouterServer::start(routers.public).await;
     let internal = RouterServer::start(routers.internal).await;
 
@@ -23,7 +36,13 @@ async fn an_internal_route_is_absent_from_the_public_router_and_answered_by_the_
     let on_public = request(public.addr, "POST", "/api/v1/worker-jobs/claims").await;
     let lease_on_public = request(public.addr, "PUT", "/api/v1/worker-jobs/7/lease").await;
     let unknown_on_public = request(public.addr, "POST", "/api/v1/worker-jobs/nothing").await;
-    let on_internal = request(internal.addr, "POST", "/api/v1/worker-jobs/claims").await;
+    let on_internal = request_with(
+        internal.addr,
+        "POST",
+        "/api/v1/worker-jobs/claims",
+        &WORKER_BEARER,
+    )
+    .await;
 
     // Assert
     assert_eq!(on_public.status, 404);
@@ -103,7 +122,11 @@ async fn a_route_declared_internal_is_mounted_only_on_the_internal_router() {
     assert_eq!(defs[0].spec.listener, ListenerKind::Internal);
 
     // Act
-    let routers = mount(&defs, &route_context(document(&defs)), None);
+    let routers = mount(
+        &defs,
+        &route_context_with(document(&defs), &accepting_worker()),
+        None,
+    );
     let (public, internal) = (
         RouterServer::start(routers.public).await,
         RouterServer::start(routers.internal).await,
@@ -117,9 +140,14 @@ async fn a_route_declared_internal_is_mounted_only_on_the_internal_router() {
         404
     );
     assert_eq!(
-        request(internal.addr, "GET", "/api/v1/worker-jobs/status")
-            .await
-            .status,
+        request_with(
+            internal.addr,
+            "GET",
+            "/api/v1/worker-jobs/status",
+            &WORKER_BEARER
+        )
+        .await
+        .status,
         204
     );
     public.stop().await;

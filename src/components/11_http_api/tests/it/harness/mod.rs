@@ -16,7 +16,8 @@ use std::time::Duration;
 
 use sc_observability::{BuildInfo, Metrics, ReadinessCheck};
 use sunnycloud_http_api::{
-    AcceptLoop, ApiServices, HttpConfig, HttpMetrics, HttpServer, HttpServerError, ServerInfo,
+    AcceptLoop, ApiServices, CredentialFormat, HttpConfig, HttpMetrics, HttpServer,
+    HttpServerError, ServerInfo,
 };
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -53,8 +54,20 @@ pub fn default_config() -> HttpConfig {
         shutdown_grace: Duration::from_secs(25),
         min_client_version: None,
         server_info: ServerInfo::default(),
+        credentials: test_credentials(),
     }
 }
+
+/// How the tests mark their credentials: stand-ins, since the documents fix neither value.
+pub fn test_credentials() -> CredentialFormat {
+    CredentialFormat {
+        session_cookie: SESSION_COOKIE.to_owned(),
+        device_token_prefix: DEVICE_PREFIX.to_owned(),
+    }
+}
+
+pub const SESSION_COOKIE: &str = "__Host-test-session";
+pub const DEVICE_PREFIX: &str = "dev-";
 
 pub fn new_metrics() -> Arc<Metrics> {
     let build = BuildInfo {

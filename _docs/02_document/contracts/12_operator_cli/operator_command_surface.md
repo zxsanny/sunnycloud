@@ -3,7 +3,7 @@
 **Component**: 12_operator_cli
 **Producer task**: B08-02_cli_skeleton (E-22/c02) for the streams, the `--json` envelope, the exit codes and the confirmation rule; each command row is implemented by the task named in its row
 **Consumer tasks**: this batch: E-22/c03, E-22/c04, E-22/c05, E-22/c07..c13, E-22/c14a, E-22/c15, E-22/c16, E-22/c17; other batches: the E-22 pipelines p01..p14 (they run the commands), E-31 system tests (FT-P-64, FT-P-65, FT-P-78, FT-N-25, FT-N-39, FT-N-46, FT-P-69, FT-P-71, FT-P-72, NFT-RES-13, NFT-RES-14, NFT-RES-37 and others), E-00/c08 (`e2e-ctl exec-operator`), E-00 Compose and deployment docs (`migrate` step, `healthcheck`)
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: draft (freezes when the open points below are answered)
 **Last Updated**: 2026-11-06
 
@@ -97,7 +97,7 @@ Names not in this table (`key rewrap`, `media requeue`, a top-level `restore`) a
 ## Non-Goals
 
 - Not covered: the business result, errors and side effects of each operation (owner contracts, for example `01_identity/operator_identity_ops.md`, `04_blobstore/epoch-marker-and-health.md`).
-- Not covered: which configuration sections each command binds (E-22/c04) and the `serve` start order (E-22/c05).
+- Not covered: the `serve` start order (E-22/c05). Configuration binding per command is in the section below (AZ-3790).
 - Not covered: the HTTP API (`11_http_api`).
 
 ## Versioning Rules
@@ -135,9 +135,22 @@ Names not in this table (`key rewrap`, `media requeue`, a top-level `restore`) a
 - `migrate revert --steps` defaults to 1, minimum 1. `--since`, `--at`, `<account>`, `<id>` and `--kind` are raw strings parsed by the command task; `<size>` uses `sc_config::parse_size`, `--backup-interval` and `--ttl` use `parse_duration`.
 - Log line: `route=/cli/<command>` and `duration_ms`, with the exit class in the level and message. `component=cli`, `command` and `exit_code` as fields need `sc_observability` to add `Component::Cli` and those fields.
 
+## Configuration binding per command (AZ-3790)
+
+Each command passes the table keys it reads to `sc_config::load_keys`: a key outside the list is not bound, so a missing or invalid value of another section never refuses the command. Unknown `SUNNYCLOUD_*` variables and unreadable config files still refuse every command that reads settings.
+
+- `serve` binds every key `sunnycloud` reads, all secrets included, and runs every owner's start validation inside the load (identity, tree, transfer, feed, sharing, admin, quota, blobstore, media). Loader problems and owner problems, and every missing secret, come in one refusal before any database connection or listener. Database, HTTP and vault have no start validation to call yet.
+- `migrate` and `migrate run` bind the `db_*` keys except `db_api_url`, plus `environment`, and require `db_migrator_url`; its absence exits 3 naming the key, before any connection. No provider, worker token, master key or `public_url` is needed.
+- `version`, `openapi` and `healthcheck` use no section. The skeleton itself reads only `environment`, `log`, `log_level` and `cli_confirm_required`.
+- Every other command (including `key-check` and `admin setup-token`) is unrestricted here: the documents do not name the keys their builders read (`MasterKeyring::new` also takes a database handle and an audit writer), so each command task binds its own keys with `load_keys`.
+- A refusal is exit 3 and lists every problem. A secret key that is refused shows `(value ***)`; a value never appears.
+
+Open points added by AZ-3790: 8. Whether `migrate revert` needs `db_migrator_url` (DDL) and which role `migrate status` uses first is not stated; both are unrestricted for now. 9. The keys read by `key-check`, `admin setup-token` and the other commands are not stated (the builders of E-22/c03 decide).
+
 ## Change Log
 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B08) |
 | 1.1.0 | 2026-11-06 | Records the skeleton's proposed readings of open points 1, 2, 4 and the confirmation and log-line behaviour | AZ-3788 |
+| 1.2.0 | 2026-11-07 | Records configuration binding per command (`load_keys`) and the `serve` start validation | AZ-3790 |

@@ -5,6 +5,7 @@
 //! this library exists so the command tests run the same entry point ([`execute`]) with injected streams,
 //! services and handler.
 
+mod command_config;
 pub mod commands;
 mod context;
 mod dispatch;
@@ -24,6 +25,7 @@ mod wiring;
 
 use std::ffi::OsString;
 
+pub use command_config::{ConfigCheck, ServeSettings};
 pub use context::{ContextBuilder, ServiceContext};
 pub use dispatch::Commands;
 pub use error::CliError;

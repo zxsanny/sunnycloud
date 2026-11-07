@@ -11,10 +11,10 @@ use super::cases::PLANTED;
 use super::probe::{ErrorProbe, fresh_id};
 
 #[derive(Clone, Default)]
-struct Capture(Arc<Mutex<Vec<String>>>);
+pub(crate) struct Capture(Arc<Mutex<Vec<String>>>);
 
 impl Capture {
-    fn lines(&self) -> Vec<Value> {
+    pub(crate) fn lines(&self) -> Vec<Value> {
         self.0
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

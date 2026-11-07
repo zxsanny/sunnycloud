@@ -5,7 +5,7 @@
 //! most `blob_read_ahead_chunks` chunks ahead of the consumer. No plaintext leaves this module before the tag of
 //! its chunk has verified.
 
-mod file;
+pub(crate) mod file;
 mod finding;
 mod finding_repo;
 mod probe;
@@ -23,6 +23,7 @@ use sc_db::Db;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
+use crate::activity::{ActivityGauge, ActivityGuard};
 use crate::config::BlobstoreConfig;
 use crate::error::{BlobIds, blob_error_from_io};
 use crate::keyring::MasterKeyring;
@@ -32,7 +33,7 @@ use finding::Findings;
 #[cfg(feature = "sync-hook")]
 pub use probe::ReadProbe;
 #[cfg(not(feature = "sync-hook"))]
-use probe::ReadProbe;
+pub(crate) use probe::ReadProbe;
 use stream::{ChunkStream, ReadAhead, join_failure};
 
 const MAX_HEAD: u32 = CHUNK_SIZE as u32;
@@ -43,6 +44,8 @@ pub struct FileBlobReader {
     keyring: Arc<MasterKeyring>,
     findings: Arc<Findings>,
     probe: Arc<ReadProbe>,
+    /// Counts the open downloads for the scrub's pause; absent in a process that has no scrub gauge.
+    activity: Option<ActivityGauge>,
 }
 
 impl FileBlobReader {
@@ -68,7 +71,18 @@ impl FileBlobReader {
             keyring,
             findings: Arc::new(Findings::new(db, audit, clock)),
             probe: Arc::default(),
+            activity: None,
         })
+    }
+
+    /// Every stream `open` returns counts in `gauge` from the call until the stream is dropped.
+    pub fn with_activity(mut self, gauge: ActivityGauge) -> Self {
+        self.activity = Some(gauge);
+        self
+    }
+
+    fn active(&self) -> Option<ActivityGuard> {
+        self.activity.as_ref().map(ActivityGauge::enter)
     }
 
     /// The counters of this reader; the test hook of IT-04-3 and of the read-ahead bound.
@@ -142,6 +156,7 @@ impl BlobReader for FileBlobReader {
         plaintext_size: i64,
         range: Option<ByteRange>,
     ) -> Result<PlaintextStream, BlobError> {
+        let active = self.active();
         let layout = layout_of(plaintext_size)?;
         let span = span_of(&layout, range)?;
         let request = Request {
@@ -173,6 +188,7 @@ impl BlobReader for FileBlobReader {
             remaining,
             blob_id,
             Arc::clone(&self.probe),
+            active,
         )))
     }
 

@@ -14,6 +14,7 @@ use uuid::Uuid;
 use super::file::{OpenedBlob, blob_ids};
 use super::finding::Findings;
 use super::probe::ReadProbe;
+use crate::activity::ActivityGuard;
 use crate::error::blob_error_from_io;
 
 type Item = Result<Bytes, StreamError>;
@@ -34,6 +35,7 @@ pub(super) struct ChunkStream {
     remaining: u64,
     blob_id: Uuid,
     probe: Arc<ReadProbe>,
+    _active: Option<ActivityGuard>,
 }
 
 impl ChunkStream {
@@ -43,6 +45,7 @@ impl ChunkStream {
         remaining: u64,
         blob_id: Uuid,
         probe: Arc<ReadProbe>,
+        active: Option<ActivityGuard>,
     ) -> Self {
         ChunkStream {
             head: (!head.is_empty()).then_some(head),
@@ -50,6 +53,7 @@ impl ChunkStream {
             remaining,
             blob_id,
             probe,
+            _active: active,
         }
     }
 }

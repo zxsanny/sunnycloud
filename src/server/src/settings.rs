@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use sc_config::ApiSettings;
+use sc_config::Settings;
 use sc_observability::logging::Level;
 use sc_observability::{LogConfig, LogFormat};
 
@@ -27,7 +27,10 @@ impl Default for CliSettings {
 }
 
 impl CliSettings {
-    pub fn from_api(settings: &ApiSettings) -> Result<Self, CliError> {
+    /// The table keys the skeleton reads; `environment` decides the duration floors.
+    pub const KEYS: [&'static str; 4] = ["environment", "log", "log_level", "cli_confirm_required"];
+
+    pub fn from_settings(settings: &Settings) -> Result<Self, CliError> {
         let format = LogFormat::from_str(&settings.log)
             .map_err(|error| CliError::Usage(error.to_string()))?;
         let level = Level::from_str(&settings.log_level).map_err(|_| {

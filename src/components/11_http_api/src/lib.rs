@@ -18,6 +18,7 @@
 //! HTTP/1.1 and h2c prior knowledge on one port, and the configured HTTP/2 and header-timeout settings.
 
 mod accept;
+mod auth;
 mod config;
 mod error;
 mod gate;
@@ -33,6 +34,7 @@ mod services;
 mod spa;
 
 pub use accept::AcceptLoop;
+pub use auth::{Authenticated, CredentialFormat, CredentialSource};
 pub use config::{HttpConfig, ServerInfo};
 pub use error::{HttpServerError, Listener};
 pub use metrics::{DurationLabels, HttpMetrics, MethodLabel, RequestLabels, StatusClass};

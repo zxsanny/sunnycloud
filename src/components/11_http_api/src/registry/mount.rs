@@ -12,6 +12,7 @@ use sc_error::{BusinessError, CorrelationId, DomainError};
 use super::RouteContext;
 use super::classes::{HttpMethod, ListenerKind};
 use super::spec::RouteDef;
+use crate::auth::protect;
 use crate::problem::ApiProblem;
 use crate::spa::SpaBundle;
 
@@ -58,7 +59,12 @@ struct PathEntry {
 fn router_for(defs: &[RouteDef], context: &RouteContext, listener: ListenerKind) -> Router {
     let mut by_path: BTreeMap<&str, PathEntry> = BTreeMap::new();
     for def in defs.iter().filter(|def| def.spec.listener == listener) {
-        let handler = (def.mount)(context, def.spec.method.filter());
+        let handler = protect(
+            (def.mount)(context, def.spec.method.filter()),
+            def.spec.auth,
+            &context.services,
+            &context.credentials,
+        );
         let (get, head) = (
             def.spec.method == HttpMethod::Get,
             def.spec.method == HttpMethod::Head,

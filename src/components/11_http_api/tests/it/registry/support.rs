@@ -5,7 +5,8 @@ use sunnycloud_http_api::registry::{
     RouteSpec, Routers, document, mount, production_routes,
 };
 
-use crate::harness::router_server::route_context;
+use crate::harness::Script;
+use crate::harness::router_server::route_context_with;
 
 pub fn no_content(_context: &RouteContext, filter: MethodFilter) -> MethodRouter {
     on(filter, || async { StatusCode::NO_CONTENT })
@@ -195,8 +196,16 @@ pub fn sample_surface() -> Vec<RouteDef> {
 pub fn sample_routers(
     defs: &[RouteDef],
 ) -> (Routers, sunnycloud_http_api::registry::OpenApiDocument) {
+    sample_routers_with(defs, &Script::default())
+}
+
+/// [`sample_routers`] whose ports read `script`.
+pub fn sample_routers_with(
+    defs: &[RouteDef],
+    script: &Script,
+) -> (Routers, sunnycloud_http_api::registry::OpenApiDocument) {
     let openapi = document(defs);
-    let routers = mount(defs, &route_context(openapi.clone()), None);
+    let routers = mount(defs, &route_context_with(openapi.clone(), script), None);
     (routers, openapi)
 }
 

@@ -9,3 +9,5 @@ mod port_table;
 mod probe;
 mod schema;
 mod status;
+
+pub(crate) use opaque::Capture;

@@ -2,6 +2,7 @@ use sc_config::ConfigError;
 use sc_error::{DomainError, ErrorCode};
 use thiserror::Error;
 
+use crate::command_config::describe;
 use crate::exit::Exit;
 
 /// Why a command did not run to the end. Every variant has one exit code.
@@ -11,7 +12,7 @@ pub enum CliError {
     #[error("{0}")]
     Usage(String),
     /// Exit 3, nothing on stdout.
-    #[error(transparent)]
+    #[error("{}", describe(.0))]
     Config(#[from] ConfigError),
     /// What an owner port returned: a refusal carries its stable code; an unexpected failure is `internal`.
     #[error(transparent)]

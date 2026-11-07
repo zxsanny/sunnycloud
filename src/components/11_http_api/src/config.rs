@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use crate::auth::CredentialFormat;
 use crate::error::HttpServerError;
 
 /// The largest flow-control window HTTP/2 allows (RFC 9113 section 6.9.1).
@@ -34,6 +35,8 @@ pub struct HttpConfig {
     pub shutdown_grace: Duration,
     pub min_client_version: Option<String>,
     pub server_info: ServerInfo,
+    /// Not in the key table yet: the session cookie name and the device token marker are not fixed by the documents.
+    pub credentials: CredentialFormat,
 }
 
 impl HttpConfig {
@@ -55,6 +58,6 @@ impl HttpConfig {
         if self.h2_keepalive_interval.is_zero() || self.h2_keepalive_timeout.is_zero() {
             return invalid("h2 keepalive interval and timeout must be above zero");
         }
-        Ok(())
+        self.credentials.check()
     }
 }

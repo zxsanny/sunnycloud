@@ -1,3 +1,4 @@
+use crate::command_config;
 use crate::commands::Command;
 use crate::error::CliError;
 use crate::handler::{BoxFuture, Call, Handler};
@@ -9,6 +10,7 @@ pub struct Commands;
 impl Handler for Commands {
     fn run<'a>(&'a self, call: Call<'a>) -> BoxFuture<'a, Result<Outcome, CliError>> {
         Box::pin(async move {
+            command_config::check(call.command, call.services).await?;
             match call.command {
                 Command::Version => Ok(version()),
                 other => Err(CliError::NotImplemented(other.route())),

@@ -3,7 +3,7 @@
 #[cfg(feature = "sync-hook")]
 pub use hooked::ReadProbe;
 #[cfg(not(feature = "sync-hook"))]
-pub(super) use idle::ReadProbe;
+pub(crate) use idle::ReadProbe;
 
 #[cfg(not(feature = "sync-hook"))]
 mod idle {
