@@ -81,5 +81,12 @@ Then it names every test and task that asserts these statuses (IT-11-1, FT-N-48,
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-11-1: 409 vs 412 for `need_blocks` and `edited_since` | E-13, E-14, E-21 owners | open | Medium |
-| Batch too large: 413 (F5, FT-N-48, AZ-3656) vs 422 (helper 02, 03) | E-14, E-02 owners | open | Medium |
+| G-11-1: 409 vs 412 for `need_blocks` and `edited_since` | E-13, E-14, E-21 owners | resolved 2026-11-07: 409 for both | Medium |
+| Batch too large: 413 (F5, FT-N-48, AZ-3656) vs 422 (helper 02, 03) | E-14, E-02 owners | resolved 2026-11-07: 422 (a body over the 4 MiB class is a separate 413) | Medium |
+
+## Resolution (2026-11-07)
+
+Owner-approved decisions:
+- G-11-1: `need_blocks` and `edited_since` are both 409, as helper 02 and the 02 and 03 specs list; 412 is reserved for `If-Match` header preconditions.
+- Batch too large: `batch_too_large` (more entries than `batch_max_entries`) is 422; a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer. Documents that say 413 for too many entries are wrong.
+- Recorded in: `components/11_http_api/description.md` (section 6 table), `contracts/11_http_api/problem_details.md` (open points 1 and 2 closed), `contracts/13_sync_core/sync_api.md`, `contracts/03_transfer/commit_service.md`, and the flagged concerns of AZ-3829, AZ-3754, AZ-3939, AZ-3940 and AZ-3762.

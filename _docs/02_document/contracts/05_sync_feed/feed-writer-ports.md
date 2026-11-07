@@ -25,7 +25,7 @@ The "documented contract with E-13" of the E-12 epic: how 02 stamps, wakes and r
 - `stamp` is the only writer of `nodes.seq`. The column (bigint, default 0) and the index `nodes_feed_idx (account_id, seq)` belong to 05 and are added to 02's `nodes` table by 05's migration, which sorts after 02's `nodes` migration. 02 never writes `seq`.
 - `AccountFeedMissing` (no feed row for the account) is an invariant violation, logged at ERROR.
 - `notify` never blocks and keeps no state for accounts without waiters. A lost or late wake is healed by the feed's safety recheck (`feed_safety_recheck`, 10 s); a change made by another process is seen the same way.
-- `raise_purge_horizon` is a plain update in the caller's transaction; zero matching rows (the feed row of an account being erased) is not an error. Whether a lower `seq` can lower the horizon: rule pending E-12/c01 (G-05-3).
+- `raise_purge_horizon` is a non-decreasing update in the caller's transaction (`SET purge_horizon = GREATEST(purge_horizon, $seq)`): a call with a lower `seq` leaves the horizon unchanged and is not an error (a lowered horizon would accept cursors whose tombstones were purged; a reset is `bump_epoch`). Zero matching rows (the feed row of an account being erased) is not an error.
 - **Caller obligations (02)**:
   - call `stamp` as the **last** statement before COMMIT: nothing between it and COMMIT (no reads, no file I/O, no cycle checks);
   - call `stamp` only when at least one node changed; never for a transaction where every entry failed or was `NoChange`;
@@ -40,7 +40,7 @@ The "documented contract with E-13" of the E-12 epic: how 02 stamps, wakes and r
 ## Versioning Rules
 
 - **Breaking changes** (stamp-last rule, the non-empty rule, who writes `nodes.seq`) require a new major version and notice to E-13.
-- **Non-breaking additions** (the horizon monotonic rule from E-12/c01, stated as a narrowing) require a minor version bump.
+- **Non-breaking additions** (the horizon non-decreasing rule, stated as a narrowing; decided 2026-11-07, G-05-3) require a minor version bump.
 
 ## Test Cases
 
@@ -53,6 +53,7 @@ The "documented contract with E-13" of the E-12 epic: how 02 stamps, wakes and r
 | concurrent-50 | 50 concurrent stamping transactions, 20% rolled back | set of `nodes.seq` == 1..N | IT-05-2 |
 | notify-after-commit | real publish; rolled-back publish | holders wake after the first only | E-12/c09 |
 | horizon-zero-rows | raise for an erased account | `Ok` | IT-05-12 |
+| horizon-lower-seq | horizon 30, raise with 20 | `Ok`, horizon stays 30 | IT-05-12 |
 
 ## Change Log
 

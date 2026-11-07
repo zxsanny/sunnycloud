@@ -102,7 +102,7 @@ After purge: share_links row gone (ON DELETE CASCADE); NotFound
 **Summary**: expiry follows the injectable clock; revoke is visible within the cache.
 **Traces to**: AC-12
 **Description**: link with `expires_in = 1 h`; clock to `expires_at - 1 ms`, `expires_at`, `expires_at + 1 s`; revoke while `authorize_content` is polled.
-**Expected result**: live before `expires_at`; NotFound at and after (boundary fixed by test: `expires_at > now` is live; see gap G-06-3); revoke -> NotFound within `share_lookup_cache + 100 ms` and always within 5 s; no product timestamp comes from SQL `now()` (clock advance moves the answer).
+**Expected result**: live before `expires_at`; NotFound at and after (boundary per description §2 and §5: `expires_at > now` is live, `expires_at <= now` is NotFound; G-06-3 resolved 2026-11-07); revoke -> NotFound within `share_lookup_cache + 100 ms` and always within 5 s; no product timestamp comes from SQL `now()` (clock advance moves the answer).
 **Max execution time**: 5 s
 **Dependencies**: PostgreSQL
 
@@ -114,7 +114,7 @@ After purge: share_links row gone (ON DELETE CASCADE); NotFound
 **Expected result**:
 ```
 invalid tokens: calls 1..100 NotFound, 101st RateLimited{retry_after > 0}; IP2 unaffected; counter resets after the window
-wrong passwords: 11th attempt RateLimited{retry_after}; counter is per LINK (IP2 on L1 also limited); L2 unaffected; correct password while limited -> RateLimited (see gap G-06-2)
+wrong passwords: 11th attempt RateLimited{retry_after}; counter is per LINK (IP2 on L1 also limited); L2 unaffected; correct password while limited -> RateLimited, no Argon2 verification runs (description §5; G-06-2 resolved 2026-11-07)
 each trip writes ONE audit event (not one per rejected call); WARN log carries link id or IP hash, never the token
 ```
 **Max execution time**: 15 s
@@ -145,11 +145,12 @@ each trip writes ONE audit event (not one per rejected call); WARN log carries l
 **Dependencies**: PostgreSQL
 
 ### IT-06-12: Grant key required at start
-**Summary**: the server refuses to start without `share_grant_key`.
+**Summary**: `ShareConfig` validation refuses a missing or unusable `share_grant_key`; `serve` calls it before it binds the listener.
 **Traces to**: AC-12
-**Description**: BLOCKED — the description states the rule but names no constructor or validation entry point for the sharing crate (configuration binding is helper 01, startup is 12). The check is carried by the system-level startup scenarios; a component test is added when the config type is named.
-**Max execution time**: n/a
-**Dependencies**: n/a
+**Description**: component test against the `ShareConfig` validation of the sharing crate (description §5), the single entry point. Cases: key missing; key file unreadable; key empty; key of 31 bytes; key of 32 bytes. A start-sequence check confirms that the composition root of `serve` (12) calls the validation before it binds the listener (the refused cases leave no listening socket).
+**Expected result**: missing, unreadable, empty and 31-byte keys are refused, and the problem message names `share_grant_key` and never contains key bytes; the 32-byte key is accepted. E-01's secret loader checks only that the file exists and is readable, so the length rule is asserted here and not duplicated there.
+**Max execution time**: 2 s
+**Dependencies**: none (no database)
 
 ## Performance Tests
 

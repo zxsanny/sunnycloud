@@ -18,7 +18,7 @@ Share links need one table tied to the tree's nodes so a purged file removes its
 
 - One reversible migration pair (domain word `share`) creates `share_links` per data model §8.1 with grants and row-level security.
 - A typed sharing config section with the defaults of 06 §6 and start validation.
-- The grant key is loaded as a secret through the entry point decided in E-16/c01; start is refused without it.
+- The grant key is loaded as a secret; `ShareConfig` validation in the sharing crate is the single entry point (E-16/c01, decided 2026-11-07) and refuses a missing, unreadable, empty or shorter than 32 bytes key; the composition root of `serve` (12) calls it before it binds the listener.
 - A component test harness like identity's: per-test database from the migrated template, role `sunnycloud` for the component, migrator for fixtures, manual clock, a test grant key, a fresh `AbuseLimiter` per test.
 
 ## Scope
@@ -26,7 +26,7 @@ Share links need one table tied to the tree's nodes so a purged file removes its
 ### Included
 - `share_links`: `id`, `account_id`, `node_id` (composite FK to `nodes`, `ON DELETE CASCADE`), `token_hash` UNIQUE, `password_hash` NULL, `expires_at` NOT NULL, `revoked_at` NULL, `created_at`; indexes `(account_id)`, `(node_id)`; DML grants to `sunnycloud`; row-level security enabled (no `FORCE`).
 - Config keys with defaults: `share_default_ttl` 7 d, `share_max_ttl` 365 d, `share_lookup_cache` 1 s, `share_grant_ttl` 10 min, `share_wrong_password_limit` 10 per `share_wrong_password_window` 10 min, `share_invalid_token_limit` 100 per minute per IP, `share_password_max_concurrency`, Argon2id parameters, `share_grant_key` (secret).
-- Start refusal for a missing or unusable grant key, at the entry point named by E-16/c01.
+- Start refusal for a missing, unreadable, empty or shorter than 32 bytes grant key, in `ShareConfig` validation; E-01's secret loader only checks that the secret file exists and is readable and does not repeat the length rule.
 
 ### Excluded
 - The `nodes` table (E-13/c02); the config loader and secret files (E-01/c01); the start sequence (E-22/c05).
@@ -55,9 +55,9 @@ When it is loaded
 Then every other key has the default listed in Scope
 
 **AC-5: No grant key, no start (IT-06-12)**
-Given a configuration without `share_grant_key`, and one with an unusable key as defined by E-16/c01
-When the entry point named by E-16/c01 runs
-Then it refuses with a message that names `share_grant_key`, and with a valid key it succeeds
+Given a configuration with `share_grant_key` missing, unreadable, empty or 31 bytes long, and one with a 32-byte key
+When `ShareConfig` validation runs
+Then it refuses the first four with a message that names `share_grant_key`, and accepts the 32-byte key
 
 ## Non-Functional Requirements
 
@@ -69,7 +69,7 @@ Then it refuses with a message that names `share_grant_key`, and with a valid ke
 | AC Ref | What to Test | Required Outcome |
 |--------|-------------|-----------------|
 | AC-4 | Defaults of the sharing section | Each default equals 06 §6 (read, not waited) |
-| AC-5 | Key validation cases | Missing and unusable refused naming the key |
+| AC-5 | Key validation cases | Missing, unreadable, empty and 31-byte keys refused naming the key; 32 bytes accepted |
 
 ## Blackbox Tests
 
@@ -78,7 +78,7 @@ Then it refuses with a message that names `share_grant_key`, and with a valid ke
 | AC-1 | Tree migrations applied | Up, down, up | Table, unique hash, indexes, FK present | |
 | AC-2 | Link on a node | Node row deleted | Link row cascaded | |
 | AC-3 | Rows for A and B | Scoped, unscoped reads; DDL | Only B; none; denied | ST-06-8, NFT-SEC-46 |
-| AC-5 | Missing and unusable key | IT-06-12 entry point | Refused naming the key; valid key ok | |
+| AC-5 | Missing, unreadable, empty, 31-byte and 32-byte keys | IT-06-12 (`ShareConfig` validation) | Refused naming the key; 32 bytes ok | |
 
 ## Constraints
 

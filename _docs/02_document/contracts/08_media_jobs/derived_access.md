@@ -34,7 +34,7 @@ How listings learn thumbnail state and how the thumbnail and transcode routes fi
 |--------|------|---------|---------|
 | GET, HEAD | `/api/v1/nodes/{node_id}/thumbnail?size=small\|preview` | `open_derived(kind = thumb \| preview)` | 200 WebP or JPEG; `NotReady` 404 `thumbnail_not_ready`; `NotFound` 404 `thumbnail_unavailable`; never SVG, never the original |
 | GET, HEAD | `/api/v1/nodes/{node_id}/transcode` | `open_derived(kind = transcode)` | 200 MP4 with Range (served by 03); 404 when none (compliant clips are served as the original through the content route) |
-| POST | `/api/v1/thumbnail-states` | `states` | at most 1,000 ids in the body; the over-limit status is open point 1 |
+| POST | `/api/v1/thumbnail-states` | `states` | at most 1,000 ids in the body: more is 422 `batch_too_large`; ids of another account and unknown ids are omitted from the answer (no state leaked) |
 
 The share-link thumbnail: 06 `authorize_derived` checks the token and returns the `LiveFile`; 11 calls `open_derived_for`.
 
@@ -62,11 +62,12 @@ The share-link thumbnail: 06 `authorize_derived` checks the token and returns th
 | states | 1,000 seeded hashes | exact map; 2 statements | IT-08-14 |
 | no-fallback | SVG, vault, queued photo, compliant video | `NotFound`, `NotFound`, `NotReady`, `NotFound` | IT-08-13 |
 | share-path | same live file through both methods | equal results | IT-08-13 |
-| cross-account | B asks for A's node and hashes | `NotFound`; no state | ST-08-4 |
+| cross-account | B asks for A's node and hashes | `NotFound`; ids omitted from `thumbnail-states`, no state | ST-08-4 |
+| over-limit | `thumbnail-states` body of 1,001 ids | 422 `batch_too_large` | ST-08-4 |
 
 ## Open points
 
-1. G-08-3: answer for foreign ids in `thumbnail-states` and the status above 1,000 ids (E-18/c01).
+1. G-08-3: closed 2026-11-07 (owner decision): foreign and unknown ids are omitted from the answer; a body over 1,000 ids is 422 `batch_too_large` (same family as the commit batch cap; 400 `invalid_request` was the rejected alternative).
 2. The route takes node ids; `states` takes hashes; the node-to-hash step (11 through `TreeReader`) is not stated.
 3. `BlobRef` carries no media type; the derived row's type must reach 03 (contracts part 3 open point 6).
 
@@ -75,3 +76,4 @@ The share-link thumbnail: 06 `authorize_derived` checks the token and returns th
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
+| 1.0.1 | 2026-11-07 | Closed open point 1: foreign and unknown ids omitted; over 1,000 ids 422 `batch_too_large` | AZ-3826 |

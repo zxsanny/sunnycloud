@@ -21,7 +21,7 @@ Sources: `components/08_media_jobs/description.md` §4, §5, §7; `components/09
 |---|---|---|
 | `Lane` | `Image`, `Video` (serialised `image`, `video`) | claim request body `{lane}` |
 | `JobKind` | `Stills`, `Poster`, `Transcode` | `ClaimedJob.kind` |
-| `ClaimedJob` | `job_id: Uuid, kind: JobKind, content_hash: FileHash, params_version: u32, attempt: u32, lease_ms: u64` | 200 body of `POST /api/v1/worker-jobs/claims` |
+| `ClaimedJob` | `job_id: Uuid, kind: JobKind, content_hash: FileHash, params_version: u32, attempt: u32, lease_ms: u64` | 200 body of `POST /api/v1/worker-jobs/claims`; `content_hash` serialised as lowercase hex, 64 characters |
 | `LeaseExtended` | `lease_ms: u64` | 200 body of `PUT .../lease` |
 | `DerivedKind` | `Thumb`, `Preview`, `Transcode` | `{kind}` path segment of `PUT .../outputs/{kind}` |
 | `OutputMeta` | `media_type, width?, height?, duration_ms?` | `Content-Type`, `X-Width`, `X-Height`, `X-Duration-Ms` |
@@ -82,7 +82,7 @@ Sources: `components/08_media_jobs/description.md` §4, §5, §7; `components/09
 
 ## Open points (flagged in the producer task)
 
-1. The JSON encoding of `content_hash` (hex or base64) in `ClaimedJob` is not specified by 08 or 09.
+1. Closed 2026-11-07 (owner decision): `ClaimedJob.content_hash` is lowercase hex, 64 characters, the encoding the HTTP API surface already uses for content hashes (api_v1_surface.md, `revisions:lookup`).
 2. Integer widths (`params_version`, `attempt`, `image_age_days`) are not specified; chosen here as unsigned 32-bit.
 3. `OutputSpec` and `EncoderPref` are named (10 §1, 09 §2) without fields.
 4. The same job DTOs are declared in `contracts` for the API side (part 3, Open point 2).
@@ -93,3 +93,4 @@ Sources: `components/08_media_jobs/description.md` §4, §5, §7; `components/09
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
+| 1.0.1 | 2026-11-07 | Closed open point 1: `ClaimedJob.content_hash` is lowercase hex, 64 characters | AZ-3826 |

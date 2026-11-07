@@ -123,4 +123,4 @@ Integration through the real binaries; the system scenarios stay in E-31.
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-05-2 hold-cap error name and code is still a spike (E-12/c01) | E-12 | open | Low |
+| G-05-2 hold-cap error: the 5th concurrent long-poll of a principal returns new typed variant `ChangeFeedError::TooManyHolds{retry_after}`, sent as the existing `rate_limited` (429) with `Retry-After` (5 s proposed, not agreed); no new status-table row (resolved 2026-11-07) | E-12 | resolved | Low |

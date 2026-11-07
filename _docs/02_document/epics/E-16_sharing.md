@@ -47,8 +47,9 @@ flowchart LR
 - A link follows the node id, so moves and renames need no handling; purged targets remove links by `ON DELETE CASCADE`.
 - `password_required` is HTTP 401 `{code: "password_required"}` (closes G-9).
 - The single cross-account token lookup runs in the system RLS scope, confined to the lookup function.
-- `share_grant_key` is a Docker secret; the server refuses to start without it (validated at start by E-01/E-22).
-- Expiry boundary: `expires_at > now` is live (default stated by tests, to be written into the description).
+- `share_grant_key` is a Docker secret; the server refuses to start without it. `ShareConfig` validation in the sharing crate is the single entry point (refuses missing, unreadable, empty or shorter than 32 bytes, naming `share_grant_key`); the `serve` composition root (E-22) calls it before binding the listener; E-01's secret loader checks only that the file exists and is readable (decided 2026-11-07, AZ-3695).
+- Expiry boundary: `expires_at > now` is live, `expires_at <= now` is `NotFound`, time from the injectable clock (decided 2026-11-07, AZ-3695; written into the description).
+- A correct password while the per-link wrong-password counter is limited gets `RateLimited{retry_after}`; the cost is that ten wrong guesses lock the link for the window, legitimate viewers included (decided 2026-11-07, AZ-3695, G-06-2).
 
 ### Dependencies
 
@@ -153,7 +154,7 @@ sequenceDiagram
 ### Testing strategy
 
 Integration against real PostgreSQL 18 and the real E-13 tree behind `TreeReader`; short TTLs and windows; manual clock.
-- Integration: IT-06-1 create/list/revoke, 2 `open` outcomes, 3 password verification and grant, 4 current revision on `authorize_content`, 5 link follows rename and move, 6 delete/revive/purge, 7 expiry and revocation timing, 8 abuse limits, 9 constant-work lookup, 10 erase hook, 11 audit events and audit failure, 12 grant key required at start (BLOCKED, covered by system start-up scenarios).
+- Integration: IT-06-1 create/list/revoke, 2 `open` outcomes, 3 password verification and grant, 4 current revision on `authorize_content`, 5 link follows rename and move, 6 delete/revive/purge, 7 expiry and revocation timing, 8 abuse limits, 9 constant-work lookup, 10 erase hook, 11 audit events and audit failure, 12 grant key required at start (component test against `ShareConfig` validation).
 - Performance: PT-06-1..3. Security: ST-06-1 cross-account owner operations, 2 token strength and storage, 3 enumeration, 4 grant forgery and replay, 5 password storage and DoS, 6 wrong-password limit bypass, 7 visitor disclosure, 8 RLS and the single cross-account lookup. Acceptance: AT-06-1 share a photo, AT-06-2 password link, AT-06-3 survives edits and moves, dies with delete.
 - System scenarios: FT-P-36..39, 57; FT-N-09..11, 24, 44; NFT-SEC-06, 07, 13, 16..19, 27; NFT-RES-25.
 
@@ -162,7 +163,7 @@ Integration against real PostgreSQL 18 and the real E-13 tree behind `TreeReader
 - [ ] `ShareService`, `PublicShareService` and the hook implemented in the `sharing` crate and registered in `contracts`
 - [ ] Automated tests pass (IT/ST/AT above; unit tests for HMAC grant, token format, expiry boundaries)
 - [ ] Coverage >= 90% on lookup, password, grant, authorize paths (critical: security) and >= 75% overall
-- [ ] G-06-2, G-06-3 and the grant-key entry point written back into the component description
+- [x] G-06-2, G-06-3 and the grant-key entry point written back into the component description
 - [ ] Log redaction of `/public-shares/*` verified with E-21 (NFT-SEC-16)
 
 ### Acceptance Criteria
@@ -199,7 +200,7 @@ Integration against real PostgreSQL 18 and the real E-13 tree behind `TreeReader
 
 | Type | Title | Points |
 |------|-------|--------|
-| Spike | Close G-06-2 (correct password while link counter limited), G-06-3 (expiry boundary) and name the grant-key validation entry point (IT-06-12 BLOCKED); cites `tests/spec-gaps.md` | 2 |
+| Spike | Close G-06-2 (correct password while link counter limited), G-06-3 (expiry boundary) and name the grant-key validation entry point (IT-06-12 was BLOCKED, resolved 2026-11-07); cites `tests/spec-gaps.md` | 2 |
 | Enabler | `sharing` crate skeleton, `share_links` migration coordination, config section, secret loading for `share_grant_key` | 2 |
 | Task | `ShareService` create/list/revoke with token and password hashing (IT-06-1) | 3 |
 | Task | Constant-work token lookup and `open` outcomes with uniform `NotFound` (IT-06-2, 9) | 5 |

@@ -82,8 +82,8 @@ flowchart LR
 |---|---|---|---|
 | `FeedStamp` | `stamp` | `&mut DbTx, account, TouchedNodes (non-empty)` -> `Seq` (one CTE: counter UPDATE + node stamp) | `AccountFeedMissing` |
 | `FeedNotifier` | `notify` | `account, seq` -> non-blocking wake | none |
-| `FeedHorizon` | `raise_purge_horizon` | `tx, account, seq` -> last statement of purge tx; monotonic (GREATEST) rule to be stated | none (zero rows ok) |
-| `ChangeFeed` | `read` | `Principal, &dyn PrincipalRevalidator, Cursor{epoch,seq}, wait?, limit?` -> `ChangePage{items, next_cursor, has_more}` | `ResyncRequired{reason}` (410), `Unauthenticated`, `BadCursor` (422 `invalid_cursor`), hold-cap error (name pending) |
+| `FeedHorizon` | `raise_purge_horizon` | `tx, account, seq` -> last statement of purge tx; non-decreasing: `GREATEST(purge_horizon, $seq)`, a lower seq leaves it unchanged | none (zero rows ok) |
+| `ChangeFeed` | `read` | `Principal, &dyn PrincipalRevalidator, Cursor{epoch,seq}, wait?, limit?` -> `ChangePage{items, next_cursor, has_more}` | `ResyncRequired{reason}` (410), `Unauthenticated`, `BadCursor` (422 `invalid_cursor`), `TooManyHolds{retry_after}` (429 `rate_limited` + `Retry-After`) |
 | | `head` | `account` -> `Cursor` | none |
 | `EpochAdmin` | `marker_status()` -> `MarkerStatus{db_epoch, marker: Absent\|Present}`; `bump_epoch(now) -> new_epoch` (`greatest(epoch+1, unix_seconds(now))` for all rows, then `EpochMarker::write`); `head_report()` | | marker write error (command is rerunnable) |
 | `AccountLifecycleHook` | `initialize(tx, account)`, `erase_batch(account, limit)` | feed row insert / delete | none |
@@ -144,14 +144,14 @@ sequenceDiagram
 ### Testing strategy
 
 Component integration (`cargo test -p sync-feed`) against real PostgreSQL 18, real `EpochMarker` on a temp directory, scripted `PrincipalRevalidator`, manual clock, millisecond timers.
-- Integration: IT-05-1 stamp semantics, 2 fifty concurrent stamps, 3 pages and boundaries, 4 cursor validation, 5 head, 6 hold/wake/no connection, 7 revalidation ends a hold, 8 shutdown, 9 DB outage, 10 `bump_epoch`, 11 restore without bump, 12 `FeedHorizon` (BLOCKED on the monotonic rule), 13 hook, 14 doctor check, 15 notifier lifecycle.
+- Integration: IT-05-1 stamp semantics, 2 fifty concurrent stamps, 3 pages and boundaries, 4 cursor validation, 5 head, 6 hold/wake/no connection, 7 revalidation ends a hold, 8 shutdown, 9 DB outage, 10 `bump_epoch`, 11 restore without bump, 12 `FeedHorizon` (non-decreasing rule, G-05-3 decided), 13 hook, 14 doctor check, 15 notifier lifecycle.
 - Performance: PT-05-1..4. Security: ST-05-1..5. Acceptance: AT-05-1 commit wakes B, AT-05-2 restore then resync, AT-05-3 revoked device stops.
 - System scenarios: FT-P-07, 08, 13, 14, 58; FT-N-30; NFT-PERF-01, 08, 09; NFT-RES-07, 08, 13, 20, 21, 25, 35; NFT-SEC-08, 13.
 
 ### Definition of Done
 
 - [ ] All in-scope ports implemented in the `sync-feed` crate; epoch `DoctorCheck` registered
-- [ ] IT-05-1..15 (IT-05-12 once G-05-3 is closed), ST-05-1..5, AT-05-1..3 pass
+- [ ] IT-05-1..15 (IT-05-12 with the non-decreasing rule), ST-05-1..5, AT-05-1..3 pass
 - [ ] Coverage >= 90% (critical: ordering and epoch) and >= 75% overall
 - [ ] OpenAPI for both routes reviewed with E-21; hold-cap error code named
 - [ ] Runbook note: restore procedure requires `admin epoch-bump`
@@ -189,7 +189,7 @@ Component integration (`cargo test -p sync-feed`) against real PostgreSQL 18, re
 
 | Type | Title | Points |
 |------|-------|--------|
-| Spike | Resolve G-05-2 (hold-cap error name/code) and G-05-3 (`raise_purge_horizon` non-decreasing rule); unblocks IT-05-6 and IT-05-12 (`tests/spec-gaps.md`) | 2 |
+| Spike | Resolve G-05-2 (hold-cap error `TooManyHolds`, wire `rate_limited` 429) and G-05-3 (`raise_purge_horizon` non-decreasing); decided 2026-11-07, unblocks IT-05-6 and IT-05-12 (`tests/spec-gaps.md`) | 2 |
 | Enabler | `sync-feed` crate skeleton, migration pieces for `account_feeds`, `nodes.seq`, `nodes_feed_idx`, config section | 2 |
 | Task | `FeedStamp::stamp` single-CTE implementation and concurrency suite (IT-05-1, 2, PT-05-1) | 5 |
 | Task | `ChangeFeed::read/head` projection, paging on `seq` boundary, cursor classification (IT-05-3, 4, 5, PT-05-2) | 5 |

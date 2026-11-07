@@ -51,9 +51,9 @@ When the job is claimed, the lease is extended, then the claimant goes silent an
 Then the claim returns the job, the extension succeeds, and the scheduler's job reaper returns the job to the queue with attempt + 1; after the third expiry the job is failed
 
 **AC-3: Obsolete input**
-Given a queued job whose file is deleted before the fetch
+Given a queued job whose file is deleted and whose revision is already collected (retention expired on the test clock) before the fetch
 When the input is requested
-Then the listener answers 404 and the job is closed with outcome `obsolete`
+Then the listener answers 404 `revision_obsolete` and the job is closed with outcome `obsolete`; had the deleted revision still been retained, the input would be served
 
 **AC-4: Every stage operation has a production caller**
 Given the source tree
@@ -95,7 +95,7 @@ Integration through the real binaries; the system scenarios stay in E-31.
 |--------|------------------------|-------------|-------------------|----------------|
 | AC-1 | Signed-in device | Commit JPEG, text file, rolled-back JPEG | Jobs only for the committed JPEG | AC-10 |
 | AC-2 | Queued job, worker bearer, test clock | Claim, extend, expire 3 times | Requeued with attempt + 1, then failed | AC-71 |
-| AC-3 | Job, file deleted | Fetch input | 404, job `obsolete` | FT-N-49 |
+| AC-3 | Job, file deleted and revision collected | Fetch input | 404, job `obsolete` | FT-N-49 |
 | AC-72 | Committed 1 GiB file | Fetch over `:8081` | Hash equals plaintext | FT-N-43 |
 | AC-79 | Session, device token, Caddy | Worker routes on `:8081`, `:8080`, Caddy | 403 on `:8081`; 404 on public paths | NFT-SEC-50 |
 
@@ -115,4 +115,4 @@ Integration through the real binaries; the system scenarios stay in E-31.
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `Range` on the worker input route (G-08-4) is still a spike (E-18/c01) | E-18 | open | Low |
+| `Range` on the worker input route is ignored: always 200, full body (G-08-4, decided 2026-11-07) | E-18 | resolved | Low |

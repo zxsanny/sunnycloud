@@ -21,7 +21,7 @@ Every installation must keep at least one active admin (AC-23, decision 15). Thr
 
 ## Outcome
 
-- One guard shared by `update_user` (role and state), `AccountDeletionService::request`, and the operator path.
+- One guard shared by `update_user` (role and state), `AccountDeletionService::request`, and the operator path `AccountDeletionService::request_as_operator` (decided 2026-11-07, AZ-3814; a proposed `contracts` change task in E-17, CC-2).
 - Inside one short transaction: `lock_active_admins`, then the guard, then the mutating `AccountAdmin` call.
 - Disabled and deleting accounts never count as active admins.
 - Two concurrent removals can never both pass; a lock conflict is retried at most once inside the port and never surfaced as a deadlock.

@@ -2904,7 +2904,7 @@ Functional black-box scenarios for sunnycloud. Every scenario drives a public in
 
 ### FT-N-48: One bad entry does not fail a batch commit; an oversized batch is refused whole [v1.0]
 
-**Summary**: Per-entry failures roll back only that entry; a batch over `batch_max_entries` is 413 (F5 error rows).
+**Summary**: Per-entry failures roll back only that entry; a batch over `batch_max_entries` is 422 `batch_too_large` (F5 error rows; decided 2026-11-07, a body over the 4 MiB `Batch` class is a separate 413).
 **Traces to**: AC-40
 **Category**: Transfer
 **Env**: C, group P
@@ -2921,14 +2921,14 @@ Functional black-box scenarios for sunnycloud. Every scenario drives a public in
 | 1 | Stage the 50 files | 50 staged |
 | 2 | Commit one batch where entry 10 is named `a<U+0007>b`, entry 20 targets e with base r0, entry 30 uses a staged key that was never staged | 47 committed; entries 10, 20 and 30 each carry a typed per-entry error; the listing shows exactly the 47 new files |
 | 3 | Re-send the three entries corrected (valid name, current base, staged file) in a new batch | 3 committed |
-| 4 | Commit a batch with `batch_max_entries + 1` entries (value from `GET /api/v1/server-info`) | 413; 0 of its entries committed |
+| 4 | Commit a batch with `batch_max_entries + 1` entries (value from `GET /api/v1/server-info`), small enough to fit the 4 MiB `Batch` body class | 422 `batch_too_large`; 0 of its entries committed |
 
 **Expected outcome**: 47 + 3 committed (exact); 0 committed from the oversized batch (exact).
 **Max execution time**: 60 s
 
-### FT-N-49: A media job for a replaced or deleted file ends as obsolete [v1.0]
+### FT-N-49: A media job for a replaced or deleted file ends as obsolete once the revision is collected [v1.0]
 
-**Summary**: Jobs queued for a revision that was superseded or deleted close with outcome `obsolete` and leave no derived file (F10, 08 `complete_skipped`).
+**Summary**: Jobs queued for a revision that was superseded or deleted AND is already collected (no longer current or retained) close with outcome `obsolete` and leave no derived file (F10, 08 `complete_skipped`). A superseded or deleted revision that is still retained is served to the worker and processed (08 §4, IT-08-12).
 **Traces to**: AC-10, AC-71
 **Category**: Media
 **Env**: C, group X (`docker pause worker-supervisor`, as in NFT-SEC-50)
@@ -2943,7 +2943,7 @@ Functional black-box scenarios for sunnycloud. Every scenario drives a public in
 | Step | Consumer Action | Expected System Response |
 |------|----------------|------------------------|
 | 1 | Upload P and Q | Thumbnail state `pending` for both |
-| 2 | Overwrite P with P2; delete Q | |
+| 2 | Overwrite P with P2; delete Q; advance the server clock past the retention (default 7 days) and run the GC cycle | The first revision of P and the revision of Q are collected |
 | 3 | Unpause the supervisor; wait until the queue is empty | Jobs for P's first revision and for Q end `succeeded` with outcome `obsolete` (probe); 0 derived rows for them |
 | 4 | List the folder | P's thumbnail is `ready` and decodes to P2 |
 

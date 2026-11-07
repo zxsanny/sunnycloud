@@ -131,7 +131,7 @@ Playwright against the real stack (harness E-26/c19a).
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| The statuses for `need_blocks` and `edited_since` (409 or 412 per code) are open (G-11-1); the Worker switches on the code, not the status | E-21/c02 | open | Low |
+| `need_blocks` and `edited_since` are both 409 (resolved 2026-11-07, G-11-1; 412 is for `If-Match`); the Worker switches on the code, not the status | E-21/c02 | resolved | Low |
 | A UUIDv7 constructor for the WASM commit ID is open (`sync_core_proto.md` open point 4); either the export provides it or the Worker generates the key | E-23/c16 | open | Low |
 | iOS Safari ceilings from E-26/c03 may require a size message on iPhones | E-26/c03, owner | open | Low |
 

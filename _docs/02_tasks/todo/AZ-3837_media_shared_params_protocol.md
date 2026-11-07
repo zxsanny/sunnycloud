@@ -111,7 +111,7 @@ Then `media-shared` still has no sqlx, I/O, `contracts` or component dependency
 |---------|----------------|--------|----------|
 | CRF and preset values are not given; 08 §7 says they are chosen to meet derived storage at most 20% of original bytes and tuned in NFT-PERF-20 | E-18 owner | open | Low |
 | `JobSpec` is named in 08 §1 without a field list | E-18 owner | open | Low |
-| The `content_hash` encoding and `Range` on input wait for E-18/c01 | E-18 owner | open | Low |
+| `content_hash` is lowercase hex, 64 characters, and `Range` on input is ignored (decided 2026-11-07, E-18/c01) | E-18 owner | resolved | Low |
 
 ## Contract
 

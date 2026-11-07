@@ -113,4 +113,4 @@ Integration through the real binaries; the system scenarios stay in E-31.
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-06-2 (right password while the link counter is limited) and G-06-3 (expiry boundary) are still a spike (E-16/c01); AC-2's last step follows its answer | E-16 | open | Low |
+| G-06-2 (right password while the link counter is limited) and G-06-3 (expiry boundary) were decided 2026-11-07 (E-16/c01): `RateLimited` while limited, `expires_at > now` live; AC-2's last step waits for the window, then the right password yields a grant | E-16 | resolved | Low |

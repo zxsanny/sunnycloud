@@ -16,6 +16,7 @@
 - `_docs/02_document/contracts/01_identity/account_admin_and_guard.md` — `finalize_deletion` (E-15/c10).
 - `_docs/02_document/contracts/contracts/part1_registries_identity_admin_quota.md` — `Janitor`, `AccountLifecycleHook`, `EraseProgress` (E-00/c03).
 - `_docs/02_document/contracts/07_admin/account_services.md` — the `deleting` state set by the request (E-17/c05).
+- Proposed `contracts` change task CC-1 of spike AZ-3814 (no tracker key yet; this task does not start before it is accepted): `AccountAdmin::lock_deleting(tx, account) -> bool` (E-15). CC-2 (`request_as_operator`) and CC-3 (`AdminError::Forbidden`, E-17/c01 AC-4) are the E-17 ones, listed in `_docs/02_document/epics/E-17_admin.md` Dependencies.
 
 ## Problem
 
@@ -23,7 +24,7 @@ Deleting an account must remove its rows, files, shares and sessions within 15 m
 
 ## Outcome
 
-- `DeletionPurger` is a `Janitor` (`name()`, `run_cycle(now)`) that claims `deleting` accounts as decided by E-17/c01, so two purgers never process one account at the same time and no claim spans a cycle's idle time.
+- `DeletionPurger` is a `Janitor` (`name()`, `run_cycle(now)`) that claims `deleting` accounts per step (decided 2026-11-07, AZ-3814): each step opens its own short transaction, calls `AccountAdmin::lock_deleting(tx, account)` (`FOR UPDATE SKIP LOCKED` on the `deleting` row, `false` means skip), runs one bounded hook batch and commits, so two purgers never run a step on one account at the same time and no claim spans a cycle's idle time; two purgers alternating steps is harmless because hooks are restart-safe by query alone. No lease column.
 - Per account it walks the hooks in registration order, calling `erase_batch(account, account_delete_batch_size)` until the hook reports `remaining = 0` or the cycle's time budget ends; the next hook starts only after the current one reports 0.
 - When every hook reports 0: one transaction with `finalize_deletion` and the `account_deleted` audit entry; the metric `account_deletion_seconds` records request to finalize.
 - A failed batch is logged at ERROR with account id and hook position (no row data) and retried at the next tick; a deletion older than `account_delete_alert_after` is logged at WARN.
@@ -123,7 +124,8 @@ Then a WARN line with the account id is written; and when the account is finaliz
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| The claim mechanism and the port that takes it are decided by E-17/c01; it may need an 01 port method or column (a `contracts` change) | E-17 / E-15 owners | open | Medium |
+| The claim mechanism and the port that takes it: per-step claim through the proposed `AccountAdmin::lock_deleting` (a `contracts` change task in E-15, CC-1); no column (owner decision 2026-11-07, AZ-3814) | E-17 / E-15 owners | resolved | Medium |
+| KNOWN RISK: hooks run on their own connections; a hook inserting a row with a foreign key to `accounts` takes `FOR KEY SHARE` on the `deleting` row, which the step's `FOR UPDATE` blocks (self-deadlock). `FOR NO KEY UPDATE` avoids it. Owner asked; E-17/c06 must confirm no deadlock in IT-07-9 before the lock mode is final | E-17 / E-15 owners | open | Medium |
 | The per-cycle time budget has no named setting in 07 §7 (IT-07-11 sets 300 ms "in config") | E-17 owner | open | Low |
 | Resolved by owner decision 2026-11-05: 20's erase hook runs before 02's, because `vaults.root_node_id` references 02's nodes; the production order is 06, 20, 02, 03, 08, then 05, 07a | Owner | resolved | High |
 

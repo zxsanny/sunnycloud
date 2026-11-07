@@ -1,10 +1,10 @@
 # Contract: problem_details — `/api/v1` error responses (`application/problem+json`)
 
 **Component**: 11_http_api
-**Producer task**: E-21/c09 — `_docs/02_tasks/todo/B07-09_error_mapper.md` (status choice for `need_blocks`/`edited_since` from spike E-21/c02); keys assigned at Step 4
+**Producer task**: E-21/c09 — `_docs/02_tasks/todo/B07-09_error_mapper.md` (statuses for `need_blocks`/`edited_since`/`batch_too_large` decided 2026-11-07, spike E-21/c02); keys assigned at Step 4
 **Consumer tasks**: E-23/c06 (typed error model and wire-code mapping), E-23/c07 (426 handling), E-26/c06 (SPA error mapping), E-20/c03 (`WorkerApi` status mapping), E-24 and E-27 through `sync-core`/`mobile_backup`, E-31 consumer framework; every E-21 handler task (c04..c17) produces errors through it; resolved at Step 4
 **Version**: 1.0.0
-**Status**: draft (frozen after E-21/c02 records the G-11-1 decision)
+**Status**: draft (G-11-1 and batch-too-large decided 2026-11-07)
 **Last Updated**: 2026-11-04
 
 ## Purpose
@@ -54,7 +54,9 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 | non-admin on an admin route | 403 `forbidden` | 07, 11 (G-S6) |
 | `resync_required` | 410 with `reason` | 05 |
 | block PUT without `Content-Length` | 411 | 11 |
-| declared body over the route class | 413 | 11 |
+| declared body over the route class (including a `POST /commits:batch` body over the 4 MiB `Batch` class) | 413 `size_too_large` | 11 |
+| `need_blocks`, `edited_since` | 409 (412 is reserved for `If-Match` header preconditions) | 03, 02 (G-11-1) |
+| more entries than `batch_max_entries` | 422 `batch_too_large`, produced by the commit service, not by this layer | 03 |
 | client below the minimum version | 426 `upgrade_required` | 11 |
 
 ## Invariants
@@ -88,9 +90,9 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 
 ## Open points
 
-1. G-11-1: `need_blocks` and `edited_since` are "409/412 per code" in 11 §6, while helper 02 and 02/03 list 409 for both. Spike E-21/c02 records the decision; this contract follows it.
-2. Batch too large: F5 (`system-flows.md`), FT-N-48 and pipeline AZ-3656 expect 413; helper 02, 02 and 03 list `batch_too_large` as 422. Not decided here (E-21/c02 records the owners' answer).
-3. Codes used by owners but missing from helper 02's table: 08 `lease_lost` (409), `revision_obsolete` (404), `thumbnail_not_ready`, `thumbnail_unavailable` (404), output too large (413), type or kind rejected (422); 01 RFC 8628 poll codes (`authorization_pending`, `slow_down`, `access_denied`, `expired_token`) whose status and body shape are not stated; the long-poll hold-cap error (G-05-2); 20's 412 and 428 (v1.2). Each owning epic adds its rows (`sc_error` minor version).
+1. G-11-1: closed 2026-11-07 (owner decision): `need_blocks` and `edited_since` are both 409, as in helper 02, 02 and 03; 412 is for `If-Match` header preconditions, which these are not.
+2. Batch too large: closed 2026-11-07 (owner decision): `batch_too_large` is 422 for more entries than `batch_max_entries`; a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer (`size_too_large` family). F5, FT-N-48 and pipeline AZ-3656 follow (413 became 422 for too many entries).
+3. Codes used by owners but missing from helper 02's table: 08 `lease_lost` (409), `revision_obsolete` (404), `thumbnail_not_ready`, `thumbnail_unavailable` (404), output too large (413), type or kind rejected (422); 01 RFC 8628 poll codes (`authorization_pending`, `slow_down`, `access_denied`, `expired_token`) whose status and body shape are not stated; 20's 412 and 428 (v1.2). Each owning epic adds its rows (`sc_error` minor version).
 4. `Retry-After` value on a 503 whose error carries no `retry_after` is not specified.
 5. Helper 02 still shows the body field as `correlation_id`; this contract uses `request_id` (E-02 decision).
 
@@ -99,3 +101,4 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B07) |
+| 1.0.1 | 2026-11-07 | Closed open points 1 and 2: `need_blocks`, `edited_since` 409; `batch_too_large` 422, body over `Batch` class 413 | AZ-3800 |

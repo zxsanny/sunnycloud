@@ -24,7 +24,7 @@ Share tokens and passwords are guessable targets. AC-20 sets 100 invalid share t
 ### Included
 - Per-IP invalid-token counter (`share_invalid_token_limit`, 100 per minute) on `open` and `authorize_content` (the content route shares the counter, 06 §3).
 - Per-link wrong-password counter (`share_wrong_password_limit` 10 per `share_wrong_password_window` 10 min) on `verify_password`, checked before any Argon2 work.
-- A correct password while the link is limited follows E-16/c01's G-06-2 decision.
+- A correct password while the link is limited gets `RateLimited{retry_after}` (G-06-2, decided 2026-11-07); no Argon2 verification runs.
 - Trip audit and WARN log.
 
 ### Excluded
@@ -42,10 +42,10 @@ Given password links L1 and L2
 When IP1 sends 10 wrong passwords to L1 and then an 11th, IP2 then sends one to L1, and IP1 sends one to L2
 Then the 11th call and IP2's call on L1 give `RateLimited{retry_after}`; L2 still answers `WrongPassword`
 
-**AC-3: A correct password while limited follows G-06-2**
+**AC-3: A correct password while limited is `RateLimited` (G-06-2)**
 Given L1 limited by AC-2
 When the right password is sent before the window ends, and again after it
-Then the first answer is the outcome recorded by E-16/c01 (the tests expect `RateLimited`), and after the window the right password returns a grant
+Then the first answer is `RateLimited{retry_after}` (G-06-2, decided 2026-11-07), and after the window the right password returns a grant
 
 **AC-4: The limit cannot be bypassed (ST-06-6)**
 Given one link and 50 parallel wrong attempts from 50 IPs released at a barrier, plus the same link reached through token forms that 11 normalises to the same token
@@ -74,7 +74,7 @@ Then each trip wrote exactly one audit event and one WARN line, with the link id
 |--------|------------------------|-------------|-------------------|----------------|
 | AC-1 | 2 s windows; IP1, IP2 | IT-06-8 invalid tokens | 101st limited; IP2 free; reset | NFT-SEC-04, ST-06-3 |
 | AC-2 | L1, L2 | IT-06-8 wrong passwords | 11th limited per link; L2 free | NFT-SEC-06, FT-N-10 |
-| AC-3 | L1 limited | IT-06-8 correct password | Per G-06-2; grant after window | |
+| AC-3 | L1 limited | IT-06-8 correct password | `RateLimited`; grant after window | |
 | AC-4 | 50 IPs at a barrier | ST-06-6 | At most 10 verifications | NFT-SEC-06 |
 | AC-5 | Trips | IT-06-8 audit and log | One event, one WARN each; no token | NFT-SEC-16 |
 

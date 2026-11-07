@@ -16,7 +16,7 @@ What `ChangeFeed::read` and `ChangeFeed::head` return, how a cursor is judged, a
 | Name | Input -> Output | Errors | Blocking? |
 |------|-----------------|--------|-----------|
 | cursor parse | text `E.S` -> `Cursor{epoch, seq}` | `BadCursor` (wire 422 `invalid_cursor`) | sync |
-| `ChangeFeed::read` | `Principal, &dyn PrincipalRevalidator, Cursor, wait?, limit?` -> `ChangePage{items, next_cursor, has_more}` | `ResyncRequired{reason}` (wire 410 `resync_required`), `Unauthenticated` (401), `BadCursor` (422), hold-cap error (name pending E-12/c01, G-05-2), database unavailable (maps to 503) | async |
+| `ChangeFeed::read` | `Principal, &dyn PrincipalRevalidator, Cursor, wait?, limit?` -> `ChangePage{items, next_cursor, has_more}` | `ResyncRequired{reason}` (wire 410 `resync_required`), `Unauthenticated` (401), `BadCursor` (422), `TooManyHolds{retry_after}` (wire 429 `rate_limited` + `Retry-After`; decided G-05-2), database unavailable (maps to 503) | async |
 | `ChangeFeed::head` | `account` -> `Cursor` | none | async |
 
 `ChangeItem` = `node_id, parent_id, kind, name, state (live | tombstone), revision_id?, size?, content_hash?, seq`. `reason` is `epoch_changed`, `below_purge_horizon` or `cursor_ahead`.
@@ -28,7 +28,7 @@ What `ChangeFeed::read` and `ChangeFeed::head` return, how a cursor is judged, a
 - A page holds the latest state of each node with `seq > S`, ordered by `seq` then `node_id`; a node changed many times appears once. A page ends on a `seq` boundary, so it can hold more than `limit` items when a batch shares one `seq`. `limit` defaults to `feed_page_limit_default` (500) and is capped by `feed_page_limit_max`.
 - A folder tombstone means its whole subtree is deleted. A folder that turns from tombstone to live must be re-listed by the client.
 - `head` returns the account's current `epoch.seq`; a new device takes head first, then lists the tree.
-- Hold: when the first read is empty and `wait > 0` (capped by `longpoll_wait_max`, 30 s), the read parks without a database connection. It returns on a notify for its account, on a safety recheck that finds changes (`feed_safety_recheck`), with `Unauthenticated` when the revalidator reports the principal revoked (checked every `longpoll_auth_recheck`, 2 s), with an empty page and the same cursor when `wait` expires or the process shuts down, and with the database-unavailable error during an outage. A principal holds at most `max_holds_per_principal` (4) reads at once; the next one is refused.
+- Hold: when the first read is empty and `wait > 0` (capped by `longpoll_wait_max`, 30 s), the read parks without a database connection. It returns on a notify for its account, on a safety recheck that finds changes (`feed_safety_recheck`), with `Unauthenticated` when the revalidator reports the principal revoked (checked every `longpoll_auth_recheck`, 2 s), with an empty page and the same cursor when `wait` expires or the process shuts down, and with the database-unavailable error during an outage. A principal holds at most `max_holds_per_principal` (4) reads at once; the next one is refused at once with `TooManyHolds{retry_after}` (proposed `retry_after`: fixed 5 s, a constant of the long-poll task) and the parked reads stay parked.
 - No item is returned after the revalidator reports the principal revoked.
 
 ## Non-Goals

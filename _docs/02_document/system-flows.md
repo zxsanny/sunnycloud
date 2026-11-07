@@ -224,7 +224,7 @@ Files up to 2 MiB are sent as one staged request each and published together by 
 | Staged id expired or unknown | Step 3 | Per-entry error | Client re-sends that file |
 | One entry has an invalid name or stale base | Step 3 | Savepoint rollback of that entry | Other entries commit; client handles the failed one |
 | Quota exceeded or staged-file cap reached | Step 1 | Reservation or cap check | Refused for that file |
-| Batch too large | Step 2 | Limit check | 413; client splits |
+| Batch too large (more entries than `batch_max_entries`) | Step 2 | Limit check | 422 `batch_too_large`; client splits (a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer) |
 
 ### ACs and Targets
 AC-40 (10,000 files in 60 s at 20 ms RTT), AC-42. Tests: FT-P-04, FT-N-38.
@@ -396,7 +396,7 @@ A commit queues thumbnail or transcode jobs; a trusted supervisor feeds an isola
 | Hostile media (SVG named .png, HLS playlist to `/etc/passwd`, 30000x30000 PNG, 20 GB sparse video, truncated HEIC) | Step 4 | Decoder failure or limit kill | Job fails; original untouched and downloadable; no data exposed; the hardened decoder runner kills all descendants and exits after a hostile-class outcome, and Compose restarts it |
 | Decoder hangs | Step 5 | No progress for 90 s | Kill, retry once on CPU |
 | Supervisor dies | Step 2 | Lease expiry (5 min) | Job claimable again, attempt + 1, failed after 3 |
-| Revision superseded or file deleted while queued | Step 3 | 404 from the worker listener | Job closed with outcome `obsolete` |
+| Revision superseded or file deleted while queued, and already collected (no longer current or retained) | Step 3 | 404 `revision_obsolete` from the worker listener | Job closed with outcome `obsolete`; a superseded or deleted revision that is still retained is served and processed |
 | NVENC missing or failing | Step 6 | Probe or exit code | CPU path |
 | Derived storage over target | Step 7 | Corpus metric | Tune CRF or presets; target at most 20% of original bytes |
 

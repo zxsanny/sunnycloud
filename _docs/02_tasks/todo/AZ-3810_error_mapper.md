@@ -43,7 +43,7 @@ Business components return typed errors and never choose a status (helper 02). C
 **AC-1: Status table (AC-20, AC-64)**
 Given one stub route per tier and per code family: validation (400 and a semantic 422), `unauthenticated`, `forbidden`, `not_found`, `name_conflict`, `block_conflict`, `rate_limited` with retry_after 17, `resync_required`, `upload_session_gone` (expired upload session), `need_blocks`, `edited_since`, `size_too_large`, `range_not_satisfiable`, `upgrade_required`, `service_unavailable`, `quota_exceeded`, `last_admin` and an unexpected error
 When each is called
-Then the statuses are 400/422, 401, 403, 404, 409, 409, 429, 410, 410, the status E-21/c02 recorded for `need_blocks` and for `edited_since`, 413, 416, 426, 503, 507, 409 and 500, each with a body whose `type` is `urn:sunnycloud:error:<code>`, `status` equals the HTTP status and `request_id` equals the `X-Request-Id` header
+Then the statuses are 400/422, 401, 403, 404, 409, 409, 429, 410, 410, 409 for `need_blocks` and 409 for `edited_since` (E-21/c02, 2026-11-07), 413, 416, 426, 503, 507, 409 and 500, each with a body whose `type` is `urn:sunnycloud:error:<code>`, `status` equals the HTTP status and `request_id` equals the `X-Request-Id` header
 
 **AC-2: Retry-After and extras (AC-20)**
 Given `RateLimited{retry_after: 17}`, `service_unavailable` with a retry_after, `need_blocks [3, 7]` and `resync_required` with reason `epoch_changed`
@@ -105,9 +105,9 @@ Then the two 404 bodies are identical except for `request_id`
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-11-1 statuses for `need_blocks`/`edited_since` come from E-21/c02 | E-13, E-14, E-21 owners | open | Medium |
-| Batch too large 413 vs 422 (F5, FT-N-48 vs helper 02, 03) | E-14, E-02 owners | open | Medium |
-| Codes missing from helper 02's table: 08 `lease_lost`, `revision_obsolete`, `thumbnail_not_ready`, `thumbnail_unavailable`, output too large, type or kind rejected; 01 RFC 8628 poll codes; the long-poll hold-cap error (G-05-2) | E-18, E-15, E-12 owners with E-02 | open | Medium |
+| G-11-1: `need_blocks` and `edited_since` are both 409 (decided 2026-11-07; 412 is for `If-Match`) | E-13, E-14, E-21 owners | resolved | Medium |
+| Batch too large: 422 `batch_too_large` for more entries than `batch_max_entries`; a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer (decided 2026-11-07) | E-14, E-02 owners | resolved | Medium |
+| Codes missing from helper 02's table: 08 `lease_lost`, `revision_obsolete`, `thumbnail_not_ready`, `thumbnail_unavailable`, output too large, type or kind rejected; 01 RFC 8628 poll codes (the long-poll hold-cap error needs no new row: `TooManyHolds` is sent as the existing `rate_limited` 429, G-05-2 resolved 2026-11-07) | E-18, E-15 owners with E-02 | open | Medium |
 | `Retry-After` value on a 503 whose error carries no `retry_after` is not specified | E-02, E-21 owners | open | Low |
 | 11 describes `AppError{kind, code, detail, extra}` with an `ErrorKind`; `sc_error` defines `DomainError` with `ErrorCode`. This task maps `sc_error`'s shape | E-02, E-21 owners | open | Low |
 

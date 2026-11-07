@@ -224,14 +224,14 @@ Black-box specifications (no test code). Attacks are mounted through public inte
 
 ### NFT-SEC-13: Two-account matrix over every operation and ID parameter [v1.0]
 
-**Traces to**: AC-59; RESTRICT-07, RESTRICT-11 | **Data**: OpenAPI | **Status**: READY (RR Auth #10); step 4 asserts only 'never succeeds, 403 or 404' because the exact code for admin-only operations is not specified (G-S6)
+**Traces to**: AC-59; RESTRICT-07, RESTRICT-11 | **Data**: OpenAPI | **Status**: READY (RR Auth #10); step 4 asserts 403 for a non-admin on an admin-only operation (G-S6 resolved 2026-11-07, AZ-3814)
 
 | Step | Consumer Action | Expected Response |
 |------|----------------|------------------|
 | 1 | A creates one resource of every kind (node, folder, upload session, share, device, session, job, thumbnail, transcode, invite) | IDs recorded |
 | 2 | For each operation and each ID parameter (path, query, body, header) B calls with A's ID | HTTP 404; response uniform with a call using a random nonexistent ID |
 | 3 | Compare A's data after every call | Unchanged |
-| 4 | Admin-only operations with A's credentials | 403 or 404, never 2xx |
+| 4 | Admin-only operations with A's (non-admin) credentials | HTTP 403 code `forbidden`, never 2xx |
 | 5 | Add an operation without matrix coverage to the OpenAPI fixture | CI fails |
 
 **Pass criteria**: successful cross-account calls = 0 (exact); non-404 results = 0; foreign-vs-nonexistent responses differ = 0; CI fails on uncovered operations.
@@ -870,7 +870,7 @@ The 8 worker operations are the routes of component 08: `POST /api/v1/worker-job
 No scenario in this file is BLOCKED.
 
 - **G-S5** (not blocking) TLS 1.2: RESTRICT-11 says TLS 1.3 but not that 1.2 must be refused, so NFT-SEC-11 asserts only TLS 1.3 negotiated and TLS 1.1 and older refused.
-- **G-S6** (not blocking) NFT-SEC-13 step 4: the exact status for admin-only operations called by a non-admin is not specified; the test asserts 403 or 404, never 2xx.
+- **G-S6** (resolved 2026-11-07, AZ-3814) NFT-SEC-13 step 4: a non-admin calling an admin-only operation gets 403 `forbidden`; another account's id gets 404. The test asserts 403, never 2xx.
 - **G-S10** (test data) The 40 hostile-name cases per OS are named by class only in `data_parameters.md`; the exact list and count per class must be added to the test data (NFT-SEC-31).
 - **G-S12** (no ID yet) `restriction-ids.md` has no IDs for the new restrictions bullets (derived blobs encrypted; leases and timeouts; Android token and vault passphrase; no-internet sessions). They are cited as "new restrictions bullet".
 - **G-S13** (not an AC) Out of scope here: vault freshness against a malicious server is documented as a caveat, not tested; per-link download connection caps (`b_security` F19) are not an AC.

@@ -89,4 +89,12 @@ Then the spike lists one `contracts` change task in the providing epic (module-l
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-S6 is also listed under E-31/c03; two tasks must record one answer | E-17 / E-31 owners | open | Low |
+| G-S6 is also listed under E-31/c03; two tasks must record one answer | E-17 / E-31 owners | resolved 2026-11-07: 403, one record for both tasks | Low |
+
+## Resolution (2026-11-07)
+
+Owner-approved decisions:
+- G-07-2: per-step claim, no lease column. Each purger step takes `SELECT ... FOR UPDATE SKIP LOCKED` on the `deleting` account row via the proposed `AccountAdmin::lock_deleting(tx, account) -> bool` (a `contracts` change in E-15, CC-1), in its own short transaction.
+- KNOWN RISK, open: hooks run on their own connections; a hook inserting a row with a foreign key to `accounts` takes `FOR KEY SHARE` on that row, which `FOR UPDATE` blocks (self-deadlock); `FOR NO KEY UPDATE` avoids it. The owner has been asked; E-17/c06 must confirm no deadlock in IT-07-9.
+- G-S6: a non-admin on an admin-only operation gets 403 `forbidden`; another account's id gets 404 (ST-07-1, NFT-SEC-13 step 4).
+- Recorded in: `components/07_admin/description.md` (sections 4 and 12), `components/07_admin/tests.md`, `epics/E-17_admin.md`, `tests/security-tests.md`, and AZ-3665 and AZ-3820 (flagged concerns).

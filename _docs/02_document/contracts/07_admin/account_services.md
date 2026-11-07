@@ -3,9 +3,9 @@
 **Component**: 07_admin
 **Producer task**: E-17/c05 (`view`, `quota_view`, `request`), E-17/c04 (last-admin rule in `request`) — `_docs/02_tasks/todo/B05-05_account_view_deletion_request.md`, `B05-04_last_admin_guard.md` (renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-21/c12 (account handlers), E-22/c09 (`admin user delete`); in batch E-17/c06, E-17/c09
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (open points below)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -18,6 +18,7 @@ A user's own account view and the request that starts account deletion. The requ
 | `AccountService::view` | `(&Principal) -> AccountView{id, display_name, role, identities, quota, root_node_id}` | `Unexpected` | async; caller's own account only |
 | `AccountService::quota_view` | `(&Principal) -> QuotaView{limit_bytes?, effective_limit, used, reserved}` | `Unexpected` | async; equals `QuotaAdmin::view` of the caller |
 | `AccountDeletionService::request` | `(&Principal, confirmation) -> DeletionAccepted{deadline}` | `Forbidden` (device-token principal), `ConfirmationMismatch`, `LastAdmin` | async; one short transaction |
+| `AccountDeletionService::request_as_operator` (proposed `contracts` change, E-17) | `(account) -> DeletionAccepted{deadline}` | `LastAdmin` | async; one short transaction; no confirmation |
 
 ### HTTP resources owned by 07 (routed by 11)
 
@@ -30,6 +31,8 @@ A user's own account view and the request that starts account deletion. The requ
 ## Invariants
 
 - `request` refuses a device-token principal with `Forbidden` and a confirmation that does not match with `ConfirmationMismatch`; neither changes anything.
+- The confirmation (decided 2026-11-07) is the caller's own account id as lowercase hyphenated UUID text, compared for exact equality with the principal's account id rendered that way: no trimming, no case folding. Empty, whitespace, wrong case and another account's id are all `ConfirmationMismatch`. The value is inferred from ST-07-2's cases; no earlier text names it.
+- `request_as_operator` (decided 2026-11-07) serves `admin user delete --yes` (`Actor::Operator`, no principal): it skips the confirmation, because `--yes` is the confirmation, runs the same transaction as `request` including `lock_active_admins` and the last-admin guard (`LastAdmin`), and refuses nothing else. `request` is unchanged and stays session-only.
 - `request` runs one short transaction: `lock_active_admins`, the last-admin guard, then `AccountAdmin::begin_deletion` (state `deleting`; 01 revokes sessions, device tokens and grants). Nothing else happens in the request: no erase hook, no blob work.
 - `deadline` = now (injected clock) + `account_delete_deadline` (15 min by default).
 - From commit on: every credential of the account is rejected (within 5 s, AC-21), commits are refused by `AccountGuard`, and the account's data still exists until the purger removes it.
@@ -58,8 +61,8 @@ A user's own account view and the request that starts account deletion. The requ
 
 ## Open points
 
-1. The exact confirmation value and its comparison are not specified (E-17/c01).
-2. The operator path (`admin user delete --yes`) has no principal; how it reaches `request` is open (contracts part 1 open point 5, E-17/c01).
+1. Resolved 2026-11-07: the confirmation value and its comparison (see Invariants).
+2. Resolved 2026-11-07: the operator path is `request_as_operator`; adding it to `contracts` part 1 is a proposed `contracts` change task in E-17 (module-layout Rule 6), a dependency of E-17/c05 (AZ-3819).
 3. The 01 port that supplies `display_name` and linked `identities` is not named.
 4. `ConfirmationMismatch` has no code or status in the shared status table.
 
@@ -68,3 +71,4 @@ A user's own account view and the request that starts account deletion. The requ
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
+| 1.1.0 | 2026-11-07 | Confirmation value and comparison fixed; `request_as_operator` added (proposed; frozen when its `contracts` change task is accepted) (AZ-3814) | spike AZ-3814 |

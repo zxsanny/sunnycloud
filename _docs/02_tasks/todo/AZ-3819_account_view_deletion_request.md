@@ -17,6 +17,7 @@
 - `_docs/02_document/contracts/01_identity/authenticator.md` — rejection of revoked credentials (E-15/c03).
 - `_docs/02_document/contracts/07a_quota/quota-admin.md` — `view` (E-11/c03).
 - `_docs/02_document/contracts/02_tree/tree_reader.md` — `root_node` (E-13/c03).
+- Proposed `contracts` change tasks of spike AZ-3814 (no tracker key yet; this task does not start before they are accepted): CC-2 `AccountDeletionService::request_as_operator` (E-17); CC-3 `AdminError::Forbidden` on `AdminService` (E-17/c01 AC-4); CC-1 `AccountAdmin::lock_deleting` (E-15), needed by the purger E-17/c06. See `_docs/02_document/epics/E-17_admin.md` Dependencies.
 
 ## Problem
 
@@ -27,7 +28,8 @@ Users need their own account details for the web account page, and a safe way to
 - `AccountService::view(principal)` returns `AccountView{id, display_name, role, identities, quota, root_node_id}` of the caller only; `quota_view` returns the caller's limit, used and reserved from 07a.
 - `AccountDeletionService::request(principal, confirmation)` returns `DeletionAccepted{deadline}` with deadline = now + `account_delete_deadline` (injected clock).
 - The request runs one short transaction that calls `begin_deletion` (state `deleting`; 01 revokes sessions, device tokens and grants) and nothing else.
-- A device-token principal gets `Forbidden`; a wrong confirmation gets `ConfirmationMismatch`; in both cases nothing changes.
+- A device-token principal gets `Forbidden`; a wrong confirmation gets `ConfirmationMismatch`; in both cases nothing changes. The right confirmation is the caller's own account id as lowercase hyphenated UUID text, compared for exact equality (no trimming, no case folding; decided 2026-11-07, inferred from ST-07-2).
+- `AccountDeletionService::request_as_operator(account) -> DeletionAccepted{deadline}` serves `admin user delete --yes`: no confirmation, the last-admin guard (E-17/c04) still applies, nothing else is refused; `request` stays unchanged and session-only.
 
 ## Scope
 
@@ -73,7 +75,7 @@ Then it returns within 1 s with deadline = now + 30 s, U's state is `deleting`, 
 
 | AC Ref | What to Test | Required Outcome |
 |--------|-------------|-----------------|
-| AC-3 | Confirmation comparison with the rule recorded by E-17/c01 | Only the exact value passes |
+| AC-3 | Confirmation comparison: own account id, lowercase hyphenated UUID text, exact equality | Only the exact value passes; upper case, padded, empty and another account's id fail |
 | AC-4 | Deadline from the injected clock | now + `account_delete_deadline` |
 
 ## Blackbox Tests
@@ -100,8 +102,8 @@ Then it returns within 1 s with deadline = now + 30 s, U's state is `deleting`, 
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| The exact confirmation value is not specified (ST-07-2 implies an exact, case-sensitive value tied to the account); decided by E-17/c01 | E-17 owner | open | Medium |
-| `request` takes a principal, but `admin user delete` (operator) has none (contracts part 1 open point 5); decided by E-17/c01 | E-17 / E-22 owners | open | Medium |
+| The exact confirmation value: the caller's own account id as lowercase hyphenated UUID text, exact equality (inferred from ST-07-2; owner decision 2026-11-07, AZ-3814) | E-17 owner | resolved | Medium |
+| `admin user delete` (operator) has no principal: it calls the separate `request_as_operator(account)`, a proposed `contracts` change task in E-17 (owner decision 2026-11-07, AZ-3814) | E-17 / E-22 owners | resolved | Medium |
 | No port named in 07's Requires gives the caller's display name and linked identities for `AccountView` (`AccountAdmin` lists accounts only) | E-15 / E-17 owners | open | Medium |
 | `ConfirmationMismatch` has no code or status in the shared status table | E-02 / E-17 owners | open | Medium |
 

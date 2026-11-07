@@ -31,8 +31,8 @@ Default Mode S config: `SUNNYCLOUD_PUBLIC_URL=https://sunnycloud.test`, `SUNNYCL
 ### IT-11-1: Error table
 **Summary**: each `ErrorKind` maps to its status with a `application/problem+json` body.
 **Traces to**: AC-20, AC-64
-**Input data**: Mode S; one stub route per kind returning `AppError`: Validation (400 and the semantic 422 variant), Unauthorized, Forbidden, NotFound, Conflict (`name_conflict`, `block_conflict`), RateLimited{retry_after 17}, Gone (`resync_required`, expired session), PreconditionFailed (`need_blocks`, `edited_since`), PayloadTooLarge, RangeNotSatisfiable, UpgradeRequired, Unavailable, QuotaExceeded, Internal.
-**Expected result**: 400/422, 401, 403, 404, 409, 429, 410, 413, 416, 426, 503, 507, 500; body JSON keys `type = urn:sunnycloud:error:<code>`, `title`, `status` (equal to the HTTP status), `code`, `detail`, `request_id` (equal to the `X-Request-Id` header) and typed extras (`need_blocks`, `retry_after`, `min_version`); 429 and 503 carry `Retry-After`; 507 code `quota_exceeded`. The 409-versus-412 choice for `need_blocks` and `edited_since` is BLOCKED (description says "409/412 per code" without assigning): the test asserts only that each is 409 or 412 and records which (gap G-11-1).
+**Input data**: Mode S; one stub route per kind returning `AppError`: Validation (400 and the semantic 422 variant, including `batch_too_large`), Unauthorized, Forbidden, NotFound, Conflict (`name_conflict`, `block_conflict`), RateLimited{retry_after 17}, Gone (`resync_required`, expired session), PreconditionFailed (`need_blocks`, `edited_since`), PayloadTooLarge, RangeNotSatisfiable, UpgradeRequired, Unavailable, QuotaExceeded, Internal.
+**Expected result**: 400/422, 401, 403, 404, 409, 429, 410, 413, 416, 426, 503, 507, 500; body JSON keys `type = urn:sunnycloud:error:<code>`, `title`, `status` (equal to the HTTP status), `code`, `detail`, `request_id` (equal to the `X-Request-Id` header) and typed extras (`need_blocks`, `retry_after`, `min_version`); 429 and 503 carry `Retry-After`; 507 code `quota_exceeded`. `need_blocks` and `edited_since` are both asserted as 409 (decided 2026-11-07, G-11-1; 412 is only for `If-Match` header preconditions). A stub `batch_too_large` is asserted as 422, and a `PayloadTooLarge` (`size_too_large`, body over the `Batch` class) as 413.
 **Max execution time**: 10 s
 **Dependencies**: Mode S
 
@@ -316,7 +316,7 @@ Default Mode S config: `SUNNYCLOUD_PUBLIC_URL=https://sunnycloud.test`, `SUNNYCL
 
 ## Spec gaps found
 
-- G-11-1: `need_blocks` and `edited_since` map to "409/412 per code"; the assignment is not given.
+- G-11-1: resolved 2026-11-07: `need_blocks` and `edited_since` are both 409; `batch_too_large` is 422, a body over the `Batch` class is a separate 413.
 - G-11-2: behaviour for an absent or malformed `X-Sunnycloud-Client` header on non-exempt routes is not specified (BLOCKED part of IT-11-7).
 - G-11-3: isolation in the other direction (public API routes on `:8081`) is not specified.
 - G-11-4: the HTTP status of `/readyz` when `status: degraded` is not stated.

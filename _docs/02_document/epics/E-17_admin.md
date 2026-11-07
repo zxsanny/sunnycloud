@@ -45,7 +45,7 @@ flowchart LR
 
 - The hook list and cleanup lists are passed to the `DeletionPurger` constructor by the composition root (late registration; gap-pass default).
 - `LastAdmin` maps to HTTP 409; `InvalidLimit` bounds are defined in E-11.
-- Concurrent purger runs on one account are prevented by claiming the `deleting` account row with `FOR UPDATE SKIP LOCKED`, and the claim must not span the idle time of a cycle (short-transaction rule); the implementer chooses a per-step claim or a lease column.
+- Concurrent purger runs on one account are prevented by claiming the `deleting` account row with `FOR UPDATE SKIP LOCKED`, and the claim must not span the idle time of a cycle (short-transaction rule); decided 2026-11-07 (G-07-2): per-step claim, no lease column; each purger step takes the lock via the proposed `AccountAdmin::lock_deleting(tx, account) -> bool` in its own short transaction.
 - Deleted data is removed immediately; older backups still contain it (privacy text).
 - Tree's `remaining` includes the account's blobs the GC sweeper has not removed yet, so finalize waits for files.
 
@@ -67,6 +67,11 @@ flowchart LR
 - E-16 Sharing (hook run first so links stop at once)
 
 **Port counterparts in higher epics** (traits in `contracts`): hooks of E-18 media_jobs and E-30 vault_service (stub), `HealthContributor` impls of E-10, E-18, E-22. Integration tests for the full hook chain (IT-07-9, AT-07-1) run after E-18; E-30 is a v1.2 stub.
+**Proposed `contracts` change tasks** (spike AZ-3814, decided 2026-11-07; module-layout Rule 6; no tracker key yet). E-17/c05 (AZ-3819 deletion request) and E-17/c06 (AZ-3820 purger) list all three as dependencies and do not start before they are accepted:
+- CC-1, E-15 (01 identity): `AccountAdmin::lock_deleting(tx, account) -> bool`, the per-step `FOR UPDATE SKIP LOCKED` claim of the `deleting` row (G-07-2; no lease column).
+- CC-2, E-17: `AccountDeletionService::request_as_operator(account) -> DeletionAccepted{deadline}` for `admin user delete --yes`; `request` unchanged.
+- CC-3, E-17 (E-17/c01 AC-4, already planned): `AdminError::Forbidden` on all four `AdminService` operations (non-admin gets 403, G-S6).
+
 **External dependencies**: PostgreSQL 18; DS-29 (500 accounts); a populated large account for PT-07-2.
 
 ### Effort Estimation
@@ -175,7 +180,7 @@ Integration with real components behind the ports (fakes only in unit tests); re
 | 2 | AC-21: deleted account's requests fail within 5 s | IT-07-8 `Authenticator` rejects sessions/tokens after `request`; held poll end covered by FT-N-30 |
 | 3 | AC-23: the last active admin cannot be demoted, disabled or deleted by any route or command | IT-07-3..5, ST-07-3, AT-07-2: 0 successful removals under races |
 | 4 | AC-1: 500 users via admin tooling | PT-07-1 p95 page <= 30 ms (fail 100 ms) |
-| 5 | AC-59: admin routes in the matrix | ST-07-1: non-admin 403, foreign 404 (final code per G-S6) |
+| 5 | AC-59: admin routes in the matrix | ST-07-1: non-admin 403 `forbidden`, foreign 404 (G-S6 resolved 2026-11-07) |
 | 6 | AC-57: device tokens cannot delete the account | ST-07-2 |
 | 7 | Purger idempotent and resumable | IT-07-10 (crash at each hook position), IT-07-12 overlap |
 | 8 | Admin health shows degraded when a component reports it | IT-07-6 (slow contributor times out) |
@@ -187,9 +192,10 @@ Integration with real components behind the ports (fakes only in unit tests); re
 | 1 | Large-account deletion time depends on E-10 GC throughput (R12) | Drain-until-empty within budget, GC `Due::Now`, PT-07-2 | Epic owner |
 | 2 | A hook missing from the late-registered list leaves rows behind | NFT-SEC-27 counts rows; composition-root test asserts the full list | Epic owner |
 | 3 | Hook order: 05 and 07a must run last | Order asserted in IT-07-9 | Epic owner |
-| 4 | Claiming the account row for a whole cycle breaks the short-transaction rule | Spike G-07-2: per-step claim or lease column | Epic owner |
+| 4 | Claiming the account row for a whole cycle breaks the short-transaction rule | Resolved 2026-11-07 (G-07-2): per-step `FOR UPDATE SKIP LOCKED` claim in its own short transaction, no lease column | Epic owner |
 | 5 | Slow health contributor blocks the page | Per-check timeout (`health_check_timeout`) | Epic owner |
-| 6 | Sole-admin reset semantics (G-12-3) and non-admin status 403 vs 404 (G-S6) undecided | Decide with owner/E-21 | Product owner |
+| 6 | Sole-admin reset semantics (G-12-3) undecided; non-admin status resolved 2026-11-07 (G-S6): 403 `forbidden`, another account's id 404 | Decide G-12-3 with owner/E-21 | Product owner |
+| 7 | KNOWN RISK (G-07-2): hooks run on their own connections; a hook inserting a row with a foreign key to `accounts` takes `FOR KEY SHARE` on the `deleting` row, which the purger's `FOR UPDATE` blocks (self-deadlock). `FOR NO KEY UPDATE` avoids it. Owner asked; open | E-17/c06 confirms no deadlock in IT-07-9 (use `FOR NO KEY UPDATE` if it shows) | E-17 / E-15 owners |
 
 ### Labels
 
@@ -200,7 +206,7 @@ Integration with real components behind the ports (fakes only in unit tests); re
 
 | Type | Title | Points |
 |------|-------|--------|
-| Spike | Choose purger claim mechanism (per-step `SKIP LOCKED` claim vs lease column, G-07-2 default) and close G-S6 (403 vs 404 for admin-only ops by non-admins); cites `tests/spec-gaps.md` | 2 |
+| Spike | Choose purger claim mechanism (per-step `SKIP LOCKED` claim vs lease column, G-07-2 default) and close G-S6 (403 vs 404 for admin-only ops by non-admins); cites `tests/spec-gaps.md`. Decided 2026-11-07 (AZ-3814): per-step claim via `lock_deleting`, no lease column; non-admin 403, other account 404; confirmation = own account id; operator method `request_as_operator` | 2 |
 | Enabler | `admin` crate skeleton, config section, constructor wiring for hook/cleanup/health lists | 2 |
 | Task | `AdminService` list_users, update_user, set_quota with `admin_action` audit (IT-07-1, 2) | 3 |
 | Task | Last-admin guard in one transaction with `lock_active_admins`, concurrency suite (IT-07-3..5, ST-07-3) | 5 |

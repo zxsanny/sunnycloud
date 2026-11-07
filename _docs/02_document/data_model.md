@@ -320,7 +320,7 @@ A link follows the node, so save-in-place does not break it (AC-34). Missing, ex
 | `attempts` | smallint DEFAULT 0 | incremented on claim |
 | `available_at` | timestamptz | `run_after` while queued, lease expiry while running |
 | `leased_by` | text NULL | supervisor instance |
-| `outcome` | text NULL | `derived`, `skipped_compliant` or `obsolete` (the revision was superseded or deleted before the job ran) |
+| `outcome` | text NULL | `derived`, `skipped_compliant` or `obsolete` (the revision was superseded or deleted before the job ran and is already collected, i.e. no longer current or retained) |
 | `last_error` | text NULL | bounded to 500 characters |
 | `created_at`, `finished_at` | timestamptz | |
 

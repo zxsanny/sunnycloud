@@ -43,7 +43,7 @@ Then A's row is invisible and unchanged, the DDL is denied, and `bump_epoch` and
 **AC-3: Hold exhaustion (ST-05-3)**
 Given one principal opening 1,000 reads with `wait = 30 s`, and 100 principals opening 10,000
 When task count, memory and connections are sampled
-Then at most 4 reads per principal are accepted, RSS grows by at most 32 MB, connections stay within baseline + 2, and other principals are unaffected
+Then at most 4 reads per principal are accepted, every further read is refused with `TooManyHolds` (429 `rate_limited` + `Retry-After`), RSS grows by at most 32 MB, connections stay within baseline + 2, and other principals are unaffected
 
 **AC-4: Cursor injection (ST-05-4)**
 Given the cursors `E.1; DROP TABLE account_feeds`, `E.1 OR 1=1`, Unicode digits and a 10 kB string

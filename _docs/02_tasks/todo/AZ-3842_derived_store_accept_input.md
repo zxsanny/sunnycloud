@@ -121,5 +121,5 @@ Then the length equals the file size exactly and the BLAKE3 of the bytes equals 
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| Whether a superseded or deleted revision that is still retained is served or answered `revision_obsolete` conflicts between 08 §4 and IT-08-12 (served) and FT-N-49, data model §9.1, F10 and 09's tests (obsolete); decided by E-18/c01. AC-72 follows 08 §4 until then | E-18 owner | open | Medium |
+| A revision is obsolete only when collected (no longer `TreeReader::is_current_or_retained`, owner E-13) or foreign; a superseded or deleted revision that is still retained is served (decided 2026-11-07). 08 §4 and IT-08-12 stand; FT-N-49, data model §9.1 and F10 are reworded to "superseded or deleted and already collected" | E-18 owner | resolved | Medium |
 | 08 §9 says output dimensions are bounded, but no bound is given | E-18 owner | open | Low |

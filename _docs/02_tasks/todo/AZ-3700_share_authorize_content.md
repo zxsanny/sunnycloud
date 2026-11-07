@@ -61,7 +61,7 @@ Then after revival the link works again with the same token; after purge its row
 **AC-5: Expiry and revocation timing (AC-12)**
 Given a link with `expires_in = 1 h` and the manual clock
 When the clock is set to `expires_at - 1 ms`, `expires_at` and `expires_at + 1 s`, and separately the link is revoked while `authorize_content` is polled
-Then the answers follow the boundary recorded by E-16/c01 (default: live before `expires_at`, `NotFound` at and after); revocation gives `NotFound` within `share_lookup_cache` + 100 ms and always within 5 s; moving the clock moves the answer, so no product time comes from SQL `now()`
+Then the answers follow the boundary of G-06-3 (live before `expires_at`, `NotFound` at and after); revocation gives `NotFound` within `share_lookup_cache` + 100 ms and always within 5 s; moving the clock moves the answer, so no product time comes from SQL `now()`
 
 **AC-6: Audit failure does not leak (IT-06-11)**
 Given an `AuditWriter` decorator that fails every write
@@ -92,7 +92,7 @@ Then each call returns its normal result and an ERROR is logged for each failed 
 | AC-3 | Password and plain links | IT-06-4 grant-less calls | `PasswordRequired`; allowed | |
 | AC-77 | Link on `/a/f.txt`; folder with a shared file | IT-06-5, IT-06-6 | Same node and current revision after each move; `NotFound` within 300 ms after deletes, before cascade | FT-N-44 |
 | AC-4 | Deleted shared file | IT-06-6 revival and purge | Works after revival; row gone after purge | |
-| AC-5 | `expires_in = 1 h`, manual clock | IT-06-7 | Boundary as recorded; revoke within cache + 100 ms | NFT-RES-25 |
+| AC-5 | `expires_in = 1 h`, manual clock | IT-06-7 | `expires_at > now` live; revoke within cache + 100 ms | NFT-RES-25 |
 | AC-6 | Failing writer | IT-06-11 | Normal results; ERROR logged | |
 
 ## Constraints
@@ -111,4 +111,4 @@ Then each call returns its normal result and an ERROR is logged for each failed 
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| The expiry boundary depends on E-16/c01 (G-06-3); AC-5 uses the tests' default until then | E-16 owner | open | Low |
+| The expiry boundary depends on E-16/c01 (G-06-3); decided 2026-11-07 as `expires_at > now` live | E-16 owner | resolved | Low |

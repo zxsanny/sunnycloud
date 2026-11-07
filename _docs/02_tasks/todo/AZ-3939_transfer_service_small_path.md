@@ -126,7 +126,7 @@ Playwright against the real stack with the fault proxy (harness E-26/c19a).
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | The `TooManyFiles` limit comes from E-26/c05 | E-26/c05 | open | Low |
-| The status for a batch above the entry limit is open (413 or 422, `problem_details.md` open point 2); the client never sends more than `batch_max_entries`, so the page is not affected | E-21/c02 | accepted-risk | Low |
+| The status for a batch above the entry limit is 422 `batch_too_large`; a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer (resolved 2026-11-07, G-11-1); the client never sends more than `batch_max_entries`, so the page is not affected | E-21/c02 | resolved | Low |
 
 ## Contract
 

@@ -78,4 +78,11 @@ Then G-05-2 and G-05-3 appear in section 1 (resolved) with the date and the affe
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| If the hold-cap code is new, the error helper's status table, 11's mapper and the OpenAPI document need it | E-02 / E-21 | open | Low |
+| If the hold-cap code is new, the error helper's status table, 11's mapper and the OpenAPI document need it | E-02 / E-21 | resolved 2026-11-07: no new code, `rate_limited` (429) is reused | Low |
+
+## Resolution (2026-11-07)
+
+Owner-approved decisions, recorded by the document workers:
+- G-05-2: the 5th concurrent long-poll of a principal gets the new typed variant `ChangeFeedError::TooManyHolds{retry_after}` (additive, proposed in `contracts/part2_tree_transfer_feed.md`), sent as the existing `rate_limited` (HTTP 429) with `Retry-After` (5 s proposed, not agreed). The new-code route in Outcome and Risk is replaced by reuse of `rate_limited`: no new status-table row, no new OpenAPI code.
+- G-05-3: `raise_purge_horizon` is non-decreasing (`GREATEST`); a lower seq leaves the horizon unchanged and is not an error, so purge batches that commit out of seq order are safe (AC-3 of the purge janitors, AZ-3714).
+- Recorded in: `components/05_sync_feed/description.md` (hold cap, FeedHorizon), `components/05_sync_feed/tests.md` (IT-05-6, ST-05-3, IT-05-12), `components/11_http_api/description.md`, `contracts/11_http_api/problem_details.md`, and the flagged concerns of AZ-3658, AZ-3714, AZ-3810 and AZ-3829.

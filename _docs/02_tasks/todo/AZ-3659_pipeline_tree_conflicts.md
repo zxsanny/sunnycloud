@@ -30,7 +30,7 @@ Conflict handling runs on two entry points: the commit path (03 into 02's `publi
 - The end-to-end integration test of the steps above.
 
 ### Excluded
-- GC sweeping and restore (E-22/p11), conflict handling on desktop (E-24/p03), wire status choice 409 vs 412 (E-21/c02).
+- GC sweeping and restore (E-22/p11), conflict handling on desktop (E-24/p03), wire status of `edited_since` (409, decided 2026-11-07 in E-21/c02).
 
 ## Acceptance Criteria
 
@@ -116,5 +116,5 @@ Integration through the real binaries; the system scenarios stay in E-31.
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| 409 vs 412 for `edited_since` is still a spike (E-21/c02, G-11-1) | E-21 | open | Low |
+| 409 for `edited_since` decided 2026-11-07 (E-21/c02, G-11-1) | E-21 | resolved | Low |
 | NFC/NFD stored form (G-1) is an owner item (E-13/c01) and changes AC-3's case matrix | Owner via E-13 spike | open | Low |

@@ -121,8 +121,8 @@ Then the stub receives the folder id, the `after` key and the limit, and the ans
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | Body class of `revisions:lookup` (1,000 hashes, about 70 KB) is not assigned; `Small` is too small | E-13, E-21 owners | open | Medium |
-| G-11-1 statuses for `need_blocks` and `edited_since`, and batch-too-large 413 vs 422, come from E-21/c02 | E-13, E-14 owners | open | Medium |
-| The long-poll hold-cap error has no name or status yet (G-05-2) | E-12 owner | open | Low |
+| G-11-1: `need_blocks` and `edited_since` are both 409; `batch_too_large` (more entries than `batch_max_entries`) is 422; a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer (resolved 2026-11-07) | E-13, E-14 owners | resolved | Medium |
+| Long-poll hold-cap error: `ChangeFeedError::TooManyHolds{retry_after}` is sent as the existing `rate_limited` (429) with `Retry-After`; no new status-table row (G-05-2 resolved 2026-11-07; the 5 s value is proposed, not agreed) | E-12 owner | resolved | Low |
 
 ## Contract
 

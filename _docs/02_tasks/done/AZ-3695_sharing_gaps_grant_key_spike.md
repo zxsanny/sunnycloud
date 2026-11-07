@@ -90,4 +90,11 @@ Then the rows G-06-2, G-06-3 and the IT-06-12 note are marked resolved with the 
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| The grant-key entry point touches E-01 (secret loading) and E-22 (start sequence); both owners must agree | E-01 / E-22 owners | open | Low |
+| The grant-key entry point touches E-01 (secret loading) and E-22 (start sequence); both owners must agree | E-01 / E-22 owners | open: the E-01 loader spec and the E-22 start sequence must state the rule (exists and readable; call `ShareConfig` validation before binding) | Low |
+
+## Resolution (2026-11-07)
+
+Decisions recorded in `components/06_sharing/description.md`, `components/06_sharing/tests.md` and `tests/spec-gaps.md`:
+- G-06-2: while the per-link wrong-password counter is limited, even the correct password gets `RateLimited{retry_after}`; the counter is checked before any Argon2 work (at most 10 verifications per link and window, ST-06-6, NFT-SEC-06).
+- G-06-3: `expires_at > now` is live; `expires_at <= now` is `NotFound`, uniform with missing and revoked; `now` comes from the injectable `Clock`.
+- Grant key: `ShareConfig` validation in 06 is the single entry point; it refuses a missing, unreadable, empty or under-32-byte `share_grant_key` before the listener binds (IT-06-12); E-01's loader only checks that the file exists.

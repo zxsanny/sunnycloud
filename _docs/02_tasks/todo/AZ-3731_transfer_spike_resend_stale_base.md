@@ -31,7 +31,7 @@ G-03-3: `commit_upload` lists `EditedSince`, but 02's `publish` never fails a st
 ### Included
 - Options for G-03-1 with their worst-case resend and their cost: fewer lanes, a smaller `checkpoint_bytes` or `checkpoint_interval`, or an AC-3 wording at the true bound; the throughput risk of each against PT-03-1 and the WAL cost noted in `data_model.md` §6.3.
 - Options for G-03-3: the `Committed` fields for each `PublishOutcome` (`Updated`/`Replaced`, `ConflictCopied`, `CreatedAsCopy`, `Revived`, `NoChange`) and whether `EditedSince` stays in the commit error list.
-- Recording the decisions and informing E-21/c02 (409 vs 412), E-23 and E-26 owners and pipeline AZ-3655.
+- Recording the decisions and informing E-21/c02 (409 vs 412, resolved 2026-11-07 as 409 for both `need_blocks` and `edited_since`), E-23 and E-26 owners and pipeline AZ-3655.
 
 ### Excluded
 - Changing config, tests or the AC text (done by E-14/c03, E-14/c06 and the owner).

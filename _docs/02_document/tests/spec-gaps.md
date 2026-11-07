@@ -16,7 +16,7 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | 12_operator_cli | G-12-6: `doctor` 0 ok, 1 warnings only, 2 any failure (missing blobs fail) | IT-12-15, AC-73 | 2 |
 | 12_operator_cli | G-12-7: SIGINT during `serve` exits 130 after graceful shutdown | IT-12-19 | 2 |
 | 07_admin | G-07-1: hook and cleanup lists passed to the `DeletionPurger` constructor by the composition root | IT-07-6, IT-07-9, AT-07-2 | 3 |
-| 07_admin | G-07-2: concurrent purger runs prevented by claiming the `deleting` account row with `FOR UPDATE SKIP LOCKED` | IT-07-12 | 3 |
+| 07_admin | G-07-2 (resolved 2026-11-07, AZ-3814): per-step claim, no lease column; each purger step takes `SELECT ... FOR UPDATE SKIP LOCKED` on the `deleting` account row through the proposed `AccountAdmin::lock_deleting(tx, account) -> bool` in its own short transaction, so no claim is held across a cycle's idle time. Open risk: the hooks run on their own connections and a hook inserting a row with a foreign key to `accounts` needs `FOR KEY SHARE`, which `FOR UPDATE` blocks; `FOR NO KEY UPDATE` avoids it (owner asked; E-17/c06 confirms in IT-07-9) | IT-07-12, IT-07-9 | 3 |
 | 07_admin / 11_http_api | G-07-3 / G-11-5: `LastAdmin` is HTTP 409 | IT-07-3 to IT-07-5, AT-07-2 | 3 |
 | 07a_quota | G-07a-1: `InvalidLimit` bounds 0 <= limit <= 2^53 bytes (0 = no new data) | IT-07a-6 | 3 |
 | 07a_quota | G-07a-2: `views` omits an unknown id | IT-07a-12, IT-07a-13 | 3 |
@@ -36,6 +36,19 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | 10_decoder | G-10-2: descendant found and killed at job end is hostile-class (runner exits) | IT-10-14, IT-10-16 | 9 |
 | 10_decoder | G-10-5: SVG renamed `.png` is `Unsupported` | IT-10-16, IT-10-20, ST-10-3 | 9 |
 | 10_decoder | G-10-7: `DecodeError` gains `ProtocolViolation` | IT-10-3, IT-10-16, ST-10-2 | 9 |
+| 05_sync_feed | G-05-2 (resolved 2026-11-07, AZ-3773): the 5th concurrent long-poll of a principal (`max_holds_per_principal` = 4) is refused at once with the new typed variant `ChangeFeedError::TooManyHolds{retry_after}`, sent as the existing `rate_limited` (429) with `Retry-After`; no new wire code or status-table row; the variant is a proposed additive `contracts` change; Retry-After 5 s is proposed, not agreed | IT-05-6, ST-05-3 | spike |
+| 05_sync_feed | G-05-3 (resolved 2026-11-07, AZ-3773): `raise_purge_horizon` never decreases the horizon (`GREATEST`); a lower seq leaves it unchanged and is not an error; a reset is `bump_epoch` | IT-05-12 | spike |
+| 06_sharing | G-06-2 (resolved 2026-11-07, AZ-3695): a correct password while the per-link counter is limited gets `RateLimited{retry_after}`; accepting it would let an attacker keep guessing at no cost; trade-off: ten wrong guesses lock the link for the window, legitimate viewers included | IT-06-8, ST-06-6, NFT-SEC-05, NFT-SEC-06 | spike |
+| 06_sharing | G-06-3 (resolved 2026-11-07, AZ-3695): `expires_at > now` is live; `expires_at <= now` is `NotFound`; time from the injectable clock | IT-06-7 | spike |
+| 06_sharing | IT-06-12 note (resolved 2026-11-07, AZ-3695): `ShareConfig` validation in 06 is the single entry point; it refuses a missing, unreadable, empty or under-32-byte `share_grant_key`, naming the key; `serve` (12) calls it before binding the listener; E-01's loader checks only that the file exists and is readable | IT-06-12 | spike |
+| 07_admin | G-S6 (resolved 2026-11-07, AZ-3814): a non-admin calling an admin-only operation gets 403 `forbidden`; another account's id gets 404 | ST-07-1, NFT-SEC-13 | spike |
+| 07_admin | Deletion confirmation (resolved 2026-11-07, AZ-3814; inferred from ST-07-2's cases): the caller's own account id as lowercase hyphenated UUID text, exact equality, no trim, no case fold; `ConfirmationMismatch` otherwise | ST-07-2 | spike |
+| 07_admin | Operator deletion (resolved 2026-11-07, AZ-3814): separate proposed `AccountDeletionService::request_as_operator(account)`, no confirmation (`--yes` is the confirmation), last-admin guard kept; `request` stays session-only; unknown or already-deleting account behaviour not specified | IT-07-3, IT-07-8 | spike |
+| 08_media_jobs | G-08-3 (resolved 2026-11-07, AZ-3826): `thumbnail-states` omits ids of another account and unknown ids; a body over 1,000 ids is 422 `batch_too_large` (400 `invalid_request` rejected); the node-id to content-hash mapping stays open | ST-08-4, AT-08-1 | spike |
+| 08_media_jobs | G-08-4 (resolved 2026-11-07, AZ-3826): worker `GET input` ignores `Range` and always answers 200 with the full body and exact `Content-Length` | IT-08-12 | spike |
+| 08_media_jobs | Obsolete rule (resolved 2026-11-07, AZ-3826): a job's revision is obsolete only when collected (no longer `is_current_or_retained`, owner 02) or foreign; a superseded or deleted revision still retained is served and processed; FT-N-49, F10 and data model 9.1 reworded | FT-N-49, IT-08-12 | spike |
+| 08_media_jobs | Hash encoding (resolved 2026-11-07, AZ-3826): `ClaimedJob.content_hash` is lowercase hex, 64 characters, as in the HTTP API surface | media-shared open point 1 | spike |
+| 11_http_api | G-11-1 (resolved 2026-11-07, AZ-3800): `need_blocks` and `edited_since` are both 409 (412 is for `If-Match` only); `batch_too_large` is 422 for more entries than `batch_max_entries`; a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer; F5, FT-N-48 and AZ-3656 changed from 413 to 422 | IT-11-1, FT-N-48, AZ-3655, AZ-3656, AZ-3659, AZ-3810 | spike |
 
 ## 2. Open gaps by component
 
@@ -49,15 +62,8 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | **04_blobstore** | | | | |
 | ST-04-8 | Block rewrite with different bytes (nonce reuse): 04 states no behaviour (reject, idempotent-only or allowed); BLOCKED until decided | ST-04-8 (03 ST-03-2 covers caller side) | Yes | owner |
 | **05_sync_feed** | | | | |
-| G-05-2 | Typed error name/code when a principal exceeds `max_holds_per_principal` (4): the 5th hold is refused | IT-05-6 | No | decompose |
-| G-05-3 | `FeedHorizon::raise_purge_horizon` monotonic rule: description says "plain UPDATE"; non-decreasing (GREATEST) needs stating (BLOCKED on the rule) | IT-05-12 | No | decompose |
 | **06_sharing** | | | | |
-| G-06-2 | Correct password while the per-link counter is limited: tests expect `RateLimited`; rule not stated | IT-06-8 | No | decompose |
-| G-06-3 | Expiry boundary: tests fix `expires_at > now` as live; description does not state it | IT-06-7 | No | decompose |
-| IT-06-12 note | No constructor/validation entry point named for the missing/invalid grant key check (BLOCKED; covered by system start-up scenarios) | IT-06-12 | No | decompose |
 | **08_media_jobs** | | | | |
-| G-08-3 | `thumbnail-states` body shape for foreign ids and status for a body over 1,000 ids (400 or 413) not given | AT-08-1, ST-08-4 | No | decompose |
-| G-08-4 | `Range` on worker `GET input` not stated (supported or ignored) | IT-08-12 | No | decompose |
 | **09_worker_supervisor** | | | | |
 | G-09-1 | Supervisor slot-loop type is not named; tests use boundaries only | IT-09-9, IT-09-11 to IT-09-15, PT-09-1 | No | implement |
 | G-09-4 | Observable effect of `OffsetClock` inside the supervisor not stated (only that the offset is shared) | IT-09-18 | No | decompose |
@@ -67,7 +73,6 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | G-10-4 | BLOCKED: no way to freeze only the main loop to test the self-abort watchdog (SIGSTOP stops every thread) | IT-10-18 | No | decompose |
 | G-10-6 | BLOCKED: poster-frame HDR (HLG) tolerance is an open owner item | IT-10-7 (HLG part), IT-10-10 | Yes | owner |
 | **11_http_api** | | | | |
-| G-11-1 | `need_blocks` / `edited_since` map to "409/412 per code"; the assignment per code is not given | IT-11-1 | No | decompose |
 | **12_operator_cli** | | | | |
 | G-12-1 | BLOCKED: no test-only migration source for failing, killed and irreversible migrations (release binary embeds its migrations) | IT-12-11; NFT-RES-13, NFT-RES-14 | No | decompose |
 | G-12-3 | Reset of the sole admin: whether `LastAdmin` applies is left to 01 | IT-12-2, AT-12-2 | Yes | decompose |
@@ -119,7 +124,7 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | G-R12 | `resync_required` for cursor above head / unknown epoch is in research but not in an AC | NFT-RES-07 | No | decompose |
 | G-R13, G-R18 | Hardware named in environment.md must exist (WIN-VM, LIN-VM, DEV-PIXEL, MAC); power-loss durability beyond `kill -9` is a proposed extension | NFT-RES-15, 16, 17, 27, NFT-RES-03 (variant B) | Yes | owner |
 | **system/security** | | | | |
-| G-S5, G-S6 | TLS 1.2 refusal not stated (test asserts 1.3 negotiated, <= 1.1 refused); status for admin-only operations by a non-admin (403 or 404) | NFT-SEC-11, NFT-SEC-13 | No | decompose |
+| G-S5 | TLS 1.2 refusal not stated (test asserts 1.3 negotiated, <= 1.1 refused) | NFT-SEC-11 | No | decompose |
 | G-S10, G-S12 | 40 hostile-name cases per OS only named by class; restriction IDs for new bullets missing | NFT-SEC-31 | No | implement |
 | G-S13 | Out of scope: vault freshness against a malicious server (caveat only); per-link download connection caps not an AC | none | Yes | owner |
 
@@ -127,15 +132,15 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 
 | Resolve during | Component-level | System-level | Total |
 |---|---|---|---|
-| decompose | 19 | 10 | 29 |
+| decompose | 11 | 10 | 21 |
 | implement | 6 | 3 | 9 |
 | owner | 9 | 10 | 19 |
-| **Total** | 34 | 23 | 57 |
+| **Total** | 26 | 23 | 49 |
 
-Owner decision needed: 24 of 59 (G-AS-1 and G-AS-2 added by the architecture-sync pass of 2026-11-04). Resolved at this pass: 28 items (27 of them numbered gaps/BLOCKED tests).
+Owner decision needed: 24 of 59 (G-AS-1 and G-AS-2 added by the architecture-sync pass of 2026-11-04). Resolved at this pass: 28 items (27 of them numbered gaps/BLOCKED tests). Resolved by the owner on 2026-11-07 through spikes AZ-3773, AZ-3800, AZ-3826, AZ-3695 and AZ-3814: 13 items (the rows tagged "spike" in section 1; 8 of them were open gaps in section 2, so the open counts above fell by 8).
 
 ## 4. Notes
 
 - Owner-decision items overlap with the owner list in `canonical-names.md` (vault share links, Windows reserved-name marker, poster-frame SSIM tolerance, WASM trim, external review of blob encryption, signing accounts) and with the proposed defaults in `tests/gap-decisions.md`.
-- G-07-2 default: a `FOR UPDATE SKIP LOCKED` claim on the account row must not be held across the idle time of a purge cycle (short-transaction rule); the implementer chooses a per-step claim or a lease column (07 risks).
+- G-07-2 decided 2026-11-07 (AZ-3814): per-step claim, no lease column; see section 1 for the deadlock risk of `FOR UPDATE` against foreign-key checks of the hooks.
 - Making `/readyz` 503 on any degraded contributor means 04's suspect-blob state also turns it 503; revisit if that is too strict (11 risks).

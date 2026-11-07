@@ -20,7 +20,7 @@ Seventy percent of sessions are idle long-polls (AC-1): they must not hold datab
 - A read whose first page is empty and whose `wait` (capped by `longpoll_wait_max`) is above 0 parks with no connection. It wakes on notify; every `longpoll_auth_recheck` it asks the passed `PrincipalRevalidator` and ends with `Unauthenticated` if revoked; every `feed_safety_recheck` it re-reads with one short query, counting `feed_missed_wake_total` and logging WARN when that finds changes a notify missed; on `wait` expiry it returns an empty page with the same cursor.
 - A shutdown signal wakes every hold, which returns an empty page with the same cursor.
 - A database outage during a hold returns a typed unavailable error (11 maps it to 503) and moves no cursor.
-- A principal's fifth concurrent hold is refused with the error decided in E-12/c01 (`max_holds_per_principal` = 4).
+- A principal's fifth concurrent hold is refused at once with `ChangeFeedError::TooManyHolds { retry_after }` (wire: 429 `rate_limited` + `Retry-After`; proposed fixed 5 s constant, not a config key; `max_holds_per_principal` = 4).
 
 ## Scope
 
@@ -55,7 +55,7 @@ Then the first is returned by the safety recheck with `feed_missed_wake_total` i
 **AC-5: Hold cap**
 Given one principal with 4 parked reads
 When it opens a fifth
-Then the fifth is refused with the error decided in E-12/c01 and the 4 stay parked
+Then the fifth returns `TooManyHolds{retry_after}` (wire 429 `rate_limited` with a `Retry-After` header) and the 4 stay parked
 
 **AC-6: Revocation ends a hold (scripted revalidator)**
 Given `longpoll_auth_recheck = 100 ms` and a scripted revalidator that turns false after 150 ms, plus a second holder that stays valid
@@ -110,7 +110,7 @@ Then wake latency p95 is at most 50 ms (failure 250 ms) and p99 at most 150 ms (
 | AC-2 | 100 holders, one notify | IT-05-6 wake | <= 50 ms for that account only | AC-5, FT-P-07 |
 | AC-3 | `wait = 300 ms` | IT-05-6 timeout | Empty page, same cursor | |
 | AC-4 | Stamp without notify; second process | IT-05-6 lost wake | Healed; metric +1; WARN | NFT-RES-20 |
-| AC-5 | 5 holds of one principal | IT-05-6 hold cap (G-05-2) | Fifth refused | |
+| AC-5 | 5 holds of one principal | IT-05-6 hold cap (G-05-2) | Fifth refused with `TooManyHolds` (429 `rate_limited` + `Retry-After`) | |
 | AC-6 | Scripted revalidator | IT-05-7 (a) | `Unauthenticated` in 150-300 ms | AC-21 |
 | AC-7 | 100 holders, `wait = 30 s` | IT-05-8 | All within 200 ms | |
 | AC-8 | Paused PostgreSQL | IT-05-9 | Typed error; clean recovery | NFT-RES-20 |
@@ -134,7 +134,7 @@ Then wake latency p95 is at most 50 ms (failure 250 ms) and p99 at most 150 ms (
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| Hold-cap error name and code wait for E-12/c01 (G-05-2) | Epic owner | open | Low |
+| `TooManyHolds` is a new variant in `contracts` (additive; owners E-12 / E-00); the 5 s `Retry-After` value is proposed, not yet agreed | Epic owner / E-00 | open | Low |
 | The typed error for a database outage during a hold is not named (only "maps to 503") | Epic owner | open | Low |
 
 ## Contract

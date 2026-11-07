@@ -84,6 +84,7 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | | `set_state` | `tx: &mut DbTx, account, AccountState{Active \| Disabled}` -> `()` (a disabled account's sessions and device tokens are revoked in the same transaction) | `Unexpected` |
 | | `begin_deletion` | `tx: &mut DbTx, account` -> `()` | `Unexpected` |
 | | `finalize_deletion` | `tx: &mut DbTx, account` -> `()` | `Unexpected` |
+| | `lock_deleting` (proposed, E-15 `contracts` change task, decided 2026-11-07) | `tx: &mut DbTx, account` -> `bool` (`SELECT ... FOR UPDATE SKIP LOCKED` on the account's `deleting` row; `false` when another purger holds it or the account is not `deleting`) | `Unexpected` |
 
 | DTO | Fields / variants |
 |---|---|
@@ -107,7 +108,8 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | | `health` | `Actor` -> `HealthReport{items: Vec<(name, HealthItem)>}` | none |
 | `AccountService` | `view` | `&Principal` -> `AccountView{id, display_name, role, identities, quota, root_node_id}` | `Unexpected` |
 | | `quota_view` | `&Principal` -> `QuotaView` | `Unexpected` |
-| `AccountDeletionService` | `request` | `&Principal, confirmation` -> `DeletionAccepted{deadline: Timestamp}` | `Forbidden` (device token), `LastAdmin`, `ConfirmationMismatch` |
+| `AccountDeletionService` | `request` | `&Principal, confirmation` -> `DeletionAccepted{deadline: Timestamp}` (confirmation = the caller's own account id as lowercase hyphenated UUID text, exact equality) | `Forbidden` (device token), `LastAdmin`, `ConfirmationMismatch` |
+| | `request_as_operator` (proposed, E-17 `contracts` change task, decided 2026-11-07) | `account` -> `DeletionAccepted{deadline: Timestamp}` (no confirmation; last-admin guard applies) | `LastAdmin` |
 | `DevSeed` | `seed` | `()` -> `()` | a refusal when `environment = production` (variant name open) |
 
 `Actor` = `Admin(Principal)` or `Operator` (CLI). Every mutating call writes an `admin_action` audit row inside the provider.
@@ -159,7 +161,7 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 2. `ReadinessCheck` has no method list in any spec; the shape above is inferred from the `/readyz` body of E-09 (`{name, status, detail}`).
 3. `DoctorContext` fields are derived from the `doctor` options in 12 §3; 12 names only `run(ctx)`.
 4. `Role`: data_model §4.1 says `user`/`admin`; 01 invites carry `grants_role` `member`/`admin`.
-5. `AccountDeletionService::request` takes a principal, but 12 also calls it for `admin user delete` (operator, no principal). The `DevSeed` refusal has no variant name in 07.
+5. Resolved 2026-11-07: `admin user delete --yes` (operator, no principal) calls the separate method `AccountDeletionService::request_as_operator(account)`; `request` stays session-only (proposed `contracts` change task in E-17). The `DevSeed` refusal still has no variant name in 07.
 6. 01 §2 lists `revalidate` under `Authenticator`; the Ports table and canonical-names split it into `PrincipalRevalidator`. This contract follows the Ports table.
 7. Where 01 lists no error for a method (`reset_admin`, the `AccountAdmin` mutators, invite `revoke`), only `Unexpected` is declared; a provider that needs a typed failure (for example an unknown account) adds it through a minor version.
 

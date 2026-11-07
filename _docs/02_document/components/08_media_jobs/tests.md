@@ -118,7 +118,7 @@ Harness `H1`: Rust integration binary with real PostgreSQL 18 (roles `sunnycloud
 **Summary**: the worker input equals the uploaded bytes through the normal decrypt path.
 **Traces to**: AC-72, AC-71
 **Input data**: DS-03 photo (4 MB) and DS-07 clip (150 MB) uploaded through 03; job claimed; `GET input`; also a retained non-current revision (file overwritten after job creation, retention 7 d) and a revision whose retention has expired (test clock).
-**Expected result**: `Content-Length` equals the file size exactly; BLAKE3 of the body equals the manifest `content_hash`; retained non-current revision still served; expired or deleted revision 404 `revision_obsolete`; wrong holder 409; response has `Cache-Control: no-store`; no range support needed (a `Range` header is ignored or answered 200).
+**Expected result**: `Content-Length` equals the file size exactly; BLAKE3 of the body equals the manifest `content_hash`; retained non-current (superseded or deleted but still retained) revision still served; collected (retention expired) or foreign revision 404 `revision_obsolete`; wrong holder 409; response has `Cache-Control: no-store`; a request with `Range: bytes=0-99` is ignored: 200, the full body and exact `Content-Length` (G-08-4).
 **Max execution time**: 20 s
 **Dependencies**: PostgreSQL, 02, 03, 04
 
@@ -278,7 +278,7 @@ Harness `H1`: Rust integration binary with real PostgreSQL 18 (roles `sunnycloud
 **Traces to**: AC-59
 **Attack vector**: node id of another account on `/nodes/{id}/thumbnail`, `/transcode`, `thumbnail-states`.
 **Test procedure**: account B requests A's node (ready thumbnail) on each route; `thumbnail-states` with A's node ids from B; body of 1,001 ids.
-**Expected behavior**: 404 for foreign ids, no state leaked in `thumbnail-states` (foreign ids absent or `None`), 413/400 for 1,001 ids.
+**Expected behavior**: 404 for foreign ids on the node routes; `thumbnail-states` omits foreign and unknown ids from the answer (no state leaked); 422 `batch_too_large` for 1,001 ids (G-08-3).
 **Pass criteria**: 0 successful cross-account reads.
 **Fail criteria**: any derived byte or state of A visible to B.
 
@@ -343,5 +343,5 @@ Full variants with kills at fetch, decode and post: sys NFT-RES-36.
 
 - G-08-1 (BLOCKED, IT-08-19): `claim` eligibility for expired-lease rows whose attempts are exhausted.
 - G-08-2: whether "10 Mbit/s" is 10,000,000 bit/s (decimal) and whether the bound is inclusive.
-- G-08-3: the `thumbnail-states` body shape for foreign ids and the status for a body over 1,000 ids (400 or 413) are not given.
-- G-08-4: `Range` on `GET input` is not stated.
+- G-08-3: resolved 2026-11-07: foreign and unknown ids are omitted from the `thumbnail-states` answer; a body over 1,000 ids is 422 `batch_too_large`.
+- G-08-4: resolved 2026-11-07: `Range` on `GET input` is ignored (always 200, full body).

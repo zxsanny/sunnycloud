@@ -87,4 +87,12 @@ Then one encoding of `content_hash` in `ClaimedJob` is written in the worker job
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| The obsolete question (AC-3) and the hash encoding (AC-4) are not in the epic row's title; they are added because they are 08 decompose-time items that block E-18/c02 and E-18/c07 | E-18 owner | open | Low |
+| The obsolete question (AC-3) and the hash encoding (AC-4) are not in the epic row's title; they are added because they are 08 decompose-time items that block E-18/c02 and E-18/c07 | E-18 owner | resolved 2026-11-07: both decided with the other two answers | Low |
+
+## Resolution (2026-11-07)
+
+Decisions recorded in the 08 documents (`components/08_media_jobs/description.md`, `components/08_media_jobs/tests.md`, `tests/spec-gaps.md`):
+- G-08-3: ids of another account and unknown ids are omitted from the `thumbnail-states` answer; a body over 1,000 ids is 422 `batch_too_large` (same family as the commit batch cap; 400 was rejected).
+- G-08-4: `Range` on `GET input` is ignored: always 200 with the full body and exact `Content-Length` (IT-08-12).
+- Obsolete rule: a revision is obsolete only when collected (no longer current or retained) or foreign to the account: `revision_obsolete` (404); a retained superseded or deleted revision is still served.
+- `content_hash` in `ClaimedJob` is lowercase hex, 64 characters, as everywhere on the HTTP surface (`contracts/08_media_jobs/worker_job_protocol.md`).

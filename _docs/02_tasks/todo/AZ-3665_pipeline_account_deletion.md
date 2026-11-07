@@ -101,6 +101,7 @@ Integration through the real binaries; the system scenarios stay in E-31.
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| Purger claim mechanism (G-07-2) is still a spike (E-17/c01) | E-17 | open | Low |
+| Purger claim mechanism (G-07-2): per-step `FOR UPDATE SKIP LOCKED` claim via the proposed `AccountAdmin::lock_deleting`, no lease column (resolved 2026-11-07, AZ-3814) | E-17 | resolved | Low |
+| KNOWN RISK (G-07-2): a hook on its own connection that inserts a row with a foreign key to `accounts` takes `FOR KEY SHARE` on the `deleting` row, which the purger's `FOR UPDATE` blocks (self-deadlock); `FOR NO KEY UPDATE` avoids it. Owner asked; E-17/c06 must confirm no deadlock in IT-07-9 | E-17 / E-15 | open | Medium |
 | How the v1.2 vault hook is left out of v1.0/v1.1 builds is open (module-layout exception 6) | E-22, E-30 | open | Low |
 | Resolved by owner decision 2026-11-05: 20's erase hook runs before 02's (`vaults.root_node_id` references 02's nodes); the documented order is 06, 20, 02, 03, 08, then 05, 07a | Owner | resolved | High |

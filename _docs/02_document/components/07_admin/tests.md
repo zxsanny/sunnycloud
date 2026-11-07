@@ -39,7 +39,7 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 ### IT-07-3: Last-admin rule on every mutation
 **Summary**: demote, disable and delete of the only active admin each return `LastAdmin` and change nothing.
 **Traces to**: AC-23
-**Input data**: one active admin A plus two ordinary users and one already-disabled admin D (a disabled admin does not count as active). Calls: `update_user(A, role=user)`, `update_user(A, state=disabled)`, `AccountDeletionService::request(A session, confirmation)`, each as `Actor::Admin(A)` and `Actor::Operator`.
+**Input data**: one active admin A plus two ordinary users and one already-disabled admin D (a disabled admin does not count as active). Calls: `update_user(A, role=user)`, `update_user(A, state=disabled)`, deletion of A (`AccountDeletionService::request(A session, A's id text)` for `Actor::Admin(A)`, `request_as_operator(A)` for `Actor::Operator`), each as `Actor::Admin(A)` and `Actor::Operator`.
 **Expected result**: six `LastAdmin` errors; A's role, state and sessions unchanged; after promoting another user to admin, the same demote of A succeeds.
 **Max execution time**: 5 s
 **Dependencies**: 01
@@ -79,8 +79,8 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 ### IT-07-8: Deletion request
 **Summary**: `request` validates, marks the account `deleting`, revokes credentials and returns the deadline; nothing else happens in the request.
 **Traces to**: AC-27, AC-21, AC-30
-**Input data**: user U with files, a share, 2 sessions, 1 device token; calls with a device token, wrong confirmation text, correct confirmation as session.
-**Expected result**: device token gives `Forbidden`, wrong text `ConfirmationMismatch`, state unchanged; correct call returns `DeletionAccepted{deadline = now + 30 s}` within 1 s; U's state is `deleting`; all U's credentials rejected; U's rows (nodes, blobs, shares) still exist immediately after the call (the purger removes them later); a commit attempt by U fails through `AccountGuard`; `admin_action`/audit row for the request has ids only.
+**Input data**: user U with files, a share, 2 sessions, 1 device token; calls with a device token, wrong confirmation text, correct confirmation (U's own account id as lowercase hyphenated UUID text) as session; then `request_as_operator` on a second user V.
+**Expected result**: device token gives `Forbidden`, wrong text `ConfirmationMismatch`, state unchanged; correct call returns `DeletionAccepted{deadline = now + 30 s}` within 1 s; U's state is `deleting`; all U's credentials rejected; U's rows (nodes, blobs, shares) still exist immediately after the call (the purger removes them later); a commit attempt by U fails through `AccountGuard`; `admin_action`/audit row for the request has ids only; `request_as_operator(V)` needs no confirmation and gives the same end state for V.
 **Max execution time**: 5 s
 **Dependencies**: 01, 02, 03, 06
 
@@ -112,7 +112,7 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 **Summary**: two `run_cycle` calls on the same account in parallel end in the same clean state.
 **Traces to**: AC-27
 **Input data**: account with 2,000 files; two purger instances (as two API processes would be during a rolling restart) call `run_cycle` in a loop on separate connections.
-**Expected result**: final sweep 0 rows; zero unhandled errors (a lost race is a retried tick); exactly one `account_deleted` audit event. The description does not state purger concurrency; this expectation is the stated behaviour assumed (see gap G-07-2).
+**Expected result**: final sweep 0 rows; zero unhandled errors (a lost race is a retried tick); exactly one `account_deleted` audit event. Rule (resolved 2026-11-07, G-07-2): each purger step takes a per-step `FOR UPDATE SKIP LOCKED` claim on the `deleting` account row through `AccountAdmin::lock_deleting(tx, account)`; a purger that gets `false` skips the step, and two purgers alternating steps on one account is harmless because the hooks are restart-safe by query alone.
 **Max execution time**: 60 s
 **Dependencies**: all hook owners
 
@@ -185,7 +185,7 @@ The targets are proposed (the description sets none) and replaced by a measured 
 1. As ordinary user U: call each operation with `Actor::Admin(U)`.
 2. As admin A's device token: call each operation.
 3. As admin A, call `update_user` and `set_quota` with an id that does not exist and with a random UUID.
-**Expected behavior**: steps 1 and 2 return `Forbidden`; step 3 returns `NotFound` with no distinction between "exists but other" and "missing" (accounts have no owner notion, so the only 404 case is absence).
+**Expected behavior**: steps 1 and 2 return `Forbidden` (HTTP 403 at the route, G-S6 resolved 2026-11-07); step 3 returns `NotFound` (HTTP 404) with no distinction between "exists but other" and "missing" (accounts have no owner notion, so the only 404 case is absence).
 **Pass criteria**: 0 successful mutations; 0 rows written to `admin_action` for refused calls except an optional refusal event with ids only.
 **Fail criteria**: any role, state or limit change by a non-admin.
 
@@ -197,7 +197,7 @@ The targets are proposed (the description sets none) and replaced by a measured 
 1. Call `request` with a device token and the right confirmation.
 2. Call with a session and empty, whitespace, and wrong-case confirmation.
 3. Call with a session for another account's id in the confirmation.
-**Expected behavior**: `Forbidden` for step 1, `ConfirmationMismatch` for steps 2 and 3.
+**Expected behavior**: `Forbidden` for step 1, `ConfirmationMismatch` for steps 2 and 3. The right confirmation is the caller's own account id as lowercase hyphenated UUID text, compared for exact equality (no trimming, no case folding); empty, whitespace-only, an upper-case rendering of the own id, and another account's id each give `ConfirmationMismatch`. The operator path `request_as_operator` has no confirmation and is covered by IT-07-3 (last-admin) and IT-07-8.
 **Pass criteria**: account state stays `active`; credentials still valid.
 **Fail criteria**: any state change.
 
@@ -278,5 +278,5 @@ Sys scenario FT-P-19 / NFT-RES-30 repeat this with the full client set; this tes
 ## Spec gaps found
 
 - G-07-1: the late-registration method that gives `DeletionPurger` its hook list is not named in the description (only "registered late by 12"). Tests use the seam 12 uses; name needed from the contracts crate.
-- G-07-2: concurrent `run_cycle` calls on the same account are not specified (IT-07-12 assumes tolerance).
+- G-07-2 (resolved 2026-11-07): concurrent `run_cycle` calls on one account are kept apart by a per-step `FOR UPDATE SKIP LOCKED` claim through the proposed `AccountAdmin::lock_deleting`; IT-07-12 states the rule, nothing is assumed.
 - G-07-3: the HTTP code for `LastAdmin` is not in 11's error table (AT-07-2 step 1 accepts the 409/422 class); one fixed code is needed.

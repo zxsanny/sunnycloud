@@ -17,7 +17,7 @@ After tombstones are purged, a device whose cursor is older than the purge must 
 
 ## Outcome
 
-- `FeedHorizon::raise_purge_horizon(tx, account, seq)` updates `purge_horizon` in the caller's transaction; zero matching rows is not an error; a lower `seq` follows the rule decided in E-12/c01 (G-05-3).
+- `FeedHorizon::raise_purge_horizon(tx, account, seq)` updates `purge_horizon` in the caller's transaction; zero matching rows is not an error; the update is `SET purge_horizon = GREATEST(purge_horizon, $seq)`: a lower `seq` leaves the horizon unchanged and is not an error (G-05-3, decided 2026-11-07).
 - `AccountLifecycleHook::initialize(tx, account)` inserts the feed row with the installation epoch: `max(epoch)` of existing rows, or the clock's unix seconds on an empty install, in which case it also writes the marker through `EpochMarker::write`.
 - `erase_batch(account, limit)` deletes the row and returns `remaining = 0`, also on repeat.
 
@@ -36,10 +36,10 @@ Given an account with seq 50 and horizon 0
 When `raise_purge_horizon(tx, account, 30)` commits, the call is made for an erased account, and a caller transaction that raised it rolls back
 Then cursors below 30 get `ResyncRequired{below_purge_horizon}`, the call for the erased account returns `Ok`, and the rollback leaves the horizon unchanged
 
-**AC-2: Lower seq follows the decided rule**
+**AC-2: Lower seq leaves the horizon unchanged**
 Given a horizon of 30
 When `raise_purge_horizon` is called with 20
-Then the horizon follows the rule recorded by E-12/c01 (if the rule is "never decreases", it stays 30)
+Then the call returns `Ok` and the horizon stays 30 (it never decreases)
 
 **AC-3: Installation epoch at account creation**
 Given an empty install with the clock at T
@@ -67,7 +67,7 @@ Then both calls return `remaining = 0`, the row is gone, and the parked read end
 | AC Ref | Initial Data/Conditions | What to Test | Expected Behavior | NFR References |
 |--------|------------------------|-------------|-------------------|----------------|
 | AC-1 | Seq 50, horizon 0 | IT-05-12 raise, zero rows, rollback | Resync below 30; `Ok`; unchanged | AC-41, NFT-RES-08 |
-| AC-2 | Horizon 30 | IT-05-12 lower-seq case (unblocked by E-12/c01) | Per rule | |
+| AC-2 | Horizon 30 | IT-05-12 lower-seq case | `Ok`; horizon stays 30 | |
 | AC-3 | Empty install, real `EpochMarker` on a temp directory | IT-05-13 initialize | Clock epoch and marker; same epoch for the second | |
 | AC-4 | Feed row, parked read | IT-05-13 erase | `remaining = 0` twice; hold ends | AC-27, FT-P-19, NFT-RES-30 |
 

@@ -92,4 +92,4 @@ Then each rule in Scope is present, matches the contracts, and names the test th
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | `module-layout.md` names no path or owner for operator and client-protocol documentation beyond `README.md` (E-00) | E-00 / owner | open | Low |
-| 409 vs 412 for `need_blocks` and `edited_since` is open (E-21/c02, G-11-1) | E-21 | open | Low |
+| `need_blocks` and `edited_since` are both 409 (resolved 2026-11-07, E-21/c02, G-11-1) | E-21 | resolved | Low |

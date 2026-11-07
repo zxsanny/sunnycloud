@@ -57,7 +57,7 @@ Then those two entries carry typed per-entry errors and every other entry is com
 **AC-4: Edge sizes**
 Given a zero-byte file and a batch above the configured maximum
 When they are staged and committed
-Then the zero-byte file commits through the staged path, and the oversized batch gets 413
+Then the zero-byte file commits through the staged path, and the oversized batch (more entries than `batch_max_entries`) gets 422 `batch_too_large`
 
 **AC-5: Staged expiry from the scheduler**
 Given a staged file never committed and the test clock past its TTL
@@ -89,7 +89,7 @@ Integration through the real binaries; the system scenarios stay in E-31.
 | AC-1 | 200 files up to 2 MiB | Parallel staging, one batch | 200 committed, counter +1 | AC-40 (scaled) |
 | AC-2 | Committed batch C, response dropped | Retry with C | Stored response, no duplicates | |
 | AC-3 | Batch with bad name and expired staged key | Commit | Two typed entry errors, rest committed | |
-| AC-4 | Zero-byte file; oversized batch | Stage and commit | Zero-byte committed; 413 | |
+| AC-4 | Zero-byte file; oversized batch | Stage and commit | Zero-byte committed; 422 `batch_too_large` | |
 | AC-5 | Uncommitted staged file, test clock | Scheduler cycle | Row gone, reservation released | |
 
 ## Constraints

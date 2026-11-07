@@ -127,7 +127,7 @@ flowchart LR
 |---|---|---|
 | `/api/v1/worker-jobs/claims` | POST `{lane}` | 200 `ClaimedJob` or 204 |
 | `/api/v1/worker-jobs/{job_id}/lease` | PUT / DELETE | 200 `{lease_ms}` / 204; 409 `lease_lost` |
-| `/api/v1/worker-jobs/{job_id}/input` | GET | 200 exact `Content-Length`; 404 `revision_obsolete`; 409 |
+| `/api/v1/worker-jobs/{job_id}/input` | GET | 200 exact `Content-Length` (`Range` ignored); 404 `revision_obsolete` (collected or foreign revision); 409 |
 | `/api/v1/worker-jobs/{job_id}/outputs/{kind}` | PUT | 204 Accepted, 200 AlreadyPresent, 413, 422, 409, 404 |
 | `/api/v1/worker-jobs/{job_id}/result` | PUT `{outcome}` | 204 |
 | `/api/v1/worker-jobs/{job_id}/failure` | POST `{code, disposition}` | 200 `{result: requeued \| dead}` |
@@ -235,7 +235,7 @@ sequenceDiagram
 
 | Type | Title | Points |
 |------|-------|--------|
-| Spike | Settle `thumbnail-states` foreign-id shape and over-1,000 status (G-08-3) and `Range` on worker `GET input` (G-08-4); record in `tests/spec-gaps.md` | 2 |
+| Spike | Settle `thumbnail-states` foreign-id shape and over-1,000 status (G-08-3) and `Range` on worker `GET input` (G-08-4); record in `tests/spec-gaps.md`; decided 2026-11-07: foreign and unknown ids omitted, over 1,000 ids 422 `batch_too_large`, `Range` ignored (also: obsolete only when collected or foreign; `content_hash` lowercase hex) | 2 |
 | Enabler | `media-shared` crate: `types`, worker DTOs, `Params[params_version]` constants, crate-graph test | 3 |
 | Task | `media-shared::policy`: `is_compliant` (decimal, inclusive 10 Mbit/s), `decide`, `poster_offset_ms`, `supported_kinds_for` with table tests | 3 |
 | Enabler | Migration and RLS notes for `jobs`, `derived`, `worker_status` with indexes | 2 |

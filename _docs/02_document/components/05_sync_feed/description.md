@@ -29,15 +29,17 @@
 ### ChangeFeed (called by 11 for `GET /changes`)
 | Method | Input | Output | Errors |
 |---|---|---|---|
-| `read` | `Principal`, `&dyn PrincipalRevalidator` (from 01, passed by 11), `Cursor{epoch, seq}`, `wait?` (capped by config), `limit?` | `ChangePage{items, next_cursor, has_more}` | `ResyncRequired{reason}` (410), `Unauthenticated` (revoked while held), `BadCursor` (422, code `invalid_cursor`) |
+| `read` | `Principal`, `&dyn PrincipalRevalidator` (from 01, passed by 11), `Cursor{epoch, seq}`, `wait?` (capped by config), `limit?` | `ChangePage{items, next_cursor, has_more}` | `ResyncRequired{reason}` (410), `Unauthenticated` (revoked while held), `BadCursor` (422, code `invalid_cursor`), `TooManyHolds{retry_after}` (429, code `rate_limited`, `Retry-After` header; proposed constant 5 s; see below) |
 | `head` | account | `Cursor` | none |
+**Hold cap** (decision G-05-2, owner 2026-11-07): a principal holds at most `max_holds_per_principal` (4) reads at once. The fifth is refused before parking with the new typed variant `ChangeFeedError::TooManyHolds { retry_after }` (additive change in `contracts`); 11 maps it to the existing wire code `rate_limited` (HTTP 429) with a `Retry-After` header, so the error helper's status table and the OpenAPI code list gain no row. Proposed (not yet agreed): `retry_after` is a fixed constant of 5 s owned by the long-poll task, not a config key. The four parked reads stay parked.
+
 `ChangeFeed` also takes a shutdown signal: on shutdown every held read is woken and returns an empty page with the same cursor, so graceful stop does not wait for the hold timeout.
 **ChangeItem** (latest state of one node, not an event): `node_id`, `parent_id`, `kind`, `name`, `state: live|tombstone`, `revision_id?`, `size?`, `content_hash?`, `seq`. Clients derive create/update/move/delete by comparing with their local index (data model D1; the "op" column of the flows document is not stored). A folder tombstone means its whole subtree is deleted: cascade marking does not stamp descendants. When a folder item changes from tombstone to live (a commit revived it as an ancestor, 02), its children may have been cascade-deleted meanwhile, so a client re-lists that folder (`GET /nodes/{id}/children`) instead of trusting its old local children. A page always ends on a `seq` boundary, so it can exceed `limit` when a batch shares one `seq`.
 **Cursor rules** (data model 7.2): `ResyncRequired` when `E != epoch` (`reason = epoch_changed`), `S < purge_horizon` (`below_purge_horizon`) or `S > seq` (`cursor_ahead`, a restore without a bump); the `reason` travels as an extra field of the 410 body. Otherwise `nodes WHERE account_id = $1 AND seq > S ORDER BY seq, id`.
 **Hold algorithm** (no connection while parked): if the first read is empty and `wait > 0`, park on the account's notifier; wake on notify, on every `longpoll_auth_recheck` (calls `revalidate`, ends with `Unauthenticated` if revoked), and every `feed_safety_recheck` (re-read, one short query); on `wait` expiry return an empty page with the same cursor.
 
 ### FeedHorizon (called by 02's purge)
-`raise_purge_horizon(tx, account, seq)` is the last statement of the purge transaction. It is a plain `UPDATE`; zero rows (the feed row of an account being erased) is not an error.
+`raise_purge_horizon(tx, account, seq)` is the last statement of the purge transaction. It is a non-decreasing `UPDATE` (`SET purge_horizon = GREATEST(purge_horizon, $seq)`): a call with a lower `seq` leaves the horizon unchanged and is not an error, because a lowered horizon would accept stale cursors whose tombstones were purged and clients would silently miss deletions (a reset is what `bump_epoch` is for). Zero rows (the feed row of an account being erased) is not an error either.
 
 ### EpochAdmin (operator/system scope)
 `marker_status() -> MarkerStatus{db_epoch, marker: Absent | Present(epoch)}` is read by `serve` at start (refuse to start when the database epoch is below the marker) and by the doctor check.
@@ -59,7 +61,7 @@
 ## 3. External API Specification (resources owned; routed by 11_http_api)
 | Endpoint | Method | Scope | Rate limit | Description |
 |---|---|---|---|---|
-| `/api/v1/changes?cursor=E.S&wait=&limit=` | GET | SessionOrDevice | per-principal concurrent holds cap | page of changed nodes or empty after hold |
+| `/api/v1/changes?cursor=E.S&wait=&limit=` | GET | SessionOrDevice | per-principal concurrent holds cap (the 5th: 429 `rate_limited` + `Retry-After`) | page of changed nodes or empty after hold |
 | `/api/v1/changes/head` | GET | SessionOrDevice | normal | current cursor for a new device (take head first, then list the tree) |
 `resync_required` is HTTP 410 with stable code `resync_required` and an extra `reason` field (`epoch_changed`, `below_purge_horizon`, `cursor_ahead`); a malformed cursor is 422 `invalid_cursor`. The wait is bounded below the proxy and API timeouts. Response and request schemas in OpenAPI; clients ignore unknown fields.
 

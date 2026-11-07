@@ -62,7 +62,7 @@ For each spec skip when every output already has a `derived` row for `(account, 
 | Method | Input | Output | Notes |
 |---|---|---|---|
 | `enqueue_in_tx` | `tx`, `JobSpec`, priority | `Enqueued \| AlreadyExists` | idempotent |
-| `claim` | `lane`, `worker_id` | `Option<ClaimedJob{job_id, kind, content_hash, params_version, attempt, lease_ms}>` | one statement: `SKIP LOCKED`, `ORDER BY priority, available_at`, sets `running`, `attempts + 1`, `available_at = now + job_lease`, `leased_by`. Any priority may be claimed by any slot: ordering by priority already serves interactive jobs first. Before handing out work, `claim` skips and marks `dead` any job whose lease expired and whose attempts are exhausted (same rule as `reap`, so a claim never hands out an exhausted job) |
+| `claim` | `lane`, `worker_id` | `Option<ClaimedJob{job_id, kind, content_hash, params_version, attempt, lease_ms}>` (`content_hash` is lowercase hex, 64 characters, as everywhere on the HTTP surface) | one statement: `SKIP LOCKED`, `ORDER BY priority, available_at`, sets `running`, `attempts + 1`, `available_at = now + job_lease`, `leased_by`. Any priority may be claimed by any slot: ordering by priority already serves interactive jobs first. Before handing out work, `claim` skips and marks `dead` any job whose lease expired and whose attempts are exhausted (same rule as `reap`, so a claim never hands out an exhausted job) |
 | `extend_lease` | `job_id`, `worker_id` | `Extended \| LeaseLost` | heartbeat while a decoder runs |
 | `complete_skipped` | `job_id`, `worker_id`, outcome `skipped_compliant \| obsolete` | `()` | `succeeded` with that outcome, no derived row |
 | `fail` | `job_id`, `worker_id`, short error code, `Disposition::Retry \| Permanent` | `Requeued \| Dead` | backoff `job_retry_backoff` doubling is applied here, on the API clock; bounded `last_error` (500 chars); `dead` when `Permanent` or `attempts >= job_attempts` |
@@ -80,7 +80,7 @@ A running job whose lease expired is simply claimable again; that is the retry p
 
 Sequence: validate the lease, then `TreeReader::is_current_or_retained` for the job's revision; stream the body through `BlobWriter::write_complete` (size capped per kind, file synced, no tx open); sniff the head and require the expected type (WebP or JPEG for `thumb`/`preview`, MP4 for `transcode`; the worker is never trusted on type); then one short tx: `register_in_tx(committed)`, insert `derived` (`ON CONFLICT DO NOTHING`), and, when this was the last expected output, mark the job `succeeded` with outcome `derived`. If the derived row already existed (retry after a lost response) the new blob is scheduled with `GcQueue Due::Now` and the answer is `AlreadyPresent`, so exactly one derived file exists per key (AC-71). A crash after the file write leaves an orphan swept by 04. A lossless remux result is accepted like a transcode. A `stills` job posts `preview` and `thumb` as two outputs; a retry after a partial run gets `AlreadyPresent` for the one already stored.
 
-`open_input(job_id, worker_id)`: validates the lease, resolves the job's revision (`TreeReader::get_revision`, `is_current_or_retained`), takes the `BlobRef` from `BlobCatalog::get_ref` and returns `BlobReader::open` with no range (same decrypt path as downloads). A revision that is gone or no longer retained is `RevisionObsolete` (404): the supervisor closes the job `obsolete`.
+`open_input(job_id, worker_id)`: validates the lease, resolves the job's revision (`TreeReader::get_revision`, `is_current_or_retained`), takes the `BlobRef` from `BlobCatalog::get_ref` and returns `BlobReader::open` with no range (same decrypt path as downloads). A revision is obsolete only when it is collected (no longer `is_current_or_retained`, owner E-13 in 02) or foreign to the account: that is `RevisionObsolete` (404) and the supervisor closes the job `obsolete`. A superseded or deleted revision that is still retained is served and the job is processed (decided 2026-11-07).
 
 ### Derived queries
 - `ThumbnailStateSource::states(account_id, &[content_hash]) -> Map<hash, Ready \| Pending \| Failed \| None>`: one batched probe on `derived` PK (`thumb`) and one on the job unique key (both by index, no join into the listing query; NFT-PERF-10 must include these two probes). `None` when the planner yields no job for the type.
@@ -104,7 +104,7 @@ All carry `Authorization: Bearer <worker_api_token>` and `X-Worker-Id`. `:8081` 
 |---|---|---|
 | `/api/v1/worker-jobs/claims` | POST | Body `{lane}` (`image` or `video`). 200 `ClaimedJob`, or 204 when nothing is due |
 | `/api/v1/worker-jobs/{job_id}/lease` | PUT, DELETE | PUT is the heartbeat: 200 `{lease_ms}`. DELETE is `release` (graceful shutdown): 204. 409 `lease_lost` when the job is not running for this worker |
-| `/api/v1/worker-jobs/{job_id}/input` | GET | Decrypted original via `BlobReader`; 200 with exact `Content-Length`; 404 `revision_obsolete` (the supervisor then closes the job `obsolete`); 409 `lease_lost` |
+| `/api/v1/worker-jobs/{job_id}/input` | GET | Decrypted original via `BlobReader`; `Range` is ignored: always 200 with the full decrypted body and exact `Content-Length` (G-08-4, decided 2026-11-07); 404 `revision_obsolete` only for a collected or foreign revision (the supervisor then closes the job `obsolete`); 409 `lease_lost` |
 | `/api/v1/worker-jobs/{job_id}/outputs/{kind}` | PUT | One output per `kind` (`thumb`, `preview`, `transcode`): `Content-Type`, optional `X-Width`, `X-Height`, `X-Duration-Ms`; 204 on `Accepted`, 200 on `AlreadyPresent`, 413 over the kind cap, 422 on a type the sniffer rejects or a kind the job does not produce, 409 `lease_lost`, 404 `revision_obsolete` |
 | `/api/v1/worker-jobs/{job_id}/result` | PUT | Body `{outcome: skipped_compliant \| obsolete}`: closes the job without output. 204 |
 | `/api/v1/worker-jobs/{job_id}/failure` | POST | Body `{code, disposition: retry \| permanent}`. 200 `{result: requeued \| dead}` |
@@ -117,7 +117,7 @@ Authentication failure of any kind is a uniform 403. An authenticated worker tha
 |---|---|---|---|
 | `/api/v1/nodes/{node_id}/thumbnail?size=small\|preview` | GET, HEAD | session or device | 200 WebP/JPEG; `404 thumbnail_not_ready` or `thumbnail_unavailable`; never SVG |
 | `/api/v1/nodes/{node_id}/transcode` | GET, HEAD | session or device | Range-capable MP4; `404` when none (compliant clips serve the original via content) |
-| `/api/v1/thumbnail-states` | POST (query body of node ids) | session or device | Batch state for the web poll every 2 s; body capped at 1,000 ids |
+| `/api/v1/thumbnail-states` | POST (query body of node ids) | session or device | Batch state for the web poll every 2 s; body capped at 1,000 ids: more is 422 `batch_too_large` (same family as the commit batch cap; 400 `invalid_request` was the rejected alternative). Ids of another account and unknown ids are omitted from the answer, so no state is leaked (G-08-3, decided 2026-11-07) |
 
 The share-link thumbnail route is 06's and 11's: 06 authorises the token, 11 calls `open_derived_for` with the returned `LiveFile`.
 

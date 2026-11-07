@@ -72,7 +72,7 @@ No credential on a protected route gives 401; a revoked, expired or unknown cred
 | `WorkerOutput` | per-kind cap from 08 (`derived_max_*`) | worker outputs |
 | `None` | no body | GET, HEAD, body-less DELETE |
 
-A declared length over the class limit is 413 before any byte is read. Body idle timeout 30 s (`Block`, `Staged`); long-poll allows `wait` + 5 s; downloads have a 60 s write-idle timeout and no total cap; every other request 60 s.
+A declared length over the class limit is 413 before any byte is read (for `Batch`, 4 MiB; more than `batch_max_entries` entries inside a body that fits is 422 `batch_too_large` from the commit service). Body idle timeout 30 s (`Block`, `Staged`); long-poll allows `wait` + 5 s; downloads have a 60 s write-idle timeout and no total cap; every other request 60 s.
 
 ### Operations
 
@@ -184,7 +184,7 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 3. The provider callback is a GET by protocol that consumes the state row and creates a session; the "GET never mutates" check needs an explicit, named exemption for it (and for the link completion, whose route 01 does not list).
 4. `revisions:lookup` takes up to 1,000 content hashes (about 70 KB as hex JSON), above `Small` (64 KiB); its body class is not assigned (`Query` 128 KiB fits).
 5. The public share thumbnail route is named by 11 §8 and 08 §5 but missing from 06's route table; its exact path and the `size` parameter are taken from 11.
-6. `thumbnail-states`: 08 describes a body of node ids, while `ThumbnailStateSource::states` takes content hashes; settled by spike E-18/c01 (G-08-3). One handler must stay one port call.
+6. `thumbnail-states`: 08 describes a body of node ids, while `ThumbnailStateSource::states` takes content hashes; One handler must stay one port call. Decided 2026-11-07 (G-08-3): ids of another account and unknown ids are omitted from the answer; a body over 1,000 ids is 422 `batch_too_large`. The node-id versus content-hash mapping step is still open.
 7. Auth on `POST /test/clock` (`:9091`): `observability.md` says "bearer via `e2e-ctl`", but no such credential is defined in 11 or helper 01.
 8. `GET /api/v1/setup` (11 §8, owner 01) is not in 01's route table; `list_providers` already returns `setup_required`.
 9. 11 §8's indicative paths differ from the owners' (`.../login`, `code-exchanges`, `GET/POST device-grants/{user_code}`, `public-shares/{token}/access`); this contract follows the owners, as 11 §8 says.

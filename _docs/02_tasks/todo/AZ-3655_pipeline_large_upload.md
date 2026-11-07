@@ -123,4 +123,4 @@ Integration through the real binaries; the system scenarios stay in E-31.
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | G-03-1: worst-case resend (16 MiB) vs AC-3's 10 MiB bound is open (E-14/c01, E-23/c03) | Owner via E-14 spike | open | Medium |
-| 409 vs 412 for `need_blocks` is open (E-21/c02, G-11-1) | E-21 | open | Low |
+| 409 for `need_blocks` decided 2026-11-07 (E-21/c02, G-11-1) | E-21 | resolved | Low |

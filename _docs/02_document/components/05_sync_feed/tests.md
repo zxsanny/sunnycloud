@@ -93,7 +93,7 @@ notify -> holders of that account return the new page within 50 ms of notify; ot
 timeout -> empty page, same cursor, at 300 ms +/- 100 ms
 lost wake: returned by feed_safety_recheck (200 ms) with metric feed_missed_wake_total +1 and a WARN log
 a change committed by a second process (psql-style) is seen within feed_safety_recheck + 100 ms
-holds above max_holds_per_principal (4): the 5th is refused with a typed error (see gap G-05-2)
+holds above max_holds_per_principal (4): the 5th returns Err(TooManyHolds{retry_after}) at once (no parking, no connection), mapped on the wire to 429 `rate_limited` with a Retry-After header (proposed 5 s); the 4 parked reads of that principal stay parked and wake normally; once one of the 4 ends, a new read parks
 ```
 **Max execution time**: 20 s
 **Dependencies**: PostgreSQL
@@ -144,9 +144,9 @@ every old cursor -> ResyncRequired{epoch_changed}; new cursor E'.0 reads normall
 **Dependencies**: PostgreSQL (dump/restore inside container), 04
 
 ### IT-05-12: FeedHorizon
-**Summary**: `raise_purge_horizon` is a plain UPDATE in the caller's transaction.
+**Summary**: `raise_purge_horizon` is a non-decreasing UPDATE (`GREATEST(purge_horizon, $seq)`) in the caller's transaction.
 **Traces to**: AC-41
-**Expected result**: horizon raised to seq 30 -> cursors below it resync; zero matching rows (account being erased) -> `Ok`, no error; rollback of the caller tx undoes the raise. Horizon must not decrease when called with a lower seq: asserted as non-decreasing (BLOCKED on the rule: the description says "plain UPDATE", see gap G-05-3).
+**Expected result**: horizon raised to seq 30 -> cursors below it resync; zero matching rows (account being erased) -> `Ok`, no error; rollback of the caller tx undoes the raise; lower seq: with the horizon at 30, a call with 20 returns `Ok` and the horizon stays 30 (a cursor at seq 25 still gets `ResyncRequired{below_purge_horizon}`), and a call with 30 keeps it at 30.
 **Max execution time**: 4 s
 **Dependencies**: PostgreSQL
 
@@ -253,8 +253,8 @@ Architecture §6 gives sync latency (<= 5 s p95, <= 10 MB) and 100 sessions; the
 **Traces to**: AC-1, AC-59
 **Attack vector**: 1,000 concurrent `read(wait = 30 s)` from one principal; 10,000 from 100 principals.
 **Test procedure**: open them all; sample task count, memory and DB connections.
-**Expected behavior**: per-principal cap 4 enforced; total memory bounded; DB connections unchanged; others unaffected.
-**Pass criteria**: <= 4 accepted per principal, RSS growth <= 32 MB, connections <= baseline + 2. **Fail criteria**: otherwise.
+**Expected behavior**: per-principal cap 4 enforced, every read above it refused at once with `TooManyHolds` (wire 429 `rate_limited` + `Retry-After`); total memory bounded; DB connections unchanged; others unaffected.
+**Pass criteria**: <= 4 accepted per principal, every other read is `TooManyHolds` / 429 `rate_limited` with a `Retry-After` header, RSS growth <= 32 MB, connections <= baseline + 2. **Fail criteria**: otherwise.
 
 ### ST-05-4: Cursor injection
 **Summary**: crafted cursor strings are data.

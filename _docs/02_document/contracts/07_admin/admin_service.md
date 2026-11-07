@@ -3,9 +3,9 @@
 **Component**: 07_admin
 **Producer task**: E-17/c02 (construction), E-17/c03 (`list_users`, `update_user`, `set_quota`), E-17/c04 (last-admin rule), E-17/c07 (`health`) — `_docs/02_tasks/todo/B05-02_admin_crate_skeleton.md`, `B05-03_admin_user_management.md`, `B05-04_last_admin_guard.md`, `B05-07_admin_health_aggregation.md` (renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-21/c12 (admin handlers), E-22/c03 (composition root), E-22/c08 (`admin promote|demote`), E-22/c09 (`admin user list|set-quota`); in batch E-17/c08, E-17/c09, E-17/c10
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Status**: draft (open points below)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -30,7 +30,7 @@ The admin operations behind the web admin page and the operator CLI: list users 
 |-------|------|--------|
 | `LastAdmin` | `last_admin` | 409 |
 | `NotFound` | `not_found` | 404 |
-| `Forbidden` | `forbidden` | 403, or 404 if E-17/c01 records that for G-S6 |
+| `Forbidden` | `forbidden` | 403 (G-S6, decided 2026-11-07); another account's id is `NotFound`, 404 |
 | `InvalidLimit` | open (see Open points) | open |
 
 ### HTTP resources owned by 07 (routed by 11)
@@ -77,8 +77,8 @@ The admin operations behind the web admin page and the operator CLI: list users 
 
 ## Open points
 
-1. `contracts` part 1 lists only `Unexpected` (or no error) for `list_users` and `health`; `Forbidden` on all four operations needs a minor `contracts` change (E-17/c01 AC-4).
-2. G-S6: 403 or 404 for a non-admin caller (E-17/c01).
+1. `contracts` part 1 lists only `Unexpected` (or no error) for `list_users` and `health`; `Forbidden` on all four operations (`AdminError::Forbidden`) needs a minor `contracts` change, a proposed `contracts` change task in E-17 (E-17/c01 AC-4) and a dependency of E-17/c05 and E-17/c06.
+2. Resolved 2026-11-07 (G-S6): a non-admin caller gets 403 `forbidden`; another account's id gets 404 `not_found`. ST-07-1, NFT-SEC-13 and E-31/c03 use this record.
 3. `HealthReport` has items only; whether it carries an overall status is not stated.
 4. `InvalidLimit` has no code in the shared status table; `health_check_timeout` and `admin_list_page_size` have no defaults.
 5. G-AS-1: the web app lists "delete user", which 07 does not offer.
@@ -88,3 +88,4 @@ The admin operations behind the web admin page and the operator CLI: list users 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
+| 1.0.1 | 2026-11-07 | `Forbidden` status fixed at 403 (G-S6) (AZ-3814) | spike AZ-3814 |

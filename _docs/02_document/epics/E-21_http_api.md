@@ -129,7 +129,7 @@ flowchart LR
 
 **BodyClass**: `Small` 64 KiB, `Commit` 4 MiB, `Batch` 4 MiB (500 entries), `Block` exact block length at most 2 MiB (411 without `Content-Length`), `Staged` at most 2 MiB, `Query` 128 KiB, `Auth` 16 KiB, `WorkerOutput` per-kind cap from E-18, `None` for GET. Idle body timeout 30 s, long-poll `wait` + 5 s, download write-idle 60 s, default request timeout 60 s.
 
-**Error mapping**: Validation 400 (422 semantic), Unauthorized 401, Forbidden 403, NotFound 404 (also foreign id), Conflict 409, RateLimited 429 + `Retry-After`, Gone 410 (`resync_required`), PreconditionFailed 409/412 per code (open gap G-11-1), PayloadTooLarge 413, RangeNotSatisfiable 416, UpgradeRequired 426, Unavailable 503 + `Retry-After`, QuotaExceeded 507, Internal 500 opaque; `LastAdmin` is 409.
+**Error mapping**: Validation 400 (422 semantic), Unauthorized 401, Forbidden 403, NotFound 404 (also foreign id), Conflict 409, RateLimited 429 + `Retry-After`, Gone 410 (`resync_required`), PreconditionFailed 409 for `need_blocks` and `edited_since` (G-11-1 decided 2026-11-07; 412 is only for `If-Match`), `batch_too_large` 422 (a body over the `Batch` class is a separate 413), PayloadTooLarge 413, RangeNotSatisfiable 416, UpgradeRequired 426, Unavailable 503 + `Retry-After`, QuotaExceeded 507, Internal 500 opaque; `LastAdmin` is 409.
 
 **Configuration** (typed `HttpConfig`, bound by E-22): `SUNNYCLOUD_PUBLIC_URL`, `_TRUSTED_PROXIES`, `_INTERNAL_ADDR`, `_MAX_CONNECTIONS` 4096, `_H1_HEADER_TIMEOUT` 10s, `_H2_STREAM_WINDOW` 4MiB, `_H2_CONN_WINDOW` 32MiB, `_H2_MAX_STREAMS` 100, `_H2_MAX_PENDING_RESET` 20, `_H2_MAX_HEADER_LIST` 16KiB, `_H2_KEEPALIVE_INTERVAL` 30s / `_TIMEOUT` 20s, `_SHUTDOWN_GRACE` 25s, `_MIN_CLIENT_VERSION`, `_REQUEST_TIMEOUT` 60s, `_BODY_IDLE_TIMEOUT` 30s.
 
@@ -228,7 +228,7 @@ sequenceDiagram
 | Type | Title | Points |
 |------|-------|--------|
 | Spike | Gate S1: HTTP/2 windows and 1 Gbps through Caddy h2c (R04), choose the fallback | 3 |
-| Spike | Assign 409 vs 412 for `need_blocks` and `edited_since` with E-13/E-14 owners (G-11-1) | 2 |
+| Spike | Assign 409 vs 412 for `need_blocks` and `edited_since` with E-13/E-14 owners (G-11-1); decided 2026-11-07: 409 for both, `batch_too_large` 422 | 2 |
 | Enabler | Crate skeleton, `HttpServer`, `ApiServices`, `HttpConfig`, accept loop with connection semaphore and HTTP/2 settings | 3 |
 | Task | Middleware: panic catcher, client IP, request ID, metrics/log, security headers | 3 |
 | Task | Timeout and body limits per `BodyClass` (411, 413, idle, long-poll) | 3 |

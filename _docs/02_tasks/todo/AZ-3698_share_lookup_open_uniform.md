@@ -24,7 +24,7 @@ A visitor must learn nothing about whether a token exists, expired, was revoked 
 ### Included
 - The lookup: hash the presented token, read by `token_hash` in system scope (confined to this function), then decide live / expired / revoked in code, with the same target reads (`TreeReader::resolve_live_file` and `get_node`, two primary-key reads) or equivalent padding when the branch ends early.
 - `open`: live link without password → `Available` with name from `get_node` and size and media type of the target's current revision; live password link → `PasswordRequired` with no file data; every other case → `NotFound`.
-- Expiry boundary as decided by E-16/c01 (G-06-3).
+- Expiry boundary (G-06-3, decided 2026-11-07): `expires_at > now` is live, `expires_at <= now` is `NotFound`; `now` from the injectable clock.
 - Malformed tokens (empty, 10 kB, non-ASCII) take the same path and answer `NotFound`.
 
 ### Excluded

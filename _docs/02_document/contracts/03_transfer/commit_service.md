@@ -72,7 +72,7 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 
 - G-03-3: fields for `CreatedAsCopy` and a revived file with a taken name, and whether `EditedSince` stays (E-14/c01, owner).
 - `request_hash` canonical form (entry order, optional fields).
-- Pipeline AZ-3656 expects 413 for an oversized batch; 03 maps `batch_too_large` to 422.
+- `batch_too_large` (more entries than `batch_max_entries`) is 422 (resolved 2026-11-07, G-11-1); a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer.
 
 ## Change Log
 

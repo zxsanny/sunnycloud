@@ -100,7 +100,7 @@ All methods take the resolved account id first (from 11's authentication), never
 | `FeedStamp` | `stamp` | `tx: &mut DbTx, account, TouchedNodes` (non-empty) -> `Seq` | `AccountFeedMissing` |
 | `FeedNotifier` | `notify` (`sync`, non-blocking) | `account, seq` -> `()` | none |
 | `FeedHorizon` | `raise_purge_horizon` | `tx: &mut DbTx, account, seq` -> `()` (0 rows is not an error) | none |
-| `ChangeFeed` | `read` | `&Principal, &dyn PrincipalRevalidator, Cursor{epoch, seq}, wait?, limit?` -> `ChangePage{items: Vec<ChangeItem>, next_cursor, has_more}` | `ResyncRequired{reason: EpochChanged \| BelowPurgeHorizon \| CursorAhead}`, `Unauthenticated`, `BadCursor` |
+| `ChangeFeed` | `read` | `&Principal, &dyn PrincipalRevalidator, Cursor{epoch, seq}, wait?, limit?` -> `ChangePage{items: Vec<ChangeItem>, next_cursor, has_more}` | `ResyncRequired{reason: EpochChanged \| BelowPurgeHorizon \| CursorAhead}`, `Unauthenticated`, `BadCursor`, `TooManyHolds{retry_after}` (PROPOSED, additive; E-12 / E-00; G-05-2 decided 2026-11-07; 11 maps it to the existing `rate_limited` 429 with `Retry-After`) |
 | | `head` | `account` -> `Cursor` | none |
 | `EpochAdmin` | `bump_epoch` | `now: Timestamp` -> `new_epoch: i64` | `Unexpected` (includes a failed marker write after commit) |
 | | `marker_status` | `()` -> `MarkerStatus{db_epoch, marker: Absent \| Present(epoch)}` | none |

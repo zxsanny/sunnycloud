@@ -95,12 +95,14 @@ Business errors implement `AppError { kind: ErrorKind, code: &'static str, detai
 | Kind | Status | Kind | Status |
 |---|---|---|---|
 | Validation | 400 (422 for semantic) | Gone (`resync_required`, expired session) | 410 |
-| Unauthorized | 401 | PreconditionFailed (`need_blocks`, `edited_since`) | 409/412 per code |
+| Unauthorized | 401 | PreconditionFailed (`need_blocks`, `edited_since`) | 409 for both |
 | Forbidden | 403 | PayloadTooLarge | 413 |
 | NotFound (also foreign id) | 404 | RangeNotSatisfiable | 416 |
 | Conflict (`name_conflict`, `block_conflict`) | 409 | UpgradeRequired (`upgrade_required`) | 426 |
 | RateLimited | 429 + `Retry-After` | Unavailable (DB down, overload) | 503 + `Retry-After` |
 | Internal (unexpected) | 500 opaque | QuotaExceeded (`quota_exceeded`) | 507 Insufficient Storage, nothing reserved |
+
+Decided 2026-11-07 (G-11-1): `need_blocks` and `edited_since` are both 409, as in helper 02 and the `sc_error` table; 412 is reserved for `If-Match` header preconditions, which these are not. `batch_too_large` (more entries than `batch_max_entries`) is a business 422 from the commit service; a `POST /commits:batch` body over the 4 MiB `Batch` class is a separate 413 (`size_too_large` family) produced by this layer before the service runs.
 
 Body is `application/problem+json`: `type` (`urn:sunnycloud:error:<code>`), `title`, `status`, `code`, `detail`, `request_id`, plus typed extras (`need_blocks`, `retry_after`, `min_version`). Unexpected errors are logged once with the full chain and request ID; the client sees only the opaque body. A stream error after headers aborts the stream (RST_STREAM or close), never a truncated clean response. After the database returns the pool reconnects on its own and the server answers within 60 s.
 

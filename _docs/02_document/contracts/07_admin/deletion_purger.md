@@ -3,9 +3,9 @@
 **Component**: 07_admin
 **Producer task**: E-17/c02 (construction), E-17/c06 (behaviour) — `_docs/02_tasks/todo/B05-02_admin_crate_skeleton.md`, `B05-06_deletion_purger.md` (renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-22/c03 (builds the hook list), E-22/c06 (schedules the janitor); hook implementers E-16/c08, E-13/c13, E-14/c12, E-18/c10, E-30/c05, E-12/c06, E-11/c03; in batch E-17/c09, E-17/c10, E-17/c11; pipeline AZ-3665
-**Version**: 1.0.1
-**Status**: draft (claim mechanism open, see Open points)
-**Last Updated**: 2026-11-05
+**Version**: 1.1.0
+**Status**: draft (open points below)
+**Last Updated**: 2026-11-07
 
 ## Purpose
 
@@ -22,7 +22,7 @@ The rules by which 07 erases an account across components (F13, AC-27, AC-30). H
 
 ### Construction (composition root)
 
-`DeletionPurger` is built with the ordered `AccountLifecycleHook` list, `AccountAdmin`, the admin settings, the audit writer, the clock and the database handle. The list order is the call order. Production order: 06 sharing, 20 vault_service (v1.2 builds only), 02 tree, 03 transfer, 08 media_jobs, then 05 sync_feed and 07a quota. 20 runs before 02 because `vaults.root_node_id` references 02's nodes (owner decision 2026-11-05). The purger keeps the order it is given and never sorts it.
+`DeletionPurger` is built with the ordered `AccountLifecycleHook` list, `AccountAdmin` (including the proposed `lock_deleting`), the admin settings, the audit writer, the clock and the database handle. The list order is the call order. Production order: 06 sharing, 20 vault_service (v1.2 builds only), 02 tree, 03 transfer, 08 media_jobs, then 05 sync_feed and 07a quota. 20 runs before 02 because `vaults.root_node_id` references 02's nodes (owner decision 2026-11-05). The purger keeps the order it is given and never sorts it.
 
 ### Settings
 
@@ -31,10 +31,10 @@ The rules by which 07 erases an account across components (F13, AC-27, AC-30). H
 ## Invariants
 
 Obligations of the purger:
-- It processes only accounts in state `deleting`, claimed so that two purgers never process one account at the same time and no claim is held across a cycle's idle time.
+- It processes only accounts in state `deleting`. Claim (decided 2026-11-07, G-07-2): per step, no lease column. Each step (one hook batch, or the finalize) opens its own short transaction, calls `AccountAdmin::lock_deleting(tx, account) -> bool` (`SELECT ... FOR UPDATE SKIP LOCKED` on the account's `deleting` row; `false` when another purger holds the row or the account is not `deleting`, and the step is skipped), runs one bounded hook batch and commits. No claim is held across a cycle's idle time or between steps. Because the hooks are restart-safe by query alone, two purgers alternating steps on one account is harmless. `lock_deleting` is a proposed `contracts` change owned by E-15 (01 identity).
 - Per account it calls hook N + 1 only after hook N reported `remaining = 0`; it never passes a limit above `account_delete_batch_size`.
 - It finalizes only after every hook reported 0 in the same walk; finalize and the `account_deleted` audit entry are one transaction; `account_deleted` is written once per account.
-- It holds no transaction across hook calls. It keeps no position in memory or in a table: after a crash or restart it starts the walk again from the first hook and relies on hooks reporting 0 quickly.
+- It holds no transaction across hook calls, except the claim transaction of the step that makes the call; that transaction lives for one bounded batch and ends with the step. It keeps no position in memory or in a table: after a crash or restart it starts the walk again from the first hook and relies on hooks reporting 0 quickly.
 - A failed batch is logged at ERROR with account id and hook position (never row data) and retried at the next tick; a deletion older than `account_delete_alert_after` is logged at WARN; `account_deletion_seconds` records request to finalize.
 
 Obligations of every hook implementer:
@@ -64,7 +64,7 @@ Obligations of every hook implementer:
 
 ## Open points
 
-1. Claim mechanism (per-step `SKIP LOCKED` claim or lease column) and the port that takes it: E-17/c01. It may need an 01 port method or column.
+1. Resolved 2026-11-07: per-step claim through `AccountAdmin::lock_deleting` (proposed `contracts` change task in E-15, a dependency of E-17/c06 (AZ-3820)); no column.
 2. The time-budget setting has no name in 07 §7.
 3. How the vault hook is left out of v1.0 builds is open (module-layout exception 6).
 
@@ -74,3 +74,4 @@ Obligations of every hook implementer:
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
 | 1.0.1 | 2026-11-05 | Production order: 20 vault_service moved before 02 tree (owner decision 2026-11-05); the order rule itself is unchanged | decompose Step 4 |
+| 1.1.0 | 2026-11-07 | Claim mechanism fixed: per-step claim through `AccountAdmin::lock_deleting` (proposed); claim transaction exception to the no-transaction-across-hook-calls rule (AZ-3814) | spike AZ-3814 |

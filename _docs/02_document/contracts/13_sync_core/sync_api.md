@@ -64,7 +64,7 @@ Common errors on every operation: `Transport`, `Cancelled`, `UpgradeRequired`, `
 |---|---|---|
 | `staged_cap_reached` (409) | `StagedCapReached` | commit what is staged, then stage again |
 | `commit_id_reused` (422) | `CommitIdReused` | drop the batch, build a new one with a new id |
-| `batch_too_large` (422; 413 open, `problem_details.md` open point 2) | `BatchTooLarge` | a bug: the executor already chunks |
+| `batch_too_large` (422 for more entries than `batch_max_entries`; a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer; resolved 2026-11-07) | `BatchTooLarge` | a bug: the executor already chunks |
 | `size_too_large` (413) | `SizeTooLarge` | permanent for this file |
 | `account_not_active` (403) | `AccountNotActive` | stop all work |
 | `blocklist_mismatch` (422) | `BlocklistMismatch` | planner `RestartSession` after re-hashing |

@@ -98,4 +98,4 @@ Then it finishes within 2 s (fail above 5 s)
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-05-3: whether `raise_purge_horizon` must be non-decreasing is open (E-12/c01); affects AC-3 when purge batches commit out of seq order | E-12 | open | Low |
+| G-05-3: `raise_purge_horizon` is non-decreasing (GREATEST); a lower seq leaves it unchanged, so purge batches that commit out of seq order are safe for AC-3 (resolved 2026-11-07) | E-12 | resolved | Low |
