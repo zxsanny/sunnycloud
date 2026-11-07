@@ -1,16 +1,20 @@
 use std::sync::Arc;
 
 use contracts::{AccountAdmin, HealthContributor, QuotaAdmin};
+use sc_audit::AuditWriter;
+use sc_db::Db;
 
 use crate::AdminConfig;
 
 /// `AdminService` of 07 (`list_users`, `update_user`, `set_quota`, `health`). The contributor list keeps the
 /// order it is given.
 pub struct AdminServiceImpl {
-    accounts: Arc<dyn AccountAdmin>,
-    quota: Arc<dyn QuotaAdmin>,
+    pub(crate) accounts: Arc<dyn AccountAdmin>,
+    pub(crate) quota: Arc<dyn QuotaAdmin>,
     health: Vec<Arc<dyn HealthContributor>>,
-    config: AdminConfig,
+    pub(crate) config: AdminConfig,
+    pub(crate) audit: AuditWriter,
+    pub(crate) db: Db,
 }
 
 impl AdminServiceImpl {
@@ -19,12 +23,16 @@ impl AdminServiceImpl {
         quota: Arc<dyn QuotaAdmin>,
         health: Vec<Arc<dyn HealthContributor>>,
         config: AdminConfig,
+        audit: AuditWriter,
+        db: Db,
     ) -> Self {
         AdminServiceImpl {
             accounts,
             quota,
             health,
             config,
+            audit,
+            db,
         }
     }
 

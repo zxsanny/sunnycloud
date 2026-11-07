@@ -28,3 +28,23 @@ pub fn read_error(error: DbError) -> ChangeFeedError {
 #[derive(Debug, thiserror::Error)]
 #[error("touched nodes are empty")]
 pub struct EmptyTouchedNodes;
+
+/// A read or head of an account without a feed row: an invariant violation, like the stamp's.
+#[derive(Debug, thiserror::Error)]
+#[error("account feed missing")]
+pub struct FeedRowMissing;
+
+/// A node row the contract types cannot hold (an unknown kind, a hash that is not 32 bytes).
+#[derive(Debug, thiserror::Error)]
+#[error("node row holds an unexpected {0}")]
+pub struct BadNodeRow(pub &'static str);
+
+pub fn feed_row_missing(account: Uuid) -> ChangeFeedError {
+    log_error!("account feed row missing", account_id = account);
+    ChangeFeedError::Unexpected(Box::new(FeedRowMissing))
+}
+
+pub fn bad_node_row(account: Uuid, what: &'static str) -> ChangeFeedError {
+    log_error!("node row not representable", account_id = account);
+    ChangeFeedError::Unexpected(Box::new(BadNodeRow(what)))
+}

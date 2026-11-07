@@ -3313,10 +3313,16 @@ name = "sunnycloud-admin"
 version = "0.1.0"
 dependencies = [
  "contracts",
+ "sc_audit",
+ "sc_clock",
  "sc_config",
  "sc_db",
  "sc_error",
  "sc_ids",
+ "sc_testdb",
+ "sqlx",
+ "thiserror 2.0.21",
+ "tokio",
  "uuid",
 ]
 
@@ -3325,9 +3331,12 @@ name = "sunnycloud-blobstore"
 version = "0.1.0"
 dependencies = [
  "aead-stream",
+ "bytes",
  "chacha20poly1305",
  "contracts",
+ "futures-core",
  "getrandom 0.4.3",
+ "rustix 1.1.6",
  "sc_audit",
  "sc_config",
  "sc_db",
@@ -3511,6 +3520,7 @@ dependencies = [
  "contracts",
  "sc_config",
  "sc_db",
+ "sc_ids",
  "sc_observability",
  "sc_testdb",
  "sqlx",

@@ -11,11 +11,20 @@ workspace = true
 
 [dependencies]
 contracts = { path = "../../contracts" }
+sc_audit = { path = "../../shared/audit" }
 sc_config = { path = "../../shared/config" }
+sc_db = { path = "../../shared/db" }
 sc_error = { path = "../../shared/error" }
+thiserror = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
+# Per-test PostgreSQL databases.
+sc_clock = { path = "../../shared/clock" }
+sc_testdb = { path = "../../shared/testdb" }
 # Names the types in the signatures of the port doubles.
-sc_db = { path = "../../shared/db" }
 sc_ids = { path = "../../shared/ids_hashing" }
-uuid = { workspace = true }
+# The port doubles of the tests run their statements on the transaction's connection; same features as sc_db.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+uuid = { workspace = true, features = ["v4"] }

@@ -16,8 +16,12 @@ sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }
 # Seals and opens the chunks; the cipher failure of the wrap and chunk AEADs is what the conversions accept.
 chacha20poly1305 = { workspace = true, features = ["zeroize"] }
+# The block and the whole-object writer take and return `Bytes` of the `BlobWriter` port.
+bytes = { workspace = true }
 # Per-blob data keys and nonce prefixes.
 getrandom = { workspace = true }
+# `statvfs` for the free-space floor and `fallocate` for preallocation; the version the worker already uses.
+rustix = { version = "1.1", features = ["fs"] }
 # The keyring repository module runs its statements on the transaction's connection; same features as sc_db.
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 thiserror = { workspace = true }
@@ -26,7 +30,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["fs", "rt", "sync", "time"] }
 # INFO "startup key check passed" and ERROR on a failed unwrap, through the typed log macros.
 sc_observability = { path = "../../shared/observability" }
-uuid = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 # Data keys and master keys are wiped on drop; `alloc` wipes the read buffers and unwrapped plaintexts.
 zeroize = { version = "1.8", default-features = false, features = ["alloc"] }
 
@@ -39,6 +43,8 @@ sync-hook = []
 # Self dev-dependency: `cargo test -p sunnycloud-blobstore` compiles the hook. Dev-dependencies are never built
 # into the release binaries.
 sunnycloud-blobstore = { path = ".", features = ["sync-hook"] }
+# The `ByteStream` fixtures of the `write_complete` tests implement `Stream`; the version `contracts` uses.
+futures-core = { version = "0.3", default-features = false }
 # Test oracle only: the sequential STREAM encryptor the hand-built nonces are compared with.
 aead-stream = { workspace = true, features = ["alloc"] }
 # The log test installs the capturing subscriber of sc_observability on its thread.

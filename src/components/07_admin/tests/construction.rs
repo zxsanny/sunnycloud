@@ -8,7 +8,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use contracts::{AccountAdmin, AccountLifecycleHook, HealthContributor, QuotaAdmin, TreeReader};
+use sc_audit::AuditWriter;
 use sc_config::Environment;
+use sc_testdb::{TestDb, clock_at_start};
 use sunnycloud_admin::{
     AccountDeletionServiceImpl, AccountServiceImpl, AdminConfig, AdminServiceImpl, DeletionPurger,
 };
@@ -83,8 +85,8 @@ fn purger_does_not_sort_a_reversed_list() {
     }
 }
 
-#[test]
-fn admin_service_holds_its_ports_contributors_and_settings() {
+#[tokio::test]
+async fn admin_service_holds_its_ports_contributors_and_settings() {
     // Arrange
     let accounts = accounts();
     let quota = quota();
@@ -95,6 +97,9 @@ fn admin_service_holds_its_ports_contributors_and_settings() {
     ];
     let expected = contributors.clone();
     let config = config();
+    let database = TestDb::clone_template().await;
+    let api = database.api().await;
+    let audit = AuditWriter::new(api.clone(), clock_at_start());
 
     // Act
     let service = AdminServiceImpl::new(
@@ -102,6 +107,8 @@ fn admin_service_holds_its_ports_contributors_and_settings() {
         quota.clone(),
         contributors,
         config.clone(),
+        audit,
+        api,
     );
 
     // Assert
@@ -117,6 +124,8 @@ fn admin_service_holds_its_ports_contributors_and_settings() {
     for (position, contributor) in service.health_contributors().iter().enumerate() {
         assert!(same_object(contributor, &expected[position]));
     }
+    drop(service);
+    database.drop_db().await;
 }
 
 #[test]

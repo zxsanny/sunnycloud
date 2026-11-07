@@ -13,6 +13,7 @@ workspace = true
 contracts = { path = "../../contracts" }
 sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }
+sc_ids = { path = "../../shared/ids_hashing" }
 sc_observability = { path = "../../shared/observability" }
 # Same features as sc_db: the stamp runs its statement on the transaction's connection.
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }

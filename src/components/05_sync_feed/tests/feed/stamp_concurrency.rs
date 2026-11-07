@@ -19,14 +19,14 @@ const ROUNDS: usize = 100;
 const ROLLBACK_EVERY: usize = 5;
 
 #[derive(Clone)]
-struct Writer {
-    db: Db,
-    account: Uuid,
+pub struct Writer {
+    pub db: Db,
+    pub account: Uuid,
     root: Uuid,
 }
 
 impl Writer {
-    async fn transaction(&self, commit: bool) -> Result<Seq, RunError<Attempt>> {
+    pub async fn transaction(&self, commit: bool) -> Result<Seq, RunError<Attempt>> {
         self.db
             .run(Scope::Account(self.account), async |tx| {
                 let node = insert_folders(tx.conn(), self.account, self.root, 1).await?;
@@ -43,7 +43,7 @@ impl Writer {
     }
 }
 
-async fn one_account(pool_max: u32) -> (Fixture, Writer) {
+pub async fn one_account(pool_max: u32) -> (Fixture, Writer) {
     let fixture = Fixture::with_pool_max(pool_max).await;
     let mut conn = fixture.owner_conn().await;
     let account = Uuid::new_v4();
@@ -60,7 +60,7 @@ async fn one_account(pool_max: u32) -> (Fixture, Writer) {
 
 /// Fails the test on anything but a commit or the deliberate rollback: a deadlock, a serialization failure or any
 /// other error reaching a caller.
-fn committed(result: Result<Seq, RunError<Attempt>>) -> Option<Seq> {
+pub fn committed(result: Result<Seq, RunError<Attempt>>) -> Option<Seq> {
     match result {
         Ok(seq) => Some(seq),
         Err(RunError::Closure(Attempt::Rollback)) => None,
