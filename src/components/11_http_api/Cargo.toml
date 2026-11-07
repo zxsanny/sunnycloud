@@ -13,6 +13,7 @@ workspace = true
 contracts = { path = "../../contracts" }
 sc_clock = { path = "../../shared/clock" }
 sc_error = { path = "../../shared/error" }
+sc_ids = { path = "../../shared/ids_hashing" }
 sc_observability = { path = "../../shared/observability" }
 axum = { workspace = true }
 serde_json = { workspace = true }
@@ -29,6 +30,5 @@ test-clock = ["sc_clock/test-clock"]
 hyper = { workspace = true, features = ["client", "http1", "http2", "server"] }
 http-body-util = "0.1"
 prometheus-parse = "0.2"
-sc_ids = { path = "../../shared/ids_hashing" }
 uuid = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }

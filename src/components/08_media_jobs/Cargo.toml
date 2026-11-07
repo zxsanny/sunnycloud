@@ -12,15 +12,20 @@ workspace = true
 [dependencies]
 contracts = { path = "../../contracts" }
 media-shared = { path = "../../media-shared" }
+sc_clock = { path = "../../shared/clock" }
 sc_config = { path = "../../shared/config" }
+sc_db = { path = "../../shared/db" }
 sc_error = { path = "../../shared/error" }
+# `new_id` for the job ids; `FileHash` of the claimed job.
+sc_ids = { path = "../../shared/ids_hashing" }
+sc_observability = { path = "../../shared/observability" }
+# The repository module runs its statements on the transaction's connection; same features as sc_db.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 thiserror = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
-sc_db = { path = "../../shared/db" }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
-# The tests read and write the tables with plain statements on the transaction's connection.
-sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 uuid = { workspace = true, features = ["v4"] }

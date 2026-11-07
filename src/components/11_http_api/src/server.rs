@@ -11,26 +11,26 @@ use crate::accept::AcceptLoop;
 use crate::config::HttpConfig;
 use crate::error::{HttpServerError, Listener};
 use crate::metrics::HttpMetrics;
-use crate::problem_schema::problem_schema;
+use crate::registry::{
+    OpenApiDocument, RouteContext, RouteDef, document, mount, production_routes, validate,
+};
 use crate::services::ApiServices;
+use crate::spa::SpaBundle;
 
-/// The OpenAPI document as served by `GET /api/v1/openapi.json`. The route registry that fills it is
-/// E-21/c10; until then the document describes no operation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpenApiDocument(Vec<u8>);
-
-impl OpenApiDocument {
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
+/// The document of this build, as `HttpServer::openapi` returns and `GET /api/v1/openapi.json` serves it.
+pub fn current_document() -> OpenApiDocument {
+    document(&production_routes())
 }
 
 /// The API server: its listeners (public, internal, ops, and later test-clock) over one accept loop.
 pub struct HttpServer {
-    services: ApiServices,
+    services: Arc<ApiServices>,
     config: HttpConfig,
     accept: AcceptLoop,
     http_metrics: Arc<HttpMetrics>,
+    routes: Vec<RouteDef>,
+    openapi: OpenApiDocument,
+    spa: Option<Arc<SpaBundle>>,
 }
 
 /// A server whose listeners are bound, with their local addresses known.
@@ -52,12 +52,24 @@ impl HttpServer {
     pub fn new(services: ApiServices, config: HttpConfig) -> Result<Self, HttpServerError> {
         let accept = AcceptLoop::new(&config, &services.metrics)?;
         let http_metrics = Arc::new(HttpMetrics::register(&services.metrics)?);
+        let routes = production_routes();
+        validate(&routes)?;
+        let openapi = document(&routes);
         Ok(HttpServer {
-            services,
+            services: Arc::new(services),
             config,
             accept,
             http_metrics,
+            routes,
+            openapi,
+            spa: None,
         })
+    }
+
+    /// Serves the bundled web app: its static files, and its index for every other non-`/api` path.
+    pub fn with_spa(mut self, bundle: SpaBundle) -> Self {
+        self.spa = Some(Arc::new(bundle));
+        self
     }
 
     /// The HTTP metric families registered by [`HttpServer::new`], for the layers that increment them.
@@ -72,14 +84,20 @@ impl HttpServer {
         let (internal, internal_addr) = bind(Listener::Internal, self.config.internal_addr).await?;
         let (ops, ops_addr) = bind(Listener::Ops, self.config.ops_addr).await?;
         let liveness = Liveness::new();
+        let context = RouteContext {
+            services: Arc::clone(&self.services),
+            openapi: self.openapi.clone(),
+            server_info: self.config.server_info.clone(),
+        };
+        let routers = mount(&self.routes, &context, self.spa.clone());
         Ok(BoundServer {
             accept: self.accept,
             public,
             public_addr,
-            public_app: public_router(&self.services),
+            public_app: routers.public,
             internal,
             internal_addr,
-            internal_app: internal_router(&self.services),
+            internal_app: routers.internal,
             ops,
             ops_addr,
             ops_app: ops_app(&self.services, liveness.clone()),
@@ -96,13 +114,7 @@ impl HttpServer {
     }
 
     pub fn openapi(&self) -> OpenApiDocument {
-        let document = serde_json::json!({
-            "openapi": "3.1.0",
-            "info": {"title": "sunnycloud", "version": env!("CARGO_PKG_VERSION")},
-            "paths": {},
-            "components": {"schemas": {"Problem": problem_schema()}},
-        });
-        OpenApiDocument(document.to_string().into_bytes())
+        self.openapi.clone()
     }
 }
 
@@ -156,14 +168,6 @@ async fn bind(
     let bound = TcpListener::bind(addr).await.map_err(bind_error)?;
     let local = bound.local_addr().map_err(bind_error)?;
     Ok((bound, local))
-}
-
-fn public_router(_services: &ApiServices) -> Router {
-    Router::new()
-}
-
-fn internal_router(_services: &ApiServices) -> Router {
-    Router::new()
 }
 
 fn ops_app(services: &ApiServices, liveness: Liveness) -> Router {

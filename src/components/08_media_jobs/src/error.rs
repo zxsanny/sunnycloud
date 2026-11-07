@@ -1,3 +1,4 @@
+use sc_db::{DbError, RunError};
 use sc_error::{BusinessError, BusinessParams, DomainError, ErrorCode};
 use thiserror::Error;
 
@@ -50,5 +51,22 @@ impl From<MediaError> for BusinessError {
 impl From<MediaError> for DomainError {
     fn from(error: MediaError) -> DomainError {
         DomainError::Business(error.into())
+    }
+}
+
+/// Failure of a job queue call: the expected loss of a lease (tier 2) or a database failure (tier 3).
+#[derive(Debug, Error)]
+pub enum JobQueueError {
+    #[error("lease lost")]
+    LeaseLost,
+    #[error(transparent)]
+    Db(#[from] DbError),
+}
+
+impl From<RunError<DbError>> for JobQueueError {
+    fn from(error: RunError<DbError>) -> Self {
+        match error {
+            RunError::Closure(error) | RunError::Db(error) => JobQueueError::Db(error),
+        }
     }
 }

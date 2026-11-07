@@ -1735,9 +1735,12 @@ version = "0.1.0"
 dependencies = [
  "contracts",
  "media-shared",
+ "sc_clock",
  "sc_config",
  "sc_db",
  "sc_error",
+ "sc_ids",
+ "sc_observability",
  "sc_testdb",
  "sqlx",
  "thiserror 2.0.21",
@@ -3515,6 +3518,14 @@ name = "sunnycloud-sharing"
 version = "0.1.0"
 dependencies = [
  "contracts",
+ "sc_clock",
+ "sc_config",
+ "sc_db",
+ "sc_ratelimit",
+ "sc_testdb",
+ "sqlx",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

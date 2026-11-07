@@ -10,3 +10,4 @@ mod keepalive;
 mod lifecycle;
 mod ops;
 mod ops_metrics;
+mod registry;

@@ -1,0 +1,128 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "sunnycloud", "version": "1.0.0"},
+  "paths": {
+    "/api/v1/server-info": {
+      "get": {
+        "operationId": "get_server_info",
+        "parameters": [],
+        "security": [],
+        "x-auth-class": "Public",
+        "x-body-class": "None",
+        "x-state-changing": false,
+        "x-owner-method": "ServerInfo::value",
+        "x-id-params": [],
+        "x-listener": "public",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ServerInfo"}}}
+          }
+        }
+      }
+    },
+    "/api/v1/nodes": {
+      "post": {
+        "operationId": "post_nodes",
+        "parameters": [],
+        "security": [{"cookieSession": []}, {"bearerSession": []}, {"bearerDevice": []}],
+        "x-auth-class": "SessionOrDevice",
+        "x-body-class": "Small",
+        "x-state-changing": true,
+        "x-owner-method": "TreeService::create_folder",
+        "x-id-params": [{"name": "parent_id", "in": "body"}],
+        "x-listener": "public",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NodeCreate"}}}
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NodeView"}}}
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}": {
+      "get": {
+        "operationId": "get_nodes_id",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "security": [{"cookieSession": []}, {"bearerSession": []}, {"bearerDevice": []}],
+        "x-auth-class": "SessionOrDevice",
+        "x-body-class": "None",
+        "x-state-changing": false,
+        "x-owner-method": "TreeReader::get_node",
+        "x-id-params": [{"name": "id", "in": "path"}],
+        "x-listener": "public",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NodeView"}}}
+          }
+        }
+      }
+    },
+    "/api/v1/changes": {
+      "get": {
+        "operationId": "get_changes",
+        "parameters": [
+          {"name": "cursor", "in": "query", "required": false, "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 0}}
+        ],
+        "security": [{"cookieSession": []}, {"bearerSession": []}, {"bearerDevice": []}],
+        "x-auth-class": "SessionOrDevice",
+        "x-body-class": "None",
+        "x-state-changing": false,
+        "x-owner-method": "ChangeFeed::read",
+        "x-id-params": [],
+        "x-listener": "public",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ChangePage"}}}
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ServerInfo": {
+        "type": "object",
+        "required": ["block_size"],
+        "properties": {"block_size": {"type": "integer"}}
+      },
+      "NodeCreate": {
+        "type": "object",
+        "required": ["name", "parent_id"],
+        "properties": {
+          "name": {"type": "string"},
+          "parent_id": {"type": "string", "format": "uuid"},
+          "kind": {"type": "string", "enum": ["file", "folder"]}
+        }
+      },
+      "NodeView": {
+        "type": "object",
+        "required": ["id", "name", "kind"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "name": {"type": "string"},
+          "kind": {"type": "string", "enum": ["file", "folder", "symlink"]},
+          "size": {"type": "integer"},
+          "parent": {"$ref": "#/components/schemas/NodeView"},
+          "labels": {"type": "array", "items": {"type": "object", "properties": {"text": {"type": "string"}}}}
+        }
+      },
+      "ChangePage": {
+        "type": "object",
+        "required": ["cursor", "entries"],
+        "properties": {
+          "cursor": {"type": "string"},
+          "entries": {"type": "array", "items": {"$ref": "#/components/schemas/NodeView"}}
+        }
+      }
+    },
+    "securitySchemes": {}
+  }
+}
