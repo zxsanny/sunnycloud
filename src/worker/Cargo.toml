@@ -20,18 +20,29 @@ workspace = true
 [dependencies]
 media-shared = { path = "../media-shared" }
 sc_config = { path = "../shared/config" }
+sc_ids = { path = "../shared/ids_hashing", default-features = false }
 sc_observability = { path = "../shared/observability" }
 axum = { workspace = true }
+bytes = { workspace = true }
+http-body = "1"
+# The worker listener is plain HTTP, but `identity` and `sync-core` switch on `rustls-no-provider` for the whole
+# workspace build, and reqwest then refuses to build a client without a provider; asking for it here keeps the
+# worker's own build identical in both cases.
+reqwest = { workspace = true, features = ["rustls-no-provider"] }
+rustls = { workspace = true }
 rustix = { version = "1.1", features = ["fs"] }
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
 decoder-runner = { path = "../decoder" }
 rustix = { version = "1.1", features = ["fs", "process"] }
+sc_clock = { path = "../shared/clock" }
 tempfile = "3"
-serde_json = { workspace = true }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 tokio = { workspace = true, features = ["macros"] }
 
 [features]

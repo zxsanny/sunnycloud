@@ -14,3 +14,4 @@ src/components/08_media_jobs/tests/media/system_scope_repo.rs
 src/components/04_blobstore/src/reader/finding_repo.rs
 src/components/08_media_jobs/src/job_repo.rs
 src/components/04_blobstore/src/gc_sweeper/sweep_repo.rs
+src/components/04_blobstore/src/orphan_sweeper/orphan_repo.rs

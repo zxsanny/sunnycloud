@@ -1,11 +1,15 @@
 use std::io;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
+use hyper::Request;
+use hyper::body::Incoming;
+use hyper::service::Service;
 use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use hyper_util::server::conn::auto::Builder;
-use hyper_util::service::TowerToHyperService;
+use hyper_util::service::{TowerToHyperService, TowerToHyperServiceFuture};
 use sc_observability::{Metrics, log_debug, log_warn};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::sync::CancellationToken;
@@ -14,6 +18,7 @@ use crate::config::HttpConfig;
 use crate::error::HttpServerError;
 use crate::gate::{ConnectionGate, ConnectionGuard};
 use crate::metrics::ConnectionMetrics;
+use crate::middleware::PeerAddr;
 
 /// Pause after an accept failure that is not about one peer (descriptor or memory exhaustion), so the loop
 /// does not spin on it.
@@ -98,7 +103,7 @@ impl AcceptLoop {
                 accepted = listener.accept() => accepted,
             };
             match accepted {
-                Ok((stream, _peer)) => self.spawn_connection(stream, &app),
+                Ok((stream, peer)) => self.spawn_connection(stream, peer, &app),
                 Err(error) => {
                     log_warn!("accept failed", err = &error);
                     if !is_peer_error(&error) {
@@ -112,7 +117,7 @@ impl AcceptLoop {
         }
     }
 
-    fn spawn_connection(&self, stream: TcpStream, app: &Router) {
+    fn spawn_connection(&self, stream: TcpStream, peer: SocketAddr, app: &Router) {
         let Some(guard) = self.gate.admit() else {
             return;
         };
@@ -120,6 +125,7 @@ impl AcceptLoop {
             self.builder.clone(),
             guard,
             stream,
+            peer,
             app.clone(),
         ));
     }
@@ -129,15 +135,36 @@ async fn serve_connection(
     builder: Builder<TokioExecutor>,
     guard: ConnectionGuard,
     stream: TcpStream,
+    peer: SocketAddr,
     app: Router,
 ) {
     let _guard = guard;
-    let service = TowerToHyperService::new(app);
+    let service = WithPeer {
+        app: TowerToHyperService::new(app),
+        peer: PeerAddr(peer),
+    };
     if let Err(error) = builder
         .serve_connection(TokioIo::new(stream), service)
         .await
     {
         log_debug!("connection ended with an error", err = &*error);
+    }
+}
+
+/// The router, with the TCP peer of the connection added to every request for the client-IP layer.
+struct WithPeer {
+    app: TowerToHyperService<Router>,
+    peer: PeerAddr,
+}
+
+impl Service<Request<Incoming>> for WithPeer {
+    type Response = <TowerToHyperService<Router> as Service<Request<Incoming>>>::Response;
+    type Error = <TowerToHyperService<Router> as Service<Request<Incoming>>>::Error;
+    type Future = TowerToHyperServiceFuture<Router, Request<Incoming>>;
+
+    fn call(&self, mut request: Request<Incoming>) -> Self::Future {
+        request.extensions_mut().insert(self.peer);
+        self.app.call(request)
     }
 }
 

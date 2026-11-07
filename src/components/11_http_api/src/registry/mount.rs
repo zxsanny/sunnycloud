@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::Extension;
 use axum::http::{Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::MethodRouter;
@@ -27,16 +28,21 @@ pub fn mount(defs: &[RouteDef], context: &RouteContext, spa: Option<Arc<SpaBundl
     let clock = Arc::clone(&context.services.clock);
     let public = router_for(defs, context, ListenerKind::Public).fallback({
         let clock = Arc::clone(&clock);
-        move |method: Method, uri: Uri| {
+        move |method: Method, uri: Uri, request_id: Option<Extension<CorrelationId>>| {
             let spa = spa.clone();
             let clock = Arc::clone(&clock);
-            async move { public_fallback(&method, &uri, spa.as_deref(), clock.as_ref()) }
+            async move {
+                let request_id = request_id_of(request_id, clock.as_ref());
+                public_fallback(&method, &uri, spa.as_deref(), request_id)
+            }
         }
     });
-    let internal = router_for(defs, context, ListenerKind::Internal).fallback(move || {
-        let clock = Arc::clone(&clock);
-        async move { not_found(clock.as_ref()) }
-    });
+    let internal = router_for(defs, context, ListenerKind::Internal).fallback(
+        move |request_id: Option<Extension<CorrelationId>>| {
+            let clock = Arc::clone(&clock);
+            async move { not_found(request_id_of(request_id, clock.as_ref())) }
+        },
+    );
     Routers { public, internal }
 }
 
@@ -87,19 +93,26 @@ fn public_fallback(
     method: &Method,
     uri: &Uri,
     spa: Option<&SpaBundle>,
-    clock: &dyn Clock,
+    request_id: CorrelationId,
 ) -> Response {
     let path = uri.path();
     let is_api = path == "/api" || path.starts_with("/api/");
     let reads = matches!(*method, Method::GET | Method::HEAD);
     match spa {
         Some(bundle) if !is_api && reads => bundle.serve(method, path),
-        _ => not_found(clock),
+        _ => not_found(request_id),
     }
 }
 
-fn not_found(clock: &dyn Clock) -> Response {
-    let request_id = CorrelationId::new(sc_ids::new_id(clock));
+/// The id the request layer assigned; a router mounted without that layer takes a fresh one.
+fn request_id_of(assigned: Option<Extension<CorrelationId>>, clock: &dyn Clock) -> CorrelationId {
+    match assigned {
+        Some(Extension(id)) => id,
+        None => CorrelationId::new(sc_ids::new_id(clock)),
+    }
+}
+
+fn not_found(request_id: CorrelationId) -> Response {
     ApiProblem::new(
         DomainError::Business(BusinessError::not_found()),
         request_id,

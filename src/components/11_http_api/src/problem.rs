@@ -92,7 +92,7 @@ fn status_of(status: u16, request_id: CorrelationId) -> StatusCode {
     }
 }
 
-fn insert_request_id(headers: &mut HeaderMap, request_id: CorrelationId) {
+pub(crate) fn insert_request_id(headers: &mut HeaderMap, request_id: CorrelationId) {
     match HeaderValue::from_str(&request_id.to_string()) {
         Ok(value) => {
             headers.insert(REQUEST_ID, value);

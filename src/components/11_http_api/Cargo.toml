@@ -16,11 +16,14 @@ sc_error = { path = "../../shared/error" }
 sc_ids = { path = "../../shared/ids_hashing" }
 sc_observability = { path = "../../shared/observability" }
 axum = { workspace = true }
+hyper = { workspace = true }
 serde_json = { workspace = true }
 hyper-util = { version = "0.1", features = ["server-auto", "service", "tokio"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "sync", "time"] }
 tokio-util = { workspace = true }
+# Same spec as sc_observability: `Instrument` carries the request span across awaits.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [features]
 # Adds the `OffsetClock` handle to `ApiServices` and, with E-21/c15, the test-clock routes and listener.

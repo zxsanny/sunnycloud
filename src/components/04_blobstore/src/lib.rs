@@ -3,7 +3,7 @@
 //! This crate holds the typed configuration section, the conversions of I/O, database and cipher failures
 //! into the `BlobError` and `KeyError` of `contracts`, and the blob file format: path, header, layout
 //! arithmetic, the per-blob data key and the per-chunk sealing, the group-commit `fdatasync` barrier, and the master
-//! keyring (key check, data-key wrap), and the `BlobWriter` port, the blob rows (`BlobRegistry`, `BlobCatalog`) the GC queue writer (`GcQueue`) and the GC sweeper (`GcSweeper`). The reader (`FileBlobReader`) is the only decrypt path. The other ports are implemented by later tasks. The
+//! keyring (key check, data-key wrap), and the `BlobWriter` port, the blob rows (`BlobRegistry`, `BlobCatalog`) the GC queue writer (`GcQueue`) and the GC sweeper (`GcSweeper`) and the orphan sweeper (`OrphanSweeper`). The reader (`FileBlobReader`) is the only decrypt path. The other ports are implemented by later tasks. The
 //! schema is `src/migrations/*_create_blob_tables.*.sql`.
 
 mod barrier;
@@ -18,6 +18,7 @@ mod gc_sweeper;
 mod header;
 mod keyring;
 mod layout;
+mod orphan_sweeper;
 mod path;
 mod reader;
 mod registry;
@@ -43,6 +44,9 @@ pub use gc_sweeper::{GcStats, GcSweeper};
 pub use header::{FORMAT_VERSION, HEADER_LEN, Header, NONCE_PREFIX_LEN, NoncePrefix};
 pub use keyring::MasterKeyring;
 pub use layout::{BlobLayout, CHUNK_SIZE, COUNTER_LIMIT, RangeSpan, SEALED_CHUNK_LEN, TAG_LEN};
+#[cfg(feature = "sync-hook")]
+pub use orphan_sweeper::{OrphanHook, OrphanHookPoint};
+pub use orphan_sweeper::{OrphanStats, OrphanSweeper};
 pub use path::{blob_path, parse_blob_id};
 pub use reader::FileBlobReader;
 #[cfg(feature = "sync-hook")]

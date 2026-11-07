@@ -8,6 +8,7 @@ mod harness;
 mod harness_scripting;
 mod keepalive;
 mod lifecycle;
+mod middleware;
 mod ops;
 mod ops_metrics;
 mod registry;

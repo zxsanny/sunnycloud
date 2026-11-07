@@ -11,6 +11,7 @@ use crate::accept::AcceptLoop;
 use crate::config::HttpConfig;
 use crate::error::{HttpServerError, Listener};
 use crate::metrics::HttpMetrics;
+use crate::middleware::Middleware;
 use crate::registry::{
     OpenApiDocument, RouteContext, RouteDef, document, mount, production_routes, validate,
 };
@@ -28,6 +29,7 @@ pub struct HttpServer {
     config: HttpConfig,
     accept: AcceptLoop,
     http_metrics: Arc<HttpMetrics>,
+    middleware: Middleware,
     routes: Vec<RouteDef>,
     openapi: OpenApiDocument,
     spa: Option<Arc<SpaBundle>>,
@@ -54,12 +56,19 @@ impl HttpServer {
         let http_metrics = Arc::new(HttpMetrics::register(&services.metrics)?);
         let routes = production_routes();
         validate(&routes)?;
+        let middleware = Middleware::new(
+            &config,
+            Arc::clone(&services.clock),
+            Arc::clone(&http_metrics),
+            routes.iter().map(|route| route.spec.path),
+        )?;
         let openapi = document(&routes);
         Ok(HttpServer {
             services: Arc::new(services),
             config,
             accept,
             http_metrics,
+            middleware,
             routes,
             openapi,
             spa: None,
@@ -94,10 +103,10 @@ impl HttpServer {
             accept: self.accept,
             public,
             public_addr,
-            public_app: routers.public,
+            public_app: self.middleware.wrap(routers.public),
             internal,
             internal_addr,
-            internal_app: routers.internal,
+            internal_app: self.middleware.wrap(routers.internal),
             ops,
             ops_addr,
             ops_app: ops_app(&self.services, liveness.clone()),

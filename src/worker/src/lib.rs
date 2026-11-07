@@ -5,6 +5,7 @@
 //! library (ADR-009, module-layout 09). Contract: `_docs/02_document/contracts/shared_observability`.
 //! This library exists so the tests run the same entry points as the binary.
 
+mod api;
 mod decoder_client;
 mod error;
 mod probe;
@@ -16,6 +17,7 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::process::ExitCode;
 
+pub use api::{ApiConfig, ApiConfigError, ApiError, WorkerApiClient};
 pub use decoder_client::{
     Backoff, BackoffError, CallError, DecoderConn, DecoderMetrics, EventSink, GateFailure,
     GatedConn, PROTOCOL_VERSION, Slot, SlotConfig, SlotName, SlotReadiness, SlotState,

@@ -1,6 +1,6 @@
-//! Transcode policy types: what the decoder probes, what the supervisor decides, what a job
-//! must produce, and the `Params` values of each `params_version`. `is_compliant`, `decide` and
-//! `poster_offset_ms` are behaviour of the media-jobs epic.
+//! Transcode policy: what the decoder probes, what the supervisor decides, what a job must
+//! produce, the `Params` values of each `params_version`, and the pure rules (`is_compliant`,
+//! `decide`, `poster_offset_ms`, `supported_kinds_for`) in `rules`.
 //!
 //! `Probe` and `Plan` cross the decoder socket, so they reject unknown fields. `Plan` carries
 //! enumerations, booleans and bounded numbers only: no string can become an ffmpeg argument.
@@ -11,6 +11,10 @@ use uuid::Uuid;
 
 use crate::decoder_protocol::Capabilities;
 use crate::types::{DerivedKind, JobKind};
+
+mod rules;
+
+pub use rules::{decide, is_compliant, poster_offset_ms, supported_kinds_for};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

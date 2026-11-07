@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use hyper::StatusCode;
 use prometheus_parse::{Scrape, Value};
-use sunnycloud_http_api::{HttpConfig, RequestLabels, StatusClass};
+use sunnycloud_http_api::{DurationLabels, HttpConfig, MethodLabel, RequestLabels, StatusClass};
 
 use crate::harness::clients::{get_request, h1_connect, h1_get};
 use crate::harness::{EVENT_BOUND, Server, default_config, metric, wait_until};
@@ -61,11 +61,16 @@ async fn metrics_export_the_five_http_families_with_one_prefix_and_route_templat
     // The request layers of E-21/c05 increment these families; the handles are the ones the server registered.
     let labels = RequestLabels {
         route: NODE_ROUTE,
+        method: MethodLabel::Get,
         status: StatusClass::Success,
     };
+    let duration = DurationLabels { route: NODE_ROUTE };
     for _ in 0..1000 {
         server.http_metrics.requests.inc(labels);
-        server.http_metrics.request_duration.observe(labels, 0.002);
+        server
+            .http_metrics
+            .request_duration
+            .observe(duration, 0.002);
     }
 
     // Act
@@ -98,23 +103,23 @@ async fn metrics_export_the_five_http_families_with_one_prefix_and_route_templat
     );
     let request_series: Vec<&str> = text
         .lines()
-        .filter(|line| line.starts_with(REQUESTS) && !line.starts_with('#'))
+        .filter(|line| line.starts_with(REQUESTS) && line.contains(NODE_ROUTE))
         .collect();
     assert_eq!(
         request_series,
         [format!(
-            "{REQUESTS}{{route=\"{NODE_ROUTE}\",status=\"2xx\"}} 1000"
+            "{REQUESTS}{{method=\"GET\",route=\"{NODE_ROUTE}\",status_class=\"2xx\"}} 1000"
         )]
     );
-    let duration_count = format!("{DURATION}_count{{route=\"{NODE_ROUTE}\",status=\"2xx\"}} 1000");
+    let duration_count = format!("{DURATION}_count{{route=\"{NODE_ROUTE}\"}} 1000");
     assert!(text.lines().any(|line| line == duration_count));
     for line in text
         .lines()
-        .filter(|line| line.starts_with("sunnycloud_http_"))
+        .filter(|line| line.starts_with(REQUESTS) || line.starts_with(DURATION))
     {
         assert!(
-            line.contains("{route=\"") && line.contains("\",status=\""),
-            "only route and status label the HTTP families: {line}"
+            line.contains("route=\""),
+            "the route template labels the HTTP families: {line}"
         );
     }
     server.stop().await.expect("run returns");
