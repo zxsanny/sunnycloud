@@ -6,3 +6,6 @@
 src/components/01_identity/src/auth_repo.rs
 src/components/04_blobstore/tests/blobstore/system_scope_repo.rs
 src/components/07a_quota/tests/rls/system_scope_repo.rs
+src/components/05_sync_feed/tests/feed/system_scope_repo.rs
+src/components/07a_quota/src/admin_repo.rs
+src/components/07a_quota/tests/views_statement_repo.rs

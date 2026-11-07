@@ -18,11 +18,21 @@ chacha20poly1305 = { workspace = true, features = ["zeroize"] }
 # Per-blob data keys and nonce prefixes.
 getrandom = { workspace = true }
 thiserror = { workspace = true }
+# The group flush runs on the blocking pool; waiters sleep on a notification.
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 uuid = { workspace = true }
 # Data keys are wiped on drop.
 zeroize = { version = "1.8", default-features = false }
 
+[features]
+# Test-only fault hook around the group sync (block, fail, count). Enabled only by this crate's own dev-dependency
+# below, so no release tree contains it; `tests/barrier/release.rs` checks that.
+sync-hook = []
+
 [dev-dependencies]
+# Self dev-dependency: `cargo test -p sunnycloud-blobstore` compiles the hook. Dev-dependencies are never built
+# into the release binaries.
+sunnycloud-blobstore = { path = ".", features = ["sync-hook"] }
 # Test oracle only: the sequential STREAM encryptor the hand-built nonces are compared with.
 aead-stream = { workspace = true, features = ["alloc"] }
 # Per-test PostgreSQL databases.

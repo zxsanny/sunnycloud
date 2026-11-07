@@ -92,6 +92,12 @@ pub fn blob_error_from_io(error: io::Error, ids: BlobIds) -> BlobError {
     }
 }
 
+/// A failure that is `Io` whatever its kind: a failed sync is never `NoSpace` or `BlobMissing`, because the
+/// caller of `await_durable` must only refuse the acknowledgement.
+pub(crate) fn blob_io_failure(kind: ErrorKind, ids: BlobIds) -> BlobError {
+    BlobError::Io(fault(ids, Cause::Io(kind)))
+}
+
 /// The row of a blob could not be read or written: `Io`, the only variant that carries a fault.
 pub fn blob_error_from_db(error: RunError<DbError>, ids: BlobIds) -> BlobError {
     BlobError::Io(fault(ids, database_cause(error)))

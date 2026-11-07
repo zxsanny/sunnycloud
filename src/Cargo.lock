@@ -3324,6 +3324,7 @@ dependencies = [
  "sc_db",
  "sc_testdb",
  "sqlx",
+ "sunnycloud-blobstore",
  "thiserror 2.0.21",
  "tokio",
  "uuid",
@@ -3497,6 +3498,14 @@ name = "sunnycloud-sync-feed"
 version = "0.1.0"
 dependencies = [
  "contracts",
+ "sc_config",
+ "sc_db",
+ "sc_observability",
+ "sc_testdb",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

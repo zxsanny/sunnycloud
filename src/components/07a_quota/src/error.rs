@@ -1,4 +1,4 @@
-use contracts::QuotaLedgerError;
+use contracts::{LifecycleError, QuotaAdminError, QuotaLedgerError};
 use sc_db::{DbError, RunError};
 use thiserror::Error;
 use uuid::Uuid;
@@ -17,6 +17,15 @@ pub fn ledger_error(error: DbError) -> QuotaLedgerError {
         DbError::CheckViolation => QuotaLedgerError::InvariantViolation,
         other => QuotaLedgerError::Unexpected(Box::new(other)),
     }
+}
+
+/// Every database failure of the admin calls is the unexpected tier.
+pub fn admin_error(error: DbError) -> QuotaAdminError {
+    QuotaAdminError::Unexpected(Box::new(error))
+}
+
+pub fn lifecycle_error(error: DbError) -> LifecycleError {
+    LifecycleError::Unexpected(Box::new(error))
 }
 
 /// The source of an unexpected ledger failure that is not a database failure.

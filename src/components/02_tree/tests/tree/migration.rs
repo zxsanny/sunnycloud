@@ -9,8 +9,9 @@ use crate::support::{API, Fixture, refusal};
 const TREE_VERSION: i64 = 20_261_106_130_000;
 const PERMISSION_DENIED: &str = "42501";
 
-const NODE_INDEXES: [&str; 7] = [
+const NODE_INDEXES: [&str; 8] = [
     "nodes_cascade_idx",
+    "nodes_feed_idx", // owned by 05 sync_feed, added by its migration
     "nodes_id_account_id_key",
     "nodes_parent_idx",
     "nodes_parent_name_key",

@@ -6,12 +6,14 @@
 
 pub mod settings;
 
+use std::collections::HashMap;
 use std::time::Duration;
 
+use contracts::{AccountLifecycleHook, QuotaView};
 use sc_db::{Db, DbError, DbRole, DbTx, Scope};
 pub use sc_testdb::{API, MIGRATOR, START, TestDb, clock_at_start};
 use sqlx::PgConnection;
-use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
+use sunnycloud_quota::{PgQuotaAdmin, PgQuotaLedger, QuotaConfig};
 use uuid::Uuid;
 
 pub const MIB: i64 = 1 << 20;
@@ -121,4 +123,119 @@ pub async fn quota_row(conn: &mut PgConnection, id: Uuid) -> (Option<i64>, i64, 
     .fetch_one(conn)
     .await
     .expect("read quota row")
+}
+
+pub fn admin(db: &Db, default_quota_bytes: i64) -> PgQuotaAdmin {
+    PgQuotaAdmin::new(
+        db.clone(),
+        QuotaConfig {
+            default_quota_bytes,
+        },
+    )
+}
+
+/// An account created the way identity creates it: the account row, then `initialize` in a committed
+/// transaction scoped to the new account. The counters are then set to the given values as the schema owner.
+pub async fn initialized(
+    harness: &Harness,
+    default_quota_bytes: i64,
+    id: Uuid,
+    limit: Option<i64>,
+    used: i64,
+    reserved: i64,
+) {
+    let mut conn = harness.fixture_conn().await;
+    initialized_on(
+        &mut conn,
+        harness,
+        default_quota_bytes,
+        id,
+        limit,
+        used,
+        reserved,
+    )
+    .await;
+    sqlx::Connection::close(conn)
+        .await
+        .expect("close fixture connection");
+}
+
+pub async fn initialized_on(
+    conn: &mut PgConnection,
+    harness: &Harness,
+    default_quota_bytes: i64,
+    id: Uuid,
+    limit: Option<i64>,
+    used: i64,
+    reserved: i64,
+) {
+    account(conn, id).await;
+    in_tx(&harness.api, id, async |tx| {
+        admin(&harness.api, default_quota_bytes)
+            .initialize(tx, id)
+            .await
+            .expect("initialize")
+    })
+    .await;
+    sqlx::query(
+        "UPDATE quota SET limit_bytes = $2, used_bytes = $3, reserved_bytes = $4 WHERE account_id = $1",
+    )
+    .bind(id)
+    .bind(limit)
+    .bind(used)
+    .bind(reserved)
+    .execute(conn)
+    .await
+    .expect("seed counters");
+}
+
+/// Whether the account has a quota row, as the schema owner sees it.
+pub async fn has_row(conn: &mut PgConnection, id: Uuid) -> bool {
+    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM quota WHERE account_id = $1)")
+        .bind(id)
+        .fetch_one(conn)
+        .await
+        .expect("probe quota row")
+}
+
+pub const DEFAULT_QUOTA: i64 = 10 * GIB;
+
+pub struct Seeded {
+    pub harness: Harness,
+    pub expected: HashMap<Uuid, QuotaView>,
+}
+
+/// 500 accounts with a limit on every third one, and usage that differs per account.
+pub async fn seeded() -> Seeded {
+    let harness = Harness::new().await;
+    let mut expected = HashMap::new();
+    let mut conn = harness.fixture_conn().await;
+    for n in 0..500_i64 {
+        let id = Uuid::new_v4();
+        let limit = (n % 3 == 0).then_some((n + 1) * GIB);
+        let (used, reserved) = (n * MIB, (n % 7) * MIB);
+        initialized_on(
+            &mut conn,
+            &harness,
+            DEFAULT_QUOTA,
+            id,
+            limit,
+            used,
+            reserved,
+        )
+        .await;
+        expected.insert(
+            id,
+            QuotaView {
+                limit_bytes: limit,
+                effective_limit: limit.unwrap_or(DEFAULT_QUOTA),
+                used,
+                reserved,
+            },
+        );
+    }
+    sqlx::Connection::close(conn)
+        .await
+        .expect("close fixture connection");
+    Seeded { harness, expected }
 }
