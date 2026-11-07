@@ -4,7 +4,15 @@
 mod config;
 mod cursor;
 mod errors;
+mod hold_limit;
+mod hold_outage;
+mod hold_perf;
+mod hold_recheck;
+mod hold_revalidate;
+mod hold_support;
+mod hold_wake;
 mod migration;
+mod probe_clock;
 mod read;
 mod read_concurrency;
 mod read_plan;

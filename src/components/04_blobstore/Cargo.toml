@@ -19,6 +19,8 @@ sc_db = { path = "../../shared/db" }
 chacha20poly1305 = { workspace = true, features = ["zeroize"] }
 # The block and the whole-object writer take and return `Bytes` of the `BlobWriter` port.
 bytes = { workspace = true }
+# The reader's `PlaintextStream` is a `Stream`; the version `contracts` uses.
+futures-core = { version = "0.3", default-features = false }
 # Per-blob data keys and nonce prefixes.
 getrandom = { workspace = true }
 # `statvfs` for the free-space floor and `fallocate` for preallocation; the version the worker already uses.
@@ -44,12 +46,12 @@ sync-hook = []
 # Self dev-dependency: `cargo test -p sunnycloud-blobstore` compiles the hook. Dev-dependencies are never built
 # into the release binaries.
 sunnycloud-blobstore = { path = ".", features = ["sync-hook"] }
-# The `ByteStream` fixtures of the `write_complete` tests implement `Stream`; the version `contracts` uses.
-futures-core = { version = "0.3", default-features = false }
 # Test oracle only: the sequential STREAM encryptor the hand-built nonces are compared with.
 aead-stream = { workspace = true, features = ["alloc"] }
 # The log test installs the capturing subscriber of sc_observability on its thread.
 tracing = { version = "0.1", default-features = false, features = ["std"] }
+# Hash of the 1 GiB stream against the hash of the generated source.
+blake3 = { workspace = true }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

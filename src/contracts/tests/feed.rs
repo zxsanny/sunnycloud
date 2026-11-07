@@ -229,3 +229,21 @@ fn notifier_is_synchronous_and_usable_as_arc_dyn() {
 /// Compiles only while the stamp and horizon ports are object safe. Never called.
 #[allow(dead_code)]
 fn tx_ports_are_object_safe(_stamp: Arc<dyn FeedStamp>, _horizon: Arc<dyn FeedHorizon>) {}
+
+#[test]
+fn too_many_holds_carries_the_retry_after_and_names_no_principal() {
+    // Arrange
+    let error = ChangeFeedError::TooManyHolds {
+        retry_after: std::time::Duration::from_secs(5),
+    };
+
+    // Act
+    let text = error.to_string();
+
+    // Assert
+    assert_eq!(text, "too many holds");
+    assert!(matches!(
+        error,
+        ChangeFeedError::TooManyHolds { retry_after } if retry_after.as_secs() == 5
+    ));
+}

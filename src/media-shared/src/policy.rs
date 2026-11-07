@@ -1,14 +1,16 @@
 //! Transcode policy types: what the decoder probes, what the supervisor decides, what a job
-//! must produce. Types only; `is_compliant`, `decide`, `poster_offset_ms` and the `Params`
-//! values are behaviour of the media-jobs epic.
+//! must produce, and the `Params` values of each `params_version`. `is_compliant`, `decide` and
+//! `poster_offset_ms` are behaviour of the media-jobs epic.
 //!
 //! `Probe` and `Plan` cross the decoder socket, so they reject unknown fields. `Plan` carries
 //! enumerations, booleans and bounded numbers only: no string can become an ffmpeg argument.
 
+use sc_ids::FileHash;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::decoder_protocol::Capabilities;
-use crate::types::DerivedKind;
+use crate::types::{DerivedKind, JobKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -96,36 +98,121 @@ pub enum Decision {
 /// The `hello` reply as the policy reads it.
 pub type DecoderCapabilities = Capabilities;
 
+/// The `params_version` that new jobs are planned with.
+pub const CURRENT_PARAMS_VERSION: u32 = 1;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum X264Preset {
-    Ultrafast,
-    Superfast,
-    Veryfast,
-    Faster,
-    Fast,
-    Medium,
-    Slow,
-    Slower,
-    Veryslow,
-    Placebo,
+pub enum StillFormat {
+    Webp,
 }
 
-/// The output settings of one `params_version`; the values are the media-jobs epic's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VideoCodec {
+    H264,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum H264Profile {
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioCodec {
+    Aac,
+}
+
+/// The transcode output settings of one `params_version`. The size bounds apply whatever the
+/// rotation metadata says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VideoParams {
+    pub codec: VideoCodec,
+    pub profile: H264Profile,
+    pub max_short_side: u32,
+    pub max_long_side: u32,
+    pub audio: AudioCodec,
+    pub faststart: bool,
+    pub tone_map_to_sdr: bool,
+}
+
+/// The output settings of one `params_version`. Changing any value needs a new version; the
+/// per-kind size caps are API settings and CRF and preset are not fixed yet (see
+/// `worker_job_protocol.md`, open point 4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Params {
     pub thumb_edge: u32,
     pub preview_edge: u32,
-    pub webp_quality: u8,
-    pub crf: u8,
-    pub preset: X264Preset,
+    pub still_format: StillFormat,
+    pub apply_orientation: bool,
+    pub video: VideoParams,
 }
 
-/// What a job must produce for one derived kind.
+static PARAMS_V1: Params = Params {
+    thumb_edge: 320,
+    preview_edge: 1440,
+    still_format: StillFormat::Webp,
+    apply_orientation: true,
+    video: VideoParams {
+        codec: VideoCodec::H264,
+        profile: H264Profile::High,
+        max_short_side: 1080,
+        max_long_side: 1920,
+        audio: AudioCodec::Aac,
+        faststart: true,
+        tone_map_to_sdr: true,
+    },
+};
+
+impl Params {
+    /// `None` for a version this build does not know.
+    pub const fn for_version(params_version: u32) -> Option<&'static Params> {
+        match params_version {
+            1 => Some(&PARAMS_V1),
+            _ => None,
+        }
+    }
+}
+
+const STILL_TYPES: [&str; 2] = ["image/webp", "image/jpeg"];
+const TRANSCODE_TYPES: [&str; 1] = ["video/mp4"];
+
+/// What a job must produce for one derived kind. `max_edge` is the long edge of a still.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputSpec {
     pub kind: DerivedKind,
     pub media_types: Vec<String>,
     pub max_edge: Option<u32>,
-    pub max_bytes: u64,
+}
+
+impl OutputSpec {
+    pub fn for_kind(kind: DerivedKind, params: &Params) -> Self {
+        let (types, max_edge): (&[&str], Option<u32>) = match kind {
+            DerivedKind::Thumb => (&STILL_TYPES, Some(params.thumb_edge)),
+            DerivedKind::Preview => (&STILL_TYPES, Some(params.preview_edge)),
+            DerivedKind::Transcode => (&TRANSCODE_TYPES, None),
+        };
+        Self {
+            kind,
+            media_types: types.iter().map(|t| (*t).to_owned()).collect(),
+            max_edge,
+        }
+    }
+
+    /// Exact comparison against the type the API sniffed: parameters, case and spaces do not match.
+    pub fn accepts(&self, media_type: &str) -> bool {
+        self.media_types.iter().any(|t| t == media_type)
+    }
+}
+
+/// One job to enqueue, as the planner returns it. Priority is chosen at enqueue time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JobSpec {
+    pub account_id: Uuid,
+    pub revision_id: Uuid,
+    pub kind: JobKind,
+    pub content_hash: FileHash,
+    pub params_version: u32,
 }

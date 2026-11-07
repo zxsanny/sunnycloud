@@ -3332,6 +3332,7 @@ name = "sunnycloud-blobstore"
 version = "0.1.0"
 dependencies = [
  "aead-stream",
+ "blake3",
  "bytes",
  "chacha20poly1305",
  "contracts",
@@ -3386,6 +3387,7 @@ dependencies = [
  "hyper-util",
  "prometheus-parse",
  "sc_clock",
+ "sc_error",
  "sc_ids",
  "sc_observability",
  "serde_json",
@@ -3520,6 +3522,7 @@ name = "sunnycloud-sync-feed"
 version = "0.1.0"
 dependencies = [
  "contracts",
+ "sc_clock",
  "sc_config",
  "sc_db",
  "sc_ids",

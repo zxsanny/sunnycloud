@@ -11,6 +11,7 @@ use crate::accept::AcceptLoop;
 use crate::config::HttpConfig;
 use crate::error::{HttpServerError, Listener};
 use crate::metrics::HttpMetrics;
+use crate::problem_schema::problem_schema;
 use crate::services::ApiServices;
 
 /// The OpenAPI document as served by `GET /api/v1/openapi.json`. The route registry that fills it is
@@ -95,12 +96,13 @@ impl HttpServer {
     }
 
     pub fn openapi(&self) -> OpenApiDocument {
-        let document = concat!(
-            r#"{"openapi":"3.1.0","info":{"title":"sunnycloud","version":""#,
-            env!("CARGO_PKG_VERSION"),
-            r#""},"paths":{}}"#
-        );
-        OpenApiDocument(document.as_bytes().to_vec())
+        let document = serde_json::json!({
+            "openapi": "3.1.0",
+            "info": {"title": "sunnycloud", "version": env!("CARGO_PKG_VERSION")},
+            "paths": {},
+            "components": {"schemas": {"Problem": problem_schema()}},
+        });
+        OpenApiDocument(document.to_string().into_bytes())
     }
 }
 

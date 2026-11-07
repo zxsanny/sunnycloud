@@ -2,6 +2,7 @@
 
 mod abuse;
 mod cap;
+mod errors;
 mod h2_settings;
 mod harness;
 mod harness_scripting;

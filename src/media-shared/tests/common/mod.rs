@@ -11,7 +11,7 @@ use media_shared::decoder_protocol::{
 };
 use media_shared::policy::{
     AudioPlan, AudioStream, Decision, Encoder, MediaKind, OutputSpec, Params, Plan, Probe,
-    VideoStream, X264Preset,
+    VideoStream,
 };
 use media_shared::types::{
     ClaimedJob, DerivedKind, Disposition, FailResult, FailureReport, JobKind, Lane, LeaseExtended,
@@ -173,35 +173,11 @@ pub fn decisions() -> Vec<Decision> {
 }
 
 pub fn params() -> Params {
-    Params {
-        thumb_edge: 320,
-        preview_edge: 1440,
-        webp_quality: 80,
-        crf: 23,
-        preset: X264Preset::Veryfast,
-    }
+    *Params::for_version(1).expect("params version 1 exists")
 }
 
-pub const PRESETS: [X264Preset; 10] = [
-    X264Preset::Ultrafast,
-    X264Preset::Superfast,
-    X264Preset::Veryfast,
-    X264Preset::Faster,
-    X264Preset::Fast,
-    X264Preset::Medium,
-    X264Preset::Slow,
-    X264Preset::Slower,
-    X264Preset::Veryslow,
-    X264Preset::Placebo,
-];
-
 pub fn output_spec() -> OutputSpec {
-    OutputSpec {
-        kind: DerivedKind::Thumb,
-        media_types: vec!["image/webp".to_owned(), "image/jpeg".to_owned()],
-        max_edge: Some(320),
-        max_bytes: 5 * 1024 * 1024,
-    }
+    OutputSpec::for_kind(DerivedKind::Thumb, &params())
 }
 
 pub fn capabilities() -> Capabilities {

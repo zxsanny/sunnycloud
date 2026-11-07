@@ -105,6 +105,10 @@ pub enum ChangeFeedError {
     Unauthenticated,
     #[error("bad cursor")]
     BadCursor,
+    /// The principal already holds `max_holds_per_principal` long-polls; the mapper answers it as `rate_limited`
+    /// with a retry delay.
+    #[error("too many holds")]
+    TooManyHolds { retry_after: Duration },
     #[error("unexpected failure")]
     Unexpected(#[source] Fault),
 }

@@ -21,6 +21,25 @@ pub enum JobKind {
     Transcode,
 }
 
+impl JobKind {
+    /// The lane that claims this kind (the generated `lane` column of `jobs`).
+    pub const fn lane(self) -> Lane {
+        match self {
+            Self::Stills => Lane::Image,
+            Self::Poster | Self::Transcode => Lane::Video,
+        }
+    }
+
+    /// The derived kinds a job of this kind must produce.
+    pub const fn outputs(self) -> &'static [DerivedKind] {
+        match self {
+            Self::Stills => &[DerivedKind::Thumb, DerivedKind::Preview],
+            Self::Poster => &[DerivedKind::Thumb],
+            Self::Transcode => &[DerivedKind::Transcode],
+        }
+    }
+}
+
 /// 200 body of `POST /api/v1/worker-jobs/claims`. `content_hash` is 64 lowercase hex digits,
 /// the `Display` form of `FileHash`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

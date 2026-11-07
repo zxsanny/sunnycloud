@@ -11,3 +11,4 @@ src/components/07a_quota/src/admin_repo.rs
 src/components/07a_quota/tests/views_statement_repo.rs
 src/components/04_blobstore/src/keyring/keyring_repo.rs
 src/components/08_media_jobs/tests/media/system_scope_repo.rs
+src/components/04_blobstore/src/reader/finding_repo.rs

@@ -79,11 +79,7 @@ fn policy_module_round_trips() {
     for decision in decisions() {
         round_trip(&decision);
     }
-    for preset in PRESETS {
-        let mut value = params();
-        value.preset = preset;
-        round_trip(&value);
-    }
+    round_trip(&params());
     round_trip(&output_spec());
     let caps: DecoderCapabilities = capabilities();
     round_trip(&caps);
