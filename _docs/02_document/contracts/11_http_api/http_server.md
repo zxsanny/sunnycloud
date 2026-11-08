@@ -3,7 +3,7 @@
 **Component**: 11_http_api (library `sunnycloud-http-api`, proposed)
 **Producer task**: E-21/c03 — `_docs/02_tasks/todo/B07-03_crate_skeleton_accept_loop.md` (contributors: E-21/c16 readiness list and ops listener, E-21/c17 shutdown semantics of `run`); keys assigned at Step 4
 **Consumer tasks**: E-22/c03 (composition root builds `ApiServices`), E-22/c04 (binds `HttpConfig`), E-22/c05 (`serve` calls `run` and owns the rest of the shutdown order), E-22/c15 (`openapi` and `healthcheck` commands); E-31 harness (Mode R); resolved at Step 4
-**Version**: 1.1.1
+**Version**: 1.2.0
 **Status**: draft
 **Last Updated**: 2026-11-08
 
@@ -43,7 +43,7 @@ Error names are proposals of E-21/c03; they become final when that task is accep
 
 | Field | Key (env `SUNNYCLOUD_<KEY>`) | Default |
 |-------|------------------------------|---------|
-| public origin | `public_url` | required |
+| public origin | `public_url` | required; must be `http(s)://host[:port]` with at most one trailing slash (`HttpServer::new` returns `InvalidConfig` otherwise); the only source of the origin the CSRF check compares |
 | trusted proxies | `trusted_proxies` | empty (default deny) |
 | internal listener address | `internal_addr` | `0.0.0.0:8081` |
 | ops listener address | `ops_addr` | `0.0.0.0:9090` |
@@ -115,3 +115,4 @@ On the shutdown signal: `/readyz` answers 503; every listener stops accepting; h
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B07) |
 | 1.1.0 | 2026-11-08 | `HttpConfig.worker_output_limits` added; `request_timeout` and `body_idle_timeout` must be above zero; `BodyLimits` is a layer of the route stack | AZ-3803 |
 | 1.1.1 | 2026-11-08 | `HttpConfig.download_write_idle` (must be above zero); the accept loop wraps every socket in a write-idle guard | AZ-3803 |
+| 1.2.0 | 2026-11-08 | `HttpConfig.public_url` validated as an origin; `CsrfGuard` is layer 9 of the route stack (`RouteContext.csrf`) | AZ-3808 |

@@ -197,6 +197,8 @@ impl Slot {
             log_warn!("decoder hello failed", err = &error);
             GateFailure::Hello
         })?;
+        self.metrics
+            .set_build_timestamp(self.config.name, capabilities.build_timestamp);
         let report = conn
             .self_check(&self.config.forbidden_targets)
             .await

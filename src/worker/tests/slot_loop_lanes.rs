@@ -18,7 +18,7 @@ async fn drain(slot_loop: &mut SlotLoop) -> usize {
     loop {
         match slot_loop.step().await {
             SlotStep::Ran(_) => ran += 1,
-            SlotStep::Idle | SlotStep::Stopped => return ran,
+            SlotStep::Idle | SlotStep::Stopped | SlotStep::Drained => return ran,
         }
     }
 }

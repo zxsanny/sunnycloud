@@ -2,13 +2,15 @@
 //!
 //! This crate holds the typed configuration section, the failure conversions of the feed ports, the stamp, the
 //! immediate read path (cursor rules, page, head), the notifier, the held read (`PgChangeFeed`), the purge
-//! horizon and the account lifecycle hook. The schema is
+//! horizon, the account lifecycle hook and the epoch admin (bump, marker status, head report, doctor findings). The schema is
 //! `src/migrations/*_create_feed_tables.*.sql`: `account_feeds`, and `nodes.seq` with `nodes_feed_idx` on the
 //! tree's table.
 
 mod change_feed;
 mod config;
 mod cursor;
+mod epoch_check;
+mod epoch_repo;
 mod error;
 mod hold;
 mod hold_cap;
@@ -21,6 +23,8 @@ mod stamp_repo;
 pub use change_feed::{PROPOSED_HOLD_RETRY_AFTER, PgChangeFeed};
 pub use config::{FeedConfig, LONGPOLL_WAIT_MAX_CEILING, LONGPOLL_WAIT_MAX_FLOOR};
 pub use cursor::{FeedState, judge_cursor, page_limit, parse_cursor};
+pub use epoch_check::epoch_findings;
+pub use epoch_repo::{NothingToBump, PgEpochAdmin};
 pub use error::{
     BadNodeRow, EmptyTouchedNodes, FeedRowMissing, account_feed_missing, horizon_error,
     lifecycle_error, read_error, stamp_error,

@@ -47,6 +47,7 @@ error_codes! {
 
     AccountNotActive => "account_not_active", 403, "Account not active";
     Forbidden => "forbidden", 403, "Forbidden";
+    CsrfRejected => "csrf_rejected", 403, "CSRF rejected";
 
     ParentNotFound => "parent_not_found", 404, "Parent not found";
     NotFound => "not_found", 404, "Not found";

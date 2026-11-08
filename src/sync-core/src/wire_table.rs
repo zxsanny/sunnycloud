@@ -104,6 +104,7 @@ pub fn map_problem(status: u16, headers: &[(&str, &str)], body: &[u8]) -> Mapped
         | ErrorCode::ThumbnailNotReady
         | ErrorCode::ThumbnailUnavailable
         | ErrorCode::LengthRequired
+        | ErrorCode::CsrfRejected
         | ErrorCode::OutputTooLarge
         | ErrorCode::OutputTypeRejected
         | ErrorCode::OutputKindRejected => unexpected(code, &raw, &correlation),

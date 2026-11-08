@@ -3,7 +3,7 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c11 — `_docs/02_tasks/todo/B07-11_route_registry_openapi.md` (contributors: E-21/c04 security headers, E-21/c05 body classes and timeouts, E-21/c07 auth classes and credential transport, E-21/c08 CSRF rule, E-21/c12, c13, c14, c15 route rows); keys assigned at Step 4
 **Consumer tasks**: E-21/c18 (CSRF and IDOR generators), E-15/c13 (scope declaration check), E-30/c06 (vault routes, v1.2), E-23 (`HttpSyncClient`, all operations it calls), E-26/c06 (generated `ApiClient`), E-24 and E-27/E-28 (through `sync-core` and `mobile_backup`), E-20/c03 (worker routes), E-31 (FT-P-70, NFT-SEC-09, NFT-SEC-13, NFT-SEC-50); resolved at Step 4
-**Version**: 1.1.1
+**Version**: 1.2.0
 **Status**: draft
 **Last Updated**: 2026-11-08
 
@@ -51,7 +51,7 @@ No credential on a protected route gives 401; a revoked, expired or unknown cred
 | Rule | Behaviour |
 |------|-----------|
 | Version header | `X-Sunnycloud-Client` and the gate (`server_info.md`) |
-| CSRF (AC-58) | cookie-authenticated POST, PUT, PATCH, DELETE pass only with `Sec-Fetch-Site: same-origin` or `Origin` equal to `public_url`; anything else, or neither header, is 403 `csrf_rejected`. Bearer requests are exempt. GET and HEAD never change state (Open point 3 for the provider callback) |
+| CSRF (AC-58) | cookie-authenticated POST, PUT, PATCH, DELETE pass only with `Sec-Fetch-Site: same-origin` or `Origin` equal to `public_url`; anything else, or neither header, is 403 `csrf_rejected`. Bearer requests are exempt. GET and HEAD never change state (Open point 3 for the provider callback). Enforcement (layer 9, after auth, before the body limits): the method decides, not the state-changing flag; "cookie-authenticated" means the credential auth accepted came from the session cookie (a request with a bearer and a cookie is a bearer request); a route with no authenticated caller (`Public`, `ShareGrant`, `Worker`) is not checked; an invalid or revoked cookie is the auth answer (401), not 403. `Origin` equals `public_url` when scheme, host and port are equal (host case-insensitive, default port elided); a path, query, user info, `null` or a repeated `Origin` or `Sec-Fetch-Site` header never matches. `public_url` must be `http(s)://host[:port]` with at most one trailing slash, else the server does not start. The `Host` header is never read |
 | CORS | no `Access-Control-*` header on `/api`, preflight included; only public share content may answer `Access-Control-Allow-Origin: *` without credentials |
 | Security headers | every response: `Strict-Transport-Security: max-age=31536000`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` (content routes: `private`), `X-Request-Id` (fresh UUIDv7) |
 | Errors | `problem_details.md` |
@@ -198,7 +198,7 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 
 1. Extension names for auth class, body class, state-changing flag and owner port method are not given by 11 §9 (only `x-id-params` is); E-21/c11 fixes them. E-15/c13 reads the owner port method to match operations.
 2. `DeviceOnly`: 01's `Scope` has four values (`Public`, `SessionOnly`, `SessionOrDevice`, `Admin`) and lists `DELETE /devices/me` as `SessionOrDevice` with the session refusal inside `DeviceGrantService::revoke_self`; 11 declares `DeviceOnly`. Owners of E-15 and E-21 to decide where the refusal lives; the HTTP answer (403 for a session) is the same either way.
-3. The provider callback is a GET by protocol that consumes the state row and creates a session; the "GET never mutates" check needs an explicit, named exemption for it (and for the link completion, whose route 01 does not list).
+3. The provider callback is a GET by protocol that consumes the state row and creates a session; the "GET never mutates" check needs an explicit, named exemption for it (and for the link completion, whose route 01 does not list). The registry already names `SignInService::complete` as the one GET allowed to be declared state-changing; the CSRF layer checks no GET or HEAD, so it needs no exemption of its own. The generated matrix of E-21/c18 must exempt the same name.
 4. `revisions:lookup` takes up to 1,000 content hashes (about 70 KB as hex JSON), above `Small` (64 KiB); its body class is not assigned (`Query` 128 KiB fits).
 5. The public share thumbnail route is named by 11 §8 and 08 §5 but missing from 06's route table; its exact path and the `size` parameter are taken from 11.
 6. `thumbnail-states`: 08 describes a body of node ids, while `ThumbnailStateSource::states` takes content hashes; One handler must stay one port call. Decided 2026-11-07 (G-08-3): ids of another account and unknown ids are omitted from the answer; a body over 1,000 ids is 422 `batch_too_large`. The node-id versus content-hash mapping step is still open.
@@ -210,6 +210,9 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 11. Closed 2026-11-08 (owner): `download_write_idle` (duration, default 60s, HTTP section of `sc_config`) is enforced on the connection socket for every response write, not per route.
 12. Slow body at the idle timeout and handler over `request_timeout`: IT-11-13 allows "408 or reset"; `problem_details.md` lists no 408 and no code for a request timeout, so both end as a reset. Owners of E-21 to decide whether a status and a code are wanted.
 13. Closed 2026-11-08 (owner): `sc_error` has `length_required`, 411, "Length required"; a block PUT without `Content-Length` gets it.
+14. CSRF and `ShareGrant`: the grant is a path-scoped cookie resolved by 06 in the handler, so layer 9 does not check `ShareGrant` routes. If a share route with a grant cookie ever mutates state, owners of E-21 and 06 must decide whether it falls under the rule.
+15. CSRF and `Sec-Fetch-Site`/`Origin` together: the rule is an "or" (either proof passes), so `Sec-Fetch-Site: cross-site` with an `Origin` equal to `public_url` passes. A browser never sends that pair; owners of E-21 to say if it should be refused.
+16. Whether the web app's refresh request is cookie-authenticated, and so under CSRF, is not stated by 01 (E-15 owner).
 
 ## Change Log
 
@@ -218,3 +221,4 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B07) |
 | 1.1.0 | 2026-11-08 | Body limits and time limits enforced (E-21/c05): enforcement rules, `Timing` clocks, worker output caps, Open points 11 to 13 | AZ-3803 |
 | 1.1.1 | 2026-11-08 | 411 `length_required` and the connection write-idle timer enforced; Open points 11 and 13 closed | AZ-3803 |
+| 1.2.0 | 2026-11-08 | CSRF origin check enforced (E-21/c08): enforcement rules in the CSRF row, Open points 14 to 16, point 3 narrowed | AZ-3808 |

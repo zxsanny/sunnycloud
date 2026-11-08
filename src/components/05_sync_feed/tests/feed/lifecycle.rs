@@ -1,11 +1,11 @@
 //! AC-3 and AC-4 (IT-05-13): the feed row at account creation and at erase on a real PostgreSQL 18. The marker
 //! is a double of the `EpochMarker` port (the file implementation is 04's and 05 may not depend on it).
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use contracts::{
-    AccountLifecycleHook, ChangeFeedError, EpochMarker, EpochMarkerError, PrincipalRevalidator,
-    RevalidatorError, async_trait,
+    AccountLifecycleHook, ChangeFeedError, EpochMarker, PrincipalRevalidator, RevalidatorError,
+    async_trait,
 };
 use sc_clock::ManualClock;
 use sc_db::{Db, Scope};
@@ -14,46 +14,11 @@ use sunnycloud_sync_feed::PgFeedLifecycle;
 use uuid::Uuid;
 
 use crate::hold_support::{Rig, config, cursor, ms, outcome, principal};
+use crate::marker_double::MarkerDouble;
 use crate::support::{Fixture, START, account};
 use crate::system_scope_repo::initialize_in_system_scope;
 
 const CLOCK_SECONDS: i64 = 1_794_052_800;
-
-/// Keeps the marker value and counts the writes; `fail` makes every write an I/O error.
-#[derive(Default)]
-struct MarkerDouble {
-    value: Mutex<Option<i64>>,
-    writes: Mutex<u32>,
-    fail: bool,
-}
-
-impl MarkerDouble {
-    fn value(&self) -> Option<i64> {
-        *self.value.lock().expect("marker lock")
-    }
-
-    fn writes(&self) -> u32 {
-        *self.writes.lock().expect("marker lock")
-    }
-}
-
-#[async_trait]
-impl EpochMarker for MarkerDouble {
-    async fn write(&self, epoch: i64) -> Result<(), EpochMarkerError> {
-        if self.fail {
-            return Err(EpochMarkerError::Io(Box::new(std::io::Error::other(
-                "marker write refused",
-            ))));
-        }
-        *self.value.lock().expect("marker lock") = Some(epoch);
-        *self.writes.lock().expect("marker lock") += 1;
-        Ok(())
-    }
-
-    async fn read(&self) -> Result<Option<i64>, EpochMarkerError> {
-        Ok(self.value())
-    }
-}
 
 /// Reports the account valid while its feed row exists, so an erase ends the hold at the next recheck.
 struct RowPresent {
@@ -179,11 +144,7 @@ async fn a_later_account_gets_the_epoch_of_the_existing_rows_and_leaves_the_mark
 #[tokio::test]
 async fn a_failed_marker_write_fails_initialize_and_leaves_no_row() {
     // Arrange
-    let hooked = Hooked::new(MarkerDouble {
-        fail: true,
-        ..MarkerDouble::default()
-    })
-    .await;
+    let hooked = Hooked::new(MarkerDouble::failing()).await;
     let account = hooked.new_account().await;
 
     // Act

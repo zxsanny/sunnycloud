@@ -13,6 +13,7 @@ mod failure;
 mod job;
 mod lease;
 mod metrics;
+mod shutdown;
 mod watchdog;
 
 use std::sync::Arc;
@@ -23,7 +24,8 @@ use tokio::time::{Instant, sleep};
 
 pub use access::ApiAccess;
 pub use config::{KindConfig, LoopConfig};
-pub use metrics::JobMetrics;
+pub use metrics::{JobMetrics, KillReason};
+pub use shutdown::Shutdown;
 
 use crate::api::{ApiError, WorkerApiClient};
 use crate::decoder_client::{GatedConn, Slot, SlotName, SlotReadiness};
@@ -48,6 +50,8 @@ pub enum JobEnd {
     LeaseLost,
     /// 403: the worker is not ready and stops claiming; nothing more was sent.
     Refused,
+    /// Shutdown: the grace passed, the decoder call was cancelled and the lease released.
+    Released,
 }
 
 /// What one round of the loop did.
@@ -58,6 +62,8 @@ pub enum SlotStep {
     Ran(JobEnd),
     /// The API refused the worker secret: no more claims.
     Stopped,
+    /// Shutdown started: no more claims.
+    Drained,
 }
 
 /// The lanes a slot claims, first one first. The interactive slot takes `image` only, so a photo never waits
@@ -85,6 +91,7 @@ pub struct SlotLoop {
     scratch: ScratchRoot,
     config: LoopConfig,
     metrics: Arc<JobMetrics>,
+    shutdown: Shutdown,
     gated: Option<GatedConn>,
     /// The general slot's first lane for the next round; it flips after every round.
     first_lane: Lane,
@@ -98,6 +105,7 @@ impl SlotLoop {
         scratch: ScratchRoot,
         config: LoopConfig,
         metrics: Arc<JobMetrics>,
+        shutdown: Shutdown,
     ) -> Self {
         Self {
             api,
@@ -106,6 +114,7 @@ impl SlotLoop {
             scratch,
             config,
             metrics,
+            shutdown,
             gated: None,
             first_lane: Lane::Video,
         }
@@ -117,13 +126,19 @@ impl SlotLoop {
         self.slot.readiness()
     }
 
-    /// Rounds until the API refuses the worker secret. The caller stops it by dropping the future.
+    /// Rounds until the API refuses the worker secret or the shutdown starts. A job that is running when the
+    /// shutdown starts goes on until it ends or the grace passes.
     pub async fn run(&mut self) {
         loop {
             match self.step().await {
-                SlotStep::Idle => sleep(self.config.claim_poll_interval).await,
+                SlotStep::Idle => {
+                    tokio::select! {
+                        () = sleep(self.config.claim_poll_interval) => {}
+                        () = self.shutdown.draining() => {}
+                    }
+                }
                 SlotStep::Ran(_) => {}
-                SlotStep::Stopped => return,
+                SlotStep::Stopped | SlotStep::Drained => return,
             }
         }
     }
@@ -134,9 +149,16 @@ impl SlotLoop {
         if self.access.is_refused() {
             return SlotStep::Stopped;
         }
+        if self.shutdown.is_draining() {
+            return SlotStep::Drained;
+        }
         let mut gated = match self.gated.take() {
             Some(gated) if gated.conn.is_open() => gated,
-            _ => self.slot.next_ready().await,
+            _ => tokio::select! {
+                biased;
+                () = self.shutdown.draining() => return SlotStep::Drained,
+                gated = self.slot.next_ready() => gated,
+            },
         };
         let step = self.claim_round(&mut gated).await;
         self.gated = Some(gated);
@@ -147,6 +169,9 @@ impl SlotLoop {
         let lanes = lane_order(self.slot.name(), self.first_lane);
         self.first_lane = other(self.first_lane);
         for lane in lanes {
+            if self.shutdown.is_draining() {
+                return SlotStep::Drained;
+            }
             match self.api.claim(*lane).await {
                 Ok(Some(job)) => return SlotStep::Ran(self.run_job(job, gated).await),
                 Ok(None) => {}
@@ -183,7 +208,7 @@ impl SlotLoop {
             Err(error) => return self.finish(job, Err(Stop::from(&error))).await,
         };
         let kind = self.config.for_kind(job.kind);
-        let mut lease = Lease::start(Arc::clone(&self.api), job);
+        let mut lease = Lease::start(Arc::clone(&self.api), job, self.shutdown.clone());
         let outcome = JobRun {
             api: &self.api,
             job,
@@ -194,6 +219,7 @@ impl SlotLoop {
             kind,
             lease: &mut lease,
             watchdog: Watchdog::new(&self.config, kind),
+            metrics: &self.metrics,
             reran: false,
         }
         .run()
@@ -221,7 +247,9 @@ impl SlotLoop {
                 JobEnd::Refused
             }
             Err(Stop::Obsolete) => self.close_obsolete(job).await,
+            Err(Stop::Released) => self.release(job).await,
             Err(Stop::Unhealthy(why)) => {
+                self.metrics.record_kill(why);
                 self.slot.mark_unhealthy(why);
                 self.report_failure(job, why.report()).await
             }
@@ -233,6 +261,14 @@ impl SlotLoop {
         match self.api.complete(job.job_id, SkipOutcome::Obsolete).await {
             Ok(()) => JobEnd::Obsolete,
             Err(error) => self.call_failed(&error, JobEnd::Obsolete),
+        }
+    }
+
+    /// Gives the lease back so the job is claimable at once instead of after the lease expires.
+    async fn release(&self, job: &ClaimedJob) -> JobEnd {
+        match self.api.release(job.job_id).await {
+            Ok(()) => JobEnd::Released,
+            Err(error) => self.call_failed(&error, JobEnd::Released),
         }
     }
 

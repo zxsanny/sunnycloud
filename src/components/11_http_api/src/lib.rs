@@ -20,12 +20,16 @@
 //! [`VersionGate`] is layer 7: it refuses a client below `min_client_version` with 426 before auth, and serves
 //! the count of client versions; [`ServerInfo`] is what `GET /api/v1/server-info` returns.
 //!
+//! [`CsrfGuard`] is layer 9: after auth, a cookie-authenticated POST, PUT, PATCH or DELETE must prove the
+//! public origin (`Sec-Fetch-Site: same-origin` or an exact `Origin`) or it is 403 `csrf_rejected`; bearers are exempt.
+//!
 //! [`AcceptLoop`] is the one loop every listener runs: one task per connection, a global connection cap,
 //! HTTP/1.1 and h2c prior knowledge on one port, and the configured HTTP/2 and header-timeout settings.
 
 mod accept;
 mod auth;
 mod config;
+mod csrf;
 mod error;
 mod gate;
 mod limits;
@@ -46,6 +50,7 @@ mod write_idle;
 pub use accept::AcceptLoop;
 pub use auth::{Authenticated, CredentialFormat, CredentialSource};
 pub use config::{HttpConfig, WorkerOutputLimits};
+pub use csrf::CsrfGuard;
 pub use error::{HttpServerError, Listener};
 pub use limits::BodyLimits;
 pub use metrics::{

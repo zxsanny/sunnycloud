@@ -5,7 +5,7 @@ use std::collections::HashSet;
 const EXPECTED: &[(u16, &[&str])] = &[
     (400, &["invalid_request"]),
     (401, &["unauthenticated", "password_required"]),
-    (403, &["account_not_active", "forbidden"]),
+    (403, &["account_not_active", "forbidden", "csrf_rejected"]),
     (
         404,
         &[

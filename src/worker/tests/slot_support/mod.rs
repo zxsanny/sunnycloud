@@ -1,7 +1,7 @@
 //! A slot loop wired to a scripted API listener and a fake decoder on a real socket, plus the probes and
 //! call-log helpers the slot loop tests share.
 
-#![allow(dead_code)]
+#![allow(dead_code, unused_imports)]
 
 pub mod api;
 pub mod decoder;
@@ -19,7 +19,7 @@ use sc_observability::{BuildInfo, Metrics};
 use serde_json::Value;
 use sunnycloud_worker::{
     ApiAccess, ApiConfig, Backoff, DecoderMetrics, JobEnd, JobMetrics, KindConfig, LoopConfig,
-    ScratchRoot, Slot, SlotConfig, SlotLoop, SlotName, SlotStep, WorkerApiClient,
+    ScratchRoot, Shutdown, Slot, SlotConfig, SlotLoop, SlotName, SlotStep, WorkerApiClient,
 };
 use tempfile::TempDir;
 
@@ -81,6 +81,8 @@ pub struct Rig {
     pub jobs: Arc<JobMetrics>,
     pub decoder_metrics: Arc<DecoderMetrics>,
     pub access: ApiAccess,
+    pub shutdown: Shutdown,
+    pub metrics: Arc<Metrics>,
     scratch: TempDir,
     _sockets: TempDir,
 }
@@ -101,12 +103,14 @@ impl Rig {
         let decoder = FakeDecoder::start(&socket);
         let scratch = tempfile::tempdir().expect("scratch root");
         let gid = fs::metadata(scratch.path()).expect("metadata").gid();
-        let metrics = Metrics::new(BuildInfo {
-            version: "test",
-            commit: "test",
-            test_clock: false,
-        })
-        .expect("metrics");
+        let metrics = Arc::new(
+            Metrics::new(BuildInfo {
+                version: "test",
+                commit: "test",
+                test_clock: false,
+            })
+            .expect("metrics"),
+        );
         let decoder_metrics = DecoderMetrics::register(&metrics).expect("decoder families");
         let jobs = JobMetrics::register(&metrics).expect("job families");
         let slot = Slot::new(
@@ -126,6 +130,7 @@ impl Rig {
         })
         .expect("client");
         let access = ApiAccess::new();
+        let shutdown = Shutdown::new();
         let slot_loop = SlotLoop::new(
             Arc::new(client),
             access.clone(),
@@ -133,6 +138,7 @@ impl Rig {
             ScratchRoot::new(scratch.path(), gid),
             config,
             Arc::clone(&jobs),
+            shutdown.clone(),
         );
         Self {
             decoder,
@@ -140,6 +146,8 @@ impl Rig {
             jobs,
             decoder_metrics,
             access,
+            shutdown,
+            metrics,
             scratch,
             _sockets: sockets,
         }

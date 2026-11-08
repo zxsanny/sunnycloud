@@ -1,10 +1,81 @@
 //! The real `sunnycloud-worker` process: AC-2 (logs), AC-3 (ops endpoints), AC-4 (healthcheck) and the exit codes.
 
+use std::any::Any;
+use std::collections::BTreeMap;
+use std::fs;
+use std::os::unix::fs::MetadataExt;
 use std::process::Output;
 
+use slot_support::FakeDecoder;
 use support::{Running, TOKEN, TokenFile, busy_port, env_for, free_port, http_get, worker_command};
+use tempfile::TempDir;
+use tokio::runtime::Runtime;
 
+mod api_support;
+mod slot_support;
 mod support;
+
+/// What the worker's settings point at: two fake decoders on real sockets and two empty scratch volumes.
+/// The fakes run on a runtime of their own, so they answer while the test thread waits on the process.
+struct Surroundings {
+    _runtime: Runtime,
+    _decoders: [FakeDecoder; 2],
+    _dirs: [TempDir; 3],
+}
+
+fn surroundings() -> (BTreeMap<String, String>, Box<dyn Any>) {
+    let runtime = Runtime::new().expect("a runtime for the fake decoders");
+    let sockets = tempfile::tempdir().expect("sockets");
+    let interactive_scratch = tempfile::tempdir().expect("scratch");
+    let general_scratch = tempfile::tempdir().expect("scratch");
+    let gid = fs::metadata(general_scratch.path())
+        .expect("metadata")
+        .gid();
+    let interactive_sock = sockets.path().join("interactive.sock");
+    let general_sock = sockets.path().join("general.sock");
+    let decoders = runtime.block_on(async {
+        [
+            FakeDecoder::start(&interactive_sock),
+            FakeDecoder::start(&general_sock),
+        ]
+    });
+    let env = BTreeMap::from([
+        ("SUNNYCLOUD_WORKER_API_URL", "http://127.0.0.1:1".to_owned()),
+        (
+            "SUNNYCLOUD_WORKER_SOCK_INTERACTIVE",
+            interactive_sock.display().to_string(),
+        ),
+        (
+            "SUNNYCLOUD_WORKER_SOCK_GENERAL",
+            general_sock.display().to_string(),
+        ),
+        (
+            "SUNNYCLOUD_WORKER_SCRATCH_INTERACTIVE",
+            interactive_scratch.path().display().to_string(),
+        ),
+        (
+            "SUNNYCLOUD_WORKER_SCRATCH_GENERAL",
+            general_scratch.path().display().to_string(),
+        ),
+        ("SUNNYCLOUD_DECODER_GID", gid.to_string()),
+        ("SUNNYCLOUD_WORKER_MAX_INPUT_PHOTO", "16MiB".to_owned()),
+        ("SUNNYCLOUD_WORKER_MAX_INPUT_VIDEO", "16MiB".to_owned()),
+    ])
+    .into_iter()
+    .map(|(key, value)| (key.to_owned(), value))
+    .collect();
+    let keep = Surroundings {
+        _runtime: runtime,
+        _decoders: decoders,
+        _dirs: [sockets, interactive_scratch, general_scratch],
+    };
+    (env, Box::new(keep))
+}
+
+fn start(token: &str) -> Running {
+    let (env, keep) = surroundings();
+    Running::start(token, env, keep)
+}
 
 const MARKER: &str = "Zq7fK2mXw9PaB4nTc8RvL1sYh6JdE3uGo5NiA0xCkMbWtQyV";
 
@@ -23,7 +94,7 @@ fn describe(output: &Output) -> String {
 
 #[test]
 fn ac3_the_ops_endpoints_answer_on_the_configured_address() {
-    let worker = Running::start(TOKEN);
+    let worker = start(TOKEN);
 
     let (healthz, _) = http_get(worker.addr, "/healthz");
     let (readyz, ready_body) = http_get(worker.addr, "/readyz");
@@ -39,7 +110,7 @@ fn ac3_the_ops_endpoints_answer_on_the_configured_address() {
 
 #[test]
 fn ac2_the_bearer_appears_in_no_output_of_a_running_worker() {
-    let mut worker = Running::start(MARKER);
+    let mut worker = start(MARKER);
     let bodies: Vec<String> = ["/healthz", "/readyz", "/metrics"]
         .into_iter()
         .map(|path| http_get(worker.addr, path).1)
@@ -58,7 +129,7 @@ fn ac2_the_bearer_appears_in_no_output_of_a_running_worker() {
 
 #[test]
 fn ac4_healthcheck_exits_0_for_a_running_worker_and_non_zero_for_a_stopped_one() {
-    let mut worker = Running::start(TOKEN);
+    let mut worker = start(TOKEN);
     let running = worker.healthcheck();
 
     let stopped_output = worker.stop();
@@ -78,7 +149,7 @@ fn ac4_healthcheck_exits_0_for_a_running_worker_and_non_zero_for_a_stopped_one()
 
 #[test]
 fn sigterm_stops_the_worker_cleanly_and_closes_the_ops_port() {
-    let mut worker = Running::start(TOKEN);
+    let mut worker = start(TOKEN);
     let addr = worker.addr;
 
     let output = worker.stop();
@@ -122,10 +193,23 @@ fn a_busy_ops_port_is_a_runtime_failure() {
     let blocker = busy_port();
     let port = blocker.local_addr().expect("address").port();
     let token = TokenFile::new(TOKEN);
-    let env = env_for(port, &token);
+    let (extra, _keep) = surroundings();
+    let mut env = env_for(port, &token);
+    env.extend(extra);
 
     let output = worker_command(&env, &[]).output().expect("starts");
 
     assert_eq!(output.status.code(), Some(2), "{}", describe(&output));
     assert!(text(&output.stderr).contains("cannot bind the ops listener"));
+}
+
+#[test]
+fn a_worker_without_its_decoder_sockets_and_scratch_volumes_refuses_to_start_naming_the_first() {
+    let token = TokenFile::new(TOKEN);
+    let env = env_for(free_port(), &token);
+
+    let output = worker_command(&env, &[]).output().expect("starts");
+
+    assert_eq!(output.status.code(), Some(3), "{}", describe(&output));
+    assert!(text(&output.stderr).contains("decoder_gid is not set"));
 }

@@ -19,6 +19,7 @@ pub use spec::{Mount, Param, ParamLocation, ParamType, RouteDef, RouteSpec, Sche
 pub use validate::{RegistryError, validate};
 
 use crate::auth::CredentialFormat;
+use crate::csrf::CsrfGuard;
 use crate::limits::BodyLimits;
 use crate::server_info::ServerInfo;
 use crate::services::ApiServices;
@@ -31,6 +32,7 @@ pub struct RouteContext {
     pub server_info: ServerInfo,
     pub credentials: CredentialFormat,
     pub version_gate: Arc<VersionGate>,
+    pub csrf: Arc<CsrfGuard>,
     pub body_limits: Arc<BodyLimits>,
 }
 

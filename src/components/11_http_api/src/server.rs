@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::accept::AcceptLoop;
 use crate::config::HttpConfig;
+use crate::csrf::CsrfGuard;
 use crate::error::{HttpServerError, Listener};
 use crate::limits::BodyLimits;
 use crate::metrics::HttpMetrics;
@@ -33,6 +34,7 @@ pub struct HttpServer {
     http_metrics: Arc<HttpMetrics>,
     middleware: Middleware,
     version_gate: Arc<VersionGate>,
+    csrf: Arc<CsrfGuard>,
     body_limits: Arc<BodyLimits>,
     routes: Vec<RouteDef>,
     openapi: OpenApiDocument,
@@ -71,6 +73,7 @@ impl HttpServer {
             Arc::clone(&http_metrics),
             Arc::clone(&services.clock),
         )?;
+        let csrf = CsrfGuard::new(&config.public_url, Arc::clone(&services.clock))?;
         let body_limits = BodyLimits::new(
             &config,
             Arc::clone(&http_metrics),
@@ -84,6 +87,7 @@ impl HttpServer {
             http_metrics,
             middleware,
             version_gate,
+            csrf,
             body_limits,
             routes,
             openapi,
@@ -115,6 +119,7 @@ impl HttpServer {
             server_info: self.config.server_info.clone(),
             credentials: self.config.credentials.clone(),
             version_gate: Arc::clone(&self.version_gate),
+            csrf: Arc::clone(&self.csrf),
             body_limits: Arc::clone(&self.body_limits),
         };
         let routers = mount(&self.routes, &context, self.spa.clone());

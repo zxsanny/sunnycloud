@@ -7,6 +7,7 @@ use media_shared::types::{ClaimedJob, DerivedKind, OutputMeta, SkipOutcome};
 use super::config::KindConfig;
 use super::failure::{Stop, decoder_stop, rerunnable};
 use super::lease::Lease;
+use super::metrics::JobMetrics;
 use super::watchdog::{Tap, Watchdog};
 use crate::api::{ApiError, WorkerApiClient};
 use crate::decoder_client::{CallError, DecoderConn};
@@ -38,6 +39,7 @@ pub(super) struct JobRun<'a> {
     pub(super) kind: &'a KindConfig,
     pub(super) lease: &'a mut Lease,
     pub(super) watchdog: Watchdog,
+    pub(super) metrics: &'a JobMetrics,
     pub(super) reran: bool,
 }
 
@@ -104,6 +106,7 @@ impl JobRun<'_> {
 
     /// Spends the claim's one rerun on `error`, or ends the job with it.
     fn grant_rerun(&mut self, error: &CallError) -> Result<(), Stop> {
+        self.metrics.record_decoder_error(error);
         if rerunnable(error) && !self.reran {
             self.reran = true;
             Ok(())

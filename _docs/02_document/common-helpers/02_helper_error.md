@@ -34,6 +34,7 @@ No `catch`-all: a catch may only (a) convert a third-party error into a tier 2 o
 | `invalid_request` | 400 | field problems listed |
 | `invalid_name`, `invalid_cursor`, `not_a_folder`, `blocklist_mismatch`, `commit_id_reused`, `batch_too_large` | 422 | `invalid_cursor`: malformed or foreign cursor on the listing and changes operations; `commit_id_reused`: same commit id, different request hash; `batch_too_large`: more entries than `batch_max_entries` (or more than 1000 hashes in a lookup) |
 | `unauthenticated` | 401 | token revoked or missing |
+| `csrf_rejected` | 403 | cookie-authenticated mutation without a same-origin proof (11, AC-58) |
 | `account_not_active` | 403 | account disabled or deleting at start, put or commit (03, 02) |
 | `forbidden` | 403 | device token on privileged route, CSRF failure (no `Origin` and no `Sec-Fetch-Site`), worker route with a user token (AC-79) |
 | `parent_not_found` | 404 | upload or commit names a parent id that does not exist |

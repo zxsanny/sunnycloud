@@ -38,7 +38,7 @@ Sources: `common-helpers/02_helper_error.md` (status table authoritative), `epic
 |---|---|
 | 400 | `invalid_request` |
 | 401 | `unauthenticated`, `password_required` |
-| 403 | `account_not_active`, `forbidden` |
+| 403 | `account_not_active`, `forbidden`, `csrf_rejected` |
 | 404 | `parent_not_found`, `not_found`, `content_unavailable` |
 | 409 | `name_conflict`, `edited_since`, `cycle`, `need_blocks`, `block_conflict`, `last_admin`, `session_cap_exceeded`, `staged_cap_reached` |
 | 410 | `upload_session_gone`, `parent_deleted`, `resync_required` (with `reason`: `epoch_changed`, `below_purge_horizon`, `cursor_ahead`) |

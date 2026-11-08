@@ -23,6 +23,8 @@ pub(super) enum Stop {
     LeaseLost,
     /// 403: the worker is not ready and stops claiming. Nothing more is sent.
     Refused,
+    /// The shutdown grace passed: the lease is released so another claim can take the job.
+    Released,
     /// The decoder broke the protocol, went silent or ran past the wall limit: the slot leaves service and the
     /// job is failed `Retry`.
     Unhealthy(Unhealthy),
@@ -56,6 +58,7 @@ impl From<LeaseEnd> for Stop {
         match end {
             LeaseEnd::Lost => Stop::LeaseLost,
             LeaseEnd::Refused => Stop::Refused,
+            LeaseEnd::Aborted => Stop::Released,
         }
     }
 }

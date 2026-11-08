@@ -62,6 +62,7 @@ fn router_for(defs: &[RouteDef], context: &RouteContext, listener: ListenerKind)
         let handler = context
             .body_limits
             .guard((def.mount)(context, def.spec.method.filter()), &def.spec);
+        let handler = context.csrf.guard(handler, def.spec.method);
         let handler = protect(
             handler,
             def.spec.auth,

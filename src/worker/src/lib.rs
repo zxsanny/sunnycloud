@@ -6,6 +6,7 @@
 //! This library exists so the tests run the same entry points as the binary.
 
 mod api;
+mod compose;
 mod decoder_client;
 mod error;
 mod policy_step;
@@ -14,6 +15,7 @@ mod run;
 mod scratch;
 mod settings;
 mod slot_loop;
+mod status;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -27,10 +29,12 @@ pub use decoder_client::{
 pub use error::WorkerError;
 pub use policy_step::{OutputInvalid, Step, StepError, StillRender, check_output, choose_step};
 pub use probe::{PROBE_TIMEOUT, ProbeError, get_ok, probe_target};
-pub use run::{healthcheck, serve, serve_ops};
+pub use run::{healthcheck, run_worker, serve, serve_ops};
 pub use scratch::{OutputFile, RejectReason, ScratchDir, ScratchError, ScratchRoot, sweep_all};
 pub use settings::{load_settings, ops_addr};
-pub use slot_loop::{ApiAccess, JobEnd, JobMetrics, KindConfig, LoopConfig, SlotLoop, SlotStep};
+pub use slot_loop::{
+    ApiAccess, JobEnd, JobMetrics, KillReason, KindConfig, LoopConfig, Shutdown, SlotLoop, SlotStep,
+};
 
 /// Runs the process: no argument serves, `healthcheck` probes. Returns the exit code.
 pub fn execute(args: Vec<OsString>, env: BTreeMap<String, String>) -> ExitCode {

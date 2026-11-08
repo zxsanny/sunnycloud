@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use uuid::Uuid;
 
+use super::shutdown::Shutdown;
 use crate::api::{ApiError, WorkerApiClient};
 
 /// Why the job can no longer be worked on.
@@ -20,26 +21,41 @@ pub(super) enum LeaseEnd {
     Lost,
     /// 403: the worker secret is refused.
     Refused,
+    /// The shutdown grace passed: the job is cancelled and its lease released.
+    Aborted,
 }
 
 /// Extends the lease of one job every `lease_ms / 3` for as long as the value lives. Dropping it stops the
 /// heartbeat, so no exit path of the job leaves one running.
 pub(super) struct Lease {
     ended: watch::Receiver<Option<LeaseEnd>>,
+    shutdown: Shutdown,
     task: JoinHandle<()>,
 }
 
 impl Lease {
-    pub(super) fn start(api: Arc<WorkerApiClient>, job: &ClaimedJob) -> Self {
+    pub(super) fn start(api: Arc<WorkerApiClient>, job: &ClaimedJob, shutdown: Shutdown) -> Self {
         let period = Duration::from_millis(job.lease_ms / 3).max(Duration::from_millis(1));
         let (ended_tx, ended) = watch::channel(None);
         let task = tokio::spawn(beat(api, job.job_id, period, ended_tx));
-        Self { ended, task }
+        Self {
+            ended,
+            shutdown,
+            task,
+        }
     }
 
-    /// Completes when a heartbeat learns the lease is gone; never completes while the job holds it.
+    /// Completes when a heartbeat learns the lease is gone or the shutdown grace has passed; never completes
+    /// while the job holds the lease and the process runs.
     pub(super) async fn ended(&mut self) -> LeaseEnd {
-        if let Ok(state) = self.ended.wait_for(Option::is_some).await
+        tokio::select! {
+            end = Self::heartbeat_end(&mut self.ended) => end,
+            () = self.shutdown.aborting() => LeaseEnd::Aborted,
+        }
+    }
+
+    async fn heartbeat_end(ended: &mut watch::Receiver<Option<LeaseEnd>>) -> LeaseEnd {
+        if let Ok(state) = ended.wait_for(Option::is_some).await
             && let Some(end) = *state
         {
             return end;

@@ -88,6 +88,8 @@ struct State {
     video: VecDeque<Entry>,
     taken: BTreeMap<Uuid, Entry>,
     claim_status: Option<u16>,
+    /// Statuses of the next `PUT status` calls, first first; 204 once they are used up.
+    status_replies: VecDeque<u16>,
 }
 
 pub struct ScriptedApi {
@@ -121,6 +123,11 @@ impl ScriptedApi {
         self.state().claim_status = Some(status);
     }
 
+    /// The next `PUT status` calls are answered with these statuses, in order.
+    pub fn status_replies(&self, statuses: impl IntoIterator<Item = u16>) {
+        self.state().status_replies.extend(statuses);
+    }
+
     /// From now on the heartbeat of `job` is answered 409, as when the lease ran out and the job was handed on.
     pub fn expire_lease(&self, job: Uuid) {
         let mut state = self.state();
@@ -149,6 +156,11 @@ fn answer(state: &Mutex<State>, request: &Recorded) -> Reply {
         ("GET", [id, "input"]) => match entry(&state, id) {
             Some(entry) if entry.input_status == 200 => Reply::bytes(entry.input.clone()),
             Some(entry) => Reply::status(entry.input_status),
+            None => Reply::status(409),
+        },
+        ("PUT", ["status"]) => Reply::status(state.status_replies.pop_front().unwrap_or(204)),
+        ("DELETE", [id, "lease"]) => match entry(&state, id) {
+            Some(_) => Reply::status(204),
             None => Reply::status(409),
         },
         ("PUT", [id, "lease"]) => match entry(&state, id) {

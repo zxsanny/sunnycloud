@@ -8,7 +8,9 @@ use hyper::body::Bytes;
 use hyper::client::conn::http1;
 use hyper_util::rt::TokioIo;
 use sunnycloud_http_api::registry::{OpenApiDocument, RouteContext};
-use sunnycloud_http_api::{AcceptLoop, BodyLimits, HttpConfig, HttpMetrics, VersionGate};
+use sunnycloud_http_api::{
+    AcceptLoop, BodyLimits, CsrfGuard, HttpConfig, HttpMetrics, VersionGate,
+};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -95,6 +97,8 @@ pub fn route_context_for(
     let services = stub_services(script, metrics);
     let version_gate = VersionGate::new(&config, http_metrics.clone(), services.clock.clone())
         .expect("the version gate builds");
+    let csrf = CsrfGuard::new(&config.public_url, services.clock.clone())
+        .expect("the public url is an origin");
     let body_limits = BodyLimits::new(&config, http_metrics, services.clock.clone());
     RouteContext {
         services: Arc::new(services),
@@ -102,6 +106,7 @@ pub fn route_context_for(
         server_info: config.server_info,
         credentials: config.credentials,
         version_gate,
+        csrf,
         body_limits,
     }
 }

@@ -14,7 +14,7 @@ use sunnycloud_http_api::registry::{
     RouteContext, RouteDef, Routers, document, mount, production_routes,
 };
 use sunnycloud_http_api::{
-    ApiServices, BodyLimits, HttpConfig, HttpMetrics, ServerInfo, VersionGate,
+    ApiServices, BodyLimits, CsrfGuard, HttpConfig, HttpMetrics, ServerInfo, VersionGate,
 };
 use tokio::net::TcpStream;
 
@@ -115,6 +115,7 @@ impl Gated {
         };
         let version_gate = VersionGate::new(&config, http_metrics.clone(), services.clock.clone())
             .expect("gate builds");
+        let csrf = CsrfGuard::new(&config.public_url, services.clock.clone()).expect("origin");
         let body_limits = BodyLimits::new(&config, http_metrics, services.clock.clone());
         let defs: Vec<RouteDef> = class_routes()
             .into_iter()
@@ -126,6 +127,7 @@ impl Gated {
             server_info: config.server_info,
             credentials: config.credentials,
             version_gate,
+            csrf,
             body_limits,
         };
         let Routers { public, internal } = mount(&defs, &context, None);

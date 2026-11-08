@@ -122,6 +122,7 @@ pub fn worker_command(env: &BTreeMap<String, String>, args: &[&str]) -> Command 
 pub struct Running {
     child: Option<Child>,
     _token: TokenFile,
+    _keep: Box<dyn std::any::Any>,
     pub addr: SocketAddr,
     pub env: BTreeMap<String, String>,
 }
@@ -131,11 +132,19 @@ pub struct Running {
 static STARTING: Mutex<()> = Mutex::new(());
 
 impl Running {
-    pub fn start(token: &str) -> Self {
+    /// A worker with `extra` settings (decoder sockets, scratch volumes) on top of the ops address and the
+    /// token; `keep` holds whatever those settings point at until the worker is gone. Returns once `/readyz`
+    /// answers 200.
+    pub fn start(
+        token: &str,
+        extra: BTreeMap<String, String>,
+        keep: Box<dyn std::any::Any>,
+    ) -> Self {
         let _starting = STARTING.lock().unwrap_or_else(PoisonError::into_inner);
         let port = free_port();
         let token = TokenFile::new(token);
-        let env = env_for(port, &token);
+        let mut env = env_for(port, &token);
+        env.extend(extra);
         let mut child = worker_command(&env, &[])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -155,9 +164,14 @@ impl Running {
             );
             sleep(Duration::from_millis(50));
         }
+        while !matches!(try_get(addr, "/readyz"), Ok((200, _))) {
+            assert!(Instant::now() < deadline, "the worker never became ready");
+            sleep(Duration::from_millis(20));
+        }
         Self {
             child: Some(child),
             _token: token,
+            _keep: keep,
             addr,
             env,
         }
