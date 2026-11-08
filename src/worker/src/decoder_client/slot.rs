@@ -9,7 +9,7 @@ use tokio::sync::watch;
 use tokio::time::{sleep, timeout};
 
 use super::conn::DecoderConn;
-use super::error::{BackoffError, GateFailure};
+use super::error::{BackoffError, GateFailure, Unhealthy};
 use super::metrics::{DecoderMetrics, SlotName};
 
 /// Reconnect delays: `initial`, doubling, never above `max`. Each delay is at least the one before it.
@@ -53,6 +53,9 @@ pub enum SlotState {
     Connecting,
     /// The last connection was refused by the gate; the slot takes no jobs.
     GateFailed(GateFailure),
+    /// The job loop took the slot out of use (silent or over-time decoder, protocol violation). It stays so
+    /// until a connection has passed the gate again; a failed gate replaces it with `GateFailed`.
+    Unhealthy(Unhealthy),
     Ready(Capabilities),
 }
 
@@ -70,7 +73,7 @@ impl SlotState {
     pub fn capabilities(&self) -> Option<&Capabilities> {
         match self {
             SlotState::Ready(capabilities) => Some(capabilities),
-            SlotState::Connecting | SlotState::GateFailed(_) => None,
+            SlotState::Connecting | SlotState::GateFailed(_) | SlotState::Unhealthy(_) => None,
         }
     }
 }
@@ -128,7 +131,9 @@ impl Slot {
     /// that counts one `worker_decoder_restarts_total` however many attempts the outage takes. Dropping the
     /// future stops the attempts.
     pub async fn next_ready(&mut self) -> GatedConn {
-        self.mark_not_ready(SlotState::Connecting);
+        if !matches!(*self.state.borrow(), SlotState::Unhealthy(_)) {
+            self.mark_not_ready(SlotState::Connecting);
+        }
         let mut outage = Outage {
             restart_pending: self.handed_out,
             connect_failure_logged: false,
@@ -146,6 +151,13 @@ impl Slot {
             sleep(delay).await;
             delay = self.config.backoff.after(delay);
         }
+    }
+
+    /// Takes the slot out of use until the next `next_ready` has passed the gate: `/readyz` answers 503 and
+    /// `decoder_ok` is false.
+    pub fn mark_unhealthy(&self, why: Unhealthy) {
+        log_warn!("decoder slot unhealthy", err = &why);
+        self.mark_not_ready(SlotState::Unhealthy(why));
     }
 
     fn mark_not_ready(&self, state: SlotState) {
@@ -218,6 +230,7 @@ impl ReadinessCheck for SlotReadiness {
             SlotState::Ready(_) => ReadinessItem::ok(),
             SlotState::Connecting => ReadinessItem::failing("connecting"),
             SlotState::GateFailed(failure) => ReadinessItem::failing(failure.detail()),
+            SlotState::Unhealthy(why) => ReadinessItem::failing(why.detail()),
         };
         Box::pin(std::future::ready(item))
     }

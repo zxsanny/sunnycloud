@@ -3,7 +3,7 @@ use sc_error::ErrorCode;
 use serde_json::{Value, json};
 
 use super::RouteContext;
-use super::classes::{AuthClass, BodyClass, HttpMethod, ListenerKind};
+use super::classes::{AuthClass, BodyClass, HttpMethod, ListenerKind, Timing};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ParamLocation {
@@ -114,6 +114,7 @@ pub struct RouteSpec {
     pub owner: &'static str,
     pub auth: AuthClass,
     pub body: BodyClass,
+    pub timing: Timing,
     pub state_changing: bool,
     pub listener: ListenerKind,
     pub params: &'static [Param],
@@ -141,6 +142,7 @@ impl RouteSpec {
             owner,
             auth,
             body,
+            timing: Timing::Request,
             state_changing: method.mutates_by_default(),
             listener: ListenerKind::Public,
             params: &[],
@@ -169,6 +171,18 @@ impl RouteSpec {
 
     pub const fn success(mut self, status: u16) -> RouteSpec {
         self.success = status;
+        self
+    }
+
+    /// A held read: its time limit is the `wait` query parameter plus a margin, not `request_timeout`.
+    pub const fn long_poll(mut self) -> RouteSpec {
+        self.timing = Timing::LongPoll;
+        self
+    }
+
+    /// A content stream: no total time cap.
+    pub const fn download(mut self) -> RouteSpec {
+        self.timing = Timing::Download;
         self
     }
 

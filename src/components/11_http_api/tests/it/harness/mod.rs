@@ -17,7 +17,7 @@ use std::time::Duration;
 use sc_observability::{BuildInfo, Metrics, ReadinessCheck};
 use sunnycloud_http_api::{
     AcceptLoop, ApiServices, CredentialFormat, HttpConfig, HttpMetrics, HttpServer,
-    HttpServerError, ServerInfo,
+    HttpServerError, ServerInfo, WorkerOutputLimits,
 };
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -51,6 +51,11 @@ pub fn default_config() -> HttpConfig {
         h2_keepalive_timeout: Duration::from_secs(20),
         request_timeout: Duration::from_secs(60),
         body_idle_timeout: Duration::from_secs(30),
+        worker_output_limits: WorkerOutputLimits {
+            thumb: 5 << 20,
+            preview: 20 << 20,
+            transcode: 10 << 30,
+        },
         shutdown_grace: Duration::from_secs(25),
         min_client_version: None,
         update_url: None,

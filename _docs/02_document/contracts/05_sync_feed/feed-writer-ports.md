@@ -3,9 +3,9 @@
 **Component**: 05_sync_feed
 **Producer task**: E-12/c03 — `_docs/02_tasks/todo/B02-24_feed_stamp.md` (`FeedStamp`); E-12/c05 — `B02-26_feed_long_poll.md` (`FeedNotifier`); E-12/c06 — `B02-27_feed_horizon_lifecycle.md` (`FeedHorizon`) (renamed to their AZ keys at Step 4). The `nodes.seq` column and `nodes_feed_idx` come from E-12/c02 (`B02-23_sync_feed_skeleton.md`).
 **Consumer tasks**: E-13 tree (commit tail in `publish`, folder create, rename, move and delete, edit-beats-delete revival, restore, tombstone purge; E-13/c04, c05, c06, c10, c11)
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (frozen when E-12/c06 is accepted)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -17,7 +17,9 @@ The "documented contract with E-13" of the E-12 epic: how 02 stamps, wakes and r
 |------|-----------------|--------|-----------|
 | `FeedStamp::stamp` | `tx: &mut DbTx, account, TouchedNodes (non-empty)` -> `Seq` | `AccountFeedMissing` | async, caller's tx |
 | `FeedNotifier::notify` | `account, seq` -> `()` | none | sync, non-blocking |
-| `FeedHorizon::raise_purge_horizon` | `tx: &mut DbTx, account, seq` -> `()` | none | async, caller's tx |
+| `FeedHorizon::raise_purge_horizon` | `tx: &mut DbTx, account, seq` -> `()` | `Unexpected` | async, caller's tx |
+| `AccountLifecycleHook::initialize` (05) | `tx: &mut DbTx, account` -> `()` | `Unexpected` | async, caller's tx |
+| `AccountLifecycleHook::erase_batch` (05) | `account, limit` -> `EraseProgress{remaining}` | `Unexpected` | async, own short transaction |
 
 ## Invariants
 
@@ -26,6 +28,9 @@ The "documented contract with E-13" of the E-12 epic: how 02 stamps, wakes and r
 - `AccountFeedMissing` (no feed row for the account) is an invariant violation, logged at ERROR.
 - `notify` never blocks and keeps no state for accounts without waiters. A lost or late wake is healed by the feed's safety recheck (`feed_safety_recheck`, 10 s); a change made by another process is seen the same way.
 - `raise_purge_horizon` is a non-decreasing update in the caller's transaction (`SET purge_horizon = GREATEST(purge_horizon, $seq)`): a call with a lower `seq` leaves the horizon unchanged and is not an error (a lowered horizon would accept cursors whose tombstones were purged; a reset is `bump_epoch`). Zero matching rows (the feed row of an account being erased) is not an error.
+- Implementations: `PgFeedStamp`, `PgFeedHorizon` (stateless) and `PgFeedLifecycle::new(db, clock, marker)` in `sunnycloud-sync-feed`. The hook is the feed's part of the `AccountLifecycleHook` registry (01 calls `initialize`, 07 calls `erase_batch`); 12 registers it after the tree's hook so the tree's erase batches can still stamp the feed.
+- `initialize` inserts the account's `account_feeds` row in the caller's transaction with the installation epoch, chosen in the same statement: `max(epoch)` of the existing rows, or the clock's unix seconds when there is none. In the second case it also calls `EpochMarker::write(epoch)` (04's port, through `contracts`) inside the caller's transaction, so a failed write fails the account creation. Row-level security hides other accounts' feed rows from an account-scoped transaction, so the caller must run `initialize` in system scope; in account scope every account would take the clock epoch. Two first accounts created concurrently on an empty install may choose different epochs (no lock is taken).
+- `erase_batch` deletes the account's feed row in its own account-scoped transaction and returns `remaining = 0`, also on a repeat (no row left).
 - **Caller obligations (02)**:
   - call `stamp` as the **last** statement before COMMIT: nothing between it and COMMIT (no reads, no file I/O, no cycle checks);
   - call `stamp` only when at least one node changed; never for a transaction where every entry failed or was `NoChange`;
@@ -54,9 +59,14 @@ The "documented contract with E-13" of the E-12 epic: how 02 stamps, wakes and r
 | notify-after-commit | real publish; rolled-back publish | holders wake after the first only | E-12/c09 |
 | horizon-zero-rows | raise for an erased account | `Ok` | IT-05-12 |
 | horizon-lower-seq | horizon 30, raise with 20 | `Ok`, horizon stays 30 | IT-05-12 |
+| horizon-rollback | raise, then the caller's transaction rolls back | horizon unchanged | IT-05-12 |
+| init-first | empty install, clock at T | row epoch = unix seconds of T; marker written with it | IT-05-13 |
+| init-second | one row exists | same epoch as the existing rows; marker not written again | IT-05-13 |
+| erase-twice | feed row, `erase_batch` twice | `remaining = 0` both times; row gone; a parked read ends `Unauthenticated` | IT-05-13 |
 
 ## Change Log
 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B02) |
+| 1.1.0 | 2026-11-08 | Stated the horizon and lifecycle implementations: installation epoch choice, marker write inside the caller's transaction, system scope for `initialize`, `erase_batch` (AZ-3778) | implement |

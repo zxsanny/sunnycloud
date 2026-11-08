@@ -84,3 +84,23 @@ fn stills_use_the_photo_limits_and_poster_and_transcode_the_video_limits() {
     // Assert
     assert_eq!(kinds, [2, 4, 4]);
 }
+
+#[test]
+fn watchdog_durations_default_to_the_documented_values_and_follow_the_settings() {
+    // Act
+    let defaults = config(&[]);
+    let tuned = config(&[
+        ("SUNNYCLOUD_DECODER_SILENCE_TIMEOUT", "1s"),
+        ("SUNNYCLOUD_DECODER_CANCEL_GRACE", "500ms"),
+        ("SUNNYCLOUD_PHOTO_JOB_TIMEOUT", "2s"),
+    ]);
+
+    // Assert
+    assert_eq!(defaults.silence_timeout, Duration::from_secs(20));
+    assert_eq!(defaults.cancel_grace, Duration::from_secs(5));
+    assert_eq!(defaults.photo.wall(), Duration::from_secs(120));
+    assert_eq!(defaults.video.wall(), Duration::from_secs(40 * 60));
+    assert_eq!(tuned.silence_timeout, Duration::from_secs(1));
+    assert_eq!(tuned.cancel_grace, Duration::from_millis(500));
+    assert_eq!(tuned.photo.wall(), Duration::from_secs(2));
+}

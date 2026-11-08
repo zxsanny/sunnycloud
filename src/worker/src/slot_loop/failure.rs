@@ -4,8 +4,9 @@
 use media_shared::decoder_protocol::DecodeError;
 use media_shared::types::{Disposition, FailureReport};
 
+use super::lease::LeaseEnd;
 use crate::api::ApiError;
-use crate::decoder_client::CallError;
+use crate::decoder_client::{CallError, Unhealthy};
 use crate::policy_step::{OutputInvalid, StepError};
 use crate::scratch::ScratchError;
 
@@ -22,6 +23,9 @@ pub(super) enum Stop {
     LeaseLost,
     /// 403: the worker is not ready and stops claiming. Nothing more is sent.
     Refused,
+    /// The decoder broke the protocol, went silent or ran past the wall limit: the slot leaves service and the
+    /// job is failed `Retry`.
+    Unhealthy(Unhealthy),
     Fail(FailureReport),
 }
 
@@ -44,6 +48,15 @@ impl Stop {
     /// The job scratch path is not text, so no `job_dir` can be sent to the decoder.
     pub(super) fn scratch_io() -> Self {
         Self::retry(SCRATCH_IO)
+    }
+}
+
+impl From<LeaseEnd> for Stop {
+    fn from(end: LeaseEnd) -> Self {
+        match end {
+            LeaseEnd::Lost => Stop::LeaseLost,
+            LeaseEnd::Refused => Stop::Refused,
+        }
     }
 }
 
@@ -94,6 +107,22 @@ impl From<OutputInvalid> for Stop {
     }
 }
 
+impl Unhealthy {
+    /// The failure the API is sent. All three are transient: another attempt, possibly on another slot, can
+    /// succeed.
+    pub(super) fn report(self) -> FailureReport {
+        let code = match self {
+            Unhealthy::Silent => "DecoderSilent",
+            Unhealthy::WallLimit => "WallLimit",
+            Unhealthy::Violation => "ProtocolViolation",
+        };
+        FailureReport {
+            code: code.to_owned(),
+            disposition: Disposition::Retry,
+        }
+    }
+}
+
 /// `Stalled` and `EncoderFailed` get one rerun inside the claim (09 section 3, step 5).
 pub(super) fn rerunnable(error: &CallError) -> bool {
     matches!(
@@ -110,7 +139,7 @@ pub(super) fn decoder_stop(error: &CallError) -> Stop {
         CallError::Closed | CallError::Io(_) | CallError::Disconnected => {
             Stop::retry("DecoderUnreachable")
         }
-        CallError::Violation(_) => Stop::retry("ProtocolViolation"),
+        CallError::Violation(_) => Stop::Unhealthy(Unhealthy::Violation),
         CallError::InvalidRequest(_) => Stop::retry("InvalidRequest"),
         CallError::Cancelled => Stop::retry("Cancelled"),
     }
@@ -125,7 +154,7 @@ fn decode_stop(error: DecodeError) -> Stop {
         DecodeError::Stalled => Stop::permanent("Stalled"),
         DecodeError::EncoderFailed { .. } => Stop::permanent("EncoderFailed"),
         DecodeError::ProtocolViolation | DecodeError::ProtocolMismatch => {
-            Stop::retry("ProtocolViolation")
+            Stop::Unhealthy(Unhealthy::Violation)
         }
         DecodeError::Busy => Stop::retry("Busy"),
     }

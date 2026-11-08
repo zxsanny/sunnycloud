@@ -133,6 +133,12 @@ impl DecoderConn {
         self.live.is_some()
     }
 
+    /// Drops the connection. The runner sees the stream close and stops the job; later calls fail with
+    /// `CallError::Disconnected`.
+    pub(crate) fn close(&mut self) {
+        self.live = None;
+    }
+
     async fn exchange<T>(
         &mut self,
         request: Request,

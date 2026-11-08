@@ -1,5 +1,5 @@
 //! Sync feed: settings, failure conversions, the `account_feeds` and `nodes.seq` migration (AZ-3774) and the stamp
-//! (AZ-3775) and the change feed read (AZ-3776) on a real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
+//! (AZ-3775), the change feed read (AZ-3776), the horizon and the lifecycle hook (AZ-3778) on a real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
 
 mod config;
 mod cursor;
@@ -11,6 +11,8 @@ mod hold_recheck;
 mod hold_revalidate;
 mod hold_support;
 mod hold_wake;
+mod horizon;
+mod lifecycle;
 mod migration;
 mod probe_clock;
 mod read;

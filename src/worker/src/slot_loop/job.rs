@@ -1,4 +1,4 @@
-use std::future::pending;
+use std::future::Future;
 
 use media_shared::decoder_protocol::{Capabilities, Limits};
 use media_shared::policy::{Plan, Probe, cpu_transcode_plan};
@@ -6,7 +6,9 @@ use media_shared::types::{ClaimedJob, DerivedKind, OutputMeta, SkipOutcome};
 
 use super::config::KindConfig;
 use super::failure::{Stop, decoder_stop, rerunnable};
-use crate::api::WorkerApiClient;
+use super::lease::Lease;
+use super::watchdog::{Tap, Watchdog};
+use crate::api::{ApiError, WorkerApiClient};
 use crate::decoder_client::{CallError, DecoderConn};
 use crate::policy_step::{Step, StillRender, check_output, choose_step};
 use crate::scratch::{ScratchDir, ScratchRoot};
@@ -34,7 +36,21 @@ pub(super) struct JobRun<'a> {
     pub(super) conn: &'a mut DecoderConn,
     pub(super) capabilities: &'a Capabilities,
     pub(super) kind: &'a KindConfig,
+    pub(super) lease: &'a mut Lease,
+    pub(super) watchdog: Watchdog,
     pub(super) reran: bool,
+}
+
+/// A call to the API that is dropped the moment the lease is lost, so a long fetch or post does not outlive it.
+async fn while_leased<T>(
+    lease: &mut Lease,
+    call: impl Future<Output = Result<T, ApiError>>,
+) -> Result<T, Stop> {
+    tokio::select! {
+        biased;
+        answer = call => answer.map_err(|error| Stop::from(&error)),
+        end = lease.ended() => Err(Stop::from(end)),
+    }
 }
 
 impl JobRun<'_> {
@@ -46,10 +62,7 @@ impl JobRun<'_> {
             .scratch
             .create_source()
             .map_err(|error| Stop::from(&error))?;
-        self.api
-            .fetch_input(self.job, source)
-            .await
-            .map_err(|error| Stop::from(&error))?;
+        while_leased(self.lease, self.api.fetch_input(self.job, source)).await?;
         let job_dir = self
             .scratch
             .path()
@@ -101,7 +114,10 @@ impl JobRun<'_> {
 
     async fn probe(&mut self, job_dir: &str) -> Result<Probe, Stop> {
         loop {
-            match self.conn.probe(job_dir, &mut |_| {}, pending()).await {
+            let tap = Tap::new();
+            let mut sink = tap.sink();
+            let call = self.conn.probe(job_dir, &mut sink, tap.cancel());
+            match self.watchdog.watch(self.lease, &tap, call).await? {
                 Ok(probe) => return Ok(probe),
                 Err(error) => self.grant_rerun(&error)?,
             }
@@ -116,18 +132,17 @@ impl JobRun<'_> {
                 .clear_out()
                 .map_err(|error| Stop::from(&error))?;
             let limits = self.limits();
-            let answer = self
-                .conn
-                .render_still(
-                    job_dir,
-                    render.max_edge,
-                    render.poster_at_ms,
-                    limits,
-                    &mut |_| {},
-                    pending(),
-                )
-                .await;
-            match answer {
+            let tap = Tap::new();
+            let mut sink = tap.sink();
+            let call = self.conn.render_still(
+                job_dir,
+                render.max_edge,
+                render.poster_at_ms,
+                limits,
+                &mut sink,
+                tap.cancel(),
+            );
+            match self.watchdog.watch(self.lease, &tap, call).await? {
                 Ok(image) => break image,
                 Err(error) => self.grant_rerun(&error)?,
             }
@@ -153,11 +168,12 @@ impl JobRun<'_> {
                 .clear_out()
                 .map_err(|error| Stop::from(&error))?;
             let limits = self.limits();
-            let answer = self
+            let tap = Tap::new();
+            let mut sink = tap.sink();
+            let call = self
                 .conn
-                .transcode(job_dir, plan, limits, &mut |_| {}, pending())
-                .await;
-            match answer {
+                .transcode(job_dir, plan, limits, &mut sink, tap.cancel());
+            match self.watchdog.watch(self.lease, &tap, call).await? {
                 Ok(result) => break result,
                 Err(error) => {
                     self.grant_rerun(&error)?;
@@ -183,7 +199,7 @@ impl JobRun<'_> {
 
     /// Safe-opens `out/result.<extension>` and posts it. "Already present" is success.
     async fn post(
-        &self,
+        &mut self,
         kind: DerivedKind,
         extension: &str,
         meta: &OutputMeta,
@@ -192,9 +208,10 @@ impl JobRun<'_> {
             .scratch
             .open_output(extension, self.limits().max_output_bytes)
             .map_err(|error| Stop::from(&error))?;
-        self.api
-            .post_output(self.job.job_id, kind, meta, output)
-            .await
-            .map_err(|error| Stop::from(&error))
+        while_leased(
+            self.lease,
+            self.api.post_output(self.job.job_id, kind, meta, output),
+        )
+        .await
     }
 }

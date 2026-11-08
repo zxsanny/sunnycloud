@@ -4,7 +4,7 @@ use media_shared::types::{Disposition, FailureReport, Lane};
 use super::failure::{Stop, decoder_stop, rerunnable};
 use super::{lane_order, other};
 use crate::api::ApiError;
-use crate::decoder_client::{CallError, SlotName};
+use crate::decoder_client::{CallError, SlotName, Unhealthy};
 use crate::policy_step::StepError;
 use crate::scratch::{RejectReason, ScratchError};
 
@@ -105,7 +105,7 @@ fn decoder_answers_end_the_job_with_the_documented_disposition() {
         ),
         (
             DecodeError::ProtocolViolation,
-            fail("ProtocolViolation", Disposition::Retry),
+            Stop::Unhealthy(Unhealthy::Violation),
         ),
         (DecodeError::Busy, fail("Busy", Disposition::Retry)),
     ];
@@ -146,7 +146,7 @@ fn a_decoder_protocol_violation_is_retried() {
     let stop = decoder_stop(&error);
 
     // Assert
-    assert_eq!(stop, fail("ProtocolViolation", Disposition::Retry));
+    assert_eq!(stop, Stop::Unhealthy(Unhealthy::Violation));
 }
 
 #[test]
@@ -230,4 +230,23 @@ fn step_errors_map_to_a_disposition() {
     // Assert
     assert_eq!(version, fail("UnknownParamsVersion", Disposition::Retry));
     assert_eq!(duration, fail("MissingDuration", Disposition::Permanent));
+}
+
+#[test]
+fn every_unhealthy_cause_fails_the_job_with_retry() {
+    // Arrange
+    let causes = [
+        (Unhealthy::Silent, "DecoderSilent"),
+        (Unhealthy::WallLimit, "WallLimit"),
+        (Unhealthy::Violation, "ProtocolViolation"),
+    ];
+
+    for (cause, code) in causes {
+        // Act
+        let report = cause.report();
+
+        // Assert
+        assert_eq!(report.code, code);
+        assert_eq!(report.disposition, Disposition::Retry);
+    }
 }

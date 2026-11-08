@@ -8,6 +8,15 @@ use crate::server_info::ServerInfo;
 /// The largest flow-control window HTTP/2 allows (RFC 9113 section 6.9.1).
 const MAX_H2_WINDOW: u32 = 0x7fff_ffff;
 
+/// The largest worker output body per derived kind (config keys `derived_max_thumb`, `derived_max_preview`,
+/// `derived_max_transcode`, owned by 08), in bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkerOutputLimits {
+    pub thumb: u64,
+    pub preview: u64,
+    pub transcode: u64,
+}
+
 /// The typed section 12 binds through `sc_config` (keys of helper 01; defaults live in its table).
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
@@ -29,6 +38,8 @@ pub struct HttpConfig {
     pub h2_keepalive_timeout: Duration,
     pub request_timeout: Duration,
     pub body_idle_timeout: Duration,
+    /// The ceiling of a `WorkerOutput` body, by the `{kind}` of the route.
+    pub worker_output_limits: WorkerOutputLimits,
     pub shutdown_grace: Duration,
     /// One semver for every client family, or `family=semver,...`; unset means no minimum.
     pub min_client_version: Option<String>,
@@ -59,6 +70,9 @@ impl HttpConfig {
         }
         if self.h2_keepalive_interval.is_zero() || self.h2_keepalive_timeout.is_zero() {
             return invalid("h2 keepalive interval and timeout must be above zero");
+        }
+        if self.request_timeout.is_zero() || self.body_idle_timeout.is_zero() {
+            return invalid("request_timeout and body_idle_timeout must be above zero");
         }
         self.credentials.check()
     }

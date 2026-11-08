@@ -22,7 +22,7 @@ use std::process::ExitCode;
 pub use api::{ApiConfig, ApiConfigError, ApiError, WorkerApiClient};
 pub use decoder_client::{
     Backoff, BackoffError, CallError, DecoderConn, DecoderMetrics, EventSink, GateFailure,
-    GatedConn, PROTOCOL_VERSION, Slot, SlotConfig, SlotName, SlotReadiness, SlotState,
+    GatedConn, PROTOCOL_VERSION, Slot, SlotConfig, SlotName, SlotReadiness, SlotState, Unhealthy,
 };
 pub use error::WorkerError;
 pub use policy_step::{OutputInvalid, Step, StepError, StillRender, check_output, choose_step};

@@ -7,15 +7,17 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use media_shared::decoder_protocol::{
-    Capabilities, DecodeError, ImageResult, Message, Request, Response, SelfCheckItem,
+    Capabilities, DecodeError, Event, ImageResult, Message, Request, Response, SelfCheckItem,
     SelfCheckReport, TranscodeResult, parse_request, write_message,
 };
 use media_shared::policy::Probe;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::mpsc;
 
 pub fn capabilities() -> Capabilities {
     Capabilities {
@@ -47,6 +49,12 @@ pub enum Answer {
     Error(DecodeError),
     /// Reads the request and closes the connection, as a runner that exits mid-job does.
     Hang,
+    /// A hung runner: reads the request, sends no frame of any kind and ignores `cancel`.
+    Silent,
+    /// A runner that sends `Alive` at this interval but never answers the request and ignores `cancel`.
+    AliveOnly(Duration),
+    /// Writes these bytes instead of an answer, as a compromised runner does.
+    Garbage(Vec<u8>),
 }
 
 /// The answers of one kind of request: the queue first, then the fallback for every request after it.
@@ -66,6 +74,8 @@ impl Queue {
 #[derive(Debug, Clone)]
 pub struct Seen {
     pub request: Request,
+    /// When the request was taken.
+    pub at: Instant,
     /// Entries of the job's `out/` when the request arrived.
     pub out_entries: usize,
 }
@@ -77,6 +87,9 @@ struct Script {
     seen: Vec<Seen>,
     hellos: usize,
     delay: Duration,
+    /// When each `cancel` arrived while a job request was being answered.
+    cancels: Vec<Instant>,
+    self_check_ok: bool,
 }
 
 pub struct FakeDecoder {
@@ -101,6 +114,8 @@ impl FakeDecoder {
             seen: Vec::new(),
             hellos: 0,
             delay: Duration::ZERO,
+            cancels: Vec::new(),
+            self_check_ok: true,
         }));
         let in_flight = Arc::new(AtomicUsize::new(0));
         let most_in_flight = Arc::new(AtomicUsize::new(0));
@@ -157,6 +172,17 @@ impl FakeDecoder {
         self
     }
 
+    /// From now on `self_check` reports a failed item.
+    pub fn fail_self_checks(&self) -> &Self {
+        self.script().self_check_ok = false;
+        self
+    }
+
+    /// When each `cancel` reached the decoder during a job request.
+    pub fn cancels(&self) -> Vec<Instant> {
+        self.script().cancels.clone()
+    }
+
     pub fn seen(&self) -> Vec<Seen> {
         self.script().seen.clone()
     }
@@ -193,7 +219,7 @@ impl Shared {
     }
 }
 
-async fn read_request(stream: &mut UnixStream) -> Option<Request> {
+async fn read_request(stream: &mut (impl AsyncRead + Unpin)) -> Option<Request> {
     let mut prefix = [0u8; 4];
     stream.read_exact(&mut prefix).await.ok()?;
     let mut payload = vec![0u8; u32::from_be_bytes(prefix) as usize];
@@ -201,39 +227,63 @@ async fn read_request(stream: &mut UnixStream) -> Option<Request> {
     Some(parse_request(&payload).expect("the supervisor sends valid requests"))
 }
 
-async fn send(stream: &mut UnixStream, response: Response) {
-    let mut frame = Vec::new();
-    write_message(&mut frame, &Message::Response(response)).expect("a valid response");
-    if let Err(error) = stream.write_all(&frame).await {
+async fn write_bytes(stream: &mut OwnedWriteHalf, bytes: &[u8]) {
+    if let Err(error) = stream.write_all(bytes).await {
         eprintln!("fake decoder: the client went away before the answer: {error}");
     }
 }
 
-async fn serve(mut stream: UnixStream, shared: Shared) {
+async fn send(stream: &mut OwnedWriteHalf, message: Message) {
+    let mut frame = Vec::new();
+    write_message(&mut frame, &message).expect("a valid message");
+    write_bytes(stream, &frame).await;
+}
+
+/// Requests reach `serve` through a channel, so a `cancel` can be seen while a job request is being answered.
+async fn read_loop(mut stream: OwnedReadHalf, requests: mpsc::UnboundedSender<Request>) {
     while let Some(request) = read_request(&mut stream).await {
+        if requests.send(request).is_err() {
+            return;
+        }
+    }
+}
+
+type Requests = mpsc::UnboundedReceiver<Request>;
+
+async fn serve(stream: UnixStream, shared: Shared) {
+    let (read, mut write) = stream.into_split();
+    let (requests_tx, mut requests) = mpsc::unbounded_channel();
+    tokio::spawn(read_loop(read, requests_tx));
+    while let Some(request) = requests.recv().await {
         let response = match &request {
             Request::Hello { .. } => {
                 shared.script().hellos += 1;
                 Response::Capabilities(capabilities())
             }
             Request::SelfCheck { .. } => {
+                let ok = shared.script().self_check_ok;
                 Response::SelfCheck(SelfCheckReport(vec![SelfCheckItem {
                     name: "no_network".into(),
-                    ok: true,
+                    ok,
                 }]))
             }
             Request::Cancel => Response::Cancelled,
-            job => match run_job(&shared, job).await {
+            job => match run_job(&shared, job, &mut requests, &mut write).await {
                 Some(response) => response,
                 None => return,
             },
         };
-        send(&mut stream, response).await;
+        send(&mut write, Message::Response(response)).await;
     }
 }
 
 /// `None` closes the connection without an answer.
-async fn run_job(shared: &Shared, request: &Request) -> Option<Response> {
+async fn run_job(
+    shared: &Shared,
+    request: &Request,
+    requests: &mut Requests,
+    write: &mut OwnedWriteHalf,
+) -> Option<Response> {
     let (job_dir, answer, delay) = {
         let mut script = shared.script();
         let job_dir = match request {
@@ -246,6 +296,7 @@ async fn run_job(shared: &Shared, request: &Request) -> Option<Response> {
             fs::read_dir(Path::new(&job_dir).join("out")).map_or(0, |entries| entries.count());
         script.seen.push(Seen {
             request: request.clone(),
+            at: Instant::now(),
             out_entries,
         });
         let answer = match request {
@@ -262,53 +313,107 @@ async fn run_job(shared: &Shared, request: &Request) -> Option<Response> {
     };
     let now = shared.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
     shared.most_in_flight.fetch_max(now, Ordering::SeqCst);
-    if !delay.is_zero() {
-        tokio::time::sleep(delay).await;
-    }
-    let response = respond(request, &job_dir, answer);
+    let out = work(shared, request, &job_dir, answer, delay, requests, write).await;
     shared.in_flight.fetch_sub(1, Ordering::SeqCst);
-    response
+    out
+}
+
+/// Answers after `delay`, unless a `cancel` arrives first (answered `Cancelled`). The hung answers never end.
+async fn work(
+    shared: &Shared,
+    request: &Request,
+    job_dir: &str,
+    answer: Answer,
+    delay: Duration,
+    requests: &mut Requests,
+    write: &mut OwnedWriteHalf,
+) -> Option<Response> {
+    match answer {
+        Answer::Silent => loop {
+            note_cancel(shared, &requests.recv().await?);
+        },
+        Answer::AliveOnly(every) => loop {
+            tokio::select! {
+                () = tokio::time::sleep(every) => send(write, Message::Event(Event::Alive)).await,
+                next = requests.recv() => {
+                    note_cancel(shared, &next?);
+                }
+            }
+        },
+        Answer::Garbage(bytes) => {
+            write_bytes(write, &bytes).await;
+            loop {
+                requests.recv().await?;
+            }
+        }
+        answer => {
+            if !delay.is_zero() {
+                tokio::select! {
+                    () = tokio::time::sleep(delay) => {}
+                    next = requests.recv() => {
+                        if note_cancel(shared, &next?) {
+                            return Some(Response::Cancelled);
+                        }
+                    }
+                }
+            }
+            respond(request, job_dir, answer)
+        }
+    }
+}
+
+/// Records a `cancel`; true when `request` was one.
+fn note_cancel(shared: &Shared, request: &Request) -> bool {
+    let cancel = matches!(request, Request::Cancel);
+    if cancel {
+        shared.script().cancels.push(Instant::now());
+    }
+    cancel
 }
 
 fn respond(request: &Request, job_dir: &str, answer: Answer) -> Option<Response> {
     let out = Path::new(job_dir).join("out");
-    match answer {
-        Answer::Probe(probe) => Some(Response::Probe(probe)),
+    let response = match answer {
+        Answer::Probe(probe) => Response::Probe(probe),
         Answer::Image { width, height } => {
             let Request::RenderStill { max_edge, .. } = request else {
                 panic!("an image answer to {request:?}");
             };
             let bytes = format!("webp edge {max_edge}").into_bytes();
             fs::write(out.join("result.webp"), &bytes).expect("the fake writes its output");
-            Some(Response::ImageResult(ImageResult {
+            Response::ImageResult(ImageResult {
                 width,
                 height,
                 bytes: bytes.len() as u64,
-            }))
+            })
         }
         Answer::Transcode(probe_of_output) => {
             let bytes = b"mp4 output".to_vec();
             fs::write(out.join("result.mp4"), &bytes).expect("the fake writes its output");
-            Some(Response::TranscodeResult(TranscodeResult {
+            Response::TranscodeResult(TranscodeResult {
                 probe_of_output,
                 bytes: bytes.len() as u64,
-            }))
+            })
         }
-        Answer::ImageWithoutFile => Some(Response::ImageResult(ImageResult {
+        Answer::ImageWithoutFile => Response::ImageResult(ImageResult {
             width: 320,
             height: 240,
             bytes: 1,
-        })),
+        }),
         Answer::ImageAsSymlink => {
             std::os::unix::fs::symlink("/etc/hostname", out.join("result.webp"))
                 .expect("the fake plants a link");
-            Some(Response::ImageResult(ImageResult {
+            Response::ImageResult(ImageResult {
                 width: 320,
                 height: 240,
                 bytes: 1,
-            }))
+            })
         }
-        Answer::Error(error) => Some(Response::Error(error)),
-        Answer::Hang => None,
-    }
+        Answer::Error(error) => Response::Error(error),
+        Answer::Hang => return None,
+        Answer::Silent | Answer::AliveOnly(_) | Answer::Garbage(_) => {
+            panic!("{answer:?} is handled before respond")
+        }
+    };
+    Some(response)
 }

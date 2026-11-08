@@ -13,7 +13,9 @@ use serde_json::Value;
 use sunnycloud_http_api::registry::{
     RouteContext, RouteDef, Routers, document, mount, production_routes,
 };
-use sunnycloud_http_api::{ApiServices, HttpConfig, HttpMetrics, ServerInfo, VersionGate};
+use sunnycloud_http_api::{
+    ApiServices, BodyLimits, HttpConfig, HttpMetrics, ServerInfo, VersionGate,
+};
 use tokio::net::TcpStream;
 
 use crate::auth::support::{ScriptedAuthenticator, ScriptedWorkerAuth, class_routes};
@@ -111,8 +113,9 @@ impl Gated {
             worker_auth: worker_auth.clone(),
             ..stub_services(&Script::default(), metrics.clone())
         };
-        let version_gate =
-            VersionGate::new(&config, http_metrics, services.clock.clone()).expect("gate builds");
+        let version_gate = VersionGate::new(&config, http_metrics.clone(), services.clock.clone())
+            .expect("gate builds");
+        let body_limits = BodyLimits::new(&config, http_metrics, services.clock.clone());
         let defs: Vec<RouteDef> = class_routes()
             .into_iter()
             .chain(production_routes())
@@ -123,6 +126,7 @@ impl Gated {
             server_info: config.server_info,
             credentials: config.credentials,
             version_gate,
+            body_limits,
         };
         let Routers { public, internal } = mount(&defs, &context, None);
         Gated {

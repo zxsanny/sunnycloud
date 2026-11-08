@@ -14,6 +14,9 @@
 //! security headers) that wrap the public and internal routers; handlers read the id with
 //! `Extension<CorrelationId>` and the caller's address with `Extension<ClientIp>`.
 //!
+//! [`BodyLimits`] is layer 6, the innermost of a route: the body limit and the time limits of its `BodyClass` and
+//! `Timing`, applied after the version gate and auth so a refused caller never has a body byte read.
+//!
 //! [`VersionGate`] is layer 7: it refuses a client below `min_client_version` with 426 before auth, and serves
 //! the count of client versions; [`ServerInfo`] is what `GET /api/v1/server-info` returns.
 //!
@@ -25,6 +28,7 @@ mod auth;
 mod config;
 mod error;
 mod gate;
+mod limits;
 mod metrics;
 mod middleware;
 mod openapi_diff;
@@ -40,8 +44,9 @@ mod version;
 
 pub use accept::AcceptLoop;
 pub use auth::{Authenticated, CredentialFormat, CredentialSource};
-pub use config::HttpConfig;
+pub use config::{HttpConfig, WorkerOutputLimits};
 pub use error::{HttpServerError, Listener};
+pub use limits::BodyLimits;
 pub use metrics::{
     ClientVersionLabels, DurationLabels, HttpMetrics, MethodLabel, RequestLabels, StatusClass,
 };

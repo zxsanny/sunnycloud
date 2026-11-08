@@ -1,6 +1,6 @@
 //! Layers 1 to 5 of the stack of 11 section 5 (outermost first), for the public and internal routers:
-//! panic catcher, client IP, request ID, metrics and log, security headers. Timeouts, the version gate, auth
-//! and CSRF (E-21/c05 to c08) sit inside them.
+//! panic catcher, client IP, request ID, metrics and log, security headers. The version gate, auth, the body and time limits
+//! (innermost) and CSRF sit inside them, per route.
 
 mod client_ip;
 mod headers;

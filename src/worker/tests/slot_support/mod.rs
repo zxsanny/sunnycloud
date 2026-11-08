@@ -49,10 +49,21 @@ pub fn video_limits() -> Limits {
     }
 }
 
+/// `loop_config` with the watchdog durations of a test: short enough to run in milliseconds.
+pub fn watchdog_config(silence: Duration, grace: Duration, photo_wall: Duration) -> LoopConfig {
+    let mut config = loop_config();
+    config.silence_timeout = silence;
+    config.cancel_grace = grace;
+    config.photo.limits.wall = u64::try_from(photo_wall.as_millis()).expect("a short wall");
+    config
+}
+
 /// The documented limits, with an input bound a temporary folder can always take.
 pub fn loop_config() -> LoopConfig {
     LoopConfig {
         claim_poll_interval: Duration::from_millis(5),
+        silence_timeout: Duration::from_secs(20),
+        cancel_grace: Duration::from_secs(5),
         photo: KindConfig {
             limits: photo_limits(),
             max_input: 64 * MIB,
@@ -212,6 +223,18 @@ pub fn photo_probe() -> Probe {
         }),
         audio: None,
         duration_ms: None,
+    }
+}
+
+/// Polls `condition` every 5 ms until it holds; a condition that never does fails the test after 10 s.
+pub async fn wait_until(mut condition: impl FnMut() -> bool) {
+    let give_up = tokio::time::Instant::now() + Duration::from_secs(10);
+    while !condition() {
+        assert!(
+            tokio::time::Instant::now() < give_up,
+            "the condition never held"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
     }
 }
 

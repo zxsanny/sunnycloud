@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use super::flush;
 use crate::error::BlobIds;
+use crate::metrics::BlobMetrics;
 
 #[cfg(feature = "sync-hook")]
 use super::hook::SyncHook;
@@ -91,7 +92,11 @@ impl Shared {
 
     /// The outcome of the token's group when it is known; otherwise, when the group is open and no flush runs,
     /// this waiter starts the flush. An absent group is a token that was never issued or was already awaited.
-    pub fn check(self: &Arc<Self>, group: u64) -> Option<Outcome> {
+    pub fn check(
+        self: &Arc<Self>,
+        group: u64,
+        metrics: Option<&Arc<BlobMetrics>>,
+    ) -> Option<Outcome> {
         let mut state = self.lock();
         let Some(entry) = state.groups.get(&group) else {
             return Some(Err(SyncFailure {
@@ -104,7 +109,7 @@ impl Shared {
         }
         if group == state.open && !state.flushing {
             state.flushing = true;
-            tokio::spawn(flush::run(Arc::clone(self)));
+            tokio::spawn(flush::run(Arc::clone(self), metrics.cloned()));
         }
         None
     }

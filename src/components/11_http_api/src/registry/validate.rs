@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use super::classes::{AuthClass, BodyClass, HttpMethod, ListenerKind};
+use super::classes::{AuthClass, BodyClass, HttpMethod, ListenerKind, Timing};
 use super::naming::{lint_path, path_variables};
 use super::spec::{ParamLocation, RouteDef, RouteSpec};
 
@@ -37,6 +37,7 @@ pub fn validate(defs: &[RouteDef]) -> Result<(), RegistryError> {
         check_declaration(spec, &label, &mut problems);
         check_placement(spec, &label, &mut problems);
         check_params(spec, &label, &mut problems);
+        check_timing(spec, &label, &mut problems);
     }
     check_schemas(defs, &mut problems);
     if problems.is_empty() {
@@ -123,6 +124,29 @@ fn check_placement(spec: &RouteSpec, label: &str, problems: &mut Vec<String>) {
         problems.push(format!(
             "{label}: /api/v1/vaults is reserved for VaultService"
         ));
+    }
+}
+
+fn check_timing(spec: &RouteSpec, label: &str, problems: &mut Vec<String>) {
+    let reads = matches!(spec.method, HttpMethod::Get | HttpMethod::Head);
+    match spec.timing {
+        Timing::Request => {}
+        Timing::LongPoll => {
+            let has_wait = spec
+                .params
+                .iter()
+                .any(|param| param.location == ParamLocation::Query && param.name == "wait");
+            if !reads || !has_wait {
+                problems.push(format!(
+                    "{label}: a long-poll is a GET with a `wait` query parameter"
+                ));
+            }
+        }
+        Timing::Download => {
+            if !reads {
+                problems.push(format!("{label}: a download is a GET or HEAD"));
+            }
+        }
     }
 }
 

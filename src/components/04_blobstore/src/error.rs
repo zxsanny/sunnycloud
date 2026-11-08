@@ -27,6 +27,7 @@ enum Cause {
     Io(ErrorKind),
     Database(&'static str),
     Row(&'static str),
+    Event(&'static str),
     Cipher,
 }
 
@@ -54,6 +55,7 @@ impl fmt::Display for BlobFault {
             Cause::Io(kind) => write!(f, "i/o failure ({kind})")?,
             Cause::Database(class) => write!(f, "database failure ({class})")?,
             Cause::Row(what) => write!(f, "row failure ({what})")?,
+            Cause::Event(what) => f.write_str(what)?,
             Cause::Cipher => f.write_str("cipher failure")?,
         }
         if let Some(blob_id) = self.ids.blob_id {
@@ -124,6 +126,11 @@ pub(crate) fn io_fault(error: &io::Error, ids: BlobIds) -> Fault {
 /// A row the statement needed is absent or in a state the operation does not accept.
 pub(crate) fn row_fault(what: &'static str, ids: BlobIds) -> Fault {
     fault(ids, Cause::Row(what))
+}
+
+/// The ids of a log event that is neither a failed call nor a failed row: a corrupt chunk, the free-space floor.
+pub(crate) fn event_fault(what: &'static str, ids: BlobIds) -> Fault {
+    fault(ids, Cause::Event(what))
 }
 
 /// A chunk whose tag does not verify. The cipher error is opaque and carries no data.

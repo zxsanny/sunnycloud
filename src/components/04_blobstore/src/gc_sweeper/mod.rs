@@ -145,6 +145,12 @@ impl GcSweeper {
     /// already run is added to it for later batches.
     pub async fn run_cycle(&self, now: Timestamp) -> Result<GcStats, JanitorError> {
         log_info!("gc cycle started");
+        self.cycle(now).await.inspect_err(|error| {
+            log_error!("gc sweep aborted", err = error);
+        })
+    }
+
+    async fn cycle(&self, now: Timestamp) -> Result<GcStats, JanitorError> {
         let started = self.clock.monotonic();
         let mut removed = 0u64;
         let mut budget_hit = false;

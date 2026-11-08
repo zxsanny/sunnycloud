@@ -16,6 +16,7 @@ use contracts::{BlobError, DurableToken};
 use uuid::Uuid;
 
 use crate::error::blob_io_failure;
+use crate::metrics::BlobMetrics;
 use state::Shared;
 
 #[cfg(feature = "sync-hook")]
@@ -24,6 +25,8 @@ pub use hook::{SyncHook, SyncRecord};
 #[derive(Clone)]
 pub struct SyncBarrier {
     shared: Arc<Shared>,
+    /// Observes each group flush; absent in a process that has no registry.
+    metrics: Option<Arc<BlobMetrics>>,
 }
 
 impl SyncBarrier {
@@ -32,6 +35,7 @@ impl SyncBarrier {
     pub fn new(coalesce_delay: Duration) -> Self {
         SyncBarrier {
             shared: Arc::new(Shared::new(coalesce_delay)),
+            metrics: None,
         }
     }
 
@@ -39,7 +43,14 @@ impl SyncBarrier {
     pub fn with_hook(coalesce_delay: Duration, hook: Arc<SyncHook>) -> Self {
         SyncBarrier {
             shared: Arc::new(Shared::with_hook(coalesce_delay, hook)),
+            metrics: None,
         }
+    }
+
+    /// Every group flush from now on adds one observation to `block_fsync_duration_seconds`.
+    pub fn with_metrics(mut self, metrics: Arc<BlobMetrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 
     /// Records that `file` holds a completed write. It joins the open group, whose sync starts after this call
@@ -60,7 +71,7 @@ impl SyncBarrier {
             let notified = self.shared.wake.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
-            if let Some(outcome) = self.shared.check(token.0) {
+            if let Some(outcome) = self.shared.check(token.0, self.metrics.as_ref()) {
                 return outcome.map_err(|failure| blob_io_failure(failure.kind, failure.ids()));
             }
             notified.await;

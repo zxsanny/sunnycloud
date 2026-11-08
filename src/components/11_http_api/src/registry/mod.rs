@@ -11,7 +11,7 @@ mod validate;
 
 use std::sync::Arc;
 
-pub use classes::{AuthClass, BodyClass, HttpMethod, ListenerKind};
+pub use classes::{AuthClass, BodyClass, HttpMethod, ListenerKind, Timing};
 pub use document::{OpenApiDocument, document};
 pub use mount::{Routers, mount};
 pub use naming::{NamingViolation, lint_path};
@@ -19,6 +19,7 @@ pub use spec::{Mount, Param, ParamLocation, ParamType, RouteDef, RouteSpec, Sche
 pub use validate::{RegistryError, validate};
 
 use crate::auth::CredentialFormat;
+use crate::limits::BodyLimits;
 use crate::server_info::ServerInfo;
 use crate::services::ApiServices;
 use crate::version::VersionGate;
@@ -30,6 +31,7 @@ pub struct RouteContext {
     pub server_info: ServerInfo,
     pub credentials: CredentialFormat,
     pub version_gate: Arc<VersionGate>,
+    pub body_limits: Arc<BodyLimits>,
 }
 
 /// Every operation the server offers. Each group of E-21 adds its own list here.

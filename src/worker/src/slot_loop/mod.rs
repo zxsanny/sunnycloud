@@ -3,14 +3,17 @@
 //!
 //! What the step is, whether an output is compliant and every other media rule come from
 //! [`crate::policy_step`] and `media-shared`; this module only runs them and maps each outcome to a call of
-//! the API. A decoder call here has no timeout and no cancel of its own, and no lease heartbeat runs: the
-//! heartbeat, the silence and wall watchdogs and the unhealthy slot are E-20/c07.
+//! the API. Around the job the loop keeps the lease alive ([`lease`]) and bounds every decoder call
+//! ([`watchdog`]): a lost lease, a silent decoder or a call past its wall limit cancels the call, and the last
+//! two take the slot out of service until it has been through the gate again (E-20/c07).
 
 mod access;
 mod config;
 mod failure;
 mod job;
+mod lease;
 mod metrics;
+mod watchdog;
 
 use std::sync::Arc;
 
@@ -23,10 +26,12 @@ pub use config::{KindConfig, LoopConfig};
 pub use metrics::JobMetrics;
 
 use crate::api::{ApiError, WorkerApiClient};
-use crate::decoder_client::{GatedConn, Slot, SlotName};
+use crate::decoder_client::{GatedConn, Slot, SlotName, SlotReadiness};
 use crate::scratch::ScratchRoot;
 use failure::Stop;
 use job::{Done, JobRun};
+use lease::Lease;
+use watchdog::Watchdog;
 
 /// How a claimed job ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,6 +111,12 @@ impl SlotLoop {
         }
     }
 
+    /// The `/readyz` condition of this slot: not ready while the decoder is connecting, failed its gate or was
+    /// taken out of service by the watchdog.
+    pub fn readiness(&self) -> SlotReadiness {
+        self.slot.readiness()
+    }
+
     /// Rounds until the API refuses the worker secret. The caller stops it by dropping the future.
     pub async fn run(&mut self) {
         loop {
@@ -171,6 +182,8 @@ impl SlotLoop {
             Ok(dir) => dir,
             Err(error) => return self.finish(job, Err(Stop::from(&error))).await,
         };
+        let kind = self.config.for_kind(job.kind);
+        let mut lease = Lease::start(Arc::clone(&self.api), job);
         let outcome = JobRun {
             api: &self.api,
             job,
@@ -178,11 +191,17 @@ impl SlotLoop {
             scratch: &dir,
             conn: &mut gated.conn,
             capabilities: &gated.capabilities,
-            kind: self.config.for_kind(job.kind),
+            kind,
+            lease: &mut lease,
+            watchdog: Watchdog::new(&self.config, kind),
             reran: false,
         }
         .run()
         .await;
+        drop(lease);
+        if matches!(outcome, Err(Stop::Unhealthy(_))) {
+            gated.conn.close();
+        }
         let end = self.finish(job, outcome).await;
         if let Err(error) = dir.remove() {
             log_error!("job scratch tree not removed", err = &error);
@@ -202,6 +221,10 @@ impl SlotLoop {
                 JobEnd::Refused
             }
             Err(Stop::Obsolete) => self.close_obsolete(job).await,
+            Err(Stop::Unhealthy(why)) => {
+                self.slot.mark_unhealthy(why);
+                self.report_failure(job, why.report()).await
+            }
             Err(Stop::Fail(report)) => self.report_failure(job, report).await,
         }
     }

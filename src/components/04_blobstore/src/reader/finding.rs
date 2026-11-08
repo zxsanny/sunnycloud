@@ -10,7 +10,7 @@ use sc_observability::log_error;
 use uuid::Uuid;
 
 use super::finding_repo;
-use crate::error::{BlobIds, blob_error_from_db};
+use crate::error::{BlobIds, blob_error_from_db, event_fault};
 
 pub(super) struct Findings {
     db: Db,
@@ -28,7 +28,17 @@ impl Findings {
     /// writes no second event. A failed mark is logged and the read still fails with its own error.
     pub async fn note(&self, blob_id: Uuid, error: &BlobError) {
         let reason = match error {
-            BlobError::Corrupt => "corrupt",
+            BlobError::Corrupt => {
+                let ids = BlobIds {
+                    blob_id: Some(blob_id),
+                    account_id: None,
+                };
+                log_error!(
+                    "blob corrupt on read",
+                    err = &*event_fault("corrupt chunk", ids)
+                );
+                "corrupt"
+            }
             BlobError::BlobMissing => "missing",
             _ => return,
         };

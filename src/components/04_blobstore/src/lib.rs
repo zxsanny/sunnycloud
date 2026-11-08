@@ -23,6 +23,7 @@ mod health;
 mod inventory;
 mod keyring;
 mod layout;
+mod metrics;
 mod orphan_sweeper;
 mod path;
 mod reader;
@@ -57,6 +58,7 @@ pub use health::{BlobHealth, BlobHealthContributor, BlobHealthState};
 pub use inventory::{BlobInventory, MissingPage};
 pub use keyring::{KeyDoctorCheck, MasterKeyring};
 pub use layout::{BlobLayout, CHUNK_SIZE, COUNTER_LIMIT, RangeSpan, SEALED_CHUNK_LEN, TAG_LEN};
+pub use metrics::BlobMetrics;
 #[cfg(feature = "sync-hook")]
 pub use orphan_sweeper::{OrphanHook, OrphanHookPoint};
 pub use orphan_sweeper::{OrphanStats, OrphanSweeper};

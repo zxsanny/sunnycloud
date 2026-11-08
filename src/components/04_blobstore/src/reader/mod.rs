@@ -28,6 +28,7 @@ use crate::config::BlobstoreConfig;
 use crate::error::{BlobIds, blob_error_from_io};
 use crate::keyring::MasterKeyring;
 use crate::layout::{BlobLayout, CHUNK_SIZE, RangeSpan};
+use crate::metrics::{BlobMetrics, ReadKind};
 use file::OpenedBlob;
 use finding::Findings;
 #[cfg(feature = "sync-hook")]
@@ -46,6 +47,8 @@ pub struct FileBlobReader {
     probe: Arc<ReadProbe>,
     /// Counts the open downloads for the scrub's pause; absent in a process that has no scrub gauge.
     activity: Option<ActivityGauge>,
+    /// Observes each `open`; absent in a process that has no registry.
+    metrics: Option<Arc<BlobMetrics>>,
 }
 
 impl FileBlobReader {
@@ -72,12 +75,20 @@ impl FileBlobReader {
             findings: Arc::new(Findings::new(db, audit, clock)),
             probe: Arc::default(),
             activity: None,
+            metrics: None,
         })
     }
 
     /// Every stream `open` returns counts in `gauge` from the call until the stream is dropped.
     pub fn with_activity(mut self, gauge: ActivityGauge) -> Self {
         self.activity = Some(gauge);
+        self
+    }
+
+    /// Every successful `open` adds one observation to `blob_read_duration_seconds`: the time until the first
+    /// chunk of the range is authenticated.
+    pub fn with_metrics(mut self, metrics: Arc<BlobMetrics>) -> Self {
+        self.metrics = Some(metrics);
         self
     }
 
@@ -165,7 +176,16 @@ impl BlobReader for FileBlobReader {
             master_key_id,
             layout,
         };
+        let began = self.metrics.as_ref().map(|metrics| metrics.begin());
         let (blob, first) = self.begin(&request, span.first_chunk).await?;
+        if let (Some(metrics), Some(began)) = (&self.metrics, began) {
+            let kind = if range.is_some() {
+                ReadKind::Range
+            } else {
+                ReadKind::Stream
+            };
+            metrics.opened(kind, began);
+        }
         let mut head = Bytes::from(first);
         head = head.slice(span.skip..);
         head.truncate(usize::try_from(span.len).unwrap_or(usize::MAX));

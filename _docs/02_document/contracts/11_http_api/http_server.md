@@ -3,9 +3,9 @@
 **Component**: 11_http_api (library `sunnycloud-http-api`, proposed)
 **Producer task**: E-21/c03 — `_docs/02_tasks/todo/B07-03_crate_skeleton_accept_loop.md` (contributors: E-21/c16 readiness list and ops listener, E-21/c17 shutdown semantics of `run`); keys assigned at Step 4
 **Consumer tasks**: E-22/c03 (composition root builds `ApiServices`), E-22/c04 (binds `HttpConfig`), E-22/c05 (`serve` calls `run` and owns the rest of the shutdown order), E-22/c15 (`openapi` and `healthcheck` commands); E-31 harness (Mode R); resolved at Step 4
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -54,6 +54,7 @@ Error names are proposals of E-21/c03; they become final when that task is accep
 | HTTP/2 streams, pending resets, header list | `h2_max_streams`, `h2_max_pending_reset`, `h2_max_header_list` | 100, 20, 16KiB |
 | HTTP/2 keepalive interval / timeout | `h2_keepalive_interval` / `h2_keepalive_timeout` | 30s / 20s |
 | request timeout, body idle timeout | `request_timeout`, `body_idle_timeout` | 60s, 30s |
+| worker output body caps | `derived_max_thumb`, `derived_max_preview`, `derived_max_transcode` (owned by 08; `WorkerOutputLimits`, bytes) | 5MiB, 20MiB, 10GiB |
 | shutdown grace | `shutdown_grace` | 25s |
 | minimum client version | `min_client_version` | set by the release; one semver or `family=semver,...` |
 | `ServerInfo` value | built by 12 from the typed sections and the build (`server_info.md`) | - |
@@ -111,3 +112,4 @@ On the shutdown signal: `/readyz` answers 503; every listener stops accepting; h
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B07) |
+| 1.1.0 | 2026-11-08 | `HttpConfig.worker_output_limits` added; `request_timeout` and `body_idle_timeout` must be above zero; `BodyLimits` is a layer of the route stack | AZ-3803 |

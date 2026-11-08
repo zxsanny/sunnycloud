@@ -12,11 +12,22 @@ pub struct KindConfig {
     pub max_input: u64,
 }
 
+impl KindConfig {
+    /// `photo_job_timeout` or `video_job_timeout`: the longest one decoder call of this kind may take.
+    pub fn wall(&self) -> Duration {
+        Duration::from_millis(self.limits.wall)
+    }
+}
+
 /// The settings the slot loop reads. Every duration comes from the settings, so tests run with short ones.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoopConfig {
     /// `worker_claim_poll_interval`: the wait after a claim round that found nothing.
     pub claim_poll_interval: Duration,
+    /// `decoder_silence_timeout`: tier 2, no frame of any kind from the decoder for this long.
+    pub silence_timeout: Duration,
+    /// `decoder_cancel_grace`: how long a cancelled decoder gets to answer before the slot is unhealthy.
+    pub cancel_grace: Duration,
     pub photo: KindConfig,
     pub video: KindConfig,
 }
@@ -26,6 +37,8 @@ impl LoopConfig {
         let stall_timeout = millis(settings.decoder_stall_kill.get());
         Self {
             claim_poll_interval: settings.worker_claim_poll_interval.get(),
+            silence_timeout: settings.decoder_silence_timeout.get(),
+            cancel_grace: settings.decoder_cancel_grace.get(),
             photo: KindConfig {
                 limits: Limits {
                     cpu: cpu(settings.photo_cpu),

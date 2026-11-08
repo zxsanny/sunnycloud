@@ -10,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 use crate::accept::AcceptLoop;
 use crate::config::HttpConfig;
 use crate::error::{HttpServerError, Listener};
+use crate::limits::BodyLimits;
 use crate::metrics::HttpMetrics;
 use crate::middleware::Middleware;
 use crate::registry::{
@@ -32,6 +33,7 @@ pub struct HttpServer {
     http_metrics: Arc<HttpMetrics>,
     middleware: Middleware,
     version_gate: Arc<VersionGate>,
+    body_limits: Arc<BodyLimits>,
     routes: Vec<RouteDef>,
     openapi: OpenApiDocument,
     spa: Option<Arc<SpaBundle>>,
@@ -69,6 +71,11 @@ impl HttpServer {
             Arc::clone(&http_metrics),
             Arc::clone(&services.clock),
         )?;
+        let body_limits = BodyLimits::new(
+            &config,
+            Arc::clone(&http_metrics),
+            Arc::clone(&services.clock),
+        );
         let openapi = document(&routes);
         Ok(HttpServer {
             services: Arc::new(services),
@@ -77,6 +84,7 @@ impl HttpServer {
             http_metrics,
             middleware,
             version_gate,
+            body_limits,
             routes,
             openapi,
             spa: None,
@@ -107,6 +115,7 @@ impl HttpServer {
             server_info: self.config.server_info.clone(),
             credentials: self.config.credentials.clone(),
             version_gate: Arc::clone(&self.version_gate),
+            body_limits: Arc::clone(&self.body_limits),
         };
         let routers = mount(&self.routes, &context, self.spa.clone());
         Ok(BoundServer {

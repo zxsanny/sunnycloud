@@ -59,3 +59,28 @@ impl GateFailure {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("reconnect backoff needs 0 < initial <= max")]
 pub struct BackoffError;
+
+/// Why a slot that had passed the gate was taken out of use mid-job (09 section 3, step 4). The slot takes no
+/// claim until it has reconnected and passed the gate again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum Unhealthy {
+    /// No frame of any kind for `decoder_silence_timeout`: the runner is hung.
+    #[error("the decoder sent nothing for the silence timeout")]
+    Silent,
+    /// The decoder was still working when the wall limit of the job kind ran out.
+    #[error("the decoder ran past the wall limit")]
+    WallLimit,
+    /// The decoder sent something the protocol forbids.
+    #[error("the decoder broke the protocol")]
+    Violation,
+}
+
+impl Unhealthy {
+    pub(crate) fn detail(self) -> &'static str {
+        match self {
+            Unhealthy::Silent => "unhealthy: decoder silent",
+            Unhealthy::WallLimit => "unhealthy: wall limit passed",
+            Unhealthy::Violation => "unhealthy: protocol violation",
+        }
+    }
+}

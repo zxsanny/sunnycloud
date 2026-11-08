@@ -21,7 +21,7 @@ use bytes::Bytes;
 use contracts::{
     BlobError, BlobHandle, BlobPlan, BlobWriter, ByteStream, DurableToken, WrittenBlob, async_trait,
 };
-use sc_observability::log_error;
+use sc_observability::{log_error, log_warn};
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
@@ -29,7 +29,7 @@ use crate::activity::{ActivityGauge, ActivityGuard};
 use crate::barrier::SyncBarrier;
 use crate::config::BlobstoreConfig;
 use crate::data_key::DataKey;
-use crate::error::{BlobIds, blob_error_from_io};
+use crate::error::{BlobIds, blob_error_from_io, event_fault};
 use crate::header::Header;
 use crate::keyring::MasterKeyring;
 use crate::path::blob_path;
@@ -116,6 +116,7 @@ impl FileBlobWriter {
         Ok((plan, key))
     }
 
+    /// An `Io` failure of a job is logged here, once, with the ids its fault carries.
     async fn blocking<T: Send + 'static>(
         &self,
         work: impl FnOnce() -> Result<T, BlobError> + Send + 'static,
@@ -130,6 +131,11 @@ impl FileBlobWriter {
         })
         .await
         .map_err(|_| join_failure())?
+        .inspect_err(|error| {
+            if matches!(error, BlobError::Io(_)) {
+                log_error!("blob write failed", err = error);
+            }
+        })
     }
 
     /// Floor check, then the file: header, reserved space, directory sync. The returned blob holds the open file.
@@ -163,7 +169,13 @@ impl FileBlobWriter {
                     layout,
                 ))
             })
-            .await?;
+            .await
+            .inspect_err(|error| {
+                if matches!(error, BlobError::FreeSpaceFloor) {
+                    let fault = event_fault("free space floor", blob_ids(blob_id));
+                    log_warn!("blob volume at its free-space floor", err = &*fault);
+                }
+            })?;
         #[cfg(feature = "sync-hook")]
         self.directory_syncs.fetch_add(1, Ordering::SeqCst);
         Ok(blob)

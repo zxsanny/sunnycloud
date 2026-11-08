@@ -187,6 +187,15 @@ pub enum BodyClass {
     None,
 }
 
+/// The clock of an operation besides its body class: a long-poll runs for its `wait` plus a margin, a download
+/// has no total cap, every other request has `request_timeout` (`api_v1_surface.md`, time limits).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Timing {
+    Request,
+    LongPoll,
+    Download,
+}
+
 const KIB: u64 = 1024;
 const MIB: u64 = 1024 * KIB;
 

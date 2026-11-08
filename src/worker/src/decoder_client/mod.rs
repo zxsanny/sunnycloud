@@ -19,6 +19,6 @@ mod metrics;
 mod slot;
 
 pub use conn::{DecoderConn, EventSink, PROTOCOL_VERSION};
-pub use error::{BackoffError, CallError, GateFailure};
+pub use error::{BackoffError, CallError, GateFailure, Unhealthy};
 pub use metrics::{DecoderMetrics, SlotName};
 pub use slot::{Backoff, GatedConn, Slot, SlotConfig, SlotReadiness, SlotState};

@@ -29,3 +29,20 @@ async fn system_scope_reads_the_feed_rows_of_every_account() {
     assert_eq!(visible, expected);
     accounts.fixture.finish().await;
 }
+
+/// Creates the feed row of `account` the way account creation does: `initialize` in a system-scope
+/// transaction, which sees the feed rows of every account.
+pub async fn initialize_in_system_scope(
+    db: &sc_db::Db,
+    hook: &dyn contracts::AccountLifecycleHook,
+    account: Uuid,
+) -> Result<(), contracts::LifecycleError> {
+    db.run_system("feed_initialize", async |tx| {
+        hook.initialize(tx, account).await
+    })
+    .await
+    .map_err(|error| match error {
+        sc_db::RunError::Closure(error) => error,
+        sc_db::RunError::Db(error) => contracts::LifecycleError::Unexpected(Box::new(error)),
+    })
+}

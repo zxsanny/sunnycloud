@@ -20,6 +20,8 @@ pub struct Entry {
     pub output_status: BTreeMap<&'static str, u16>,
     pub failure_status: u16,
     pub result_status: u16,
+    /// Status of `PUT lease`; 409 once the test expires the lease.
+    pub lease_status: u16,
 }
 
 impl Entry {
@@ -34,6 +36,7 @@ impl Entry {
             output_status: BTreeMap::new(),
             failure_status: 200,
             result_status: 204,
+            lease_status: 200,
         }
     }
 
@@ -49,6 +52,17 @@ impl Entry {
 
     pub fn failure_status(mut self, status: u16) -> Self {
         self.failure_status = status;
+        self
+    }
+
+    /// The `lease_ms` the claim carries, and so the heartbeat period (a third of it).
+    pub fn lease_ms(mut self, lease_ms: u64) -> Self {
+        self.job.lease_ms = lease_ms;
+        self
+    }
+
+    pub fn lease_status(mut self, status: u16) -> Self {
+        self.lease_status = status;
         self
     }
 
@@ -107,6 +121,16 @@ impl ScriptedApi {
         self.state().claim_status = Some(status);
     }
 
+    /// From now on the heartbeat of `job` is answered 409, as when the lease ran out and the job was handed on.
+    pub fn expire_lease(&self, job: Uuid) {
+        let mut state = self.state();
+        let entry = state
+            .taken
+            .get_mut(&job)
+            .expect("the job was claimed before its lease is expired");
+        entry.lease_status = 409;
+    }
+
     pub fn base_url(&self) -> String {
         self.peer.base_url()
     }
@@ -125,6 +149,13 @@ fn answer(state: &Mutex<State>, request: &Recorded) -> Reply {
         ("GET", [id, "input"]) => match entry(&state, id) {
             Some(entry) if entry.input_status == 200 => Reply::bytes(entry.input.clone()),
             Some(entry) => Reply::status(entry.input_status),
+            None => Reply::status(409),
+        },
+        ("PUT", [id, "lease"]) => match entry(&state, id) {
+            Some(entry) if entry.lease_status == 200 => {
+                Reply::json(200, &format!(r#"{{"lease_ms":{}}}"#, entry.job.lease_ms))
+            }
+            Some(entry) => Reply::status(entry.lease_status),
             None => Reply::status(409),
         },
         ("PUT", [id, "outputs", kind]) => match entry(&state, id) {

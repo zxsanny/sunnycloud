@@ -11,6 +11,7 @@ use sc_observability::log_error;
 
 use crate::config::BlobstoreConfig;
 use crate::error::{BlobIds, blob_error_from_db, blob_error_from_io, blob_io_failure};
+use crate::metrics::BlobMetrics;
 use crate::reader::finding_repo;
 use crate::volume_facts;
 
@@ -31,6 +32,8 @@ pub struct BlobHealth {
     db: Db,
     root: PathBuf,
     reserve: u64,
+    /// Set by every probe; absent in a process that has no registry.
+    metrics: Option<Arc<BlobMetrics>>,
 }
 
 impl BlobHealth {
@@ -47,7 +50,14 @@ impl BlobHealth {
             db,
             root: root.into(),
             reserve: config.blob_free_reserve,
+            metrics: None,
         })
+    }
+
+    /// Every probe sets `blob_free_bytes` to its `free_bytes` and `blob_free_floor_bytes` to `blob_free_reserve`.
+    pub fn with_metrics(mut self, metrics: Arc<BlobMetrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 
     /// A blob root that cannot be queried and a database failure are `Io`; an unwritable root is a result.
@@ -57,6 +67,9 @@ impl BlobHealth {
             .await
             .map_err(|_| blob_io_failure(ErrorKind::Other, BlobIds::default()))?
             .map_err(|error| blob_io_failure(error.kind(), BlobIds::default()))?;
+        if let Some(metrics) = &self.metrics {
+            metrics.volume_probed(facts.free_bytes, self.reserve);
+        }
         let unavailable = finding_repo::count_unavailable(&self.db)
             .await
             .map_err(|error| blob_error_from_db(error, BlobIds::default()))?;

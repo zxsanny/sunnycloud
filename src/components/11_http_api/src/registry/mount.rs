@@ -59,8 +59,11 @@ struct PathEntry {
 fn router_for(defs: &[RouteDef], context: &RouteContext, listener: ListenerKind) -> Router {
     let mut by_path: BTreeMap<&str, PathEntry> = BTreeMap::new();
     for def in defs.iter().filter(|def| def.spec.listener == listener) {
+        let handler = context
+            .body_limits
+            .guard((def.mount)(context, def.spec.method.filter()), &def.spec);
         let handler = protect(
-            (def.mount)(context, def.spec.method.filter()),
+            handler,
             def.spec.auth,
             &context.services,
             &context.credentials,

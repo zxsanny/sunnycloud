@@ -8,6 +8,7 @@ use std::io::Read;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Instant;
 
 use axum::Router;
 use axum::body::{Body, to_bytes};
@@ -26,6 +27,8 @@ pub const WORKER_ID: &str = "worker-under-test";
 pub const MIB: u64 = 1 << 20;
 
 pub struct Recorded {
+    /// When the request reached the listener.
+    pub at: Instant,
     pub method: String,
     pub path: String,
     pub headers: HeaderMap,
@@ -89,6 +92,7 @@ impl Peer {
                 let (head, body) = request.into_parts();
                 let body = to_bytes(body, usize::MAX).await.expect("request body");
                 let seen = Recorded {
+                    at: Instant::now(),
                     method: head.method.to_string(),
                     path: head.uri.path().to_owned(),
                     headers: head.headers,

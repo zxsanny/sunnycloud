@@ -1,4 +1,4 @@
-use contracts::{ChangeFeedError, FeedHorizonError, FeedStampError};
+use contracts::{ChangeFeedError, FeedHorizonError, FeedStampError, LifecycleError};
 use sc_db::DbError;
 use sc_observability::log_error;
 use uuid::Uuid;
@@ -47,4 +47,8 @@ pub fn feed_row_missing(account: Uuid) -> ChangeFeedError {
 pub fn bad_node_row(account: Uuid, what: &'static str) -> ChangeFeedError {
     log_error!("node row not representable", account_id = account);
     ChangeFeedError::Unexpected(Box::new(BadNodeRow(what)))
+}
+
+pub fn lifecycle_error(error: DbError) -> LifecycleError {
+    LifecycleError::Unexpected(Box::new(error))
 }

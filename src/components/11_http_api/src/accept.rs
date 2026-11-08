@@ -199,6 +199,11 @@ mod tests {
             h2_keepalive_timeout: Duration::from_millis(777),
             request_timeout: Duration::from_secs(60),
             body_idle_timeout: Duration::from_secs(30),
+            worker_output_limits: crate::config::WorkerOutputLimits {
+                thumb: 5 << 20,
+                preview: 20 << 20,
+                transcode: 10 << 30,
+            },
             shutdown_grace: Duration::from_secs(25),
             min_client_version: None,
             update_url: None,
