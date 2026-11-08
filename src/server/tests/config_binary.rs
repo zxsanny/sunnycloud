@@ -261,12 +261,7 @@ fn commands_that_use_no_provider_worker_token_or_master_key_get_past_configurati
         "postgres://migrator@127.0.0.1:1/sunnycloud",
     );
 
-    for args in [
-        &["migrate"][..],
-        &["admin", "setup-token"],
-        &["key-check"],
-        &["openapi"],
-    ] {
+    for args in [&["migrate"][..], &["admin", "setup-token"], &["key-check"]] {
         // Act
         let run = run(&watch, &setup, args);
 
@@ -279,9 +274,11 @@ fn commands_that_use_no_provider_worker_token_or_master_key_get_past_configurati
             run.stderr()
         );
     }
-    let version = run(&watch, &setup, &["version"]);
-    assert_eq!(version.code(), Some(0), "{}", version.stderr());
-    assert!(version.stderr().is_empty(), "{}", version.stderr());
+    for args in [&["version"][..], &["openapi"]] {
+        let local = run(&watch, &setup, args);
+        assert_eq!(local.code(), Some(0), "{args:?}: {}", local.stderr());
+        assert!(local.stderr().is_empty(), "{args:?}: {}", local.stderr());
+    }
 }
 
 #[test]

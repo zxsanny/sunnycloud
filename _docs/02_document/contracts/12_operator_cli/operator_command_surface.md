@@ -3,9 +3,9 @@
 **Component**: 12_operator_cli
 **Producer task**: B08-02_cli_skeleton (E-22/c02) for the streams, the `--json` envelope, the exit codes and the confirmation rule; each command row is implemented by the task named in its row
 **Consumer tasks**: this batch: E-22/c03, E-22/c04, E-22/c05, E-22/c07..c13, E-22/c14a, E-22/c15, E-22/c16, E-22/c17; other batches: the E-22 pipelines p01..p14 (they run the commands), E-31 system tests (FT-P-64, FT-P-65, FT-P-78, FT-N-25, FT-N-39, FT-N-46, FT-P-69, FT-P-71, FT-P-72, NFT-RES-13, NFT-RES-14, NFT-RES-37 and others), E-00/c08 (`e2e-ctl exec-operator`), E-00 Compose and deployment docs (`migrate` step, `healthcheck`)
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft (freezes when the open points below are answered)
-**Last Updated**: 2026-11-06
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -147,6 +147,14 @@ Each command passes the table keys it reads to `sc_config::load_keys`: a key out
 
 Open points added by AZ-3790: 8. Whether `migrate revert` needs `db_migrator_url` (DDL) and which role `migrate status` uses first is not stated; both are unrestricted for now. 9. The keys read by `key-check`, `admin setup-token` and the other commands are not stated (the builders of E-22/c03 decide).
 
+## Local commands (AZ-3811)
+
+- `healthcheck` sends one `GET /readyz` to `127.0.0.1:9090` and exits 0 only on status 200; any other status, a refused connection or an unreadable answer exits 2 with `code = service_unavailable` on stderr and nothing on stdout. A success prints no fact. The address is fixed (the command uses no configuration section); no probe timeout is set by the command, the caller's (Compose healthcheck `timeout`) ends a probe that gets no answer, and SIGINT ends it with exit 2.
+- `openapi` prints the document of `current_document()` of 11 (the one `GET /api/v1/openapi.json` serves) as the whole of stdout, byte for byte and with no trailing newline added, with or without `--json`: the document is already one JSON object, so the `{result, code, data}` envelope does not wrap it. It builds no service, so it needs no database or key.
+- `version` prints `version` (the package semver) and `commit` (the full git hash stamped by `build.rs` from `SUNNYCLOUD_GIT_COMMIT` or, when unset, `git rev-parse HEAD`; `unknown` when neither exists).
+
+Open points added by AZ-3811: 10. The probe timeout of `healthcheck` is not stated (flagged concern of the task). 11. `openapi --json` prints the bare document, not the envelope. 12. The ops address of `healthcheck` is fixed at `127.0.0.1:9090`, although `ops_addr` is a configurable key.
+
 ## Change Log
 
 | Version | Date | Change | Author |
@@ -154,3 +162,4 @@ Open points added by AZ-3790: 8. Whether `migrate revert` needs `db_migrator_url
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B08) |
 | 1.1.0 | 2026-11-06 | Records the skeleton's proposed readings of open points 1, 2, 4 and the confirmation and log-line behaviour | AZ-3788 |
 | 1.2.0 | 2026-11-07 | Records configuration binding per command (`load_keys`) and the `serve` start validation | AZ-3790 |
+| 1.3.0 | 2026-11-08 | Records the `healthcheck`, `openapi` and `version` behaviour | AZ-3811 |

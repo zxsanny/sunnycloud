@@ -8,12 +8,12 @@ use hyper::body::Bytes;
 use hyper::client::conn::http1;
 use hyper_util::rt::TokioIo;
 use sunnycloud_http_api::registry::{OpenApiDocument, RouteContext};
-use sunnycloud_http_api::{AcceptLoop, ServerInfo};
+use sunnycloud_http_api::{AcceptLoop, HttpMetrics, VersionGate};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use super::{EVENT_BOUND, Script, default_config, new_metrics, stub_services, test_credentials};
+use super::{EVENT_BOUND, Script, default_config, new_metrics, stub_services};
 
 /// What a request got back.
 pub struct Answer {
@@ -78,13 +78,21 @@ pub async fn request_with(
     }
 }
 
-/// A handler context on stub ports whose ports read `script`, for mounting a registry under test.
+/// A handler context on stub ports whose ports read `script`, for mounting a registry under test. The version
+/// gate has no minimum.
 pub fn route_context_with(openapi: OpenApiDocument, script: &Script) -> RouteContext {
+    let config = default_config();
+    let metrics = new_metrics();
+    let http_metrics = Arc::new(HttpMetrics::register(&metrics).expect("http families"));
+    let services = stub_services(script, metrics);
+    let version_gate = VersionGate::new(&config, http_metrics, services.clock.clone())
+        .expect("the version gate builds");
     RouteContext {
-        services: Arc::new(stub_services(script, new_metrics())),
+        services: Arc::new(services),
         openapi,
-        server_info: ServerInfo::default(),
-        credentials: test_credentials(),
+        server_info: config.server_info,
+        credentials: config.credentials,
+        version_gate,
     }
 }
 

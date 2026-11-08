@@ -157,6 +157,6 @@ async fn the_known_api_routes_still_win_over_the_fallback() {
 
     // Assert
     assert_eq!(info.status, 200);
-    assert_eq!(info.json(), serde_json::json!({}));
+    assert_eq!(info.json()["block_size"], 2_097_152);
     server.finish().await;
 }

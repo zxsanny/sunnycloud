@@ -4,5 +4,5 @@
 mod classes;
 mod credentials;
 mod dead;
-mod support;
+pub mod support;
 mod worker;

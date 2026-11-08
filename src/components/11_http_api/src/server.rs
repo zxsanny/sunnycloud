@@ -17,6 +17,7 @@ use crate::registry::{
 };
 use crate::services::ApiServices;
 use crate::spa::SpaBundle;
+use crate::version::VersionGate;
 
 /// The document of this build, as `HttpServer::openapi` returns and `GET /api/v1/openapi.json` serves it.
 pub fn current_document() -> OpenApiDocument {
@@ -30,6 +31,7 @@ pub struct HttpServer {
     accept: AcceptLoop,
     http_metrics: Arc<HttpMetrics>,
     middleware: Middleware,
+    version_gate: Arc<VersionGate>,
     routes: Vec<RouteDef>,
     openapi: OpenApiDocument,
     spa: Option<Arc<SpaBundle>>,
@@ -62,6 +64,11 @@ impl HttpServer {
             Arc::clone(&http_metrics),
             routes.iter().map(|route| route.spec.path),
         )?;
+        let version_gate = VersionGate::new(
+            &config,
+            Arc::clone(&http_metrics),
+            Arc::clone(&services.clock),
+        )?;
         let openapi = document(&routes);
         Ok(HttpServer {
             services: Arc::new(services),
@@ -69,6 +76,7 @@ impl HttpServer {
             accept,
             http_metrics,
             middleware,
+            version_gate,
             routes,
             openapi,
             spa: None,
@@ -98,6 +106,7 @@ impl HttpServer {
             openapi: self.openapi.clone(),
             server_info: self.config.server_info.clone(),
             credentials: self.config.credentials.clone(),
+            version_gate: Arc::clone(&self.version_gate),
         };
         let routers = mount(&self.routes, &context, self.spa.clone());
         Ok(BoundServer {

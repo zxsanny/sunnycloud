@@ -3,9 +3,9 @@
 **Component**: 04_blobstore
 **Producer task**: E-10/c13 — `_docs/02_tasks/todo/B02-13_blob_maintenance_ports.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-12/c06 and E-12/c07 (`EpochMarker`), E-22 operator CLI (`serve` epoch check, doctor registry, `admin rewrap`), E-17/c07 (health aggregation through `HealthContributor`), E-21/c16 (`/readyz`, `/metrics` through 12)
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (frozen when E-10/c13 is accepted)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-08
 
 ## Purpose
 
@@ -28,8 +28,13 @@ The small ports other components read for restore safety and health: the `.epoch
 - 04 never decides the epoch: 05 calls `write` when it picks the installation epoch and after each epoch bump; 12 compares the database epoch with `read` at `serve` start.
 - `probe` reports `unavailable_count` equal to the number of `blobs` rows with `unavailable_at` set, `free_bytes` within 1 MiB of the filesystem's own figure, `below_floor` when free space is under `blob_free_reserve`, and `writable = false` for a read-only blob root.
 - The blobstore `HealthContributor` reports `Degraded` while `unavailable_count > 0` (health is derived from the column, so it survives a restart). Other levels: open point, flagged in E-10/c13.
-- `find_missing` returns only committed blobs (never `uploading` ones), checks files at a throttled rate and returns ids only; repeated calls cover all committed rows.
+- `find_missing` returns only committed blobs (never `uploading` ones), checks files at a throttled rate and returns ids only; repeated calls cover all committed rows. The port has no cursor argument, so the implementation keeps the position: each call checks the next `batch` committed rows in id order (at least one) after the previous call's last row and returns the ids among them whose file is absent; after the last row the next call starts again at the first, so `ceil(rows / batch)` calls cover every row. A failed call keeps the position. The concrete type also offers `scan_page(after, batch)`, which is stateless and returns where the next page starts (`None` at the end); the doctor check uses it. A file that cannot be looked up for a reason other than absence (permission, I/O) is an `InventoryError`, never a missing blob. The throttle is one lookup at a time on the blocking pool; no rate value is configured.
+- The marker file is `<epoch>\n` (canonical decimal text and a newline), replaced through `.epoch.tmp`, `fsync`, rename and a folder `fsync`. `read` accepts only that form; an empty, cut or non-numeric file is `EpochMarkerError::Io`, never a value. A blob root that does not exist is an error on `read` and `write`, not an absent marker. `Absent` of the task text is `None` of `Option<i64>` in the port.
+- `probe` reads `writable` with `access(W_OK)` on the root (a read-only mount and a root without write permission are both `false`), `free_bytes` with the same `statvfs` figure the writer's floor check uses, and `below_floor` as `free_bytes < blob_free_reserve`. A root that cannot be queried is `BlobError::Io`.
+- The `HealthContributor` is named `blobstore`: `Degraded` while `unavailable_count > 0` (detail: the count), `Ok` otherwise, `Down` when the probe itself fails. Levels for an unwritable root or free space under the floor are not part of it (they are `/readyz`'s through `probe`).
+- `MasterKeyring::rewrap_batch(from, to, n)` reads up to `n` rows (any state) wrapped under `from`, re-wraps them in memory, and writes them in a second short transaction guarded by the wrap that was read; it returns the rows handled, so a row another run already moved counts as done and a repeat returns 0. Equal ids, an id the ring does not hold, and a wrap that does not open are `KeyError::Unexpected` and change nothing. It loads and verifies the keyring first if that has not happened. Each batch logs INFO `rewrap batch finished`; the empty final call logs `rewrap finished, no row left under the old key`.
 - Doctor findings carry ids, never file names or key material. A missing blob and a key-check failure are `Fail` findings (`doctor` exits 2, G-12-6).
+- Checks and levels (from `deployment/observability.md`, `doctor` table): `master_key` (tags `PreFlight`, `Restore`): any refusal that stops a start (key file missing, not 32 bytes, mismatch with the key check, key check absent while blobs exist) is `Fail`; it writes nothing, and with `pre_flight` it opens no database connection. `blob_volume` (tag `PreFlight`): root missing or unreadable, not writable, free space under `blob_free_reserve` are `Fail`; a filesystem that is neither XFS nor ext4 is `Warn`; one finding per aspect. `blob_retention` (no tag): retention 0 is `Warn`; retention shorter than `--backup-interval` is `Warn`. `blob_files_missing` (tag `Restore`): one `Fail` per missing blob id; a scan that cannot finish is one `Fail`. The `Restore` and `PreFlight` tags and the missing-scan batch (constructor argument) are not stated by the task; they follow the `--pre-flight` description of 12 (config, key length, volume).
 - None of these calls holds a database transaction across file I/O.
 
 ## Non-Goals
@@ -58,3 +63,4 @@ The small ports other components read for restore safety and health: the `.epoch
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B02) |
+| 1.1.0 | 2026-11-08 | Stated the `find_missing` paging, the marker file form, the probe's sources, the contributor levels, rewrap semantics and the doctor checks with their levels (AZ-3746) | implement |

@@ -14,6 +14,9 @@
 //! security headers) that wrap the public and internal routers; handlers read the id with
 //! `Extension<CorrelationId>` and the caller's address with `Extension<ClientIp>`.
 //!
+//! [`VersionGate`] is layer 7: it refuses a client below `min_client_version` with 426 before auth, and serves
+//! the count of client versions; [`ServerInfo`] is what `GET /api/v1/server-info` returns.
+//!
 //! [`AcceptLoop`] is the one loop every listener runs: one task per connection, a global connection cap,
 //! HTTP/1.1 and h2c prior knowledge on one port, and the configured HTTP/2 and header-timeout settings.
 
@@ -30,14 +33,18 @@ mod problem;
 mod problem_schema;
 pub mod registry;
 mod server;
+mod server_info;
 mod services;
 mod spa;
+mod version;
 
 pub use accept::AcceptLoop;
 pub use auth::{Authenticated, CredentialFormat, CredentialSource};
-pub use config::{HttpConfig, ServerInfo};
+pub use config::HttpConfig;
 pub use error::{HttpServerError, Listener};
-pub use metrics::{DurationLabels, HttpMetrics, MethodLabel, RequestLabels, StatusClass};
+pub use metrics::{
+    ClientVersionLabels, DurationLabels, HttpMetrics, MethodLabel, RequestLabels, StatusClass,
+};
 pub use middleware::{ClientIp, Middleware};
 pub use openapi_diff::{Breaking, diff as diff_documents};
 pub use port_error::{PortError, entry_error_code};
@@ -45,5 +52,7 @@ pub use problem::ApiProblem;
 pub use problem_schema::problem_schema;
 pub use registry::OpenApiDocument;
 pub use server::{BoundServer, HttpServer, current_document};
+pub use server_info::ServerInfo;
 pub use services::ApiServices;
 pub use spa::SpaBundle;
+pub use version::{CLIENT_HEADER, ClientFamily, VersionGate};

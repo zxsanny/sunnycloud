@@ -49,6 +49,12 @@ pub fn decide(probe: &Probe, _capabilities: &DecoderCapabilities, pref: EncoderP
     }
 }
 
+/// The CPU transcode plan for a clip: the plan a failed `Remux` or a failed hardware encode is rerun with. The
+/// same rules as the `Transcode` of [`decide`] with the encoder fixed to the CPU.
+pub fn cpu_transcode_plan(probe: &Probe) -> Plan {
+    transcode_plan(probe, Encoder::Cpu)
+}
+
 /// Milliseconds into the clip where the poster frame is taken: 1,000 ms, or a tenth of the
 /// duration for clips shorter than 10 s (rounded down), so never beyond the duration.
 pub const fn poster_offset_ms(duration_ms: u64) -> u64 {

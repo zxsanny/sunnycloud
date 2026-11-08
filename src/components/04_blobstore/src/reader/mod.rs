@@ -7,7 +7,7 @@
 
 pub(crate) mod file;
 mod finding;
-mod finding_repo;
+pub(crate) mod finding_repo;
 mod probe;
 mod stream;
 

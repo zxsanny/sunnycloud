@@ -14,7 +14,7 @@ use crate::types::{DerivedKind, JobKind};
 
 mod rules;
 
-pub use rules::{decide, is_compliant, poster_offset_ms, supported_kinds_for};
+pub use rules::{cpu_transcode_plan, decide, is_compliant, poster_offset_ms, supported_kinds_for};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

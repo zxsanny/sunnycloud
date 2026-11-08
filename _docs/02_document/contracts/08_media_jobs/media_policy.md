@@ -3,7 +3,7 @@
 **Component**: 08_media_jobs (`media-shared::policy`)
 **Producer task**: E-18/c03 — AZ-3838 (`_docs/02_tasks/todo/AZ-3838_media_policy.md`)
 **Consumer tasks**: E-20/c06 (poster offset in the slot loop), E-20/c10 (policy wiring and output compliance check); in batch E-18/c06, E-18/c12
-**Version**: 1.0.1
+**Version**: 1.1.0
 **Status**: implemented in `src/media-shared/src/policy/rules.rs`
 **Last Updated**: 2026-11-07
 
@@ -17,6 +17,7 @@ The pure rules that decide what happens to a clip (skip, remux or transcode), wh
 |------|-----------|--------|-----------|
 | `is_compliant` | `(&Probe) -> bool` | none | sync, pure |
 | `decide` | `(&Probe, &DecoderCapabilities, EncoderPref) -> Decision{SkipCompliant \| Remux \| Transcode(Plan)}` | none | sync, pure |
+| `cpu_transcode_plan` | `(&Probe) -> Plan` | none | sync, pure |
 | `poster_offset_ms` | `(duration_ms: u64) -> u64` | none | sync, pure |
 | `supported_kinds_for` | `(media_type: &str) -> Vec<JobKind>` | none | sync, pure |
 
@@ -103,3 +104,4 @@ Exact strings matched (lowercase, no parameters, like `OutputSpec::accepts`): `i
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
 | 1.0.1 | 2026-11-07 | Implemented; probe-reading rules, plan fields and exact media type strings written down; open point 3 | AZ-3838 |
+| 1.1.0 | 2026-11-08 | `cpu_transcode_plan`: the plan a failed `Remux` or failed hardware encode is rerun with (same fields as the `Transcode` of `decide`, encoder fixed to the CPU) | AZ-3872 |

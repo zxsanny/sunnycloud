@@ -2,11 +2,14 @@
 //! served, and the wrap of per-blob data keys (XChaCha20-Poly1305, AAD = blob id, one AEAD call per request and
 //! no key cache).
 //!
-//! `rewrap_batch` is not here, so the `MasterKeyring` port of `contracts` is not implemented yet; the methods
-//! below have the signatures the port gives them.
+//! The inherent methods have the signatures of the `MasterKeyring` port of `contracts`, which this type
+//! implements by calling them. `rewrap_batch` is in its own module, the read-only key check of `doctor` in
+//! another.
 
+mod doctor;
 mod keycheck;
 mod keyring_repo;
+mod rewrap;
 mod ring;
 mod secret;
 mod volume;
@@ -14,7 +17,7 @@ mod volume;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use contracts::{BlobError, KeyError, Keyring, MasterKey};
+use contracts::{BlobError, KeyError, Keyring, MasterKey, async_trait};
 use sc_audit::{AuditDetail, AuditEvent, AuditEventKind, AuditWriter};
 use sc_db::Db;
 use sc_observability::{log_error, log_info};
@@ -29,6 +32,8 @@ use crate::error::{
 use keycheck::KeyCheck;
 use ring::KeyRing;
 use secret::MasterSecret;
+
+pub use doctor::KeyDoctorCheck;
 
 const SAMPLE_SIZE: i64 = 100;
 
@@ -146,12 +151,31 @@ impl MasterKeyring {
     }
 
     async fn volume_root(&self) -> Result<PathBuf, KeyError> {
-        match self.config.blob_root.as_deref() {
-            Some(root) if !root.is_empty() => volume::existing_root(root).await,
-            _ => Err(key_error_from_volume(std::io::Error::from(
-                std::io::ErrorKind::InvalidInput,
-            ))),
-        }
+        volume_root(&self.config).await
+    }
+}
+
+#[async_trait]
+impl contracts::MasterKeyring for MasterKeyring {
+    async fn load_and_verify(&self) -> Result<Keyring, KeyError> {
+        MasterKeyring::load_and_verify(self).await
+    }
+
+    async fn init_key_check(&self, candidate: &MasterKey) -> Result<(), KeyError> {
+        MasterKeyring::init_key_check(self, candidate).await
+    }
+
+    async fn rewrap_batch(&self, from_id: i16, to_id: i16, n: u32) -> Result<u64, KeyError> {
+        MasterKeyring::rewrap_batch(self, from_id, to_id, n).await
+    }
+}
+
+async fn volume_root(config: &BlobstoreConfig) -> Result<PathBuf, KeyError> {
+    match config.blob_root.as_deref() {
+        Some(root) if !root.is_empty() => volume::existing_root(root).await,
+        _ => Err(key_error_from_volume(std::io::Error::from(
+            std::io::ErrorKind::InvalidInput,
+        ))),
     }
 }
 
@@ -178,6 +202,22 @@ async fn update_key_check(
     mut check: KeyCheck,
     ring: &KeyRing,
 ) -> Result<(), KeyError> {
+    let unknown = compare_with_ring(&check, ring)?;
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    for (id, secret) in unknown {
+        check.seal(id, secret)?;
+    }
+    volume::write_key_check(root, &check).await
+}
+
+/// Checks every ring key the file knows. A key that does not match, or a ring none of whose keys the file
+/// knows, is `KeyCheckMismatch`; the keys the file does not know yet are returned.
+fn compare_with_ring<'a>(
+    check: &KeyCheck,
+    ring: &'a KeyRing,
+) -> Result<Vec<(i16, &'a MasterSecret)>, KeyError> {
     let mut verified = 0_usize;
     let mut unknown = Vec::new();
     for (id, secret) in ring.iter() {
@@ -190,11 +230,5 @@ async fn update_key_check(
     if verified == 0 {
         return Err(KeyError::KeyCheckMismatch);
     }
-    if unknown.is_empty() {
-        return Ok(());
-    }
-    for (id, secret) in unknown {
-        check.seal(id, secret)?;
-    }
-    volume::write_key_check(root, &check).await
+    Ok(unknown)
 }

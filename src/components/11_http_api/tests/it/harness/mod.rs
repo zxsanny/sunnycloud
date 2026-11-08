@@ -53,8 +53,20 @@ pub fn default_config() -> HttpConfig {
         body_idle_timeout: Duration::from_secs(30),
         shutdown_grace: Duration::from_secs(25),
         min_client_version: None,
-        server_info: ServerInfo::default(),
+        update_url: None,
+        server_info: sample_server_info("0.0.0"),
         credentials: test_credentials(),
+    }
+}
+
+/// The defaults of `common-helpers/01_helper_config.md`, with `minimum` as the served minimum.
+pub fn sample_server_info(minimum: &str) -> ServerInfo {
+    ServerInfo {
+        max_lanes: 4,
+        batch_max_entries: 500,
+        max_staged_per_account: 1000,
+        longpoll_max_wait: Duration::from_secs(30),
+        min_client_version: minimum.to_owned(),
     }
 }
 

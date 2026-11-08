@@ -7,6 +7,7 @@
 mod format;
 mod layer;
 
+pub(crate) use format::bearer;
 pub use format::{CredentialFormat, CredentialSource};
 pub use layer::Authenticated;
 pub(crate) use layer::protect;

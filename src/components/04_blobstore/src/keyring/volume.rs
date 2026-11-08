@@ -1,17 +1,15 @@
 //! The blob volume as the keyring sees it: the `.keycheck` file and whether any blob file exists.
 
-use std::fs::{self, OpenOptions};
-use std::io::{self, ErrorKind, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 
 use contracts::KeyError;
 
 use super::keycheck::KeyCheck;
 use crate::error::key_error_from_volume;
+use crate::volume_file::replace_file;
 
 const KEY_CHECK_FILE: &str = ".keycheck";
-const KEY_CHECK_TEMP: &str = ".keycheck.tmp";
 const BLOBS_DIR: &str = "blobs";
 
 /// A volume root that does not exist is not an empty volume: a missing mount must not receive a key check.
@@ -59,27 +57,12 @@ pub(crate) async fn has_blob_files(root: &Path) -> Result<bool, KeyError> {
     Ok(false)
 }
 
-/// Replaces the file atomically: temp file, `fsync`, rename, `fsync` of the folder.
+/// Atomic: see [`replace_file`].
 pub(crate) async fn write_key_check(root: &Path, check: &KeyCheck) -> Result<(), KeyError> {
     let root = root.to_path_buf();
     let bytes = check.encode();
-    tokio::task::spawn_blocking(move || replace_file(&root, &bytes))
+    tokio::task::spawn_blocking(move || replace_file(&root, KEY_CHECK_FILE, &bytes))
         .await
         .map_err(|_| key_error_from_volume(io::Error::other("key check write did not finish")))?
         .map_err(key_error_from_volume)
-}
-
-fn replace_file(root: &Path, bytes: &[u8]) -> io::Result<()> {
-    let temp = root.join(KEY_CHECK_TEMP);
-    let mut file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .mode(0o600)
-        .open(&temp)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    drop(file);
-    fs::rename(&temp, root.join(KEY_CHECK_FILE))?;
-    fs::File::open(root)?.sync_all()
 }

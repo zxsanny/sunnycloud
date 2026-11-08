@@ -18,11 +18,23 @@ const REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 pub struct ApiProblem {
     error: DomainError,
     request_id: CorrelationId,
+    update_url: Option<String>,
 }
 
 impl ApiProblem {
     pub fn new(error: DomainError, request_id: CorrelationId) -> ApiProblem {
-        ApiProblem { error, request_id }
+        ApiProblem {
+            error,
+            request_id,
+            update_url: None,
+        }
+    }
+
+    /// Adds the `update_url` extra of an `upgrade_required` body (`server_info.md`); `sc_error` has no field
+    /// for it, so it is spliced into the serialised body.
+    pub(crate) fn with_update_url(mut self, url: String) -> ApiProblem {
+        self.update_url = Some(url);
+        self
     }
 
     /// A port's own error, converted by [`PortError`].
@@ -33,7 +45,11 @@ impl ApiProblem {
 
 impl IntoResponse for ApiProblem {
     fn into_response(self) -> Response {
-        let ApiProblem { error, request_id } = self;
+        let ApiProblem {
+            error,
+            request_id,
+            update_url,
+        } = self;
         if let DomainError::Unexpected { .. } = &error {
             log_error!(
                 "unexpected failure answered as internal",
@@ -43,7 +59,7 @@ impl IntoResponse for ApiProblem {
         }
         let problem = error.problem(request_id);
         let status = status_of(problem.code.status(), request_id);
-        let body = match serde_json::to_vec(&problem) {
+        let body = match serialise(&problem, update_url) {
             Ok(bytes) => bytes,
             Err(failure) => {
                 log_error!(
@@ -76,6 +92,20 @@ impl IntoResponse for ApiProblem {
         }
         response
     }
+}
+
+fn serialise(
+    problem: &sc_error::ProblemBody,
+    update_url: Option<String>,
+) -> Result<Vec<u8>, serde_json::Error> {
+    let Some(url) = update_url else {
+        return serde_json::to_vec(problem);
+    };
+    let mut value = serde_json::to_value(problem)?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert("update_url".to_owned(), url.into());
+    }
+    serde_json::to_vec(&value)
 }
 
 fn status_of(status: u16, request_id: CorrelationId) -> StatusCode {

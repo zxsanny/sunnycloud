@@ -13,6 +13,7 @@ mod probe;
 mod run;
 mod scratch;
 mod settings;
+mod slot_loop;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -29,6 +30,7 @@ pub use probe::{PROBE_TIMEOUT, ProbeError, get_ok, probe_target};
 pub use run::{healthcheck, serve, serve_ops};
 pub use scratch::{OutputFile, RejectReason, ScratchDir, ScratchError, ScratchRoot, sweep_all};
 pub use settings::{load_settings, ops_addr};
+pub use slot_loop::{ApiAccess, JobEnd, JobMetrics, KindConfig, LoopConfig, SlotLoop, SlotStep};
 
 /// Runs the process: no argument serves, `healthcheck` probes. Returns the exit code.
 pub fn execute(args: Vec<OsString>, env: BTreeMap<String, String>) -> ExitCode {

@@ -8,6 +8,8 @@ mod block;
 mod complete;
 mod volume;
 
+pub(crate) use volume::available_bytes;
+
 use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 use std::path::PathBuf;

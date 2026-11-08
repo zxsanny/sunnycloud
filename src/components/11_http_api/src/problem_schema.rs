@@ -20,6 +20,7 @@ pub fn problem_schema() -> Value {
                 "enum": ["epoch_changed", "below_purge_horizon", "cursor_ahead"]
             },
             "min_version": {"type": "string"},
+            "update_url": {"type": "string"},
             "problems": {
                 "type": "array",
                 "items": {

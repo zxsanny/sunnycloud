@@ -65,6 +65,7 @@ fn router_for(defs: &[RouteDef], context: &RouteContext, listener: ListenerKind)
             &context.services,
             &context.credentials,
         );
+        let handler = context.version_gate.guard(handler, def.spec.auth);
         let (get, head) = (
             def.spec.method == HttpMethod::Get,
             def.spec.method == HttpMethod::Head,

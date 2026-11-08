@@ -19,8 +19,9 @@ pub use spec::{Mount, Param, ParamLocation, ParamType, RouteDef, RouteSpec, Sche
 pub use validate::{RegistryError, validate};
 
 use crate::auth::CredentialFormat;
-use crate::config::ServerInfo;
+use crate::server_info::ServerInfo;
 use crate::services::ApiServices;
+use crate::version::VersionGate;
 
 /// What a handler is built from.
 pub struct RouteContext {
@@ -28,6 +29,7 @@ pub struct RouteContext {
     pub openapi: OpenApiDocument,
     pub server_info: ServerInfo,
     pub credentials: CredentialFormat,
+    pub version_gate: Arc<VersionGate>,
 }
 
 /// Every operation the server offers. Each group of E-21 adds its own list here.

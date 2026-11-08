@@ -68,6 +68,11 @@ impl CredentialFormat {
         ))
     }
 
+    /// True when the request carries the browser session cookie.
+    pub(crate) fn has_session_cookie(&self, headers: &HeaderMap) -> bool {
+        self.cookie(headers).is_some()
+    }
+
     fn cookie<'a>(&self, headers: &'a HeaderMap) -> Option<&'a str> {
         headers
             .get_all(COOKIE)

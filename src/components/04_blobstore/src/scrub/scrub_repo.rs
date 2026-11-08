@@ -1,5 +1,6 @@
 //! The statements of the scrubber. A scrub works across accounts, so every unit of work runs in system scope
-//! (ADR-014). Each is one short transaction; none spans a file read, and the selection takes no row lock.
+//! (ADR-014). Each is one short transaction; none spans a file read, and the selection takes no row lock. The
+//! paged walk of committed ids is shared with the missing-blob inventory.
 
 use sc_db::{Db, DbError, RunError};
 use uuid::Uuid;
@@ -35,6 +36,11 @@ const STATUS: &str = "SELECT \
           FROM blobs WHERE state = 'committed'), \
          (SELECT count(*) FROM blobs WHERE state = 'committed' AND last_scrubbed_at IS NULL), \
          (SELECT count(*) FROM blobs WHERE unavailable_at IS NOT NULL)";
+
+/// One page of the inventory walk: committed ids in key order, after `$1` (all when null).
+const COMMITTED_PAGE: &str = "SELECT id FROM blobs \
+     WHERE state = 'committed' AND ($1::uuid IS NULL OR id > $1) \
+     ORDER BY id LIMIT $2";
 
 pub(super) struct Candidate {
     pub id: Uuid,
@@ -130,6 +136,24 @@ pub(super) async fn counts(db: &Db) -> Result<Counts, RunError<DbError>> {
             unscrubbed,
             unavailable,
         })
+    })
+    .await
+}
+
+/// Up to `limit` committed ids greater than `after`, ascending.
+pub(crate) async fn committed_page(
+    db: &Db,
+    after: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<Uuid>, RunError<DbError>> {
+    db.run_system("blob_inventory_page", async |tx| {
+        let ids: Vec<Uuid> = sqlx::query_scalar(COMMITTED_PAGE)
+            .bind(after)
+            .bind(limit)
+            .fetch_all(tx.conn())
+            .await
+            .map_err(DbError::from)?;
+        Ok::<_, DbError>(ids)
     })
     .await
 }

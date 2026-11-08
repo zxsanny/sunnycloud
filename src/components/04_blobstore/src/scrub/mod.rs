@@ -16,7 +16,7 @@ mod pace;
 mod probe;
 mod report;
 mod run;
-mod scrub_repo;
+pub(crate) mod scrub_repo;
 mod verify;
 
 use std::path::PathBuf;

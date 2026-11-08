@@ -13,3 +13,4 @@ mod middleware;
 mod ops;
 mod ops_metrics;
 mod registry;
+mod version;

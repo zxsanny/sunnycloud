@@ -28,7 +28,11 @@ pub fn print_outcome(terminal: &Terminal, mode: Mode, outcome: Outcome) -> io::R
         class,
         mut data,
         secret,
+        document,
     } = outcome;
+    if let Some(document) = document {
+        return terminal.write_stdout(&document);
+    }
     let secret = secret.map(|secret| secret.reveal());
     let text = match mode {
         Mode::Text => {

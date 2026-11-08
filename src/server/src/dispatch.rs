@@ -1,7 +1,12 @@
+use sc_error::ErrorCode;
+use sunnycloud_http_api::current_document;
+
 use crate::command_config;
 use crate::commands::Command;
 use crate::error::CliError;
+use crate::exit::Exit;
 use crate::handler::{BoxFuture, Call, Handler};
+use crate::healthcheck;
 use crate::outcome::Outcome;
 
 /// The binary's handler. Each command task replaces its `NotImplemented` arm with a call into its own module.
@@ -13,6 +18,8 @@ impl Handler for Commands {
             command_config::check(call.command, call.services).await?;
             match call.command {
                 Command::Version => Ok(version()),
+                Command::Openapi => openapi(),
+                Command::Healthcheck => healthcheck::run(healthcheck::OPS_ADDR, &call.cancel).await,
                 other => Err(CliError::NotImplemented(other.route())),
             }
         })
@@ -26,4 +33,16 @@ fn version() -> Outcome {
             "commit",
             option_env!("SUNNYCLOUD_GIT_COMMIT").unwrap_or("unknown"),
         )
+}
+
+/// The document of this build, byte for byte as `GET /api/v1/openapi.json` serves it. It comes from the route
+/// registry alone, so no service, database or key is built.
+fn openapi() -> Result<Outcome, CliError> {
+    let document = current_document();
+    let text = std::str::from_utf8(document.as_bytes()).map_err(|error| CliError::Operator {
+        code: ErrorCode::Internal.as_str(),
+        detail: format!("the OpenAPI document is not UTF-8: {error}"),
+        exit: Exit::Failed,
+    })?;
+    Ok(Outcome::success().document(text))
 }

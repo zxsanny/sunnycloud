@@ -3,13 +3,10 @@ use std::time::Duration;
 
 use crate::auth::CredentialFormat;
 use crate::error::HttpServerError;
+use crate::server_info::ServerInfo;
 
 /// The largest flow-control window HTTP/2 allows (RFC 9113 section 6.9.1).
 const MAX_H2_WINDOW: u32 = 0x7fff_ffff;
-
-/// The `ServerInfo` value built by 12 (`server_info.md`). Its fields arrive with E-21/c06.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ServerInfo {}
 
 /// The typed section 12 binds through `sc_config` (keys of helper 01; defaults live in its table).
 #[derive(Debug, Clone)]
@@ -33,7 +30,12 @@ pub struct HttpConfig {
     pub request_timeout: Duration,
     pub body_idle_timeout: Duration,
     pub shutdown_grace: Duration,
+    /// One semver for every client family, or `family=semver,...`; unset means no minimum.
     pub min_client_version: Option<String>,
+    /// Where an old client is sent (the `update_url` of a 426). Required with `min_client_version`. Not in the
+    /// key table yet: the documents name no source for it (`server_info.md` open point 2).
+    pub update_url: Option<String>,
+    /// The value `GET /api/v1/server-info` serves; its `min_client_version` must equal the one above.
     pub server_info: ServerInfo,
     /// Not in the key table yet: the session cookie name and the device token marker are not fixed by the documents.
     pub credentials: CredentialFormat,

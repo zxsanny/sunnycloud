@@ -37,6 +37,7 @@ pub struct Outcome {
     pub(crate) class: Class,
     pub(crate) data: Map<String, Value>,
     pub(crate) secret: Option<OneTimeSecret>,
+    pub(crate) document: Option<String>,
 }
 
 impl Outcome {
@@ -45,6 +46,7 @@ impl Outcome {
             class,
             data: Map::new(),
             secret: None,
+            document: None,
         }
     }
 
@@ -54,6 +56,13 @@ impl Outcome {
 
     pub fn field(mut self, key: &str, value: impl Into<Value>) -> Self {
         self.data.insert(key.to_owned(), value.into());
+        self
+    }
+
+    /// A document that is the whole of stdout, byte for byte, in text and in `--json` mode (`openapi`): it is
+    /// already one JSON object and must stay equal to what the server serves, so no envelope wraps it.
+    pub fn document(mut self, document: &str) -> Self {
+        self.document = Some(document.to_owned());
         self
     }
 

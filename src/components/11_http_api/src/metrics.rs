@@ -1,6 +1,8 @@
 use axum::http::StatusCode;
 use sc_observability::{Counter, Gauge, Histogram, LabelSet, Metrics, NoLabels, ObsError};
 
+use crate::version::ClientFamily;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RejectReason {
     /// `max_connections` reached.
@@ -130,6 +132,25 @@ impl LabelSet for DurationLabels {
     }
 }
 
+/// The labels of `sync_client_versions_total`: the caller's family and whether its version met the minimum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClientVersionLabels {
+    pub client: ClientFamily,
+    pub supported: bool,
+}
+
+impl LabelSet for ClientVersionLabels {
+    const NAMES: &'static [&'static str] = &["client", "supported"];
+
+    fn value(&self, index: usize) -> &'static str {
+        match (index, self.supported) {
+            (0, _) => self.client.as_str(),
+            (_, true) => "yes",
+            (_, false) => "no",
+        }
+    }
+}
+
 /// The HTTP families of the 11 metrics list. Registered here; the request layers increment them
 /// (`body_limit_exceeded` is E-21/c05's).
 ///
@@ -140,6 +161,8 @@ pub struct HttpMetrics {
     pub body_limit_exceeded: Counter<NoLabels>,
     /// Handler panics the outermost layer caught.
     pub panics: Counter<NoLabels>,
+    /// Requests that carried a valid `X-Sunnycloud-Client`, counted by the version gate.
+    pub client_versions: Counter<ClientVersionLabels>,
 }
 
 impl HttpMetrics {
@@ -148,12 +171,20 @@ impl HttpMetrics {
         body_limit_exceeded.inc_by(NoLabels, 0);
         let panics = metrics.counter::<NoLabels>("http_panics_total")?;
         panics.inc_by(NoLabels, 0);
+        let client_versions =
+            metrics.counter::<ClientVersionLabels>("sync_client_versions_total")?;
+        for client in ClientFamily::ALL {
+            for supported in [true, false] {
+                client_versions.inc_by(ClientVersionLabels { client, supported }, 0);
+            }
+        }
         Ok(HttpMetrics {
             requests: metrics.counter::<RequestLabels>("http_requests_total")?,
             request_duration: metrics
                 .histogram::<DurationLabels>("http_request_duration_seconds")?,
             body_limit_exceeded,
             panics,
+            client_versions,
         })
     }
 }

@@ -1,9 +1,10 @@
-use axum::http::header::CONTENT_TYPE;
+use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use axum::routing::{MethodFilter, MethodRouter, on};
 
 use super::RouteContext;
 use super::classes::{AuthClass, BodyClass, HttpMethod};
-use super::spec::{RouteDef, RouteSpec};
+use super::spec::{RouteDef, RouteSpec, SchemaRef};
+use crate::server_info::ServerInfo;
 
 const SERVER_INFO: RouteSpec = RouteSpec::new(
     HttpMethod::Get,
@@ -12,7 +13,11 @@ const SERVER_INFO: RouteSpec = RouteSpec::new(
     AuthClass::Public,
     BodyClass::None,
 )
-.summary("Protocol limits and the minimum client version");
+.summary("Protocol limits and the minimum client version")
+.response(SchemaRef {
+    name: "ServerInfo",
+    build: ServerInfo::schema,
+});
 
 const OPENAPI: RouteSpec = RouteSpec::new(
     HttpMethod::Get,
@@ -30,10 +35,19 @@ pub(super) fn routes() -> Vec<RouteDef> {
     ]
 }
 
-/// The body is E-21/c06's: `ServerInfo` has no fields until that task, so the answer is its empty value.
-fn mount_server_info(_context: &RouteContext, filter: MethodFilter) -> MethodRouter {
-    on(filter, || async {
-        ([(CONTENT_TYPE, "application/json")], "{}")
+fn mount_server_info(context: &RouteContext, filter: MethodFilter) -> MethodRouter {
+    let body = context.server_info.to_body();
+    on(filter, move || {
+        let body = body.clone();
+        async move {
+            (
+                [
+                    (CONTENT_TYPE, "application/json"),
+                    (CACHE_CONTROL, "no-store"),
+                ],
+                body,
+            )
+        }
     })
 }
 

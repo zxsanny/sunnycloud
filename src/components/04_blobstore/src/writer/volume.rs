@@ -15,7 +15,7 @@ use crate::header::Header;
 use crate::path::blob_path;
 
 /// Bytes a non-privileged writer can still allocate on the volume that holds `root`.
-pub(super) fn available_bytes(root: &Path) -> io::Result<u64> {
+pub(crate) fn available_bytes(root: &Path) -> io::Result<u64> {
     let stat = statvfs(root).map_err(io::Error::from)?;
     Ok(stat.f_bavail.saturating_mul(stat.f_frsize))
 }
