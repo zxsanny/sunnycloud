@@ -4,6 +4,8 @@
 **Tasks**: AZ-3748_blobstore_metrics_logging, AZ-3778_feed_horizon_lifecycle, AZ-3803_body_limits_timeouts, AZ-3873_worker_heartbeat_watchdog
 **Date**: 2026-11-08
 
+Addendum (same day): the owner approved the 411 code and the write-idle key, so the parent added the two shared rows and wired them in `11_http_api` (see items 9 and 10).
+
 Four workers on four disjoint crates (`04_blobstore`, `05_sync_feed`, `11_http_api`, `worker`) against one PostgreSQL 18 test container. No worker left its `Owns:` paths and no shared crate was edited this batch: two parts of AZ-3803 stopped on a shared-crate change (items 9 and 10) and wait for the owner. Deferred: AZ-3808, AZ-3812 (share `11_http_api` with AZ-3803), AZ-3877 (shares `worker` with AZ-3873), AZ-3893 (Windows only), all decision spikes.
 
 ## Task Results
@@ -12,7 +14,7 @@ Four workers on four disjoint crates (`04_blobstore`, `05_sync_feed`, `11_http_a
 |------|--------|---------------|-------|--------|
 | AZ-3748_blobstore_metrics_logging | Done | `sunnycloud-blobstore`: `metrics.rs` (`BlobMetrics`), `with_metrics` builders on `SyncBarrier`, `FileBlobReader`, `BlobHealth`; new ERROR/WARN events (corrupt read, write I/O, group sync, floor hit, aborted GC sweep); `metrics-and-logs.md` 1.0.0 | 9 new (310 in the crate) | Items 1-4 |
 | AZ-3778_feed_horizon_lifecycle | Done; AC-3 uses a marker double | `sunnycloud-sync-feed`: `horizon_repo.rs` (`PgFeedHorizon`), `lifecycle_repo.rs` (`PgFeedLifecycle`); `feed-writer-ports.md` 1.1.0 | 9 new | Items 5-7 |
-| AZ-3803_body_limits_timeouts | Done except 411, download write-idle, slow-body status | `sunnycloud-http-api`: `limits/` (`BodyLimits`, per-route layer, streaming guard), `Timing` on `RouteSpec`, `worker_output_limits` in `HttpConfig`; `api_v1_surface.md` and `http_server.md` 1.1.0 | 13 integration + 6 unit | Items 8-12 |
+| AZ-3803_body_limits_timeouts | Done except the slow-body status (411 and write-idle added after the batch, owner approval) | `sunnycloud-http-api`: `limits/` (`BodyLimits`, per-route layer, streaming guard), `Timing` on `RouteSpec`, `worker_output_limits` in `HttpConfig`; `api_v1_surface.md` and `http_server.md` 1.1.0 | 13 integration + 6 unit | Items 8-12 |
 | AZ-3873_worker_heartbeat_watchdog | Done | `sunnycloud-worker`: `slot_loop/lease.rs` (heartbeat at `lease_ms / 3`), `watchdog.rs` (silence, wall limit, lease end), `Stop::Unhealthy`, `Slot::mark_unhealthy`, readiness via the existing `SlotReadiness` | 9 new | Items 13-16 |
 
 ## Code Review Verdict: PASS_WITH_WARNINGS
@@ -30,7 +32,7 @@ CI-parity: PASS. In `src/` with `CARGO_INCREMENTAL=0`: `cargo fmt --all --check`
 
 ## Owner decisions
 
-None asked this batch: no new `run_system` allowlist line (the feed tests use the already listed `system_scope_repo.rs`). Waiting for the owner: the 411 code and the download write-idle key (items 9, 10).
+None asked this batch: no new `run_system` allowlist line (the feed tests use the already listed `system_scope_repo.rs`). Approved after the batch: the 411 code `length_required` and the `download_write_idle` key (items 9, 10). Waiting for the owner: the slow-body status (item 10, open point 12).
 
 ## Issues and discovered scenarios
 
@@ -44,8 +46,8 @@ None asked this batch: no new `run_system` allowlist line (the feed tests use th
 | 6 | `account_feeds` has row-level security: `initialize` only sees the installation epoch from a system-scope transaction, otherwise a second account silently gets the clock epoch. 01 must call the hook in system scope; not verified. The alternative is a SECURITY DEFINER function or policy change (a migration) | AZ-3778 | Documented in the contract; owner/01 | unclear |
 | 7 | Two first accounts created at the same instant on an empty install could pick different epochs (no lock taken); the marker is written inside the caller's transaction, so a rollback leaves a marker no row has (the spec's own Low concern); hook registration order after the tree's is 12's | AZ-3778 | Documented | unclear |
 | 8 | A `Timing` marker (`Request`, `LongPoll`, `Download`) was added to `RouteSpec`; later routes for changes and downloads must declare `.long_poll()` and `.download()`. `wait` is read in whole seconds. `Block` and `Staged` have no total cap; `WorkerOutput`, `Commit` and `Batch` get `request_timeout` (a large transcode upload is bounded at 60 s) | AZ-3803 | Worker's reading | unclear |
-| 9 | Block PUT without `Content-Length` is not answered 411: `sc_error` has no 411 code (proposed `length_required`, 411, "Length required"); until it exists such a PUT is streamed and cut at 2 MiB | AZ-3803 AC-2, open point 13 | Needs an `sc_error` row, wire vocabulary: owner decision | unclear |
-| 10 | Download write-idle timeout (60 s) is not enforced: `sc_config` has no key (proposed `download_write_idle`, duration, 60s, HTTP section); a slow body and a slow handler end as a reset behind a 500 head because `problem_details.md` lists no 408 and no request-timeout code | AZ-3803 AC-4, AC-5, open points 11, 12 | Owner decisions | unclear |
+| 9 | Block PUT without `Content-Length` (411): closed. Owner approved `length_required`, 411 in the `sc_error` table (`code.rs`, `code_table.rs`, sync-core `wire_table.rs`, `sc_error.md`, helper 02); the layer answers it before any body byte | AZ-3803 AC-2, open point 13 | Done | clear |
+| 10 | Download write-idle (60 s): closed. Owner approved the `download_write_idle` key (duration, 60s, HTTP section of `sc_config`, helper 01). It is enforced on the connection socket (`write_idle.rs`), so it guards every response write, not only `Download` routes; HTTP/2 shares one socket for all streams. Still open: a slow body and a slow handler end as a reset behind a 500 head because `problem_details.md` lists no 408 and no request-timeout code (open point 12) | AZ-3803 AC-4, AC-5 | Item 12 owner decision | unclear |
 | 11 | The layer's 413 for a worker output over its cap is `size_too_large`, while 08 answers `output_too_large` (also 413); the layer enforces the cap as a ceiling and 08 keeps its own check. The `POST revisions:lookup` body class is still unassigned. Not tested: HTTP/2 reset, memory growth for AC-6; 413 tests assert 500 ms, not 100 ms | AZ-3803 | Worker's reading | unclear |
 | 12 | `HttpConfig` gained `worker_output_limits` (from the existing `derived_max_*` keys) and rejects a zero `request_timeout` or `body_idle_timeout`; `RouteContext` gained `body_limits` | AZ-3803 | For AZ-3789 | clear |
 | 13 | The wall limit is applied per decoder call (probe, each render, each transcode, the CPU rerun), so a two-render `stills` job can run twice the limit; the runner's own limit and our cancel can race at the same instant | AZ-3873 AC-4 | Worker's reading | unclear |
@@ -60,4 +62,4 @@ None asked this batch: no new `run_system` allowlist line (the feed tests use th
 
 ## Next Batch
 
-Recompute ready tasks. Likely ready: one of AZ-3808 CSRF origin check or AZ-3812 content header mapper (`11_http_api`, only one at a time); AZ-3877 worker nvenc preference; tasks unlocked by the feed horizon, the metrics and the watchdog. The 411 code and the download write-idle key (items 9, 10) can be added once the owner confirms the names. 262 tasks left.
+Recompute ready tasks. Likely ready: one of AZ-3808 CSRF origin check or AZ-3812 content header mapper (`11_http_api`, only one at a time); AZ-3877 worker nvenc preference; tasks unlocked by the feed horizon, the metrics and the watchdog. 262 tasks left.

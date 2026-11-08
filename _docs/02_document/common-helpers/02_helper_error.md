@@ -45,6 +45,7 @@ No `catch`-all: a catch may only (a) convert a third-party error into a tier 2 o
 | `range_not_satisfiable` | 416 | |
 | `target_not_shareable` | 422 | share target is a folder or tombstoned (v1.0 shares files only) |
 | `block_hash_mismatch`, `block_length_mismatch` | 422 | block not stored |
+| `length_required` | 411 | block PUT without `Content-Length` |
 | `size_too_large` | 413 | declared size above `max_declared_size` |
 | `quota_exceeded`, `free_space_floor` | 507 | typed, nothing reserved; `quota_exceeded` is fixed at 507 (owner decision) |
 | `rate_limited` | 429 + `Retry-After` | AC-20 |

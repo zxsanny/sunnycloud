@@ -41,6 +41,7 @@ mod server_info;
 mod services;
 mod spa;
 mod version;
+mod write_idle;
 
 pub use accept::AcceptLoop;
 pub use auth::{Authenticated, CredentialFormat, CredentialSource};

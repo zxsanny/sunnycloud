@@ -81,6 +81,7 @@ settings_table! {
     h2_keepalive_timeout: Dur = dflt("20s", A);
     request_timeout: Dur = dflt("60s", A);
     body_idle_timeout: Dur = dflt("30s", A);
+    download_write_idle: Dur = dflt("60s", A);
 
     // Database (07)
     db_api_url: Sec = unset(A);

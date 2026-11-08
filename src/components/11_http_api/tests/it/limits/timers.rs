@@ -158,3 +158,23 @@ async fn long_polls_and_downloads_keep_their_own_clocks() {
     );
     server.stop().await;
 }
+
+#[tokio::test]
+async fn a_download_to_a_peer_that_stops_reading_is_cut_at_the_write_idle_limit() {
+    // Arrange
+    let server = Limited::start().await;
+    let mut raw = Raw::connect(server.public.addr).await;
+    raw.send(&Raw::head("GET", BIG_DOWNLOAD_PATH, "", "")).await;
+
+    // Act
+    tokio::time::sleep(TIMER * 3).await;
+    let received = raw.finish(ANSWER_BOUND).await;
+
+    // Assert
+    assert!(
+        received.len() < BIG_DOWNLOAD_BYTES,
+        "the server kept writing to a peer that did not read: {} bytes",
+        received.len()
+    );
+    server.stop().await;
+}

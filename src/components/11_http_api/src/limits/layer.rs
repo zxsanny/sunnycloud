@@ -52,7 +52,11 @@ pub(super) async fn enforce(
     let plan = limits
         .settings
         .plan(route.class, route.timing, kind.as_deref(), wait);
-    if declared_length(&parts.headers).is_some_and(|declared| declared > plan.ceiling) {
+    let declared = declared_length(&parts.headers);
+    if route.class == BodyClass::Block && declared.is_none() {
+        return length_required(request_id);
+    }
+    if declared.is_some_and(|declared| declared > plan.ceiling) {
         return too_large(limits, request_id);
     }
 
@@ -119,6 +123,11 @@ async fn expired(request: Option<Duration>) {
 fn too_large(limits: &BodyLimits, request_id: CorrelationId) -> Response {
     limits.metrics.body_limit_exceeded.inc(NoLabels);
     let error = BusinessError::new(ErrorCode::SizeTooLarge, BusinessParams::default());
+    ApiProblem::new(DomainError::Business(error), request_id).into_response()
+}
+
+fn length_required(request_id: CorrelationId) -> Response {
+    let error = BusinessError::new(ErrorCode::LengthRequired, BusinessParams::default());
     ApiProblem::new(DomainError::Business(error), request_id).into_response()
 }
 

@@ -115,7 +115,11 @@ pub struct RouterServer {
 
 impl RouterServer {
     pub async fn start(router: Router) -> RouterServer {
-        let config = default_config();
+        Self::start_with(router, default_config()).await
+    }
+
+    /// Serves `router` with the connection settings of `config`.
+    pub async fn start_with(router: Router, config: HttpConfig) -> RouterServer {
         let accept = AcceptLoop::new(&config, &new_metrics()).expect("accept loop builds");
         let listener = TcpListener::bind(config.public_addr)
             .await

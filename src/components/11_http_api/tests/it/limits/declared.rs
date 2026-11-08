@@ -163,3 +163,36 @@ async fn a_worker_output_is_capped_by_its_kind() {
     assert_eq!(server.port_calls(), 1);
     server.stop().await;
 }
+
+#[tokio::test]
+async fn a_block_put_without_content_length_is_411_and_the_port_is_not_called() {
+    // Arrange
+    let server = Limited::start().await;
+    let mut chunked = Raw::connect(server.public.addr).await;
+    let mut bare = Raw::connect(server.public.addr).await;
+
+    // Act
+    chunked
+        .send(&Raw::head(
+            "POST",
+            path_of(BodyClass::Block),
+            "transfer-encoding: chunked\r\n",
+            "",
+        ))
+        .await;
+    chunked.send(b"5\r\nhello\r\n0\r\n\r\n").await;
+    bare.send(&Raw::head("POST", path_of(BodyClass::Block), "", ""))
+        .await;
+    let answers = [
+        chunked.finish(ANSWER_BOUND).await,
+        bare.finish(ANSWER_BOUND).await,
+    ];
+
+    // Assert
+    for answer in &answers {
+        assert_eq!(status_of(answer), Some(411));
+        assert_eq!(body_of(answer)["code"], "length_required");
+    }
+    assert_eq!(server.port_calls(), 0);
+    server.stop().await;
+}

@@ -69,6 +69,8 @@ error_codes! {
     ParentDeleted => "parent_deleted", 410, "Parent deleted";
     ResyncRequired => "resync_required", 410, "Resync required";
 
+    LengthRequired => "length_required", 411, "Length required";
+
     SizeTooLarge => "size_too_large", 413, "Size too large";
     OutputTooLarge => "output_too_large", 413, "Output too large";
 

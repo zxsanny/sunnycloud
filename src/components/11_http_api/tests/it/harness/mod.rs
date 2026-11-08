@@ -51,6 +51,7 @@ pub fn default_config() -> HttpConfig {
         h2_keepalive_timeout: Duration::from_secs(20),
         request_timeout: Duration::from_secs(60),
         body_idle_timeout: Duration::from_secs(30),
+        download_write_idle: Duration::from_secs(60),
         worker_output_limits: WorkerOutputLimits {
             thumb: 5 << 20,
             preview: 20 << 20,

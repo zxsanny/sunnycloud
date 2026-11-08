@@ -35,6 +35,7 @@ const EXPECTED: &[(u16, &[&str])] = &[
         410,
         &["upload_session_gone", "parent_deleted", "resync_required"],
     ),
+    (411, &["length_required"]),
     (413, &["size_too_large", "output_too_large"]),
     (416, &["range_not_satisfiable"]),
     (

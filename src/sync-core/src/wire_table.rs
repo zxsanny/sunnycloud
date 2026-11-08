@@ -103,6 +103,7 @@ pub fn map_problem(status: u16, headers: &[(&str, &str)], body: &[u8]) -> Mapped
         | ErrorCode::RevisionObsolete
         | ErrorCode::ThumbnailNotReady
         | ErrorCode::ThumbnailUnavailable
+        | ErrorCode::LengthRequired
         | ErrorCode::OutputTooLarge
         | ErrorCode::OutputTypeRejected
         | ErrorCode::OutputKindRejected => unexpected(code, &raw, &correlation),

@@ -57,6 +57,8 @@ pub const SLOW_BLOCK_PATH: &str = "/api/v1/limits/slow-block";
 pub const POLL_ANSWERED_PATH: &str = "/api/v1/limits/poll-answered";
 pub const POLL_SILENT_PATH: &str = "/api/v1/limits/poll-silent";
 pub const DOWNLOAD_PATH: &str = "/api/v1/limits/download";
+pub const BIG_DOWNLOAD_PATH: &str = "/api/v1/limits/big-download";
+pub const BIG_DOWNLOAD_BYTES: usize = 64 * MIB;
 pub const DOWNLOAD_CHUNKS: [&[u8]; 3] = [b"first-", b"second-", b"third"];
 pub const STEP: Duration = Duration::from_millis(250);
 
@@ -112,6 +114,12 @@ fn mount_answers_late(_context: &RouteContext, filter: MethodFilter) -> MethodRo
     on(filter, || async {
         tokio::time::sleep(Duration::from_secs(1)).await;
         StatusCode::OK
+    })
+}
+
+fn mount_big_download(_context: &RouteContext, filter: MethodFilter) -> MethodRouter {
+    on(filter, || async {
+        Body::from(vec![0u8; BIG_DOWNLOAD_BYTES])
     })
 }
 
@@ -204,6 +212,7 @@ pub fn specs() -> Vec<(RouteSpec, Mounter)> {
         ),
         (get(POLL_SILENT_PATH).long_poll().params(WAIT), mount_hang),
         (get(DOWNLOAD_PATH).download(), mount_download),
+        (get(BIG_DOWNLOAD_PATH).download(), mount_big_download),
         (
             RouteSpec::new(
                 HttpMethod::Put,
@@ -233,6 +242,7 @@ pub fn limited_config() -> HttpConfig {
     HttpConfig {
         request_timeout: TIMER,
         body_idle_timeout: TIMER,
+        download_write_idle: TIMER,
         worker_output_limits: WorkerOutputLimits {
             thumb: WORKER_THUMB_CAP as u64,
             preview: WORKER_PREVIEW_CAP as u64,
@@ -258,8 +268,8 @@ impl Limited {
         let metrics = Arc::clone(&context.services.metrics);
         let Routers { public, internal } = mount(&defs, &context, None);
         Limited {
-            public: RouterServer::start(public).await,
-            internal: RouterServer::start(internal).await,
+            public: RouterServer::start_with(public, limited_config()).await,
+            internal: RouterServer::start_with(internal, limited_config()).await,
             script,
             metrics,
         }

@@ -19,6 +19,7 @@ use crate::error::HttpServerError;
 use crate::gate::{ConnectionGate, ConnectionGuard};
 use crate::metrics::ConnectionMetrics;
 use crate::middleware::PeerAddr;
+use crate::write_idle::WriteIdle;
 
 /// Pause after an accept failure that is not about one peer (descriptor or memory exhaustion), so the loop
 /// does not spin on it.
@@ -35,6 +36,7 @@ pub(crate) struct ConnectionSettings {
     pub(crate) h2_max_header_list: u32,
     pub(crate) h2_keepalive_interval: Duration,
     pub(crate) h2_keepalive_timeout: Duration,
+    pub(crate) download_write_idle: Duration,
 }
 
 impl ConnectionSettings {
@@ -48,6 +50,7 @@ impl ConnectionSettings {
             h2_max_header_list: config.h2_max_header_list,
             h2_keepalive_interval: config.h2_keepalive_interval,
             h2_keepalive_timeout: config.h2_keepalive_timeout,
+            download_write_idle: config.download_write_idle,
         }
     }
 
@@ -77,6 +80,7 @@ impl ConnectionSettings {
 pub struct AcceptLoop {
     gate: Arc<ConnectionGate>,
     builder: Builder<TokioExecutor>,
+    write_idle: Duration,
 }
 
 impl AcceptLoop {
@@ -88,9 +92,11 @@ impl AcceptLoop {
             config.max_connections,
             ConnectionMetrics::register(metrics)?,
         );
+        let settings = ConnectionSettings::from_config(config);
         Ok(AcceptLoop {
             gate,
-            builder: ConnectionSettings::from_config(config).builder(),
+            builder: settings.builder(),
+            write_idle: settings.download_write_idle,
         })
     }
 
@@ -124,7 +130,7 @@ impl AcceptLoop {
         tokio::spawn(serve_connection(
             self.builder.clone(),
             guard,
-            stream,
+            WriteIdle::new(stream, self.write_idle),
             peer,
             app.clone(),
         ));
@@ -134,7 +140,7 @@ impl AcceptLoop {
 async fn serve_connection(
     builder: Builder<TokioExecutor>,
     guard: ConnectionGuard,
-    stream: TcpStream,
+    stream: WriteIdle<TcpStream>,
     peer: SocketAddr,
     app: Router,
 ) {
@@ -199,6 +205,7 @@ mod tests {
             h2_keepalive_timeout: Duration::from_millis(777),
             request_timeout: Duration::from_secs(60),
             body_idle_timeout: Duration::from_secs(30),
+            download_write_idle: Duration::from_secs(60),
             worker_output_limits: crate::config::WorkerOutputLimits {
                 thumb: 5 << 20,
                 preview: 20 << 20,
@@ -241,6 +248,7 @@ mod tests {
                 h2_max_header_list: 5_555,
                 h2_keepalive_interval: Duration::from_millis(666),
                 h2_keepalive_timeout: Duration::from_millis(777),
+                download_write_idle: Duration::from_secs(60),
             }
         );
     }

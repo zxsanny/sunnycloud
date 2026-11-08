@@ -38,6 +38,8 @@ pub struct HttpConfig {
     pub h2_keepalive_timeout: Duration,
     pub request_timeout: Duration,
     pub body_idle_timeout: Duration,
+    /// How long a response write may make no progress before the connection is closed.
+    pub download_write_idle: Duration,
     /// The ceiling of a `WorkerOutput` body, by the `{kind}` of the route.
     pub worker_output_limits: WorkerOutputLimits,
     pub shutdown_grace: Duration,
@@ -71,8 +73,13 @@ impl HttpConfig {
         if self.h2_keepalive_interval.is_zero() || self.h2_keepalive_timeout.is_zero() {
             return invalid("h2 keepalive interval and timeout must be above zero");
         }
-        if self.request_timeout.is_zero() || self.body_idle_timeout.is_zero() {
-            return invalid("request_timeout and body_idle_timeout must be above zero");
+        if self.request_timeout.is_zero()
+            || self.body_idle_timeout.is_zero()
+            || self.download_write_idle.is_zero()
+        {
+            return invalid(
+                "request_timeout, body_idle_timeout and download_write_idle must be above zero",
+            );
         }
         self.credentials.check()
     }

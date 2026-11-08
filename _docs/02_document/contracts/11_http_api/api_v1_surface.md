@@ -3,7 +3,7 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c11 — `_docs/02_tasks/todo/B07-11_route_registry_openapi.md` (contributors: E-21/c04 security headers, E-21/c05 body classes and timeouts, E-21/c07 auth classes and credential transport, E-21/c08 CSRF rule, E-21/c12, c13, c14, c15 route rows); keys assigned at Step 4
 **Consumer tasks**: E-21/c18 (CSRF and IDOR generators), E-15/c13 (scope declaration check), E-30/c06 (vault routes, v1.2), E-23 (`HttpSyncClient`, all operations it calls), E-26/c06 (generated `ApiClient`), E-24 and E-27/E-28 (through `sync-core` and `mobile_backup`), E-20/c03 (worker routes), E-31 (FT-P-70, NFT-SEC-09, NFT-SEC-13, NFT-SEC-50); resolved at Step 4
-**Version**: 1.1.0
+**Version**: 1.1.1
 **Status**: draft
 **Last Updated**: 2026-11-08
 
@@ -85,10 +85,11 @@ Enforcement (E-21/c05), per route, innermost layer in front of the handler and b
 | `Request`, class `Block` or `Staged` | `body_idle_timeout` | none |
 | `Request`, any other class | none | `request_timeout` |
 | `LongPoll` (a GET with a `wait` query parameter) | none | `min(wait, longpoll_wait_max)` + 5 s; `request_timeout` when `wait` is absent or not a number. `wait` is read in whole seconds, the unit `longpoll_max_wait` is served in |
-| `Download` (GET, HEAD) | none | none (the write-idle timeout is not enforced yet, Open point 11) |
+| `Download` (GET, HEAD) | none | none; a response write that makes no progress for `download_write_idle` closes the connection (below) |
 
 - The idle timer runs only while the handler waits for body data and the peer sends nothing; it restarts at every frame. A body that goes idle, or a handler that passes its total time, ends the request with a reset (RST_STREAM on HTTP/2, connection close on HTTP/1.1; the carrier response head is 500 and its body fails at once), never a clean answer. No status is fixed for either case (Open point 12).
-- The status of a block PUT without `Content-Length` (411) is not enforced yet (Open point 13).
+- A block PUT without `Content-Length` (including a chunked one) is answered 411 `length_required` before any body byte is read.
+- The write-idle timer is on the connection's socket, not the route: any response write or flush that makes no progress for `download_write_idle` fails and closes the connection (TCP; HTTP/2 shares it for all streams of the connection). It is the only place that notices a reader that stopped reading. Only a download can be large enough to stall, so no other route is affected in practice.
 
 ### Operations
 
@@ -206,9 +207,9 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 9. 11 §8's indicative paths differ from the owners' (`.../login`, `code-exchanges`, `GET/POST device-grants/{user_code}`, `public-shares/{token}/access`); this contract follows the owners, as 11 §8 says.
 10. Request id: 11 (§5 layer 3, IT-11-4) issues a fresh UUIDv7 and does not echo a client `X-Request-Id`; `sc_error::CorrelationId::from_request` keeps a valid incoming value, `sc_observability` AC-3 assumes a caller-set id, and 16's `ApiClient` sends one. Owners of E-02, E-09 and E-21 to decide.
 
-11. Download write-idle timeout (60 s): `HttpConfig` and the `sc_config` table have no key for it (proposed `download_write_idle`, duration, default 60s). Until it exists a `Download` route has no time cap at all, so a reader that stops reading is not closed by this layer.
+11. Closed 2026-11-08 (owner): `download_write_idle` (duration, default 60s, HTTP section of `sc_config`) is enforced on the connection socket for every response write, not per route.
 12. Slow body at the idle timeout and handler over `request_timeout`: IT-11-13 allows "408 or reset"; `problem_details.md` lists no 408 and no code for a request timeout, so both end as a reset. Owners of E-21 to decide whether a status and a code are wanted.
-13. Block PUT without `Content-Length`: `problem_details.md` fixes 411 but `sc_error` has no code with status 411 (proposed `length_required`, 411, "Length required"), and a status is never chosen outside that table. Until the row exists such a PUT is streamed and cut at 2 MiB like any chunked body.
+13. Closed 2026-11-08 (owner): `sc_error` has `length_required`, 411, "Length required"; a block PUT without `Content-Length` gets it.
 
 ## Change Log
 
@@ -216,3 +217,4 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B07) |
 | 1.1.0 | 2026-11-08 | Body limits and time limits enforced (E-21/c05): enforcement rules, `Timing` clocks, worker output caps, Open points 11 to 13 | AZ-3803 |
+| 1.1.1 | 2026-11-08 | 411 `length_required` and the connection write-idle timer enforced; Open points 11 and 13 closed | AZ-3803 |
