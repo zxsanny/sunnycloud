@@ -1,7 +1,7 @@
 # Build from the repository root: docker build -f deploy/docker/worker.Dockerfile .
 # Release image: no build args. Test image: --build-arg FEATURES=test-clock --build-arg TEST_CLOCK=true
 # Supervisor only: no database secret and no media libraries (ADR-009).
-FROM rust:1.97.1-trixie@sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f AS chef
+FROM rust:1.99.1-trixie@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07 AS chef
 # RUSTUP_TOOLCHAIN overrides src/rust-toolchain.toml, whose extra components and targets are not in the image
 ENV RUSTUP_TOOLCHAIN=1.97.1 \
     SQLX_OFFLINE=true
