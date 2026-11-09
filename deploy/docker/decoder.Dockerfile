@@ -1,7 +1,7 @@
 # Build from the repository root: docker build -f deploy/docker/decoder.Dockerfile .
 # Skeleton form: the runner binary only. The media stages (libheif, libvips, ffmpeg), versions.env,
 # the SBOM and the source offer arrive with E-19; this image carries no media toolchain.
-FROM rust:1.97.1-trixie@sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f AS chef
+FROM rust:1.99.1-trixie@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07 AS chef
 # RUSTUP_TOOLCHAIN overrides src/rust-toolchain.toml, whose extra components and targets are not in the image
 ENV RUSTUP_TOOLCHAIN=1.97.1 \
     SQLX_OFFLINE=true
