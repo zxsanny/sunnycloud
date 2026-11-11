@@ -104,3 +104,14 @@ fn watchdog_durations_default_to_the_documented_values_and_follow_the_settings()
     assert_eq!(tuned.cancel_grace, Duration::from_millis(500));
     assert_eq!(tuned.photo.wall(), Duration::from_secs(2));
 }
+
+#[test]
+fn nvenc_is_off_by_default_and_on_only_for_the_value_on() {
+    // Act
+    let default = config(&[]);
+    let on = config(&[("SUNNYCLOUD_NVENC", "on")]);
+
+    // Assert
+    assert!(!default.nvenc);
+    assert!(on.nvenc);
+}

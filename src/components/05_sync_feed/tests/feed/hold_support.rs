@@ -42,14 +42,22 @@ pub fn config(auth_ms: u64, safety_ms: u64) -> FeedConfig {
     }
 }
 
-pub fn missed_wake_counter() -> Arc<Counter<NoLabels>> {
+fn feed_counter(name: &'static str) -> Arc<Counter<NoLabels>> {
     let metrics = Metrics::new(BuildInfo {
         version: "test",
         commit: "test",
         test_clock: true,
     })
     .expect("metrics registry");
-    Arc::new(metrics.counter("feed_missed_wake_total").expect("counter"))
+    Arc::new(metrics.counter(name).expect("counter"))
+}
+
+pub fn missed_wake_counter() -> Arc<Counter<NoLabels>> {
+    feed_counter("feed_missed_wake_total")
+}
+
+pub fn resync_counter() -> Arc<Counter<NoLabels>> {
+    feed_counter("feed_resync_required_total")
 }
 
 pub struct Rig {
@@ -58,6 +66,7 @@ pub struct Rig {
     pub notifier: Arc<InProcessNotifier>,
     pub shutdown: CancellationToken,
     pub missed: Arc<Counter<NoLabels>>,
+    pub resyncs: Arc<Counter<NoLabels>>,
     pub feed: Arc<PgChangeFeed>,
     wait_max: Duration,
 }
@@ -75,12 +84,14 @@ impl Rig {
         let notifier = InProcessNotifier::new();
         let shutdown = CancellationToken::new();
         let missed = missed_wake_counter();
+        let resyncs = resync_counter();
         let feed = Arc::new(PgChangeFeed::new(
             PgFeedReader::new(db, config),
             notifier.clone(),
             clock.clone(),
             shutdown.clone(),
             missed.clone(),
+            resyncs.clone(),
             config,
         ));
         Rig {
@@ -89,6 +100,7 @@ impl Rig {
             notifier,
             shutdown,
             missed,
+            resyncs,
             feed,
             wait_max: config.longpoll_wait_max,
         }

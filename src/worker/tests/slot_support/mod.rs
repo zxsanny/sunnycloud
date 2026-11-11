@@ -72,6 +72,7 @@ pub fn loop_config() -> LoopConfig {
             limits: video_limits(),
             max_input: 64 * MIB,
         },
+        nvenc: false,
     }
 }
 

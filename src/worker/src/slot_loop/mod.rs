@@ -221,6 +221,7 @@ impl SlotLoop {
             watchdog: Watchdog::new(&self.config, kind),
             metrics: &self.metrics,
             reran: false,
+            nvenc: self.config.nvenc,
         }
         .run()
         .await;

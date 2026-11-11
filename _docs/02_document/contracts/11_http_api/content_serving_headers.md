@@ -3,9 +3,9 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c10 — `_docs/02_tasks/todo/B07-10_content_header_mapper.md`; keys assigned at Step 4
 **Consumer tasks**: E-21/c13 (node and revision content), E-21/c14 (share content, share thumbnail, thumbnail, transcode); clients E-23 (verified ranged download with resume), E-26 (download strategies, inline preview), E-24, E-27; E-31 (FT-N-11, FT-P-39, NFT-SEC-18, NFT-SEC-19); resolved at Step 4
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Status**: draft
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-09
 
 ## Purpose
 
@@ -18,6 +18,10 @@ Sources: `components/11_http_api/description.md` §7, §6 (stream errors); `cont
 ### Input (from 03 `DownloadService`)
 
 `Download{status: Full | Partial | NotModified, total_size, range?, etag, media_type?, disposition: Inline | Attachment, suggested_name, body}`.
+
+### Entry point
+
+`sunnycloud_http_api::content_response(result: Result<Download, DownloadError>, method: &Method, request_id) -> Response`. A route calls 03's open method, passes the result and the request method, and returns the response. An `Err` is answered by `ApiProblem` (`problem_details.md`), so every port error keeps its code and `nosniff`.
 
 ### Response headers
 
@@ -32,7 +36,9 @@ Sources: `components/11_http_api/description.md` §7, §6 (stream errors); `cont
 | `Content-Range` | on 206 and on 416 (`bytes */<total>`) | same |
 | `Cache-Control` | `private` | `private` |
 
-Inline types are exactly `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `image/avif`, `video/mp4`, `video/webm` (AC-47). Name sanitising: no CR or LF, quotes escaped, no path separators, no bidi controls, percent-encoded UTF-8.
+An `Inline` answer whose `media_type` is not on the list below (compared case-insensitively, served with the canonical spelling) is rendered as an attachment; an `Attachment` is never upgraded. `ETag` is `etag` wrapped in double quotes unless 03 already quoted it. `Content-Length` is `total_size` on 200 and the range length on 206; 304 has no body or length; `HEAD` keeps the length of the answer it stands for.
+
+Inline types are exactly `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `image/avif`, `video/mp4`, `video/webm` (AC-47). Name sanitising: control characters (including CR and LF) and bidi controls (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069) are dropped, `/` and `\` become `_`, the name is cut to 255 UTF-8 bytes on a character boundary, an empty or dots-only result becomes `download`, and the name is percent-encoded UTF-8 (RFC 8187 `attr-char` stay; a quote becomes `%22`).
 
 ### Status
 
@@ -44,7 +50,7 @@ Inline types are exactly `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `
 | `RangeNotSatisfiable` | 416 with `Content-Range: bytes */<total>` |
 | `NotFound` / `ContentUnavailable` | 404 problem body (`problem_details.md`), `nosniff` kept |
 
-`HEAD` uses the same call and the same headers with no body. One byte range per request (03 serves a single range; multi-range is answered as a full 200 or 416, never as multipart).
+A `Partial` download without a range inside `total_size`, a negative `total_size` or an `etag` that is not a header value is a broken 03 answer: it is logged and answered as an opaque 500. `HEAD` uses the same call and the same headers with no body. One byte range per request (03 serves a single range; multi-range is answered as a full 200 or 416, never as multipart).
 
 ### Public share content only
 
@@ -55,6 +61,7 @@ May add `Access-Control-Allow-Origin: *`; never `Access-Control-Allow-Credential
 - No content response leaves the server without `nosniff`, including errors on these routes.
 - A non-allowlisted type is never served with its own `Content-Type` or with `inline`.
 - A body error after headers aborts the stream (RST_STREAM or close) and never ends as a clean response shorter than `Content-Length`.
+- A body error after headers is logged (`request_id`, error chain) and returned to the server, which closes an HTTP/1.1 connection and sends RST_STREAM (`INTERNAL_ERROR`) on HTTP/2.
 - Downloads have a write-idle timeout (60 s) and no total time cap.
 
 ## Non-Goals
@@ -80,8 +87,11 @@ May add `Access-Control-Allow-Origin: *`; never `Access-Control-Allow-Credential
 
 1. G-10 (owner): inline eligibility by declared type, sniffing or name is 03's decision; this contract renders whatever `disposition` 03 returns.
 
+2. `RangeNotSatisfiable` (03, `contracts` part 2) carries no `total_size`, so the 416 answer cannot yet carry `Content-Range: bytes */<total>`, `ETag` or `Accept-Ranges`; it is the plain 416 problem with `nosniff`. Needs `DownloadError::RangeNotSatisfiable { total_size }` in `contracts` (E-14 change task) and `download_service.md`; then `content_response` adds the header.
+
 ## Change Log
 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B07) |
+| 1.0.1 | 2026-11-09 | Implemented (AZ-3812): entry point, ETag quoting, allowlist downgrade, name rules, broken-answer 500, open point 2 | implement |

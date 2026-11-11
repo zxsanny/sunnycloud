@@ -16,6 +16,8 @@ pub enum WorkerError {
     Config(#[from] ConfigError),
     #[error("worker_ops_listen is not a listen address (`host:port` or `:port`)")]
     OpsListen,
+    #[error("nvenc must be `on` or `off`")]
+    Nvenc,
     #[error("{0} is not set")]
     Unset(&'static str),
     #[error("the API client cannot be built: {0}")]
@@ -49,6 +51,7 @@ impl WorkerError {
             WorkerError::Observability(_) | WorkerError::Io { .. } | WorkerError::Scratch(_) => 2,
             WorkerError::Config(_)
             | WorkerError::OpsListen
+            | WorkerError::Nvenc
             | WorkerError::Usage(_)
             | WorkerError::Unset(_)
             | WorkerError::Api(_)

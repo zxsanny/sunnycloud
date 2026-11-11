@@ -29,7 +29,8 @@ What `ChangeFeed::read` and `ChangeFeed::head` return, how a cursor is judged, a
 - A folder tombstone means its whole subtree is deleted. A folder that turns from tombstone to live must be re-listed by the client.
 - `head` returns the account's current `epoch.seq`; a new device takes head first, then lists the tree.
 - Hold: when the first read is empty and `wait > 0` (capped by `longpoll_wait_max`, 30 s), the read parks without a database connection. It returns on a notify for its account, on a safety recheck that finds changes (`feed_safety_recheck`), with `Unauthenticated` when the revalidator reports the principal revoked (checked every `longpoll_auth_recheck`, 2 s), with an empty page and the same cursor when `wait` expires or the process shuts down, and with the database-unavailable error during an outage. A principal holds at most `max_holds_per_principal` (4) reads at once; the next one is refused at once with `TooManyHolds{retry_after}` (proposed `retry_after`: fixed 5 s, a constant of the long-poll task) and the parked reads stay parked.
-- No item is returned after the revalidator reports the principal revoked.
+- No item is returned after the revalidator reports the principal revoked. The held path revalidates before it returns a page; the immediate path (a read that finds items at once) does not, and relies on 11 authenticating each request (the session cache time of 01 bounds that path).
+- Metrics: `PgChangeFeed::new` takes two counters, `feed_missed_wake_total` (E-12/c05) and `feed_resync_required_total` (name proposed by E-12/c08, to be confirmed by the epic owner), the latter counting each read answered `ResyncRequired`, on the immediate path and when a hold ends with it. These answers are not logged per request; no feed log line carries a name or path.
 
 ## Non-Goals
 
@@ -57,3 +58,4 @@ What `ChangeFeed::read` and `ChangeFeed::head` return, how a cursor is judged, a
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B02) |
+| 1.0.1 | 2026-11-09 | `feed_resync_required_total` counter (constructor parameter); held vs immediate revalidation stated | AZ-3780 |

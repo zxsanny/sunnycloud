@@ -9,9 +9,6 @@ use media_shared::policy::{
 use media_shared::types::{DerivedKind, Disposition, FailureReport, JobKind};
 use thiserror::Error;
 
-/// v1.0 always encodes on the CPU; the NVENC preference is E-20/c10b (v1.1).
-const ENCODER_PREF: EncoderPref = EncoderPref::Cpu;
-
 /// One `render_still` call and the output it is posted as.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StillRender {
@@ -28,7 +25,7 @@ pub enum Step {
     Poster(StillRender),
     /// The clip is compliant: close the job `skipped_compliant` with no output.
     SkipCompliant,
-    /// Call `transcode` with this plan (`Remux` or a CPU `Transcode`) and post `outputs/transcode`.
+    /// Call `transcode` with this plan (`Remux` or a `Transcode`) and post `outputs/transcode`.
     Run(Plan),
 }
 
@@ -41,12 +38,23 @@ pub enum StepError {
     MissingDuration,
 }
 
-/// Chooses the step of a claimed job. `caps` are the capabilities the slot cached at `hello`.
+/// The GPU encoder only when the operator enabled it and the decoder proved it by a test encode (AC-28).
+fn encoder_pref(nvenc_enabled: bool, caps: &Capabilities) -> EncoderPref {
+    if nvenc_enabled && caps.nvenc_probe_ok {
+        EncoderPref::Nvenc
+    } else {
+        EncoderPref::Cpu
+    }
+}
+
+/// Chooses the step of a claimed job. `caps` are the capabilities the slot cached at `hello`; `nvenc_enabled`
+/// is the operator's `nvenc = on`.
 pub fn choose_step(
     kind: JobKind,
     params_version: u32,
     probe: &Probe,
     caps: &Capabilities,
+    nvenc_enabled: bool,
 ) -> Result<Step, StepError> {
     let params = Params::for_version(params_version)
         .ok_or(StepError::UnknownParamsVersion(params_version))?;
@@ -63,11 +71,13 @@ pub fn choose_step(
                 DerivedKind::Thumb,
             )))
         }
-        JobKind::Transcode => Ok(match decide(probe, caps, ENCODER_PREF) {
-            Decision::SkipCompliant => Step::SkipCompliant,
-            Decision::Remux => Step::Run(Plan::Remux),
-            Decision::Transcode(plan) => Step::Run(plan),
-        }),
+        JobKind::Transcode => Ok(
+            match decide(probe, caps, encoder_pref(nvenc_enabled, caps)) {
+                Decision::SkipCompliant => Step::SkipCompliant,
+                Decision::Remux => Step::Run(Plan::Remux),
+                Decision::Transcode(plan) => Step::Run(plan),
+            },
+        ),
     }
 }
 

@@ -132,3 +132,32 @@ fn ac2_a_refusal_never_contains_the_marker() {
     assert!(!error.to_string().contains(MARKER));
     assert!(!format!("{error:?}").contains(MARKER));
 }
+
+#[test]
+fn nvenc_accepts_on_and_off_and_refuses_every_other_value() {
+    for value in ["on", "off"] {
+        // Arrange
+        let token = TokenFile::new(TOKEN);
+        let mut env = token_env(&token);
+        env.insert("SUNNYCLOUD_NVENC".to_owned(), value.to_owned());
+
+        // Act
+        let settings = load_settings(env);
+
+        // Assert
+        assert!(settings.is_ok(), "{value}");
+    }
+    for value in ["", "ON", "true", "1", "auto"] {
+        // Arrange
+        let token = TokenFile::new(TOKEN);
+        let mut env = token_env(&token);
+        env.insert("SUNNYCLOUD_NVENC".to_owned(), value.to_owned());
+
+        // Act
+        let error = load_settings(env).expect_err("an invalid nvenc value");
+
+        // Assert
+        assert!(matches!(error, WorkerError::Nvenc), "{value}: {error:?}");
+        assert_eq!(error.exit_code(), 3);
+    }
+}

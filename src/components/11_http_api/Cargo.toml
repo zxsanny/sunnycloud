@@ -17,6 +17,7 @@ sc_ids = { path = "../../shared/ids_hashing" }
 sc_observability = { path = "../../shared/observability" }
 axum = { workspace = true }
 hyper = { workspace = true }
+http-body-util = "0.1"
 serde_json = { workspace = true }
 hyper-util = { version = "0.1", features = ["server-auto", "service", "tokio"] }
 thiserror = { workspace = true }
@@ -31,7 +32,7 @@ test-clock = ["sc_clock/test-clock"]
 
 [dev-dependencies]
 hyper = { workspace = true, features = ["client", "http1", "http2", "server"] }
-http-body-util = "0.1"
+futures-core = { version = "0.3", default-features = false }
 prometheus-parse = "0.2"
 uuid = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }

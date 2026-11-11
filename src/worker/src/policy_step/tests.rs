@@ -3,16 +3,20 @@ use serde_json::Value;
 
 use super::*;
 
-fn caps() -> Capabilities {
+fn caps_with_probe(nvenc_probe_ok: bool) -> Capabilities {
     Capabilities {
         protocol: 1,
         vips: "8.15".to_owned(),
         ffmpeg: "7.0".to_owned(),
         libheif: "1.17".to_owned(),
         build_timestamp: 1_700_000_000,
-        nvenc_probe_ok: true,
+        nvenc_probe_ok,
         nvenc_sessions: 2,
     }
+}
+
+fn caps() -> Capabilities {
+    caps_with_probe(true)
 }
 
 fn video_probe(width: u32, height: u32, bitrate: u64, moov_first: bool) -> Probe {
@@ -60,7 +64,7 @@ fn photo() -> Probe {
 fn poster_at(duration_ms: u64) -> Option<u64> {
     let probe = clip(Some(duration_ms));
 
-    match choose_step(JobKind::Poster, 1, &probe, &caps()) {
+    match choose_step(JobKind::Poster, 1, &probe, &caps(), false) {
         Ok(Step::Poster(render)) => {
             assert_eq!(render.max_edge, 320);
             assert_eq!(render.output, DerivedKind::Thumb);
@@ -103,7 +107,7 @@ fn poster_without_a_duration_is_a_step_error() {
     let probe = clip(None);
 
     // Act
-    let step = choose_step(JobKind::Poster, 1, &probe, &caps());
+    let step = choose_step(JobKind::Poster, 1, &probe, &caps(), false);
 
     // Assert
     assert_eq!(step, Err(StepError::MissingDuration));
@@ -115,7 +119,7 @@ fn stills_render_1440_then_320_from_the_params_of_the_version() {
     let probe = photo();
 
     // Act
-    let step = choose_step(JobKind::Stills, 1, &probe, &caps());
+    let step = choose_step(JobKind::Stills, 1, &probe, &caps(), false);
 
     // Assert
     let Ok(Step::Stills([first, second])) = step else {
@@ -138,7 +142,7 @@ fn unknown_params_version_is_a_step_error_for_every_kind() {
     let kinds = [JobKind::Stills, JobKind::Poster, JobKind::Transcode];
 
     // Act
-    let steps = kinds.map(|kind| choose_step(kind, 999, &probe, &caps()));
+    let steps = kinds.map(|kind| choose_step(kind, 999, &probe, &caps(), false));
 
     // Assert
     for step in steps {
@@ -153,7 +157,8 @@ fn compliant_landscape_and_portrait_clips_are_skipped() {
     let portrait = video_probe(1080, 1920, 8_000_000, true);
 
     // Act
-    let steps = [&landscape, &portrait].map(|p| choose_step(JobKind::Transcode, 1, p, &caps()));
+    let steps =
+        [&landscape, &portrait].map(|p| choose_step(JobKind::Transcode, 1, p, &caps(), false));
 
     // Assert
     assert_eq!(steps, [Ok(Step::SkipCompliant), Ok(Step::SkipCompliant)]);
@@ -165,19 +170,20 @@ fn clip_with_the_index_at_the_end_is_remuxed() {
     let probe = video_probe(1920, 1080, 8_000_000, false);
 
     // Act
-    let step = choose_step(JobKind::Transcode, 1, &probe, &caps());
+    let step = choose_step(JobKind::Transcode, 1, &probe, &caps(), false);
 
     // Assert
     assert_eq!(step, Ok(Step::Run(Plan::Remux)));
 }
 
 #[test]
-fn clip_over_the_bitrate_bound_is_transcoded_on_the_cpu_even_when_nvenc_is_ready() {
+fn clip_over_the_bitrate_bound_is_transcoded_on_the_cpu_when_nvenc_is_off_even_if_the_probe_passed()
+{
     // Arrange
     let probe = video_probe(1920, 1080, 10_500_000, true);
 
     // Act
-    let step = choose_step(JobKind::Transcode, 1, &probe, &caps());
+    let step = choose_step(JobKind::Transcode, 1, &probe, &caps(), false);
 
     // Assert
     let Ok(Step::Run(plan)) = step else {
@@ -199,11 +205,63 @@ fn clip_over_the_bitrate_bound_is_transcoded_on_the_cpu_even_when_nvenc_is_ready
     assert_eq!(audio, AudioPlan::Aac);
 }
 
+fn planned_encoder(probe: &Probe, nvenc_enabled: bool, nvenc_probe_ok: bool) -> Encoder {
+    let step = choose_step(
+        JobKind::Transcode,
+        1,
+        probe,
+        &caps_with_probe(nvenc_probe_ok),
+        nvenc_enabled,
+    );
+    match step {
+        Ok(Step::Run(Plan::Transcode { encoder, .. })) => encoder,
+        other => panic!("expected a transcode plan, got {other:?}"),
+    }
+}
+
+#[test]
+fn nvenc_is_planned_only_when_it_is_on_and_the_decoder_probe_passed() {
+    // Arrange
+    let probe = video_probe(1920, 1080, 10_500_000, true);
+    let cases = [
+        (false, false, Encoder::Cpu),
+        (false, true, Encoder::Cpu),
+        (true, false, Encoder::Cpu),
+        (true, true, Encoder::Nvenc),
+    ];
+
+    for (nvenc_enabled, nvenc_probe_ok, expected) in cases {
+        // Act
+        let encoder = planned_encoder(&probe, nvenc_enabled, nvenc_probe_ok);
+
+        // Assert
+        assert_eq!(
+            encoder, expected,
+            "nvenc_enabled {nvenc_enabled}, probe {nvenc_probe_ok}"
+        );
+    }
+}
+
+#[test]
+fn nvenc_never_changes_a_skip_or_a_remux() {
+    // Arrange
+    let compliant = video_probe(1920, 1080, 8_000_000, true);
+    let moov_last = video_probe(1920, 1080, 8_000_000, false);
+
+    // Act
+    let skip = choose_step(JobKind::Transcode, 1, &compliant, &caps(), true);
+    let remux = choose_step(JobKind::Transcode, 1, &moov_last, &caps(), true);
+
+    // Assert
+    assert_eq!(skip, Ok(Step::SkipCompliant));
+    assert_eq!(remux, Ok(Step::Run(Plan::Remux)));
+}
+
 #[test]
 fn transcode_plan_serialises_to_enumerations_booleans_and_numbers_only() {
     // Arrange
     let probe = video_probe(1920, 1080, 10_500_000, true);
-    let Ok(Step::Run(plan)) = choose_step(JobKind::Transcode, 1, &probe, &caps()) else {
+    let Ok(Step::Run(plan)) = choose_step(JobKind::Transcode, 1, &probe, &caps(), false) else {
         panic!("expected a run step");
     };
 

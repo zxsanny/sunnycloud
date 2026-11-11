@@ -41,6 +41,7 @@ pub(super) struct JobRun<'a> {
     pub(super) watchdog: Watchdog,
     pub(super) metrics: &'a JobMetrics,
     pub(super) reran: bool,
+    pub(super) nvenc: bool,
 }
 
 /// A call to the API that is dropped the moment the lease is lost, so a long fetch or post does not outlive it.
@@ -77,6 +78,7 @@ impl JobRun<'_> {
             self.job.params_version,
             &probe,
             self.capabilities,
+            self.nvenc,
         )?;
         match step {
             Step::Stills(renders) => {

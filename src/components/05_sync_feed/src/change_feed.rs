@@ -26,17 +26,22 @@ pub struct PgChangeFeed {
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) shutdown: CancellationToken,
     pub(crate) missed_wakes: Arc<Counter<NoLabels>>,
+    resyncs: Arc<Counter<NoLabels>>,
     pub(crate) config: FeedConfig,
 }
 
 impl PgChangeFeed {
     /// `shutdown` is the application's token: cancelling it returns every held read as an empty page.
+    /// `missed_wakes` counts safety rechecks that found a change no notify announced (`feed_missed_wake_total`);
+    /// `resyncs` counts reads answered `ResyncRequired` (`feed_resync_required_total`), the only trace of those
+    /// answers: they are not logged per request.
     pub fn new(
         reader: PgFeedReader,
         notifier: Arc<InProcessNotifier>,
         clock: Arc<dyn Clock>,
         shutdown: CancellationToken,
         missed_wakes: Arc<Counter<NoLabels>>,
+        resyncs: Arc<Counter<NoLabels>>,
         config: &FeedConfig,
     ) -> Self {
         PgChangeFeed {
@@ -46,6 +51,7 @@ impl PgChangeFeed {
             clock,
             shutdown,
             missed_wakes,
+            resyncs,
             config: config.clone(),
         }
     }
@@ -54,11 +60,8 @@ impl PgChangeFeed {
     pub fn holds_of(&self, principal: Uuid) -> u64 {
         self.holds.holding(principal)
     }
-}
 
-#[async_trait]
-impl ChangeFeed for PgChangeFeed {
-    async fn read(
+    async fn read_unmetered(
         &self,
         principal: &Principal,
         revalidator: &dyn PrincipalRevalidator,
@@ -97,6 +100,26 @@ impl ChangeFeed for PgChangeFeed {
         .await;
         drop(permit);
         page
+    }
+}
+
+#[async_trait]
+impl ChangeFeed for PgChangeFeed {
+    async fn read(
+        &self,
+        principal: &Principal,
+        revalidator: &dyn PrincipalRevalidator,
+        cursor: Cursor,
+        wait: Option<Duration>,
+        limit: Option<u32>,
+    ) -> Result<ChangePage, ChangeFeedError> {
+        let result = self
+            .read_unmetered(principal, revalidator, cursor, wait, limit)
+            .await;
+        if matches!(result, Err(ChangeFeedError::ResyncRequired { .. })) {
+            self.resyncs.inc(NoLabels);
+        }
+        result
     }
 
     async fn head(&self, account: Uuid) -> Result<Cursor, ChangeFeedError> {

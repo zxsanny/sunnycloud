@@ -4,6 +4,8 @@ use media_shared::decoder_protocol::Limits;
 use media_shared::types::JobKind;
 use sc_config::WorkerSettings;
 
+use crate::settings::NVENC_ON;
+
 /// What the loop sends the decoder and checks before a fetch for one kind of source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KindConfig {
@@ -30,6 +32,8 @@ pub struct LoopConfig {
     pub cancel_grace: Duration,
     pub photo: KindConfig,
     pub video: KindConfig,
+    /// `nvenc = on`: a transcode is planned for the GPU encoder when the slot's decoder also proved it.
+    pub nvenc: bool,
 }
 
 impl LoopConfig {
@@ -59,6 +63,7 @@ impl LoopConfig {
                 },
                 max_input: settings.worker_max_input_video.bytes(),
             },
+            nvenc: settings.nvenc == NVENC_ON,
         }
     }
 

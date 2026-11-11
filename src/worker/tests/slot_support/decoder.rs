@@ -90,6 +90,7 @@ struct Script {
     /// When each `cancel` arrived while a job request was being answered.
     cancels: Vec<Instant>,
     self_check_ok: bool,
+    nvenc_probe_ok: bool,
 }
 
 pub struct FakeDecoder {
@@ -116,6 +117,7 @@ impl FakeDecoder {
             delay: Duration::ZERO,
             cancels: Vec::new(),
             self_check_ok: true,
+            nvenc_probe_ok: false,
         }));
         let in_flight = Arc::new(AtomicUsize::new(0));
         let most_in_flight = Arc::new(AtomicUsize::new(0));
@@ -175,6 +177,12 @@ impl FakeDecoder {
     /// From now on `self_check` reports a failed item.
     pub fn fail_self_checks(&self) -> &Self {
         self.script().self_check_ok = false;
+        self
+    }
+
+    /// From now on `hello` reports a successful NVENC test encode.
+    pub fn report_nvenc_ready(&self) -> &Self {
+        self.script().nvenc_probe_ok = true;
         self
     }
 
@@ -257,8 +265,12 @@ async fn serve(stream: UnixStream, shared: Shared) {
     while let Some(request) = requests.recv().await {
         let response = match &request {
             Request::Hello { .. } => {
-                shared.script().hellos += 1;
-                Response::Capabilities(capabilities())
+                let mut script = shared.script();
+                script.hellos += 1;
+                Response::Capabilities(Capabilities {
+                    nvenc_probe_ok: script.nvenc_probe_ok,
+                    ..capabilities()
+                })
             }
             Request::SelfCheck { .. } => {
                 let ok = shared.script().self_check_ok;

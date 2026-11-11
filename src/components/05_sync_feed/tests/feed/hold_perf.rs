@@ -13,7 +13,9 @@ use sqlx::Connection;
 use sunnycloud_sync_feed::{FeedConfig, InProcessNotifier, PgChangeFeed, PgFeedReader};
 use uuid::Uuid;
 
-use crate::hold_support::{Acct, eventually, missed_wake_counter, principal, valid};
+use crate::hold_support::{
+    Acct, eventually, missed_wake_counter, principal, resync_counter, valid,
+};
 use crate::read_support::{EPOCH, feed_config};
 use crate::support::{Fixture, account_with_feed, root_node};
 
@@ -66,6 +68,7 @@ impl Load {
             Arc::new(SystemClock::new()),
             stop.clone(),
             missed.clone(),
+            resync_counter(),
             &config,
         ));
         Load {

@@ -106,6 +106,11 @@ async fn a_missed_wake_logs_one_warn_line_with_the_account_id_and_counts_once() 
             .counter::<NoLabels>("feed_missed_wake_total")
             .expect("counter"),
     );
+    let resyncs = Arc::new(
+        metrics
+            .counter::<NoLabels>("feed_resync_required_total")
+            .expect("counter"),
+    );
     let config = FeedConfig {
         longpoll_wait_max: Duration::from_secs(30),
         longpoll_auth_recheck: Duration::from_secs(2),
@@ -121,6 +126,7 @@ async fn a_missed_wake_logs_one_warn_line_with_the_account_id_and_counts_once() 
         clock.clone(),
         CancellationToken::new(),
         missed.clone(),
+        resyncs,
         &config,
     ));
     let who = Principal {

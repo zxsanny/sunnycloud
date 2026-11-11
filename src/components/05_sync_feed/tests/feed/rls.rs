@@ -9,7 +9,7 @@ use sc_db::Scope;
 use sqlx::Connection;
 use uuid::Uuid;
 
-use crate::support::{API, Fixture, account_with_feed, sqlstate};
+use crate::support::{API, Fixture, account_with_feed, root_node, sqlstate};
 
 const PERMISSION_DENIED: &str = "42501";
 const READ: &str = "SELECT account_id FROM account_feeds ORDER BY account_id";
@@ -152,5 +152,81 @@ async fn policy_admits_system_scope_next_to_the_account_match() {
     // Assert
     assert!(policy.contains("'system'"), "{policy}");
     conn.close().await.expect("close owner connection");
+    accounts.fixture.finish().await;
+}
+
+/// The counter row of `account` as the schema owner reads it: `(epoch, seq)`.
+async fn feed_row_of(accounts: &Accounts, account: Uuid) -> (i64, i64) {
+    let mut conn = accounts.fixture.owner_conn().await;
+    let row = sqlx::query_as("SELECT epoch, seq FROM account_feeds WHERE account_id = $1")
+        .bind(account)
+        .fetch_one(&mut conn)
+        .await
+        .expect("read the feed row");
+    conn.close().await.expect("close owner connection");
+    row
+}
+
+#[tokio::test]
+async fn an_unfiltered_update_under_the_scope_of_b_leaves_the_feed_row_of_a_identical() {
+    // Arrange
+    let accounts = two_accounts().await;
+    let before = feed_row_of(&accounts, accounts.a).await;
+
+    // Act
+    let changed = accounts
+        .fixture
+        .api
+        .run(Scope::Account(accounts.b), async |tx| {
+            sqlx::query("UPDATE account_feeds SET seq = seq + 1000, epoch = epoch + 1")
+                .execute(tx.conn())
+                .await
+                .map(|done| done.rows_affected())
+        })
+        .await
+        .expect("scoped update");
+
+    // Assert
+    assert_eq!(changed, 1);
+    assert_eq!(feed_row_of(&accounts, accounts.a).await, before);
+    assert_eq!(feed_row_of(&accounts, accounts.b).await, (201, 1000));
+    accounts.fixture.finish().await;
+}
+
+#[tokio::test]
+async fn the_node_seq_of_a_is_invisible_and_unchangeable_under_the_scope_of_b() {
+    // Arrange
+    let accounts = two_accounts().await;
+    let mut owner = accounts.fixture.owner_conn().await;
+    let node = root_node(&mut owner, accounts.a).await;
+    owner.close().await.expect("close owner connection");
+
+    // Act
+    let (seen, changed) = accounts
+        .fixture
+        .api
+        .run(Scope::Account(accounts.b), async |tx| {
+            let seen: i64 = sqlx::query_scalar("SELECT count(*) FROM nodes")
+                .fetch_one(tx.conn())
+                .await?;
+            let changed = sqlx::query("UPDATE nodes SET seq = seq + 1000")
+                .execute(tx.conn())
+                .await?
+                .rows_affected();
+            Ok::<_, sqlx::Error>((seen, changed))
+        })
+        .await
+        .expect("scoped statements");
+
+    // Assert
+    assert_eq!((seen, changed), (0, 0));
+    let mut owner = accounts.fixture.owner_conn().await;
+    let seq: i64 = sqlx::query_scalar("SELECT seq FROM nodes WHERE id = $1")
+        .bind(node)
+        .fetch_one(&mut owner)
+        .await
+        .expect("read the node");
+    assert_eq!(seq, 0);
+    owner.close().await.expect("close owner connection");
     accounts.fixture.finish().await;
 }

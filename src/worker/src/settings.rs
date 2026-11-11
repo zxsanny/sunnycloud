@@ -6,6 +6,10 @@ use sc_config::{ConfigSources, WorkerSettings, load};
 
 use crate::error::WorkerError;
 
+/// The only values of `nvenc` (01_helper_config): `on` enables the GPU encoder preference.
+pub(crate) const NVENC_ON: &str = "on";
+const NVENC_OFF: &str = "off";
+
 /// Loads the worker section from `env` (compiled defaults, `SUNNYCLOUD_*` variables, secret files) and checks
 /// the keys the table types as plain text.
 pub fn load_settings(env: BTreeMap<String, String>) -> Result<Arc<WorkerSettings>, WorkerError> {
@@ -15,6 +19,9 @@ pub fn load_settings(env: BTreeMap<String, String>) -> Result<Arc<WorkerSettings
     };
     let settings = load::<WorkerSettings>(&sources)?;
     ops_addr(&settings)?;
+    if settings.nvenc != NVENC_ON && settings.nvenc != NVENC_OFF {
+        return Err(WorkerError::Nvenc);
+    }
     Ok(settings)
 }
 

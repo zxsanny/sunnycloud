@@ -3,6 +3,7 @@
 mod abuse;
 mod auth;
 mod cap;
+mod content;
 mod csrf;
 mod errors;
 mod h2_settings;

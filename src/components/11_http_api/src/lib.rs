@@ -23,12 +23,17 @@
 //! [`CsrfGuard`] is layer 9: after auth, a cookie-authenticated POST, PUT, PATCH or DELETE must prove the
 //! public origin (`Sec-Fetch-Site: same-origin` or an exact `Origin`) or it is 403 `csrf_rejected`; bearers are exempt.
 //!
+//! [`content_response`] is the one mapping from 03's `Download` to the status and headers of every content
+//! route (`content_serving_headers.md`): hostile types are attachments, Range and validators are the same
+//! everywhere, and a failed stream aborts the connection or stream.
+//!
 //! [`AcceptLoop`] is the one loop every listener runs: one task per connection, a global connection cap,
 //! HTTP/1.1 and h2c prior knowledge on one port, and the configured HTTP/2 and header-timeout settings.
 
 mod accept;
 mod auth;
 mod config;
+mod content;
 mod csrf;
 mod error;
 mod gate;
@@ -50,6 +55,7 @@ mod write_idle;
 pub use accept::AcceptLoop;
 pub use auth::{Authenticated, CredentialFormat, CredentialSource};
 pub use config::{HttpConfig, WorkerOutputLimits};
+pub use content::content_response;
 pub use csrf::CsrfGuard;
 pub use error::{HttpServerError, Listener};
 pub use limits::BodyLimits;
