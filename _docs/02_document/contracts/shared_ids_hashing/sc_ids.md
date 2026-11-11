@@ -3,7 +3,7 @@
 **Component**: shared/ids_hashing (crate `sc_ids`; hashing part also builds for `wasm32-unknown-unknown`)
 **Producer task**: E-04/c01 — `_docs/02_tasks/todo/B01-10_sc_ids.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c03..c05 (`Hash32`, `FileHash`, `RawToken`, `UserCode` in port signatures), E-00/c06 (`FileHash` in `ClaimedJob`); other batches: 01-04, 06, 09, 11, 12, `sync-core-proto`, `sync-core`, `sync-core-wasm`, 14, `mobile_backup`
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft
 **Last Updated**: 2026-11-04
 
@@ -23,6 +23,7 @@ Sources: `common-helpers/05_helper_ids_hashing.md`, `epics/E-04_cross-cutting-id
 | `rollup` | `fn rollup(blocks: &[Hash32]) -> FileHash` (BLAKE3 `derive_key`, context `sunnycloud file v1`, over the ordered 32-byte block hashes; empty list = zero-length file) | none | sync |
 | `derive_client_key` | `fn derive_client_key(device_id: Uuid, asset_id: &str, file_hash: &FileHash) -> Uuid` (first 16 bytes of keyed BLAKE3, context `sunnycloud commit v1`, version and variant bits set) | none | sync |
 | `new_token` | `fn new_token(kind: TokenKind) -> Result<RawToken, RngUnavailable>` (256-bit CSPRNG, URL-safe base64) | `RngUnavailable` | sync |
+| `UserCode::from_presented` | `fn from_presented(text: &str) -> Option<UserCode>`: ignores case, hyphens and spaces; `None` unless exactly 8 base-20 characters remain | none | sync |
 | `new_user_code` | `fn new_user_code() -> Result<UserCode, RngUnavailable>` (8 characters base-20, RFC 8628 5.1) | `RngUnavailable` | sync |
 | `sha256_token` | `fn sha256_token(token: &RawToken \| &str) -> TokenHash` (32 bytes) | none | sync |
 | `ct_eq` | `fn ct_eq(a: &[u8], b: &[u8]) -> bool` (constant time, length checked inside) | none | sync |
@@ -76,3 +77,4 @@ Shared vector file: known-answer cases for blocks of 0 bytes, 1 byte, 2 MiB and 
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
+| 1.1.0 | 2026-11-11 | `UserCode::from_presented` added (additive): the approval lookup of E-21/c12 needs a `UserCode` from the typed text | AZ-3828 |

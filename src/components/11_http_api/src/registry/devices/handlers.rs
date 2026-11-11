@@ -6,17 +6,20 @@
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{RawPathParams, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
 use contracts::DeviceGrantError;
 use sc_error::CorrelationId;
+use sc_ids::UserCode;
 
 use super::wire;
 use crate::json_body::{self, malformed};
 use crate::problem::ApiProblem;
 use crate::registry::request::{
-    Anonymous, Answer, BODY_LIMIT, Services, User, refused, uuid_param,
+    Anonymous, Answer, BODY_LIMIT, Services, User, query_pairs, refused, uuid_param,
 };
+
+const USER_CODE_PARAM: &str = "user_code";
 
 /// The daemon starts a grant with its own address as the requester's, so the approver can compare it.
 pub(super) async fn request(
@@ -66,6 +69,25 @@ fn poll_refusal(error: DeviceGrantError, request_id: CorrelationId) -> ApiProble
         }
         other => ApiProblem::from_port(other, request_id),
     }
+}
+
+/// The approval page shows who asked: the code a person typed, with the address the session calls from. A code
+/// that cannot exist (wrong length or characters) is a 400 for the field and never reaches the port.
+pub(super) async fn lookup(State(services): State<Services>, user: User, uri: Uri) -> Answer {
+    let typed = query_pairs(&uri)
+        .ok_or_else(|| malformed(user.request_id))?
+        .into_iter()
+        .find(|(name, _)| name == USER_CODE_PARAM)
+        .map(|(_, value)| value)
+        .ok_or_else(|| ApiProblem::validation(USER_CODE_PARAM, "required", user.request_id))?;
+    let code = UserCode::from_presented(&typed)
+        .ok_or_else(|| ApiProblem::validation(USER_CODE_PARAM, "malformed", user.request_id))?;
+    let view = services
+        .device_grants
+        .lookup_for_approval(&user.principal, &code, user.client_ip)
+        .await
+        .map_err(refused(user.request_id))?;
+    Ok(Json(wire::approval(&view)).into_response())
 }
 
 /// A session approves or denies a grant by the id the approval view gave it; 01 refuses a device principal.

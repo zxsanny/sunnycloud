@@ -1,9 +1,5 @@
 //! The Devices operations of `api_v1_surface.md` (01 section 3): the RFC 8628 grant the desktop daemon starts and
 //! polls, a session's approval of it, and the device list.
-//!
-//! `GET /device-grants?user_code=` (the approval lookup, `DeviceGrantService::lookup_for_approval`) has no route:
-//! `sc_ids::UserCode` can only be generated, so 11 cannot build one from the code a person types (open point 35 of
-//! the surface contract).
 
 mod handlers;
 mod wire;
@@ -26,6 +22,12 @@ const ID: &[Param] = &[Param::id(ParamLocation::Path, "id", ParamType::Uuid)];
 
 const REQUEST_ERRORS: &[ErrorCode] = &[ErrorCode::InvalidRequest, ErrorCode::RateLimited];
 const POLL_ERRORS: &[ErrorCode] = &[ErrorCode::InvalidRequest, ErrorCode::NotFound];
+const LOOKUP_ERRORS: &[ErrorCode] = &[
+    ErrorCode::InvalidRequest,
+    ErrorCode::NotFound,
+    ErrorCode::RateLimited,
+];
+const LOOKUP_PARAMS: &[Param] = &[Param::query("user_code", ParamType::String).required()];
 const DECIDE_ERRORS: &[ErrorCode] = &[ErrorCode::InvalidRequest, ErrorCode::NotFound];
 const REVOKE_ERRORS: &[ErrorCode] = &[ErrorCode::InvalidRequest, ErrorCode::NotFound];
 
@@ -54,6 +56,18 @@ const POLL: RouteSpec = RouteSpec::new(
 .errors(POLL_ERRORS)
 .request(wire::POLL_REQUEST)
 .response(wire::DEVICE_TOKEN);
+
+const LOOKUP: RouteSpec = RouteSpec::new(
+    HttpMethod::Get,
+    GRANTS,
+    "DeviceGrantService::lookup_for_approval",
+    AuthClass::SessionOnly,
+    BodyClass::None,
+)
+.summary("Who asked for the device grant a person's code names, and from where")
+.params(LOOKUP_PARAMS)
+.errors(LOOKUP_ERRORS)
+.response(wire::APPROVAL);
 
 const DECIDE: RouteSpec = RouteSpec::new(
     HttpMethod::Patch,
@@ -107,6 +121,9 @@ pub(super) fn routes() -> Vec<RouteDef> {
         }),
         RouteDef::new(POLL, |context, filter| {
             on(filter, handlers::poll).with_state(services(context))
+        }),
+        RouteDef::new(LOOKUP, |context, filter| {
+            on(filter, handlers::lookup).with_state(services(context))
         }),
         RouteDef::new(DECIDE, |context, filter| {
             on(filter, handlers::decide).with_state(services(context))

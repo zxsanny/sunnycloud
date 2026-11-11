@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use sc_ids::{RawToken, TokenKind, ct_eq, new_token, new_user_code, sha256_token};
+use sc_ids::{RawToken, TokenKind, UserCode, ct_eq, new_token, new_user_code, sha256_token};
 
 const BASE20: &str = "BCDFGHJKLMNPQRSTVWXZ";
 
@@ -112,4 +112,35 @@ fn user_code_uses_the_whole_alphabet() {
     }
 
     assert_eq!(used.len(), BASE20.len());
+}
+
+#[test]
+fn a_presented_user_code_ignores_case_hyphens_and_spaces() {
+    // Arrange
+    let generated = new_user_code().expect("rng");
+    let typed = format!(
+        "{}-{} ",
+        generated.as_str()[..4].to_lowercase(),
+        &generated.as_str()[4..]
+    );
+
+    // Act
+    let parsed = UserCode::from_presented(&typed);
+
+    // Assert
+    assert_eq!(parsed, Some(generated));
+}
+
+#[test]
+fn a_presented_user_code_that_cannot_exist_is_refused() {
+    for text in [
+        "",
+        "BCDFGHJ",
+        "BCDFGHJKL",
+        "BCDFGHJA",
+        "BCDFGHJ1",
+        "BCDF-GHJ-é",
+    ] {
+        assert_eq!(UserCode::from_presented(text), None, "{text}");
+    }
 }

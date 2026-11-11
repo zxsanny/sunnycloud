@@ -1,7 +1,7 @@
 //! The JSON of the device routes. The grant's names are RFC 8628's (`device_code`, `user_code`, `interval`,
 //! `expires_in`, `access_token`, `token_type`); the plaintext codes and the token are in these answers only.
 
-use contracts::{Decision, DeviceAuthorization, DeviceInfo, DeviceToken};
+use contracts::{ApprovalView, Decision, DeviceAuthorization, DeviceInfo, DeviceToken};
 use sc_ids::{RawToken, TokenKind};
 use serde_json::{Value, json};
 
@@ -41,6 +41,21 @@ pub(super) fn authorization(grant: &DeviceAuthorization) -> Value {
         "user_code": grant.user_code.as_str(),
         "interval": seconds(grant.interval),
         "expires_in": seconds(grant.expires_in),
+    })
+}
+
+/// What the approver sees: the grant id `decide` takes, the code's expiry, the device's name, both addresses and
+/// their locations (`null` when unknown), and whether the two addresses disagree.
+pub(super) fn approval(view: &ApprovalView) -> Value {
+    json!({
+        "grant_id": view.grant_id,
+        "expires_at": rfc3339(view.expires_at),
+        "device": view.device,
+        "requester_ip": view.requester_ip.to_string(),
+        "requester_location": view.requester_location,
+        "approver_ip": view.approver_ip.to_string(),
+        "approver_location": view.approver_location,
+        "mismatch": view.mismatch,
     })
 }
 
@@ -101,6 +116,29 @@ pub(super) const POLL_REQUEST: SchemaRef = SchemaRef {
             "required": ["device_code"],
             "additionalProperties": false,
             "properties": {"device_code": {"type": "string"}}
+        })
+    },
+};
+
+pub(super) const APPROVAL: SchemaRef = SchemaRef {
+    name: "DeviceGrantApproval",
+    build: || {
+        json!({
+            "type": "object",
+            "required": [
+                "grant_id", "expires_at", "device", "requester_ip", "requester_location",
+                "approver_ip", "approver_location", "mismatch"
+            ],
+            "properties": {
+                "grant_id": {"type": "string", "format": "uuid"},
+                "expires_at": {"type": "string"},
+                "device": {"type": "string"},
+                "requester_ip": {"type": "string"},
+                "requester_location": {"type": ["string", "null"]},
+                "approver_ip": {"type": "string"},
+                "approver_location": {"type": ["string", "null"]},
+                "mismatch": {"type": "boolean"}
+            }
         })
     },
 };

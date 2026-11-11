@@ -1,9 +1,11 @@
-use contracts::{DeviceGrantError, DeviceInfo, DeviceToken};
+use std::time::Duration;
+
+use contracts::{ApprovalView, DeviceGrantError, DeviceInfo, DeviceToken};
 use sc_ids::TokenKind;
 use serde_json::json;
 
 use super::support::*;
-use crate::auth::support::{ADMIN_TOKEN, DEVICE_ACCOUNT, DEVICE_ID, MEMBER_ACCOUNT};
+use crate::auth::support::{ADMIN_TOKEN, DEVICE_ACCOUNT, DEVICE_ID, MEMBER_ACCOUNT, MEMBER_TOKEN};
 
 const REQUEST: &str = "DeviceGrantService::request";
 const POLL: &str = "DeviceGrantService::poll";
@@ -296,5 +298,115 @@ async fn a_peer_that_is_not_a_trusted_proxy_cannot_forge_the_requester_address()
     // Assert
     assert_eq!(answer.status, 200);
     assert_eq!(stack.log(REQUEST), [format!("{REQUEST} d linux 127.0.0.1")]);
+    stack.stop().await;
+}
+
+const LOOKUP: &str = "DeviceGrantService::lookup_for_approval";
+
+fn approval_view() -> ApprovalView {
+    ApprovalView {
+        grant_id: GRANT,
+        expires_at: WHEN,
+        device: "Studio PC".to_owned(),
+        requester_ip: "203.0.113.9".parse().expect("address"),
+        requester_location: Some("Kyiv, UA".to_owned()),
+        approver_ip: "198.51.100.7".parse().expect("address"),
+        approver_location: None,
+        mismatch: true,
+    }
+}
+
+#[tokio::test]
+async fn the_approval_lookup_passes_the_principal_the_typed_code_and_the_forwarded_address() {
+    // Arrange
+    let stack = Stack::start_with(behind_a_proxy).await;
+    stack
+        .script
+        .push(LOOKUP, Ok::<_, DeviceGrantError>(approval_view()));
+    let auth = bearer(MEMBER_TOKEN);
+    let headers = [
+        ("authorization", auth.as_str()),
+        ("x-forwarded-for", "198.51.100.7"),
+    ];
+
+    // Act
+    let answer = stack
+        .call(
+            "GET",
+            "/api/v1/device-grants?user_code=bcdf-ghjk",
+            &headers,
+            "",
+        )
+        .await;
+
+    // Assert
+    assert_eq!(answer.status, 200);
+    assert_eq!(
+        answer.json(),
+        json!({
+            "grant_id": GRANT,
+            "expires_at": WHEN_TEXT,
+            "device": "Studio PC",
+            "requester_ip": "203.0.113.9",
+            "requester_location": "Kyiv, UA",
+            "approver_ip": "198.51.100.7",
+            "approver_location": null,
+            "mismatch": true,
+        })
+    );
+    assert_eq!(
+        stack.log(LOOKUP),
+        [format!("{LOOKUP} {MEMBER_ACCOUNT} BCDFGHJK 198.51.100.7")]
+    );
+    stack.stop().await;
+}
+
+#[tokio::test]
+async fn the_approval_lookup_refuses_a_device_a_missing_code_and_a_code_that_cannot_exist() {
+    // Arrange
+    let stack = Stack::start().await;
+
+    // Act
+    let by_device = stack
+        .as_device("GET", "/api/v1/device-grants?user_code=BCDFGHJK", "")
+        .await;
+    let missing = stack.as_member("GET", "/api/v1/device-grants", "").await;
+    let malformed = stack
+        .as_member("GET", "/api/v1/device-grants?user_code=BCDFGHJA", "")
+        .await;
+
+    // Assert
+    assert_eq!(by_device.status, 403);
+    assert_eq!(missing.status, 400);
+    assert_eq!(malformed.status, 400);
+    assert_eq!(stack.log(LOOKUP), Vec::<String>::new());
+    stack.stop().await;
+}
+
+#[tokio::test]
+async fn the_approval_lookup_maps_an_unknown_code_to_404_and_the_abuse_limit_to_429() {
+    // Arrange
+    let stack = Stack::start().await;
+    stack.script.push(
+        LOOKUP,
+        Err::<ApprovalView, DeviceGrantError>(DeviceGrantError::UnknownCode),
+    );
+    stack.script.push(
+        LOOKUP,
+        Err::<ApprovalView, DeviceGrantError>(DeviceGrantError::RateLimited {
+            retry_after: Duration::from_secs(30),
+        }),
+    );
+    let path = "/api/v1/device-grants?user_code=BCDFGHJK";
+
+    // Act
+    let unknown = stack.as_member("GET", path, "").await;
+    let limited = stack.as_member("GET", path, "").await;
+
+    // Assert
+    assert_eq!(unknown.status, 404);
+    assert_eq!(unknown.code(), "not_found");
+    assert_eq!(limited.status, 429);
+    assert_eq!(limited.header("retry-after"), Some("30"));
     stack.stop().await;
 }

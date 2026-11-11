@@ -62,6 +62,7 @@ pub(super) struct User {
     pub(super) account: Uuid,
     pub(super) principal: Principal,
     pub(super) retained_ok: bool,
+    pub(super) client_ip: IpAddr,
     pub(super) request_id: CorrelationId,
 }
 
@@ -70,15 +71,19 @@ impl FromRequestParts<Services> for User {
 
     async fn from_request_parts(parts: &mut Parts, state: &Services) -> Result<Self, ApiProblem> {
         let request_id = request_id(parts, state.clock.as_ref());
-        match parts.extensions.get::<Authenticated>() {
-            Some(caller) => Ok(User {
-                account: caller.principal.account_id,
-                principal: caller.principal.clone(),
-                retained_ok: caller.retained_ok,
-                request_id,
-            }),
-            None => Err(missing_layer("authenticated caller", request_id)),
-        }
+        let Some(caller) = parts.extensions.get::<Authenticated>() else {
+            return Err(missing_layer("authenticated caller", request_id));
+        };
+        let Some(client) = parts.extensions.get::<ClientIp>() else {
+            return Err(missing_layer("client address", request_id));
+        };
+        Ok(User {
+            account: caller.principal.account_id,
+            principal: caller.principal.clone(),
+            retained_ok: caller.retained_ok,
+            client_ip: client.0,
+            request_id,
+        })
     }
 }
 

@@ -79,6 +79,19 @@ impl fmt::Display for RawToken {
 pub struct UserCode(String);
 
 impl UserCode {
+    /// Reads the code a person typed: hyphens and spaces are ignored and letters may be lower case. `None` unless
+    /// the rest is exactly 8 characters of the base-20 alphabet, so a code that cannot exist never reaches a lookup.
+    pub fn from_presented(text: &str) -> Option<Self> {
+        let code: String = text
+            .chars()
+            .filter(|c| *c != '-' && !c.is_whitespace())
+            .map(|c| c.to_ascii_uppercase())
+            .collect();
+        let valid =
+            code.len() == USER_CODE_LEN && code.bytes().all(|b| USER_CODE_ALPHABET.contains(&b));
+        valid.then_some(Self(code))
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
