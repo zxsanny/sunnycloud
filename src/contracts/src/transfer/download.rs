@@ -53,8 +53,9 @@ pub struct Download {
 pub enum DownloadError {
     #[error("not found")]
     NotFound,
+    /// `total_size` is the size of the whole content, for the `Content-Range` header of the unsatisfiable-range answer.
     #[error("range not satisfiable")]
-    RangeNotSatisfiable,
+    RangeNotSatisfiable { total_size: i64 },
     /// The blob is missing or suspect.
     #[error("content unavailable")]
     ContentUnavailable,

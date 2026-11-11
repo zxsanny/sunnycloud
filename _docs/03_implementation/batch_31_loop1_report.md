@@ -10,7 +10,7 @@ Three workers on three disjoint crates (`11_http_api`, `worker`, `05_sync_feed`)
 
 | Task | Status | Files Modified | Tests | Issues |
 |------|--------|---------------|-------|--------|
-| AZ-3812_content_header_mapper | Done except the 416 `Content-Range` (blocked on a `contracts` change) | `sunnycloud-http-api`: `content/` (`content_response`, `disposition.rs`), `content_serving_headers.md` 1.0.1; `http-body-util` moved to dependencies | 11 unit + integration over TCP incl. h1 close and h2 RST_STREAM | Items 1-4 |
+| AZ-3812_content_header_mapper | Done except `ETag` on the 416 (the `Content-Range` was added after the batch, with owner approval) | `sunnycloud-http-api`: `content/` (`content_response`, `disposition.rs`), `content_serving_headers.md` 1.0.1; `http-body-util` moved to dependencies | 11 unit + integration over TCP incl. h1 close and h2 RST_STREAM | Items 1-4 |
 | AZ-3877_worker_nvenc_preference | Done | `sunnycloud-worker`: `choose_step(.., nvenc_enabled)` and `encoder_pref`, `LoopConfig.nvenc`, `WorkerError::Nvenc`, strict `on`/`off` in `load_settings` | unit matrix, 4 combinations through the fake decoder, CPU rerun after an `Nvenc` plan | Items 5-6 |
 | AZ-3780_feed_security_acceptance | AC-1..5 done; AC-6, AC-7 not covered; AC-8 partly | `sunnycloud-sync-feed`: `feed_resync_required_total` counter in `PgChangeFeed` (new constructor parameter), `change-feed.md` 1.0.1; new security, exhaustion and log-audit tests | `security_scoping`, `security_injection`, `security_revoked`, `resync_metric`, `hold_exhaustion` (full size), `feed_log_audit` | Items 7-12 |
 
@@ -29,13 +29,13 @@ CI-parity: all gates passed except `cargo deny` (item 13). In `src/` with `CARGO
 
 ## Owner decisions
 
-None asked this batch. Waiting for the owner: items 1, 5, 6, 7, 8, 9, 13 below.
+None asked this batch. Approved after the batch: the `total_size` change (item 1). Waiting for the owner: the `ETag` on the 416 (item 1), and items 5, 6, 7, 8, 9, 13 below.
 
 ## Issues and discovered scenarios
 
 | # | Scenario or question | Spec ref | Handling | clear / unclear |
 |---|----------------------|----------|----------|-----------------|
-| 1 | `DownloadError::RangeNotSatisfiable` is a unit variant, so 11 does not know the total size: the 416 carries no `Content-Range: bytes */<total>`, `ETag` or `Accept-Ranges`. Needs `RangeNotSatisfiable { total_size: i64 }` in `contracts`, `part2_tree_transfer_feed.md`, `download_service.md`, and a small update in `port_error/files.rs`. Today the 416 is the plain problem body with `nosniff` | AZ-3812 AC-3 | Not stubbed; owner approval for a contracts change | unclear |
+| 1 | Closed after the batch (owner approval): `DownloadError::RangeNotSatisfiable` became `{ total_size: i64 }` in `contracts` (part 2 1.1.0, `download_service.md` 1.0.1); the 416 now carries `Content-Range: bytes */<total>` and `Accept-Ranges: bytes` (`content_serving_headers.md` 1.0.2). Still open: it has no `ETag` or `Cache-Control: private` because the error carries no tag; AC-3 says every answer has `ETag`, so adding it is a further contracts change | AZ-3812 AC-3 | Done except the `ETag` | unclear |
 | 2 | An `Inline` answer for a type outside the seven-type allowlist, or without a type, is rendered as an attachment (octet-stream, sandbox CSP); matching is case-insensitive | AZ-3812 | Worker's reading | unclear |
 | 3 | `ETag` is 03's `etag` wrapped in double quotes unless it already starts with one (the contract does not say). File names: control and bidi characters dropped, `/` and `\` become `_`, cut to 255 UTF-8 bytes, empty or dots-only becomes `download`, no plain `filename=` fallback. A broken 03 answer (no valid range, negative total, unusable etag) is logged and answered as an opaque 500. 304 carries the content headers minus `Content-Length` | AZ-3812 | Worker's reading | unclear |
 | 4 | Not covered: the 90% coverage figure (no tool run), PT-11-1 (memory while streaming), `Access-Control-Allow-Origin` for public share content (belongs to the share route, c14). The test routes are test-local; the real content routes (c13, c14) do not exist yet | AZ-3812 | Left | clear |

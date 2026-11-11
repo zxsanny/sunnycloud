@@ -3,9 +3,9 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c04 — `_docs/02_tasks/todo/B01-13_contracts_part2.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c05 (part 3); other batches: E-11..E-14, E-16..E-18, E-21, E-22, E-30
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (frozen when the producer task is accepted)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-11
 
 ## Purpose
 
@@ -152,3 +152,4 @@ All methods take the resolved account id first (from 11's authentication), never
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
+| 1.1.0 | 2026-11-11 | `DownloadError::RangeNotSatisfiable` becomes `RangeNotSatisfiable { total_size: i64 }` so 11 can answer `Content-Range: bytes */<total>`; owner-approved; the only matching caller (11 `port_error`) and its tests updated, 03 does not construct it yet (AZ-3755) | owner-approved change |

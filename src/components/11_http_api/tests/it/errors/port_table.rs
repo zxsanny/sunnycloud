@@ -137,7 +137,7 @@ fn transfer_rows(id: CorrelationId) -> Vec<Row> {
         Code(ErrorCode::CommitIdReused) => CommitServiceError::CommitIdReused,
         Fault => CommitServiceError::Unexpected(fault()),
         Code(ErrorCode::NotFound) => DownloadError::NotFound,
-        Code(ErrorCode::RangeNotSatisfiable) => DownloadError::RangeNotSatisfiable,
+        Code(ErrorCode::RangeNotSatisfiable) => DownloadError::RangeNotSatisfiable { total_size: 1 },
         Code(ErrorCode::ContentUnavailable) => DownloadError::ContentUnavailable,
         Fault => DownloadError::Storage(fault()),
         Fault => DownloadError::Unexpected(fault()),

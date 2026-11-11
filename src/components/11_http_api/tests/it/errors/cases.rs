@@ -127,7 +127,7 @@ pub const CASES: &[Case] = &[
         "range_not_satisfiable",
         416,
         "range_not_satisfiable",
-        |id| ApiProblem::from_port(DownloadError::RangeNotSatisfiable, id),
+        |id| ApiProblem::from_port(DownloadError::RangeNotSatisfiable { total_size: 1 }, id),
     ),
     case("upgrade_required", 426, "upgrade_required", |id| {
         let params = BusinessParams {

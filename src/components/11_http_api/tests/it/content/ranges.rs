@@ -75,7 +75,9 @@ async fn a_matching_if_none_match_is_304_without_a_body() {
 async fn an_unsatisfiable_range_is_a_416_problem_that_keeps_nosniff() {
     // Arrange
     let server = ContentServer::start().await;
-    server.serve(Err(DownloadError::RangeNotSatisfiable));
+    server.serve(Err(DownloadError::RangeNotSatisfiable {
+        total_size: 1_024,
+    }));
 
     // Act
     let reply = server.h1(Method::GET).await.expect("an answer");
@@ -83,6 +85,8 @@ async fn an_unsatisfiable_range_is_a_416_problem_that_keeps_nosniff() {
     // Assert
     assert_eq!(reply.status, StatusCode::RANGE_NOT_SATISFIABLE);
     assert_eq!(reply.json()["code"], "range_not_satisfiable");
+    assert_eq!(reply.header("content-range"), Some("bytes */1024"));
+    assert_eq!(reply.header("accept-ranges"), Some("bytes"));
     assert_eq!(reply.header("x-content-type-options"), Some("nosniff"));
     server.stop().await;
 }

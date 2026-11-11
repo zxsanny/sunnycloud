@@ -3,7 +3,7 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c10 — `_docs/02_tasks/todo/B03-26_transfer_download.md`; key assigned at Step 4
 **Consumer tasks**: E-14/c13, E-14/c14, E-14/c16 (this batch); E-21/c10, E-21/c13, E-21/c14 (11 content, share and derived routes), resolved at Step 4
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Status**: draft (frozen when the producer task passes review)
 **Last Updated**: 2026-11-04
 
@@ -25,7 +25,7 @@ Signatures: part 2 (`DownloadService`, `Download`). Behaviour:
 | No range | `Full`, `total_size`, ETag = blob id (strong) |
 | One satisfiable range | `Partial` with exactly those bytes |
 | Multi-range or overlapping ranges | ignored: `Full` |
-| Out of bounds | `RangeNotSatisfiable` |
+| Out of bounds | `RangeNotSatisfiable { total_size }` (the size of the whole content, for `Content-Range: bytes */<total_size>`) |
 | `If-Range` with a stale ETag | `Full` |
 | `If-None-Match` equal to the ETag | `NotModified` |
 | HEAD | same call, body dropped by 11 |

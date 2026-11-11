@@ -29,6 +29,8 @@ enum InconsistentDownload {
     ETag(#[source] header::InvalidHeaderValue),
     #[error("file name header is not a header value")]
     FileName(#[source] header::InvalidHeaderValue),
+    #[error("content range is not a header value")]
+    ContentRange(#[source] header::InvalidHeaderValue),
 }
 
 /// Answers a content route from the result of 03's open call.
@@ -44,16 +46,44 @@ pub fn content_response(
 ) -> Response {
     let download = match result {
         Ok(download) => download,
+        Err(DownloadError::RangeNotSatisfiable { total_size }) => {
+            return unsatisfiable(total_size, request_id);
+        }
         Err(error) => return ApiProblem::from_port(error, request_id).into_response(),
     };
-    match render(download, method, request_id) {
-        Ok(response) => response,
-        Err(inconsistent) => ApiProblem::new(
-            DomainError::unexpected(inconsistent, request_id),
-            request_id,
-        )
-        .into_response(),
-    }
+    render(download, method, request_id)
+        .unwrap_or_else(|inconsistent| inconsistent_answer(inconsistent, request_id))
+}
+
+fn inconsistent_answer(inconsistent: InconsistentDownload, request_id: CorrelationId) -> Response {
+    ApiProblem::new(
+        DomainError::unexpected(inconsistent, request_id),
+        request_id,
+    )
+    .into_response()
+}
+
+/// The 416 problem, with the size of the whole content so a client can tell what it may ask for.
+fn unsatisfiable(total_size: i64, request_id: CorrelationId) -> Response {
+    let Ok(total) = u64::try_from(total_size) else {
+        return inconsistent_answer(InconsistentDownload::TotalSize(total_size), request_id);
+    };
+    let value = match HeaderValue::try_from(format!("bytes */{total}")) {
+        Ok(value) => value,
+        Err(error) => {
+            return inconsistent_answer(InconsistentDownload::ContentRange(error), request_id);
+        }
+    };
+    let mut response = ApiProblem::from_port(
+        DownloadError::RangeNotSatisfiable { total_size },
+        request_id,
+    )
+    .into_response();
+    response.headers_mut().insert(header::CONTENT_RANGE, value);
+    response
+        .headers_mut()
+        .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+    response
 }
 
 fn render(
@@ -123,7 +153,7 @@ fn entity_tag(etag: &str) -> Result<HeaderValue, InconsistentDownload> {
 
 fn content_range(range: ByteRange, total: u64) -> Result<HeaderValue, InconsistentDownload> {
     HeaderValue::try_from(format!("bytes {}-{}/{total}", range.start, range.end))
-        .map_err(|_| InconsistentDownload::PartialRange)
+        .map_err(InconsistentDownload::ContentRange)
 }
 
 /// The body as it is read, without buffering. A failure is logged here because the server only closes or

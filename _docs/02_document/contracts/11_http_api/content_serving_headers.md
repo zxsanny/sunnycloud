@@ -3,9 +3,9 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c10 — `_docs/02_tasks/todo/B07-10_content_header_mapper.md`; keys assigned at Step 4
 **Consumer tasks**: E-21/c13 (node and revision content), E-21/c14 (share content, share thumbnail, thumbnail, transcode); clients E-23 (verified ranged download with resume), E-26 (download strategies, inline preview), E-24, E-27; E-31 (FT-N-11, FT-P-39, NFT-SEC-18, NFT-SEC-19); resolved at Step 4
-**Version**: 1.0.1
+**Version**: 1.0.2
 **Status**: draft
-**Last Updated**: 2026-11-09
+**Last Updated**: 2026-11-11
 
 ## Purpose
 
@@ -47,7 +47,7 @@ Inline types are exactly `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `
 | `Full` | 200 |
 | `Partial` | 206 |
 | `NotModified` (matching `If-None-Match`) | 304 |
-| `RangeNotSatisfiable` | 416 with `Content-Range: bytes */<total>` |
+| `RangeNotSatisfiable { total_size }` | 416 problem body (`range_not_satisfiable`, `nosniff`) with `Content-Range: bytes */<total_size>` and `Accept-Ranges: bytes`; no `ETag` (the error carries none) |
 | `NotFound` / `ContentUnavailable` | 404 problem body (`problem_details.md`), `nosniff` kept |
 
 A `Partial` download without a range inside `total_size`, a negative `total_size` or an `etag` that is not a header value is a broken 03 answer: it is logged and answered as an opaque 500. `HEAD` uses the same call and the same headers with no body. One byte range per request (03 serves a single range; multi-range is answered as a full 200 or 416, never as multipart).
@@ -87,7 +87,7 @@ May add `Access-Control-Allow-Origin: *`; never `Access-Control-Allow-Credential
 
 1. G-10 (owner): inline eligibility by declared type, sniffing or name is 03's decision; this contract renders whatever `disposition` 03 returns.
 
-2. `RangeNotSatisfiable` (03, `contracts` part 2) carries no `total_size`, so the 416 answer cannot yet carry `Content-Range: bytes */<total>`, `ETag` or `Accept-Ranges`; it is the plain 416 problem with `nosniff`. Needs `DownloadError::RangeNotSatisfiable { total_size }` in `contracts` (E-14 change task) and `download_service.md`; then `content_response` adds the header.
+2. The 416 carries no `ETag` or `Cache-Control: private`: `DownloadError::RangeNotSatisfiable` carries only `total_size`. AC-3 of AZ-3812 says every answer has `ETag`; adding the tag to the error is a further contracts change if the owner wants it.
 
 ## Change Log
 
@@ -95,3 +95,4 @@ May add `Access-Control-Allow-Origin: *`; never `Access-Control-Allow-Credential
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B07) |
 | 1.0.1 | 2026-11-09 | Implemented (AZ-3812): entry point, ETag quoting, allowlist downgrade, name rules, broken-answer 500, open point 2 | implement |
+| 1.0.2 | 2026-11-11 | `RangeNotSatisfiable { total_size }`: the 416 carries `Content-Range: bytes */<total>` and `Accept-Ranges`; open point 2 reduced to the missing `ETag` | owner-approved change |

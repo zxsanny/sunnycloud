@@ -105,7 +105,7 @@ impl PortError for DownloadError {
     fn into_domain(self, request_id: CorrelationId) -> DomainError {
         match self {
             Self::NotFound => not_found(),
-            Self::RangeNotSatisfiable => business(ErrorCode::RangeNotSatisfiable),
+            Self::RangeNotSatisfiable { .. } => business(ErrorCode::RangeNotSatisfiable),
             Self::ContentUnavailable => business(ErrorCode::ContentUnavailable),
             Self::Storage(source) | Self::Unexpected(source) => fault(source, request_id),
         }
