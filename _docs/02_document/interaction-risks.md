@@ -38,7 +38,7 @@ Step 2.5 of planning. Derived from the 17 flows in `system-flows.md` and the top
 | R8 | F2 invite redemption | Two concurrent redemptions create two accounts from one invite | AC-75 |
 | R9 | F3 device code | A code is exchanged twice or after expiry | AC-76 |
 | R10 | F11 share link vs rename/delete | A link breaks on move, or serves a deleted file | AC-77 |
-| R11 | F16 foreground vs background | Both upload the same asset and create duplicates | AC-78 |
+| R11 | F16 foreground vs background | Both upload the same asset and create duplicates | AC-78, AC-81 |
 | R12 | F10 worker listener | A user or device token reaches worker-only endpoints, or the public proxy exposes them | AC-79 |
 | R13 | F15 scrub vs upload/GC | The scrub reports a half-written or just-removed blob as corrupt | AC-80 |
 
@@ -77,7 +77,7 @@ Step 1.7 created one integration (pipeline) task per uncovered flow in `_docs/02
 | R8 | AC-75 | E-22/p02 sign-in (`*_pipeline_sign_in.md`) | E-15/c05 redemption transaction and concurrency |
 | R9 | AC-76 | none (single boundary in 01): see Pending Step 2 below | E-15/c07 |
 | R10 | AC-77 | E-22/p10 share links (`*_pipeline_share_links.md`) | E-16/c06 1 s authorization cache |
-| R11 | AC-78 | E-27/p02 Android camera backup (`*_pipeline_android_camera_backup.md`) | E-27/c06 in-process mutex. iOS sibling: not yet an AC; owner spike E-28/c01 writes it, then it attaches to E-28/p01 (`*_pipeline_ios_photo_backup.md`) |
+| R11 | AC-78 | E-27/p02 Android camera backup (`*_pipeline_android_camera_backup.md`) | E-27/c06 in-process mutex. iOS sibling: AC-81 (added 2026-11-11), owned by E-28/p01 (`*_pipeline_ios_photo_backup.md`), test IT-18-9 |
 | R12 | AC-79 | E-22/p08 media stage 1 | E-18/c08 `WorkerAuthenticator`; E-21/c15 internal listener router |
 | R13 | AC-80 | E-22/p14 scrub (`*_pipeline_scrub.md`) | E-10/c12 AC-80 race handling |
 

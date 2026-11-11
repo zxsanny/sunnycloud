@@ -159,12 +159,12 @@ Harness `H2`: Compose test stack (profile `core`, test clock on) with real Postg
 **Dependencies**: API, FD
 
 ### IT-09-18: Test clock (test build only)
-**Summary**: `OffsetClock` polls the API offset in the test build and is absent from release.
+**Summary**: `OffsetClock` polls the API offset in the test build, moves only `image_age_days`, and is absent from release.
 **Traces to**: AC-71
-**Input data**: test image: `POST /test/clock {"advance_seconds": 3600}` through ctl; release image of the same version.
-**Expected result**: test supervisor requests `GET /internal/v1/test/clock-offset` with the worker bearer (API log) and uses an offset of 3,600 s for its time stamps (visible in its debug log field); release supervisor makes 0 requests to that route and the binary has no `OffsetClock` symbol (string check). What the supervisor does with the offset beyond logging is not specified (gap G-09-4).
-**Max execution time**: 30 s
-**Dependencies**: API test image, ctl
+**Input data**: test image with FD `build_timestamp` = start time minus 20 days and offset 0; a long FD job running (30 s, `photo_job_timeout` default) with heartbeats; then `POST /test/clock {"advance_seconds": 3600}` (1 hour) and later `{"advance_seconds": 259200}` (3 days) through ctl; release image of the same version.
+**Expected result**: test supervisor requests `GET /internal/v1/test/clock-offset` with the worker bearer (API log, at most 1 per s); before any advance the status PUT body has `image_age_days = 20`; after the 1-hour advance it is still 20; within `worker_status_interval` (1 s) plus one poll after the 3-day advance it is 23 and stays 23; across both advances the running job is not disturbed: heartbeats keep their 2 s +/- 500 ms cadence, no `cancel`, no `decoder_kills_total`, `/readyz` stays 200, and log line timestamps stay within 2 s of host time (not offset); release supervisor makes 0 requests to that route, and the binary has no `OffsetClock` symbol (string check). **Pass criterion**: `image_age_days` shifts by exactly the advanced whole days and no other supervisor timing changes.
+**Max execution time**: 60 s
+**Dependencies**: API test image, FD, ctl
 
 ## Performance Tests
 
@@ -299,7 +299,7 @@ Harness `H2`: Compose test stack (profile `core`, test clock on) with real Postg
 
 ## Spec gaps found
 
-- G-09-1: the supervisor's slot-loop type is not named in the description; tests use only the boundaries above.
+- G-09-1: resolved 2026-11-11 (AZ-3867, agent decision): the loop type is the implementer's choice; the slot boundaries tests rely on are listed in 09 section 3 item 2 (one job per slot, lane mask, own heartbeat, own socket and scratch, observable only through API, socket, scratch and ops port).
 - G-09-2: the outcome when an input does not fit the scratch free space (`statvfs` refusal) is not named (permanent `TooLarge` or transient).
 - G-09-3: the `DecodeError`/failure code used when an output file fails the safe-open check is not named.
-- G-09-4: the observable effect of `OffsetClock` inside the supervisor is not stated (only that the offset is shared).
+- G-09-4: resolved 2026-11-11 (AZ-3867, agent decision): only `image_age_days` uses the offset clock; durations stay monotonic and log timestamps stay on system time (09 section 2, IT-09-18).

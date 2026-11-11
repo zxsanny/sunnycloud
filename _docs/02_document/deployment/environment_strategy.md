@@ -89,7 +89,7 @@ WORKER_MEM=4g
 |--------|-----------|--------|---------|----------|
 | Master key (32 bytes) | Operator, once, at install | `secrets/master_key` mode 0400, **and** the backup copies below | api only | `sunnycloud admin rewrap` (AC-43); old key kept while any backup still uses it |
 | Postgres password, `db_api_url`, `db_migrator_url` | Operator at install | `secrets/` | db (password); api (`db_api_url`); the `migrate` service (`db_migrator_url`). The worker reads none | Change and restart; no application impact |
-| `worker_api_token` | Operator at install | `secrets/` | api, worker | Change both, restart |
+| `worker_api_token` | Operator at install | `secrets/` | api, worker | Two-secret rotation without a refusal window: `deployment_procedures.md` section "Worker secret rotation" (`worker_api_token_next` on the API first) |
 | `share_grant_key` | Operator at install (`openssl rand -out secrets/share_grant_key 32`) | `secrets/` | api only | Change and restart; outstanding share access grants stop working, links and passwords are unaffected |
 | Provider client secrets | Provider console | `secrets/` | api | Per provider policy |
 | Apple `.p8` (v1.1) | Apple developer console | `secrets/` as a file | api | Apple key lifetime; the server regenerates the ES256 client secret itself, so no six-month manual step |

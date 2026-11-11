@@ -13,7 +13,7 @@ Scope: the `sunnycloud` binary: the command surface of `canonical-names.md` ("Op
 | AC-30 | `admin restore` by path and time; `admin gc-run` | IT-12-4, IT-12-16; sys FT-P-16, FT-P-17, FT-P-18, FT-N-35 | Covered by this file and system scenarios |
 | AC-41 | `admin epoch-bump`; `.epoch` marker check in doctor and `serve` | IT-12-5, IT-12-6, AT-12-2; sys NFT-RES-07, FT-P-13, FT-P-14 | Covered by this file and system scenarios |
 | AC-43 | `admin rewrap`, `admin keycheck-init` (sample unwrap first), `key-check` | IT-12-12, IT-12-13; sys FT-P-41, FT-N-33, FT-P-71 | Covered by this file and system scenarios |
-| AC-65 | `migrate`, restore drill, `scrub run --full` exit code | IT-12-10, IT-12-11, AT-12-2; sys FT-P-71, FT-P-72, FT-N-39, NFT-RES-13, NFT-RES-14 | Covered by this file and system scenarios; failing-migration cases BLOCKED (IT-12-11) |
+| AC-65 | `migrate`, restore drill, `scrub run --full` exit code | IT-12-10, IT-12-11, AT-12-2; sys FT-P-71, FT-P-72, FT-N-39, NFT-RES-13, NFT-RES-14 | Covered by this file and system scenarios (failing, killed and irreversible migrations through the test-only migration source, IT-12-11) |
 | AC-72 | `key-check` and `doctor` fail on a wrong master key; key check precedes listeners | IT-12-6, IT-12-12, IT-12-15; sys FT-N-43 | Covered by this file and sys FT-N-43 |
 | AC-73 | `doctor` lists every revision with a missing blob; listings stay error-free | IT-12-15; sys NFT-RES-37 | Covered by this file and sys NFT-RES-37 |
 | AC-74 | Doctor's quota recompute reports drift | IT-12-15; sys NFT-RES-38 | Covered by this file and sys NFT-RES-38 |
@@ -107,13 +107,22 @@ Harness `H2` (Compose `core` stack, test image): services `db`, `migrate`, `api`
 **Max execution time**: 120 s
 **Dependencies**: stack, PostgreSQL
 
-### IT-12-11: Failing, killed and irreversible migrations (BLOCKED)
-**Summary**: a failing migration rolls back, a killed one leaves the previous state, an irreversible `down` stops `revert`.
+### IT-12-11: Failing, killed and irreversible migrations
+**Summary**: a failing migration rolls back, a killed one leaves the previous state, an irreversible `down` stops `revert`; the fixtures come through the test-only migration source of description section 4 (feature `test-migrations`, `SUNNYCLOUD_TEST_MIGRATIONS_DIR`).
 **Traces to**: AC-65
-**Input data**: a migration source containing a failing statement, a long-running statement to kill mid-way, and a `down` that raises `irreversible: restore from backup`.
-**Expected result**: BLOCKED. The release binary embeds its migrations and the description names no way to supply test migrations (directory flag, env key or test build). Missing piece: a test-only migration source (for example a `--migrations-dir` honoured only in the test image). With it: failing migration exits 2 naming the failed version, earlier migrations stay applied, next `migrate` retries from it; `kill -9` mid-migration leaves the migration rolled back and `serve` refusing to start (sys NFT-RES-14); irreversible `down` surfaces `IrreversibleMigration` and stops with exit 2.
-**Max execution time**: 60 s
-**Dependencies**: test image with the missing hook
+**Input data**: test image (`FEATURES=test-clock,test-migrations`); fixtures directory mounted read-only at `/test-migrations` with three subdirectories; each case sets `SUNNYCLOUD_TEST_MIGRATIONS_DIR` to one subdirectory on both the `migrate` step and `serve`, and starts from the restored golden snapshot (release migrations applied). Versions use the `99990101......` prefix.
+- `fail/`: `..01_test_ok` (reversible, `CREATE TABLE test_ok`), `..02_test_fail` (`CREATE TABLE test_fail_marker (id int); SELECT 1/0;`).
+- `slow/`: `..01_test_slow` (`CREATE TABLE test_slow_marker (id int); SELECT pg_sleep(120);`).
+- `irreversible/`: `..01_test_irreversible` (up creates `test_irrev`; `down` is `DO $$ BEGIN RAISE EXCEPTION 'irreversible: restore from backup'; END $$;`), `..02_test_reversible` (up creates `test_rev`, down drops it).
+- Release image: `sunnycloud migrate status` with `SUNNYCLOUD_TEST_MIGRATIONS_DIR=/tmp` and no database URL (the CI step of description section 4, on the pushed digest).
+**Expected result**:
+- `fail/`: `migrate` exits 2 naming version `..02`; `test_ok` exists (`..01` stayed applied), `test_fail_marker` does not (rolled back); `migrate status` lists `..02` pending; a second `migrate` retries `..02` and exits 2 again.
+- `slow/`: the harness `kill -9`s the `migrate` process once `pg_sleep` is visible in `pg_stat_activity`, then ends the orphaned backend with `pg_terminate_backend` (harness superuser); `test_slow_marker` does not exist, `migrate status` lists `..01` pending, and `serve` (same variable) refuses to start with the message naming `sunnycloud migrate`, serving 0 requests (the interrupted-upgrade behaviour of sys NFT-RES-14, which uses real release migrations).
+- `irreversible/`: `migrate` exits 0; `migrate revert --steps 2 --yes` reverts `..02` (`test_rev` gone), then `..01`'s `down` raises, the output shows `IrreversibleMigration` with the message `irreversible: restore from backup`, exit 2; `test_irrev` still exists and `..01` is still applied.
+- Release image: exit 3, the message names the unknown key `SUNNYCLOUD_TEST_MIGRATIONS_DIR`, no database connection attempted; the binary contains no `test_migrations_dir` string.
+- After each case: golden snapshot restored (no database that applied a fixture is reused).
+**Max execution time**: 120 s
+**Dependencies**: stack, PostgreSQL, test image built with `test-migrations`, fixtures mount (E-00), E-06/c01b and E-01 pieces listed in description section 4
 
 ### IT-12-12: `key-check`, `keycheck-init`
 **Summary**: key verification outcomes and the sample-unwrap guard.
@@ -310,7 +319,7 @@ Harness `H2` (Compose `core` stack, test image): services `db`, `migrate`, `api`
 
 ## Spec gaps found
 
-- G-12-1 (BLOCKED, IT-12-11): no test-only migration source for failing, killed and irreversible migrations.
+- G-12-1 (resolved 2026-11-11, AZ-3787, agent decision, owner may overturn): feature `test-migrations` of the test image reads `SUNNYCLOUD_TEST_MIGRATIONS_DIR`; a release build refuses the variable (exit 3); see description section 4 and IT-12-11.
 - G-12-2: `admin restore --at` and `--backup-interval` formats are not stated.
 - G-12-3 (resolved 2026-11-11, AZ-3681): reset of the sole admin is allowed; no `LastAdmin` applies.
 - G-12-5: `admin epoch-bump` exit "0 or 1" conflicts with the table saying 1 means warnings only for doctor; what produces 1 is not defined.

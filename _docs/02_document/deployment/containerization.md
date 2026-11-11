@@ -133,7 +133,7 @@ The Caddyfile has no route to `api:8081` or `:9090`, and Caddy has no interface 
 | `pgdata` | named volume -> db `/var/lib/postgresql` | db | Operator may bind a host path on local SSD, never a network share |
 | `caddy_data`, `caddy_config` | named volumes | caddy | |
 | `sock_interactive`, `sock_general` | named volumes | worker + the matching decoder | Hold the decoder's Unix socket (mode 0660, shared group); nothing else |
-| `scratch_interactive` | named volume with `driver_opts` `type=tmpfs`, `o=size=1g` (numeric) | worker + `decoder-interactive` | Decrypted photo input and output of one job at a time; RAM-backed; the size covers the largest photo input plus output |
+| `scratch_interactive` | named volume with `driver_opts` `type=tmpfs`, `o=size=536870912` (512 MiB, numeric) | worker + `decoder-interactive` | Decrypted photo input and output of one job at a time; RAM-backed. Arithmetic: 256 MiB largest photo input (`worker_max_input_photo`) + 2 outputs of at most 32 MiB = 320 MiB, plus 192 MiB margin = 512 MiB. The tmpfs counts against the 2 GiB `decoder-interactive` limit, so a full tmpfs leaves 1.5 GiB for vips (a 1 GiB tmpfs would leave 1 GiB for no gain). Same value as 09 section 6 |
 | `scratch_general` | bind `${SCRATCH_PATH}`: a dedicated mount or a directory under an XFS project quota | worker + `decoder-general` | Decrypted video or photo input and output of one job at a time; ffmpeg reads a scratch file, not a pipe; wiped by the supervisor per job and at start. The mount or quota is the hard cap (at least `worker_scratch_general_cap`, 24 GiB by default); the supervisor's own accounting only refuses jobs early |
 
 | Secret (file) | Mounted in | Notes |

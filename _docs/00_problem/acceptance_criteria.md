@@ -108,6 +108,7 @@ Numeric targets are initial defaults refined by research (`_docs/00_research/00_
 - AC-78 [v1.0 Android]: When the foreground app and the background worker upload the same asset at once, exactly one server file is created.
 - AC-79 [v1.0]: The internal worker endpoints reject user sessions and device tokens (403) and are not reachable through the public proxy route (404).
 - AC-80 [v1.0]: The scrub never reports a blob that is being uploaded or removed by garbage collection as corrupt.
+- AC-81 [v1.1 iOS]: When the foreground app and a background task upload the same asset at once, exactly one server file is created. (iOS sibling of AC-78; added by the owner 2026-11-11, AZ-3973.)
 
 ## Out of scope
 - Version history, user-facing trash and restore.

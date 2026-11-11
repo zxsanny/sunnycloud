@@ -114,7 +114,7 @@ sequenceDiagram
 - ADR-013 (UniFFI for Swift, one static library, no flutter_rust_bridge), ADR-016 (iOS is v1.1), ADR-008 (token rotation; Apple has no device flow, mobile sign-in uses the one-time code), ADR-011 (App Store exception), ADR-001.
 - The Rust loop runs only while the process runs (foreground or a granted background window of about 30 s to minutes); every run is resumable from the checkpoint, so a suspended app loses at most one block.
 - No claim that the backlog completes in the background (screen lock suspends the app); the UI shows progress and ETA instead.
-- Same AC-78 design (in-process mutex plus idempotent `client_key`); an iOS sibling criterion is proposed but does not exist yet (`tests/spec-gaps.md` IT-18-9, owner).
+- Same AC-78 design (in-process mutex plus idempotent `client_key`); the iOS sibling criterion is AC-81 (added 2026-11-11, `tests/spec-gaps.md` IT-18-9 resolved).
 
 ### Requirements
 
@@ -144,7 +144,7 @@ sequenceDiagram
 
 - Component tests: `components/18_ios_app/tests.md` — IT-18-1..10, PT-18-1, ST-18-1..2, AT-18-1..3 (all stub-level, not run for v1.0). Tiers: Rust unit tests of E-27 `mobile_backup` are not repeated; IT-IOS with Appium XCUITest on a real iPhone (H-IOS) and the simulator for non-background flows against the real server container; no Mac/phone means `NOT-RUN(H-IOS)`, never PASS.
 - System scenarios: FT-P-31, FT-P-35, FT-P-63, FT-N-26, FT-N-34, NFT-RES-27, NFT-RES-28, NFT-RES-LIM-03, NFT-SEC-44 (Keychain check); FT-P-33 deferred (owned by E-31).
-- Open items from `tests/spec-gaps.md`: IT-18-9 (AC-78 iOS sibling criterion missing, owner), IT-18-10 (Live Photo stored form), G-7 (time bound for 100-photo foreground catch-up, owner).
+- Open items from `tests/spec-gaps.md`: IT-18-9 (resolved 2026-11-11: AC-81), IT-18-10 (Live Photo stored form), G-7 (time bound for 100-photo foreground catch-up, owner).
 
 ### Definition of Done
 
@@ -175,7 +175,7 @@ sequenceDiagram
 | 2 | Background upload constraints keep the extension out of v1.1 | Sans-IO core keeps it addable; foreground path is the guarantee | 18 |
 | 3 | Depends on E-27 device spike for library layout | Sequence after the Android spike; reuse the same build scripts | 18, 17 |
 | 4 | R32-like: OS limits and permission changes at any time | Re-read authorization every run; visible-id diff | 18 |
-| 5 | AC-78 iOS sibling criterion absent | Owner adds the criterion; IT-18-9 gets its id then | owner |
+| 5 | AC-78 iOS sibling criterion | Resolved 2026-11-11: AC-81 added by the owner; IT-18-9 traces to it | owner |
 
 ### Labels
 

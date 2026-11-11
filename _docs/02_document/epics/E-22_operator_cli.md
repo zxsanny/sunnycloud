@@ -154,7 +154,7 @@ flowchart TD
 - Technology: Rust, clap, tokio, sqlx 0.9 through helper 07 only, `CancellationToken` for cooperative SIGINT cancellation of long commands.
 - Command-per-module delivery layer (no module over 500 lines); janitor loops are timers around `run_cycle` and hold no logic; `admin gc-run` and `scrub run` call the same `run_cycle` from the CLI process.
 - Hook and cleanup lists are passed to the `DeletionPurger` constructor by the composition root (gap-pass default for G-07-1).
-- Decided 2026-11-11 (AZ-3681): `admin reset` of the sole active admin is allowed, no `LastAdmin` (G-12-3). Open: test-only migration source for failing migrations (G-12-1, BLOCKED IT-12-11).
+- Decided 2026-11-11 (AZ-3681): `admin reset` of the sole active admin is allowed, no `LastAdmin` (G-12-3). Decided 2026-11-11 (AZ-3787, agent decision): the test-only migration source is the `test-migrations` feature of the test image (G-12-1 resolved, IT-12-11 runnable).
 
 ### Non-functional requirements
 
@@ -181,7 +181,7 @@ flowchart TD
 - Integration: IT-12-1 exit codes, usage, `--json`; IT-12-2 `create`, `setup-token`, `reset`; IT-12-3 `promote`, `demote`, `user`, `invite`; IT-12-4 `restore`; IT-12-5 `epoch-bump`; IT-12-6 `serve` start refusals; IT-12-7 start sequence and late registration; IT-12-8 graceful shutdown; IT-12-9 scheduler behaviour; IT-12-10 `migrate`; IT-12-11 failing, killed and irreversible migrations (BLOCKED, spike); IT-12-12 `key-check`, `keycheck-init`; IT-12-13 `rewrap`; IT-12-14 `scrub`; IT-12-15 `doctor`; IT-12-16 `gc-run`, `media-requeue`, `media-stats`; IT-12-17 `audit export`, `dev-seed`; IT-12-18 `openapi`, `healthcheck`, `version`, lazy construction; IT-12-19 secret channel and cancellation.
 - Performance PT-12-1..2; security ST-12-1 secrets never leave the secret channel, ST-12-2 destructive commands need confirmation, ST-12-3 no listener and no SQL of its own, ST-12-4 database role boundaries; acceptance AT-12-1 (install check), AT-12-2 (restore drill).
 - System scenarios: FT-P-64, FT-P-65, FT-N-20, FT-N-21, FT-P-16..19, FT-N-35, FT-P-43, FT-P-69, FT-P-71, FT-P-72, FT-N-33, FT-N-39, FT-N-43, NFT-RES-07, 10, 13, 14, 34, 37, 38, 39, NFT-PERF-30, NFT-SEC-25..27, NFT-SEC-38.
-- Spec gaps: G-12-1 (BLOCKED, decompose), G-12-3 (owner, decompose); G-12-2, G-12-5, G-12-6, G-12-7 resolved at the gap pass.
+- Spec gaps: G-12-1 and G-12-3 resolved 2026-11-11; G-12-2, G-12-5, G-12-6, G-12-7 resolved at the gap pass.
 
 ### Definition of Done
 
@@ -190,7 +190,7 @@ flowchart TD
 - [ ] Coverage at or above 75% on business logic and 90% on exit-code mapping, `--yes` guard, secret writer and start-up order (canonical: `quality-thresholds.mdc`)
 - [ ] Grep tests green: no `sqlx`, no `blobs/` paths, no business rule in the crate
 - [ ] Command names reconciled in `architecture.md` and deployment docs (no `key rewrap`, `media requeue`, top-level `restore`)
-- [ ] Spikes closed and `tests/spec-gaps.md` entries G-12-1, G-12-3 updated
+- [x] Spikes closed and `tests/spec-gaps.md` entries G-12-1, G-12-3 updated (2026-11-11)
 
 ### Acceptance Criteria
 
@@ -217,7 +217,7 @@ flowchart TD
 | 3 | R12: janitors share CPU and I/O with requests | Drain-until-empty within a time budget; PT-12-2 thresholds | 12 |
 | 4 | R15: composition root grows with every component | Wiring only; grep tests; review rule; vertical slice first | plan |
 | 5 | `admin reset` semantics depend on E-15 (identity is `(provider, id)`) | Reset issues a new admin invite; allowed for the sole admin (owner decision G-12-3, 2026-11-11) | 01, 12 |
-| 6 | Failing-migration paths untestable in a release binary (G-12-1) | Test-only migration source feature; spike first | 12, helper 07 |
+| 6 | Failing-migration paths untestable in a release binary (G-12-1) | Test-only migration source feature `test-migrations` (decided 2026-11-11, AZ-3787); work in helper 07, helper 01 and the CI epic is listed in 12 description section 4 | 12, helper 07 |
 
 ### Labels
 

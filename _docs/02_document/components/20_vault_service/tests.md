@@ -11,7 +11,7 @@ Tests of the server side of the vault: the opaque header with `ETag` and `If-Mat
 | AC-13 | Server stores only ciphertext for vault files | IT-20-6, ST-20-2; FT-N-13, FT-P-44, NFT-SEC-39 | Covered |
 | AC-14 | 100 MiB limit (configurable) with a clear message; camera backup stays out | IT-20-5; FT-N-14, FT-P-45, NFT-SEC-43 | Covered |
 | AC-59 | Vault routes in the two-account matrix, 0 cross-account successes | IT-20-7, ST-20-1; NFT-SEC-13 | Covered |
-| AC-61 | Header returned byte-identically; concurrent replacement detected; rollback handled | IT-20-1, -2, -3; FT-N-16, NFT-SEC-41 | Covered; header cap value BLOCKED (IT-20-1) |
+| AC-61 | Header returned byte-identically; concurrent replacement detected; rollback handled | IT-20-1, -2, -3; FT-N-16, NFT-SEC-41 | Covered; header cap 1024 (IT-20-1) |
 | AC-27 | Account deletion leaves no vault rows | IT-20-8; FT-P-19, NFT-RES-30 | Covered |
 | RESTRICT-22, RESTRICT-23 | Server holds ciphertext and an opaque authenticated header only | IT-20-3, IT-20-6, ST-20-2 | Covered |
 | Owner decision "vault files cannot be link-shared in v1.2" (`canonical-names.md`) | A share of a vault file is refused | IT-20-4 | Covered (no AC; the decision is the source) |
@@ -26,7 +26,7 @@ Tests of the server side of the vault: the opaque header with `ETag` and `If-Mat
 
 **Expected result**: create 201; GET returns the same bytes (BLAKE3 equal) before and after restart; `ETag` = SHA-256 of the stored bytes and equal on both reads; the header of max + 1 bytes is refused (`HeaderTooLarge`, 4xx) and nothing is stored.
 
-**Status**: READY except the cap: `max_vault_header_bytes` has no default in `20_vault_service` section 6, so the max and max + 1 cases are BLOCKED — config default. **Max time**: 30 s. **Dependencies**: API, Postgres.
+**Status**: READY: `max_vault_header_bytes` defaults to 1024 (`20_vault_service` section 6, decided 2026-11-11), so the max case is 1024 bytes and max + 1 is 1025 bytes. **Max time**: 30 s. **Dependencies**: API, Postgres.
 
 ### IT-20-2: `If-Match` rules and a 50-way replacement race
 
@@ -52,7 +52,7 @@ Tests of the server side of the vault: the opaque header with `ETag` and `If-Mat
 
 **Description**: Inside a vault upload one ciphertext file. `POST /api/v1/shares` for the vault file, for the vault's root folder, and for a normal file beside the vault (positive control).
 
-**Expected result**: vault file 422 `target_not_shareable`; vault root folder 422 `target_not_shareable` (folders are not shareable in v1.0 either); normal file 201; `share_links` rows for the vault file 0 (ctl probe). **Dependencies**: 06, and the vault membership answer (Gaps). **Max time**: 30 s.
+**Expected result**: vault file 422 `target_not_shareable`; vault root folder 422 `target_not_shareable` (folders are not shareable in v1.0 either); normal file 201; `share_links` rows for the vault file 0 (ctl probe). **Dependencies**: 06, and the vault membership answer (`nodes.vault_id`, `20_vault_service` section 10). **Max time**: 30 s.
 
 ### IT-20-5: Vault files get no media jobs and the size limit applies to them only
 
@@ -78,7 +78,7 @@ Tests of the server side of the vault: the opaque header with `ETag` and `If-Mat
 
 **Expected result**: another account's folder, unknown id and tombstoned folder: 404; a file: 4xx (code per the 11 mapping); control 201; second vault on one root refused (`root_node_id` is unique).
 
-**Status**: READY for the root checks. A second vault in one account is BLOCKED — owner decision (data model A6: one or many vaults per account; `VaultExists` is "if decided"). **Max time**: 30 s.
+**Status**: READY for the root checks. A second vault in one account is READY: one vault per account (owner, 2026-11-11), so the second create is `VaultExists`, and a create on a non-empty root folder is refused too. **Max time**: 30 s.
 
 ### IT-20-8: Account deletion removes vault rows and ciphertext
 
@@ -129,8 +129,8 @@ Tests of the server side of the vault: the opaque header with `ETag` and `If-Mat
 
 ## Gaps
 
-- **Vault membership**: how 02, 03 and 06 learn that a node lies under a vault root (vault flag, size limit, share refusal) is an open data-model question (`20_vault_service` risks 2 and 4). IT-20-4 and IT-20-5 assert outcomes only. When the mechanism is fixed, add cases for a node deeper than one level and for moving a file into or out of a vault, including a plaintext file that already has a share link; the spec does not define that today.
-- **Header cap**: `max_vault_header_bytes` has no default value (IT-20-1). **Vaults per account**: undecided (IT-20-7).
+- **Vault membership** (decided 2026-11-11, AZ-3913): membership is the nullable `nodes.vault_id` copied from the parent at creation (`20_vault_service` section 10). IT-20-4 and IT-20-5 assert outcomes; add these cases when E-30/c07 wires it: a file three levels deep under the vault root is a member (no media job, share refused, `max_vault_file_bytes` applied); a move of a file into a vault, out of a vault, or between two vaults is 409 `vault_boundary` and changes nothing; a move between folders of the same vault succeeds and keeps `vault_id`; a plaintext file with an active share link cannot be moved into a vault (409) and the vault create on a non-empty root is refused.
+- **Header cap**: resolved 2026-11-11, default 1024 bytes (IT-20-1). **Vaults per account**: resolved 2026-11-11, one (IT-20-7). **Vault names**: ciphertext (owner, 2026-11-11); NFT-SEC-43 step 5 stands.
 
 ## Test Data Management
 

@@ -102,7 +102,7 @@ Hash saved after hashing, so 10 forced kills re-hash at most 1% of 50,000 assets
 
 **Network and quota**: no Wi-Fi/metered per setting means the work waits (WorkManager constraints); `QuotaExceeded` (507) pauses with a visible message and a retry on the next trigger; an asset deleted between listing and upload is `skipped_gone`; a server name rejection is `skipped_name`; `SizeTooLarge` is `skipped_size`; none of these stops the loop and each is counted in `status.skipped`.
 
-**Battery/OEM**: the app requests the battery exemption, shows vendor-specific help for Xiaomi/Huawei/Samsung, and relies on the 15-minute catch-up instead of the trigger alone. An always-on foreground service for automatic backup is not used (Play policy); the large-first-sync job or foreground service is started by the user and shows a notification.
+**Battery/OEM**: the app sends the user to the system battery-optimisation settings screen (no `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, Play policy, section 16), shows vendor-specific help for Xiaomi/Huawei/Samsung, and relies on the 15-minute catch-up instead of the trigger alone. An always-on foreground service for automatic backup is not used (Play policy); the large-first-sync job or foreground service is started by the user and shows a notification.
 
 **Native library**: one `.so` per ABI containing `mobile_backup` + 13 (+ 19 in v1.2) with UniFFI exports; built with NDK r28+ for 16 KB page alignment (CI alignment check), JNA at least 5.17.0. Cancellation is manual via `cancel()`.
 
@@ -151,6 +151,47 @@ FT-P-29, FT-P-30, FT-P-32, FT-P-34, FT-P-35, FT-N-26, FT-N-36, NFT-PERF-12, NFT-
 ## 15. Risks
 0. Default chosen at Step 5 gap pass: `BackupCore` gains `set_server(url) -> ServerCheck` (https scheme, reachability and `server-info`, AC-54) and `BackupStatus` gains `location_redacted: bool`.
 1. Single-library UniFFI build, 16 KB alignment and forced-kill behaviour need the Android device spike.
-2. Play Store permission declarations for photo/video access, `ACCESS_MEDIA_LOCATION` and user-initiated transfer limits are not yet verified.
+2. Play Store permission declarations (checked by spike AZ-3986 on 2026-11-11, record in section 16). Photo/video access (`READ_MEDIA_IMAGES`/`READ_MEDIA_VIDEO`) needs a Play Console declaration and Google's approval of it is unverified: the policy pages name gallery-style apps and never name backup apps, so refusal is possible until the pre-review runs. `ACCESS_MEDIA_LOCATION`: no Play restriction found; the Data safety form must disclose photos, videos and location. Direct battery-exemption request: not established for a backup app, treated as refused; the app opens the system battery-optimisation settings instead. User-initiated data-transfer job (Android 14+): allowed, no Play declaration found. `dataSync` foreground service (Android 11 to 13): allowed with a Play Console foreground-service declaration whose video shows the user starting the transfer. Always-on foreground service for automatic backup: refused by the declaration rules.
 3. Boundary: `mobile_backup` and its checkpoint DB belong to this component; 13 must not duplicate them.
 4. A kill between the server's refresh rotation and the vault write, followed by a restart later than the 30 s reuse grace, forces a new sign-in; the persist-before-use order keeps the window to a lost response.
+
+## 16. Play declaration record (spike AZ-3986, read 2026-11-11)
+
+Every source below was fetched and read on 2026-11-11. None of the Play Help pages shows a "last updated" date (only a 2026 copyright footer); the policy text is date-stamped only by its own timelines. The release checklist re-reads this section (task risk 1). "Unverified" means no source read states it.
+
+### Verdicts
+
+| Item | Verdict | Source (read 2026-11-11) |
+|------|---------|--------------------------|
+| `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO` (target Android 13+) | Allowed with a Play Console declaration; approval unverified (see Risk below) | Play "Details on Google Play's Photo and Video Permissions policy" https://support.google.com/googleplay/android-developer/answer/14115180 ; "Permissions and APIs that Access Sensitive Information" https://support.google.com/googleplay/android-developer/answer/9888170 ; Android MediaStore guide https://developer.android.com/training/data-storage/shared/media (caution: "restricted to specific use cases outlined in the Google Play policy") |
+| `READ_MEDIA_VISUAL_USER_SELECTED` (Android 14 selected photos) | No Play restriction found in the pages above; they name only `READ_MEDIA_IMAGES`/`READ_MEDIA_VIDEO`. Declared next to them in the manifest and requested in one operation; formal Play treatment unverified | Android https://developer.android.com/about/versions/14/changes/partial-photo-video-access |
+| `ACCESS_MEDIA_LOCATION` | Allowed; no Play declaration or restriction found on the three Play policy pages read. Needs runtime consent (Android), so redacted location remains possible (already handled by `location_redacted`). Data safety form must disclose collected photos, videos and location (our reading: the form defines collection as transmission off the device) | Android https://developer.android.com/training/data-storage/shared/media ; Play Data safety https://support.google.com/googleplay/android-developer/answer/10787469 (latest change-log entry 2023-12-05) ; https://support.google.com/googleplay/android-developer/answer/16935362 (does not mention it) |
+| Direct battery-exemption request (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` + `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) | Not established for a backup app; treated as refused. Allowed route: `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` (system list, no permission) | Android Doze guide https://developer.android.com/training/monitoring-device-state/doze-standby ("Google Play policies prohibit apps from requesting direct exemption ... unless the core function of the app is adversely affected"; its acceptable-use table lists task automation incl. photo management, not backup); Play Device and Network Abuse https://support.google.com/googleplay/android-developer/answer/9888379 ("Don't bypass System power management unless eligible") |
+| User-initiated data-transfer job (Android 14+, `RUN_USER_INITIATED_JOBS`) | Allowed; no Play Console declaration found in the sources read (Play points to it instead of `dataSync`) | Android https://developer.android.com/develop/background-work/background-tasks/uidt ; Play https://support.google.com/googleplay/android-developer/answer/13392821 |
+| `dataSync` foreground service (Android 11 to 13, user tap) | Allowed with the Play Console foreground-service declaration (App content page; required because the app targets Android 14+, even though the service only runs on 11 to 13) | https://support.google.com/googleplay/android-developer/answer/13392821 ; https://developer.android.com/develop/background-work/services/fgs/service-types |
+| `dataSync` 6 h per 24 h cap (Android 15) | Applies only to apps targeting 35+ on Android 15+ devices; no effect on Android 11 to 13 and not reached on 14+ because the large first sync uses the job. A user opening the app resets the timer | https://developer.android.com/about/versions/15/behavior-changes-15 |
+| Always-on foreground service for automatic backup | Refused: the declaration video "cannot show fully automatic or background backup or recovery" | https://support.google.com/googleplay/android-developer/answer/13392821 |
+| WorkManager trigger plus periodic catch-up (no foreground service) | Allowed; no declaration. Deferrable by Doze and OEM killers (R32) | https://developer.android.com/develop/background-work/background-tasks/data-transfer-options |
+
+### Declaration text to submit
+
+1. Photo and video permissions (Play Console, App content): "The app's core function is automatic backup of the user's own camera photos and videos to the user's own self-hosted server. Backup runs unattended in the background when new media appears. The Android Photo Picker cannot serve this: it needs the user to pick media each time and gives no background access, so new photos would not be backed up unless the user opened the app. The app uses READ_MEDIA_IMAGES and READ_MEDIA_VIDEO to find and read new media, READ_MEDIA_VISUAL_USER_SELECTED to continue with the photos the user selected when the user grants only partial access, and ACCESS_MEDIA_LOCATION so the uploaded original keeps its location data. Media is sent only to the server address the user entered, never to the developer or a third party, and is not used for advertising." Core function must also be stated in the store listing (policy search result, secondary source; unverified on the Play page).
+2. `dataSync` foreground service: use case "Backup and restore"; functionality: "Uploads a large first backup of the user's photos and videos to the user's server, shows a progress notification"; user impact if deferred: "The first backup is interrupted and resumes from the last saved block; photos remain unbacked up longer"; video: the user opens the app, taps "Start first backup", the notification appears; no automatic or background start in the video.
+3. User-initiated job: no Play declaration found. Manifest: `RUN_USER_INITIATED_JOBS`, a `JobService` with `BIND_JOB_SERVICE`, `setUserInitiated(true)`, a notification set with `setNotification`, scheduled only while the app is visible (a missed condition returns `RESULT_FAILURE`). The user can stop it in Task Manager, which kills the process; the checkpoint DB already resumes.
+4. Data safety form: photos, videos, location (from media metadata) collected, sent off device to the user's own server, not shared.
+
+### Risk and alternatives
+
+- Photo and video permission is the one item that can be refused after build. Policy names gallery apps ("managing and maintaining all of users' photos/videos"); backup apps are not named, and the only backup examples on the page are for contacts. Approval cannot be known before the declaration is reviewed.
+- If refused: (a) sideload and F-Droid distribution (R18 contingency), no Play review; changes no E-27 task except release/CI; (b) Play build with the Photo Picker only (user picks what to back up, no unattended backup): changes E-27/c09 `AssetSource` (AZ-3993), c10 entry points (AZ-3994, no MediaStore trigger or catch-up), c11 first sync (AZ-3995) and c15 permission UI (AZ-3999), and breaks AC-9 and AC-53 as written, so it needs an owner decision. Option (a) is the default.
+- Direct battery exemption: the app sends the user to the system battery-optimisation settings screen and shows the vendor help. Follows E-27/c17 (AZ-4001): it must not declare `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` or call the direct request intent. Section 5 ("the app requests the battery exemption") and AC-9/NFT figures "with exemption" mean the user performs it through settings.
+
+### Owner items
+
+| Item | Status | Evidence |
+|------|--------|----------|
+| Google Play developer account | Open (owner, R18); no evidence of an account in the repo | `risk_mitigations.md` R18 "Open (owner)" |
+| Closed testing track | Not started; no build has been submitted | none |
+| Media-permission declaration and foreground-service declaration (texts above) | Not submitted | none |
+| Pre-launch review (Play pre-review, R32) | NOT RUN. Not accepted, not refused | none |
+| Re-read of the policy pages before release | Pending; this record was read 2026-11-11 | task risk 1 |

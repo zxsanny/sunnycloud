@@ -152,5 +152,5 @@ FT-P-07, FT-P-08, FT-P-10, FT-P-12, FT-P-51 to FT-P-61, FT-P-77 (feed row agains
 1. Windows/macOS CPU and memory at 100k files unmeasured (Verify, gate S2).
 2. Linux headless token fallback is a file (owner-confirmed by restrictions); durable keyring behaviour in systemd user context unverified.
 3. Standard-user logon-task registration without a prompt unverified on Windows.
-4. Open item (ADR): update manifest layout (field names, per-OS entry shape, serial storage) and the offline signing tool. Decided: offline signing, two pinned Ed25519 keys (active, recovery), `version`, per-OS SHA-256, `serial`, `expires`.
+4. Resolved 2026-11-11 (AZ-3887, owner confirmed the layout): update manifest layout, serial storage in `meta`, the offline signing tool (`update-sign`, built by E-24/c18) and the release runbook step are in ADR-017 Notes. Decided earlier: offline signing, two pinned Ed25519 keys (active, recovery), `version`, per-OS SHA-256, `serial`, `expires`.
 5. Exact `SyncApi` surface depends on 13; mismatch is the largest integration risk.

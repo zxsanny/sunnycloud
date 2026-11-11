@@ -12,7 +12,7 @@ Release v1.1: none of these tests run for v1.0. They are written at the level th
 | AC-52 | One implementation; bounded memory; kills; foreground/background [v1.1] | IT-18-4, IT-18-9, PT-18-1 | Covered; system FT-P-34 equivalent, NFT-RES-27, NFT-RES-28, NFT-RES-LIM-03 |
 | AC-53 | Limited library: "N photos visible, tap to allow more" [v1.1] | IT-18-2, AT-18-3 | Covered; system FT-P-35 |
 | AC-54 | Plain-HTTP sign-in refused [v1.1] | IT-18-7, ST-18-2 | Covered; system FT-N-26, NFT-SEC-12 |
-| AC-78 sibling | Foreground and background upload one asset once on iOS | IT-18-9 | BLOCKED — the description says "a v1.1 sibling criterion is proposed" but none exists in `acceptance_criteria.md`; the test is written against the shared mutex and key rules and gets an AC id when the sibling is added |
+| AC-81 (iOS sibling of AC-78) | Foreground and background upload one asset once on iOS | IT-18-9 | Covered (criterion added 2026-11-11, AZ-3973) |
 | RESTRICT-33 (iOS keychain check) | Token not synced to iCloud, not in backups | ST-18-1 | Covered; system NFT-SEC-44 (Keychain check) |
 
 ## Blackbox Tests
@@ -75,9 +75,9 @@ Release v1.1: none of these tests run for v1.0. They are written at the level th
 
 ### IT-18-9: One run at a time and idempotent keys on iOS
 - **Summary**: The shared mutex and derived `client_key` give one server file when foreground and a background task overlap.
-- **Traces to**: AC-52
+- **Traces to**: AC-52, AC-81
 - **Input**: start a foreground run while a `BGProcessingTask` is triggered, 100 new assets.
-- **Expected**: the second `run_backup` returns `Skipped(AlreadyRunning)`; 100 server files after both finish; the per-asset `client_key` equals `derive_client_key(device_id, asset_id, file_hash)`. Becomes the iOS leg of AC-78 when the sibling criterion exists (see traceability).
+- **Expected**: the second `run_backup` returns `Skipped(AlreadyRunning)`; 100 server files after both finish; the per-asset `client_key` equals `derive_client_key(device_id, asset_id, file_hash)`. This is the iOS leg of AC-78: AC-81 (added 2026-11-11). Checked against the three layers of 17 section 5: the trigger layer differs (iOS has no unique work; app open, the foreground observer and the two background task kinds can fire together), the in-process mutex holds unchanged (background tasks run inside the app process, so a second `run_backup` is `Skipped(AlreadyRunning)`), and idempotent uploads hold unchanged (`client_key` derived, random batch `commit_id` stored before the first `stage_small`). No second protocol path (AC-52); no other iOS difference is accepted.
 - **Max time / Deps**: 10 min; DEV-IPHONE.
 
 ### IT-18-10: Edited renders and Live Photo pairing

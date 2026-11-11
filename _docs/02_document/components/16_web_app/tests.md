@@ -13,7 +13,7 @@ Component tests complement the system-level scenarios (`02_document/tests/`) and
 | AC-10 | Thumbnail state shown and polled | IT-16-15 | Covered (page half); system FT-P-20 |
 | AC-12 | Share page opens <= 2 s; identical unavailable page; password | IT-16-10, PT-16-5, AT-16-3 | Covered (page half); system FT-N-09, FT-P-36, FT-P-37 |
 | AC-21 | 401 returns the user to sign-in | IT-16-14 | Covered; system NFT-SEC-08 |
-| AC-23 | Setup-token first-run page | IT-16-12 | BLOCKED for page content — the description gives no fields or text for the page; flow covered by system FT-P-64 |
+| AC-23 | Setup-token first-run page | IT-16-12 | Covered (page half) by the "First-run page" paragraph in the 16 description §5; open points listed there; system FT-P-64, FT-P-78, FT-N-20, FT-N-21 |
 | AC-40 | Small files single-request + batch in the browser | IT-16-3 | Covered; system FT-P-04 (client other than browser) |
 | AC-47 | Inline only for the allowlist; attachment otherwise | IT-16-1, IT-16-2 | Covered; system FT-N-11, FT-P-39, NFT-SEC-19 |
 | AC-50 | 50 GiB upload heap <= 150 MB; resume <= 10 MiB; edit restarts | PT-16-1, IT-16-5, IT-16-6 | Covered; Safari = H-MAC; system NFT-PERF-27, NFT-RES-29, FT-N-03 |
@@ -105,11 +105,24 @@ Component tests complement the system-level scenarios (`02_document/tests/`) and
 - **Max time / Deps**: 3 min; server, mock GeoIP, consumer-b.
 
 ### IT-16-12: Setup-token first-run page
-- **Summary**: On an empty database the first-run page leads to the first admin.
+- **Summary**: On an empty database every signed-out route leads to the two-step first-run page, which carries the setup token to the server only in the login-attempt body.
 - **Traces to**: AC-23
-- **Input**: empty-DB baseline; social login with and without the setup token.
-- **Expected**: BLOCKED — the description lists the page but not its fields, route or messages; only the server behaviour (no account without token, token works once) is defined and tested at system level (FT-N-20, FT-N-21, FT-P-64). Needed: the page's route and states so UI assertions can be written.
-- **Max time / Deps**: n/a.
+- **Input**: empty-DB baseline (`setup_required` true), mock-idp with fresh identities, setup token T1 from the API start log (DS-33); network log in Chromium and Firefox. States, in order:
+  1. **Trigger**: open `/login`, an invite link and `/files` signed out.
+  2. **First run**: land on `/setup`; click "Continue" with the token T1 typed in.
+  3. **Token error**: on step 1 enter a wrong token, "Continue", pick a provider, finish the provider step.
+  4. **First run: sign in**: enter T1, "Continue", pick a provider, finish the provider step.
+  5. **Replaced and used tokens**: on a fresh empty DB run `sunnycloud admin setup-token` (T2) and enter T1 (replaced) as in 3; after state 4 succeeds, open `/setup` and `/login` signed out (`setup_required` false).
+  6. **Transport**: network log and storage dump of states 3 and 4; reload on step 2.
+- **Expected**:
+  1. All three redirect to `/setup` (the `error` query parameter is kept); the sign-in header "Sign in to sunnycloud" is not shown.
+  2. Heading "Set up this server" and the text "This server has no accounts yet. The first person to sign in with the setup token becomes its administrator."; steps "1 Setup token" (current) and "2 Sign in as first admin"; field "Setup token" with placeholder "Paste the token"; help text, the command `docker compose exec api sunnycloud admin setup-token` with a "Copy command" button (clipboard holds exactly that command); footer "The token is valid only while the server has no accounts. Later users join by invite."; no provider button yet; "Continue" makes no network request to any API route.
+  3. After the callback (302 to `/login?error=invitation_required`, redirected on to `/setup` with the error kept) the page shows step 1, empty field with `aria-invalid="true"`, the text "This setup token is not valid. A token works once and changes when the server restarts."; 0 accounts, 0 sessions (probe `admin user list`); the text is byte-identical for a wrong, a replaced (state 5) and a reused token; "This account is not invited." is not shown.
+  4. After "Continue": step 1 shows a check mark, step 2 is current, text "Now sign in with the account that will be the administrator.", provider buttons equal the API's list in its order, "Your administrator chose these sign-in options."; after the provider step 1 admin account exists and the browser lands on the return path with a cookie session (JS cannot read it); no `/setup` view follows.
+  5. The T1 attempt ends exactly as in 3 and 0 accounts exist; after the first admin exists `/setup` redirects to the sign-in page and shows no setup text.
+  6. `setup_token` appears in the body of the single `POST /api/v1/auth/login-attempts` (with `provider`, `return_to`, `client_kind` "web") and in no URL, header, cookie, `localStorage`, `sessionStorage`, IndexedDB or console line; a reload on step 2 shows step 1 with an empty field.
+  Not asserted until the owner settles the open points in the description: route name beyond `/setup`, `/s/<token>` redirect, trimming and empty field, texts for other error reasons, text when the providers call fails, a back control.
+- **Max time / Deps**: 5 min; server, mock-idp, empty-DB baseline (group `X`); system FT-P-64, FT-P-78, FT-N-20, FT-N-21.
 
 ### IT-16-13: Cookie and CSRF behaviour of the page
 - **Summary**: The page never reads the cookie or adds a token header; the browser supplies the origin headers.

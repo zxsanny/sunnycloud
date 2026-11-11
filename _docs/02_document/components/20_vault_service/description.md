@@ -27,13 +27,13 @@
 | `TreeReader` | 02_tree | the vault root node (must be a live folder of the account) |
 | `AuditWriter` (helper 04) | helper | `vault_failure` events |
 
-Vault file commits go through the normal 03/02 commit path with the wrapped key in `client_meta`. How 02/03 learn that a node is under a vault root (to set `CommitContext.vault` and to apply `max_vault_file_bytes`) is a data-model question: membership must be answerable from the node or its ancestry without calling 20 (see Risks).
+Vault file commits go through the normal 03/02 commit path with the wrapped key in `client_meta`. How 02/03 learn that a node is under a vault root (decided 2026-11-11, AZ-3913; membership, edge cases and the name form are in section 10): every node carries a nullable `nodes.vault_id`, copied from its parent when the node is created and never changed afterwards, so "is this node in a vault" is answered from the node row alone, with no ancestry walk and no call to 20.
 
 ## 3. Internal Interfaces (proposed)
 
 | Operation | Input | Output | Errors |
 |---|---|---|---|
-| `create_vault` | account, `header: bytes`, root node | `VaultId`, `ETag` | `VaultExists` (if one per account is decided), `HeaderTooLarge`, `NotFound` |
+| `create_vault` | account, `header: bytes`, root node | `VaultId`, `ETag` | `VaultExists` (one vault per account, decided 2026-11-11; also refused when the root folder is not empty), `HeaderTooLarge`, `NotFound` |
 | `get_header` | account, vault id | `header: bytes`, `ETag` | `NotFound` |
 | `replace_header` | account, vault id, `header: bytes`, `if_match: ETag` | new `ETag` | `NotFound`, `HeaderTooLarge`, `PreconditionFailed` (the stored header changed since the client read it) |
 | `report_unlock_failure` | account, vault id | `()` | none (best-effort; writes audit `vault_failure`, ids only) |
@@ -53,7 +53,7 @@ Paths are proposals; REST naming rules of the project apply. The wrapped file ke
 **Owned**: `vaults` (`id`, `account_id`, `root_node_id` UNIQUE composite FK to `nodes`, `header` bytea, `created_at`, `updated_at`). The former `vault_files` table (primary key per node) is dropped: a per-node row would hold one key for all revisions, while each revision has its own file key. The table carries `account_id` and is covered by the same row-level policy as the other tenant tables. Queries are primary-key lookups; low volume. No cache. Vault names are plaintext or ciphertext per the open data-model item A6.
 
 ## 6. Configuration keys
-`max_vault_file_bytes` (100 MiB), `max_vault_header_bytes` (names as in helper 01). Durations: none.
+`max_vault_file_bytes` (100 MiB), `max_vault_header_bytes` (default 1024 bytes; names as in helper 01). Durations: none. The default is the proposed fixed header of 229 bytes (`19_vault_core/vault_format.md`: 53 bytes of authenticated fields, two wrapped keys of 72 bytes, a 32-byte key commitment) plus room for an encrypted vault name field (24-byte nonce, at most 255 bytes of name, 16-byte tag) and a margin of about 4x the fixed part; 1024 and 1025 bytes are the max and max + 1 cases of IT-20-1. If E-29/c01 freezes a longer header, this default is raised to the next power of two above twice the frozen length.
 
 ## 7. Security notes
 The server holds ciphertext, an authenticated opaque header and wrapped keys only. A stolen database or blob volume yields nothing decryptable without the passphrase or recovery key, but it does allow unlimited offline passphrase guessing against the header (19 section 3 states the residual risk; the product text repeats it, NFT-SEC-43). Every query is scoped by `account_id`; vault routes are in the AC-59 two-account matrix. Failure reports carry ids only and never the passphrase or attempt count text. Metadata (sizes, counts, tree shape, timing) is visible to the server, and the server also chooses the tree shape: it can move, hide or roll back vault files (19 risk 3).
@@ -66,7 +66,8 @@ The server holds ciphertext, an authenticated opaque header and wrapped keys onl
 Implement after the review plan is agreed and `19_vault_core`'s byte layout is fixed, and after 02, 03 and 06 ports exist. Parallel with 16 vault page. Blocks FT-P-44..47.
 
 ## 10. Risks and open points
-1. Name encryption and one-versus-many vaults per account (data model A6). Owner decision pending.
-2. **Data-model changes this spec needs** (for the data-model owner): drop `vault_files`; `revisions.client_meta` carries the wrapped file key and file header for vault files; `vaults` as in section 5; a way for 02/03 to tell that a node lies under a vault root.
+1. Decided 2026-11-11 (AZ-3913, data model A6; owner for the two answers, agent proposal for the rest, the owner may overturn): **one vault per account** (`vaults.account_id` UNIQUE; a second create is `VaultExists`; the vault root folder must be new and empty, so no existing content has to be backfilled); **names are ciphertext**: the vault's own name is a field of the opaque header (an encrypted name: nonce, name, tag) and every file and folder name under a vault is encrypted by the client, so the server stores and compares only ciphertext. Because the server folds names with `name_key` (NFC, case folding), E-29 must encode an encrypted name in a case-stable, injective form (for example lower-case base32) so two different names never collide.
+2. **Data-model changes this spec needs** (for the data-model owner): drop `vault_files`; `revisions.client_meta` carries the wrapped file key and file header for vault files; `vaults` as in section 5 with `account_id` UNIQUE; nullable `nodes.vault_id` (FK to `vaults`), set when the vault root folder is made (root and every descendant created later copy it from their parent) . Follow-up tasks to add in their owning epics: data model and migration (E-30/c03 with the data-model owner), 02 (`create_folder` and `publish` copy `vault_id` from the parent, move refusal below, E-13), 03 (`start_upload` applies `max_vault_file_bytes` when the parent's `vault_id` is set, E-14), 06 (share create refuses a node whose `vault_id` is set, E-16), E-30/c07 (membership wiring).
 3. Vault files get no media jobs: 08's planner reads the `vault` flag of `CommitContext` (set by 02/03), not a dependency on 20.
-4. 06 must learn "is vault file" to refuse shares; it should use the same membership answer as 02/03.
+4. 06 learns "is vault file" from the same `nodes.vault_id`: a node with `vault_id` set is refused as a share target (422 `target_not_shareable`).
+5. Membership edge cases (decided 2026-11-11, agent proposal): (a) a node at any depth is a member because `vault_id` is copied from the parent at creation, never walked; (b) **a move across the vault boundary is refused** (into a vault, out of a vault, or from one vault to another) with 409 `vault_boundary`: the server cannot encrypt or decrypt, so a plaintext file would sit inside a vault or a ciphertext file outside it; the client copies instead (download, encrypt, upload, delete); (c) a move between folders of the same vault is allowed and keeps `vault_id`; (d) because of (b), a plaintext file that already has a share link can never enter a vault: it cannot be moved in, and the vault root must be empty at creation; (e) deleting the vault removes its root and every node with its `vault_id`.

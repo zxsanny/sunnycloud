@@ -56,7 +56,7 @@ The desktop daemon compiles in the update source (GitHub Releases) and two Ed255
 ### Neutral / Open
 
 - Open: Windows signing route and timing (SignPath Foundation proposed; alternatives are a purchased OV or EV certificate, Azure Trusted Signing, or unsigned).
-- Open: the signing tool for the offline step (a small program or script in the repository that reads the manifest, signs it with the key held offline, and writes the detached signature).
+- Decided 2026-11-11 (AZ-3887): the offline signing tool, see "Offline signing tool" in Notes.
 - Does not change image pinning for caddy and postgres (digests, RESTRICT-30) or the Android signing path (Play App Signing, upload key as an Environment secret).
 
 ## Evidence
@@ -71,7 +71,7 @@ The desktop daemon compiles in the update source (GitHub Releases) and two Ed255
 
 ## Notes
 
-The layout below is a **proposed layout, confirmed with the ADR set**: the owner said the layout is an ADR, and this section is where it is recorded. It is the minimum that satisfies S4-3 and the daemon's check order. The manifest is UTF-8 JSON, `update-manifest.json`, with a detached Ed25519 signature file `update-manifest.json.sig` over the exact manifest bytes (no canonicalisation step, so the signer and verifier see the same bytes):
+The layout below is the **confirmed layout (owner, 2026-11-11, AZ-3887)**; it was first proposed with the ADR set: the owner said the layout is an ADR, and this section is where it is recorded. It is the minimum that satisfies S4-3 and the daemon's check order. The manifest is UTF-8 JSON, `update-manifest.json`, with a detached Ed25519 signature file `update-manifest.json.sig` over the exact manifest bytes (no canonicalisation step, so the signer and verifier see the same bytes):
 
 ```
 { "format": 1,
@@ -87,3 +87,50 @@ The layout below is a **proposed layout, confirmed with the ADR set**: the owner
 `asset` is a file name resolved against the compiled-in GitHub Releases source of the matching tag, never a full URL, so the manifest cannot redirect the download. The `key` field is a hint; the verifier may try both pinned keys. The daemon stores the highest accepted `serial` in its local `meta`. `format` lets a later layout change be refused by old daemons instead of misread. `size` allows a truncation check before hashing.
 
 Re-evaluate Windows signing when the AGPL `LICENSE` file exists (SignPath requires an OSI licence). Revisit the decoder tag policy if the owner prefers digest pinning at the price of a manual operator step for weekly rebuilds (the "decoder image tag versus digest pinning" owner choice in `risk_mitigations.md` § Summary).
+
+### Where each updater check reads its input
+
+| Check (order in the daemon) | Input |
+|---|---|
+| Signature | `update-manifest.json.sig` field `sig`, over the exact manifest bytes, against either pinned key (`key` is only a hint) |
+| Layout | `format` (an unknown value is refused, never misread) |
+| Expiry | `expires` |
+| Replay | `serial`, compared with the highest accepted serial stored in the daemon's local `meta` |
+| Version | `version`, strictly greater than the installed one |
+| Platform entry | `platforms.<os>-<arch>`; no entry for this machine means no update |
+| Source | `asset` is a file name resolved against the compiled-in GitHub Releases source of the matching tag, never a URL |
+| Size, then digest | `size` before hashing (truncation), then `sha256` of the downloaded payload |
+
+### Offline signing tool (decided 2026-11-11, AZ-3887; agent decision, the owner may overturn)
+
+- **Form and place**: a second small binary (`update-sign`) of the updater's crate in the repository, so it shares the manifest type with the verifier; built by E-24/c18 with the updater. Not a script, so the bytes that are signed are the bytes the verifier reads.
+- **Inputs**: `--manifest <file>`, `--key <file>` (a regular file holding the 32-byte Ed25519 seed, readable by its owner only), `--slot active|recovery`.
+- **Output**: `<manifest>.sig`, the JSON `{"key": "<slot>", "sig": "<base64>"}`, written next to the manifest. Before writing, the tool verifies the signature against the pinned public key of that slot, so a wrong key file is caught at signing time.
+- **Key handling**: the private key is read only from the file the operator provides at signing time. The tool has no option and no code path that reads key material from an environment variable, an argument or standard input, refuses a key file that other users can read, refuses to run when `CI` or `GITHUB_ACTIONS` is set (a guard against a signing run on CI, not a security boundary: the workflow holds no updater key at all), and never prints the key.
+- **Who builds it**: E-24/c18 (shares the manifest type); E-31/c14 uses it with the test keys to make the fixtures.
+
+### Release runbook step
+
+1. The release workflow uploads the draft GitHub Release and an unsigned `update-manifest.json` (proposed `expires`: the release date plus 90 days; the owner may edit the manifest before signing).
+2. The owner approves the `release` environment, downloads the manifest to the offline machine holding the active key.
+3. The owner runs `update-sign --manifest update-manifest.json --key <active key file> --slot active`.
+4. The owner attaches `update-manifest.json.sig` to the draft and publishes. The recovery key signs only a manifest that rotates trust, together with a new build that pins the new pair.
+
+### Prototype evidence (throwaway, test key pair only, no real updater key)
+
+OpenSSL 3.5.5 Ed25519 raw signing of `update-manifest.json` exactly as written (no canonicalisation step): the exact bytes verify; flipping one byte of the manifest fails; flipping one byte of the signature fails; a whitespace-only change that leaves the JSON meaning intact also fails, which is the bytes-as-signed rule.
+
+### DS-31 fixtures: how the ten cases are made (E-31/c14, test keys A active, R recovery, B unpinned)
+
+| # | Case | Made by |
+|---|---|---|
+| 1 | good, active key | manifest with `version` above the installed one, `serial` above the last accepted, `expires` in the future; signed with A (`"key": "active"`) |
+| 2 | good, recovery key | the same manifest signed with R (`"key": "recovery"`) |
+| 3 | unsigned | the case 1 manifest published with no `.sig` file |
+| 4 | unpinned key | the case 1 manifest signed with B |
+| 5 | expired | the case 1 manifest with `expires` in the past, signed with A |
+| 6 | replayed serial | case 1 after it was accepted: a manifest with the same `serial` and a higher `version`, signed with A |
+| 7 | same version | `version` equal to the installed one, higher `serial`, signed with A |
+| 8 | lower version | `version` below the installed one, higher `serial`, signed with A |
+| 9 | altered payload | the case 1 manifest and signature, with one byte of the asset changed after signing (`sha256` mismatch) |
+| 10 | truncated payload | the case 1 manifest and signature, with the asset cut short (`size` mismatch, caught before hashing) |

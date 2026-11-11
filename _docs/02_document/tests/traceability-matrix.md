@@ -85,6 +85,7 @@ Generated from the coverage indexes of the five scenario files; `UNCOVERED` rows
 | AC-78 | v1.0 Android | When the foreground app and the background worker upload the same asset at once, exactly one server file is created. | FT-P-76 | Covered |
 | AC-79 | v1.0 | The internal worker endpoints reject user sessions and device tokens (403) and are not reachable through… | NFT-SEC-50 | Covered |
 | AC-80 | v1.0 | The scrub never reports a blob that is being uploaded or removed by garbage collection as corrupt. | NFT-RES-39 | Covered |
+| AC-81 | v1.1 iOS | When the foreground app and a background task upload the same asset at once, exactly one server file is created. | IT-18-9 | Covered (component test on DEV-IPHONE) |
 
 ## Restrictions Coverage
 
@@ -153,6 +154,7 @@ Owner = owning component per `interaction-risks.md` (section "Component-owned in
 | AC-78 | v1.0 Android | 17 android_app `mobile_backup` (13 sync_core) | FT-P-76 |
 | AC-79 | v1.0 | 08 media_jobs, worker authentication (11 http_api, listener separation and absent public routes) | NFT-SEC-50 |
 | AC-80 | v1.0 | 04 blobstore (12 operator_cli: `scrub run`) | NFT-RES-39 |
+| AC-81 | v1.1 iOS | 18 ios_app (`mobile_backup` shared with 17) | IT-18-9 |
 
 Corrections to the earlier pending table: AC-74 is owned by 07a (not 02), and AC-79 by 08 with 11 as contributor (not 01 identity).
 

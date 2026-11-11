@@ -98,6 +98,19 @@ What must be backed up, in this order of importance:
 
 **Scrub (AC-24)**: runs as a janitor inside `sunnycloud serve` on the configured interval, throttled so transfers keep at least 90% of their baseline; each run leaves a `scrub_summary` audit event and metrics (no table). Any mismatch raises an alert; the repair is: restore that blob from the blob backup (same ID, same bytes), run `sunnycloud scrub run`, and file a report.
 
+## Scratch sizing and worker secret rotation (E-20)
+
+**Scratch sizing** (arithmetic in `components/09_worker_supervisor/description.md` section 6):
+- `scratch_interactive` is a numeric tmpfs of 512 MiB (`size=536870912`): 256 MiB largest photo input + 2 x 32 MiB outputs = 320 MiB, plus 192 MiB margin. It counts against the 2 GiB `decoder-interactive` limit, so never raise it above about 1 GiB; raising `worker_max_input_photo` needs the same sum redone.
+- `scratch_general` is the dedicated mount or XFS project quota at `${SCRATCH_PATH}`: 24 GiB = 2 x `worker_max_input_video` (10 GiB, input plus a remux/transcode output no larger than the input) + 4 GiB margin, one mount per supervisor/decoder pair. If an operator lowers `worker_max_input_video`, the mount may shrink by 2 GiB per GiB removed; if the mount is smaller than the sum, the supervisor refuses big inputs early (`input_too_large`, permanent) and the original is still served.
+- **Gate S5 revisit**: the 24 GiB figure is a bound, not a measurement. At S5, measure peak scratch use for the largest real clip and for a remux of a 10 GiB file, then confirm or lower it; the value stays 24 GiB until S5 reports.
+
+**Worker secret rotation** (no window in which the worker is refused; the API accepts `worker_api_token` and `worker_api_token_next` together, 08 `WorkerAuthenticator`):
+1. Create the new secret (`umask 077; openssl rand -hex 24 > secrets/worker_api_token_next`), declare it in `compose.yml` and mount it into the **api** only, then `docker compose up -d api`. The API now accepts the old and the new value; the running worker is unaffected (its calls during the API restart end as `Transient` and retry).
+2. Point the **worker's** `worker_api_token` secret (target path `/run/secrets/worker_api_token`) at the new file, keeping the owner uid 10002 and mode 0400.
+3. Restart the worker: `docker compose up -d worker` (secrets are read at start; running jobs get `worker_shutdown_grace` and are re-queued by lease expiry otherwise). Check `docker compose logs worker` shows no 403, `/readyz` on `:9090` is 200 and `doctor` shows a fresh worker status. A 403 makes the worker stop claiming until restarted (AC-79), so a wrong value shows up at once.
+4. Finish: move the new value into `secrets/worker_api_token`, remove `worker_api_token_next` and its mounts, restore the worker's source, then `docker compose up -d api worker`. With more than one worker set, finish steps 2 and 3 for every set before step 4.
+
 ## Rollback
 
 Rollback after a committed migration is a database restore, not `migrate revert` (`down` files exist for CI and recovery only). Rollback means returning to the previous images, and to the previous database if a migration was committed.

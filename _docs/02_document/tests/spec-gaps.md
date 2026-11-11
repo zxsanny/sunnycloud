@@ -65,8 +65,8 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | **06_sharing** | | | | |
 | **08_media_jobs** | | | | |
 | **09_worker_supervisor** | | | | |
-| G-09-1 | Supervisor slot-loop type is not named; tests use boundaries only | IT-09-9, IT-09-11 to IT-09-15, PT-09-1 | No | implement |
-| G-09-4 | Observable effect of `OffsetClock` inside the supervisor not stated (only that the offset is shared) | IT-09-18 | No | decompose |
+| G-09-1 | RESOLVED 2026-11-11 (AZ-3867, agent decision, owner may overturn): the loop type is the implementer's choice; tests rely only on the slot boundaries in 09 section 3 item 2 (one job per slot, lane mask, own heartbeat, own socket and scratch, observable only through API, socket, scratch and ops port) | IT-09-9, IT-09-11 to IT-09-15, PT-09-1 | No | resolved |
+| G-09-4 | RESOLVED 2026-11-11 (AZ-3867, agent decision, owner may overturn): only `image_age_days` in the status report reads the offset clock, as floor(days) from the decoder `build_timestamp`; durations stay monotonic and log timestamps stay on system time (09 section 2); IT-09-18 passes when `image_age_days` shifts by exactly the advanced whole days and no other supervisor timing changes | IT-09-18 | No | resolved |
 | **10_decoder** | | | | |
 | G-10-1 | No config key or build target to substitute `vipsthumbnail`/`ffmpeg` in a test image (tests assume a `test-stubs` variant) | AT-10-2 and stub-based ITs | No | implement |
 | G-10-3 | DS-05/06 are generated as 10-minute loops; the 30 s base files must be exposed in the manifest | IT-10-7, IT-10-8, IT-10-10, IT-10-13, AT-10-2 | No | implement |
@@ -74,7 +74,7 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | G-10-6 | BLOCKED: poster-frame HDR (HLG) tolerance is an open owner item | IT-10-7 (HLG part), IT-10-10 | Yes | owner |
 | **11_http_api** | | | | |
 | **12_operator_cli** | | | | |
-| G-12-1 | BLOCKED: no test-only migration source for failing, killed and irreversible migrations (release binary embeds its migrations) | IT-12-11; NFT-RES-13, NFT-RES-14 | No | decompose |
+| G-12-1 | RESOLVED 2026-11-11 (AZ-3787, agent decision, owner may overturn): feature `test-migrations` of the test image (`FEATURES=test-clock,test-migrations`) reads `SUNNYCLOUD_TEST_MIGRATIONS_DIR` and merges that directory with the embedded migrations in `migrate` and `serve`'s `check_version`; a release build refuses the variable (exit 3), asserted in CI on the pushed digest; IT-12-11 runnable (12 description section 4) | IT-12-11; NFT-RES-13, NFT-RES-14 | No | resolved |
 | G-12-3 | RESOLVED 2026-11-11 (AZ-3681, owner): reset of the sole active admin is allowed; no `LastAdmin` applies, no refusal error | IT-12-2, AT-12-2 | Yes (answered) | resolved |
 | **13_sync_core** | | | | |
 | IT-13-16 (B) | RESOLVED 2026-11-11 (AZ-3732): 03 answers `NothingToSend{revision}` for a live file at (parent, name) with the same current hash, matched by `name_key` (`contracts/03_transfer/upload_service.md`); the test belongs to E-23 (sync_core, component 13) | IT-13-16, IT-13-14 (AC-46) | No | resolved |
@@ -83,22 +83,22 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | **16_web_app** | | | | |
 | IT-16-7 | `TooManyFiles` named but the limit that raises it is not stated | IT-16-7 | No | decompose |
 | IT-16-8 | Firefox/Safari download verified up to 2 GiB: mechanism fixed by spike S12; no expected behaviour writable yet | IT-16-8, AC-7 (FT-P-68, NFT-SEC-21) | No | implement |
-| IT-16-12 | Setup-token first-run page: route, fields and messages not specified (AC-23); only server behaviour is tested | IT-16-12, AC-23 | No | decompose |
+| IT-16-12 | PARTLY RESOLVED 2026-11-11 (AZ-3933, agent draft from the mockup, owner may overturn): route `/setup`, trigger (`setup_required` from `GET /auth/providers`), fields, two steps, texts, token-in-body-only transport and the late token check (after the provider round trip, `InvitationRequired`) are written in 16 description section 5 "First-run page", and IT-16-12 is rewritten with input and expected UI per state (no BLOCKED). Still open (listed in that paragraph): whether the route name `/setup` is accepted; whether `/s/<token>` also redirects; trimming or format check and the empty-field behaviour; texts for other `/login?error=` reasons while `setup_required` is true; text when the providers call fails; a back control from step 2; an earlier token check is not offered by 01 or 11 | IT-16-12, AC-23 | Yes (open parts) | owner |
 | G-AS-1 | Web admin "Delete account…" for another user: 16 §5 lists user deletion, but 07 exposes only `PATCH {role, state}` for another account (no delete operation); add the operation or drop the menu item (`ui_mockups/DESIGN.md` §9 #1) | web admin task; FT-N-46 unaffected | Yes | owner |
 | G-AS-2 | Desktop bandwidth limit has no unit (15 §5; tests use "5000"); the mockup shows KB/s (`ui_mockups/DESIGN.md` §9 #7) | FT-P-82 step 3, IT-15 settings tests | Yes | owner |
 | **17_android_app** | | | | |
 | IT-17-17 | Private-CA leg: description says user-added CAs work (`rustls-platform-verifier`), `environment.md` says release builds ignore user-installed CAs; intended behaviour undecided | IT-17-17 | Resolved | Step 5 owner decision |
 | **18_ios_app** | | | | |
-| IT-18-9 | AC-78 sibling for iOS (foreground and background upload one asset once): the v1.1 criterion does not exist | IT-18-9 | Yes | owner |
+| IT-18-9 | RESOLVED 2026-11-11 (AZ-3973, owner): AC-81 [v1.1 iOS] added to `acceptance_criteria.md` ("When the foreground app and a background task upload the same asset at once, exactly one server file is created"); the shared mutex and key rules hold on iOS unchanged, the only difference being the trigger layer (no unique work); IT-18-9 traces to AC-81 and the R11 row of `interaction-risks.md` names E-28/p01 as owner of the iOS leg | IT-18-9 | Yes (answered) | resolved |
 | IT-18-10 | Live Photo expected stored form (one asset with linked still and video) has no confirmed API/checkpoint columns; FT-P-33 deferred to v1.1 | IT-18-10, FT-P-33 | No | implement |
 | **19_vault_core** | | | | |
 | IT-19-5 | Memory ceilings for WASM and mobile Argon2 left to the S7 benchmark | IT-19-5 | No | implement |
 | IT-19-7 | Envelope length vs the `client_meta` CHECK bound is not stated in `data_model.md` | IT-19-7 | No | decompose |
 | IT-19-11 | Parent-folder swap (AC-60, restrictions): the spec binds vault and file but not the parent; either AC wording changes or the parent joins the AAD | IT-19-11, AC-60 | Resolved | Step 5 owner decision |
 | **20_vault_service** | | | | |
-| Vault membership | How 02, 03, 06 learn that a node lies under a vault root (flag, size limit, share refusal); moves in/out of a vault and an already-shared plaintext file undefined | IT-20-4, IT-20-5, AT-20-1 | Yes | owner |
-| Header cap | `max_vault_header_bytes` has no default value | IT-20-1, AT-20-1 | No | decompose |
-| Vaults per account | One or many vaults per account undecided (data model A6) | IT-20-7 | Yes | owner |
+| Vault membership | RESOLVED 2026-11-11 (AZ-3913, agent proposal, owner may overturn): nullable `nodes.vault_id` copied from the parent at node creation; 02 sets `CommitContext.vault`, 03 applies `max_vault_file_bytes`, 06 refuses shares from it; a move across the vault boundary is 409 `vault_boundary`, a move inside one vault is allowed; the vault root must be empty at creation, so a shared plaintext file can never enter a vault (`20_vault_service` section 10). Follow-up tasks are named there | IT-20-4, IT-20-5, AT-20-1 | Yes (proposal) | resolved |
+| Header cap | RESOLVED 2026-11-11 (AZ-3913): `max_vault_header_bytes` defaults to 1024 (proposed fixed header 229 bytes plus an encrypted-name field and a margin); IT-20-1 uses 1024 and 1025 | IT-20-1, AT-20-1 | No | resolved |
+| Vaults per account | RESOLVED 2026-11-11 (AZ-3913, owner): one vault per account (`VaultExists` stays in the port); the vault name is ciphertext (owner, data model A6) | IT-20-7 | Yes (answered) | resolved |
 | **system/blackbox** | | | | |
 | G-1 | RESOLVED 2026-11-11 (AZ-3705, owner): one name, stored as sent. `name_key` is NFC, Unicode full case folding, NFC (as built in `sc_names`), so an NFC and an NFD spelling of one name are the same key and the second is a `NameConflict`; the stored name keeps the exact spelling of the first writer; `name_key_version` stays the migration path if the fold ever changes | FT-P-15, AC-42 | Yes (answered) | resolved |
 | G-2 | Exact error text/substring for out-of-range retention, no provider configured, upgrade must be re-run | FT-P-17, FT-N-25, FT-N-39 | No | decompose |
