@@ -136,5 +136,5 @@ Then the first ends in `SourceChanged` without a commit request, and the second 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | IT-13-16 (B) new-file recovery depends on E-14/c02 and E-23/c01 | E-14 / E-23 | open | Low |
-| G-03-3: commit answers for stale-base and taken-name commits and whether `EditedSince` occurs on commit (E-14/c01) decide AC-8's exact fields | Owner (via E-14/c01) | open | Medium |
-| G-03-1: worst-case re-send 16 MiB vs AC-3's 10 MiB; AC-3 here checks the lane bound, the MiB bound is asserted in AT-13-1 per E-23/c03 | Owner (via E-14/c01, E-23/c03) | open | Medium |
+| G-03-3: commit answers for stale-base and taken-name commits and whether `EditedSince` occurs on commit (E-14/c01) decide AC-8's exact fields | Owner (via E-14/c01) | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |
+| G-03-1: worst-case re-send 16 MiB vs AC-3's 10 MiB; AC-3 here checks the lane bound, the MiB bound is asserted in AT-13-1 per E-23/c03 | Owner (via E-14/c01, E-23/c03) | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |

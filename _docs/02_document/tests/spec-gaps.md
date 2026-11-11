@@ -57,10 +57,10 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | **01_identity** | | | | |
 | IT-01-17 note | RESOLVED 2026-11-11 (AZ-3681): `register_hooks` is an inherent set-once method of the identity service, called only by 12 before the listeners accept requests; unset means account creation fails closed (01 description, AccountLifecycleHook) | IT-01-17 | No | resolved |
 | **03_transfer** | | | | |
-| G-03-1 | Worst case after a drop is 16 MiB (4 lanes x 2 MiB in flight + up to 8 MiB uncheckpointed) against AC-3 (re-send <= 10 MiB); either lane/checkpoint limits or the AC change | IT-03-4, PT-03-5, AT-03-1; AC-3 (FT-P-01, NFT-PERF-05, NFT-RES-01) | Yes | owner |
-| G-03-3 | Stale-base commit response: tests assert `Committed{conflict_copy}` and no `EditedSince` (02 `ConflictCopied`); 03's wire response for the outcome is not spelled out (gap text only referenced in tests.md) | IT-03-7 | No | decompose |
+| G-03-1 | RESOLVED 2026-11-11 (AZ-3731, owner): AC-3 now reads "at most 16 MiB" (4 lanes x 2 MiB in flight + one 8 MiB checkpoint interval); the limits stay (`max_lanes` 4, `checkpoint_bytes` 8 MiB, `checkpoint_interval` 1 s), so PT-03-1 throughput and the checkpoint WAL cost are unchanged. Options weighed (figures are estimates from the design, not measurements): checkpoint every block = worst case 10 MiB, 4x checkpoint writes (about +40% WAL for a 50 GiB file at line rate); 3 lanes + 4 MiB checkpoint = 10 MiB, 2x writes (+20%), send window 6 MiB (about 60 MB/s at 100 ms RTT vs 80); 2 lanes + 4 MiB = 8 MiB, window 4 MiB (about 40 MB/s at 100 ms RTT, misses AC-2 on WAN). E-14/c06 asserts 16 MiB. Still to change to 16 MiB where the figure is a derived threshold: AC-50 and its web rows (decision needed), E-23, E-26, E-24, 13, 16 and 03-adjacent test text, FT-P-01, NFT-PERF-05, NFT-RES-01, NFT-RES-29, results_report rows 1 and 50, ADR-004, system-flows | IT-03-4, PT-03-5, AT-03-1; AC-3 (FT-P-01, NFT-PERF-05, NFT-RES-01) | Yes (answered) | resolved |
+| G-03-3 | RESOLVED 2026-11-11 (AZ-3731, owner): the commit answer per `PublishOutcome` and the removal of `EditedSince` from commit are written in `contracts/03_transfer/commit_service.md` (frozen): stale base = `node_id` is the file with the new content and `conflict_copy` the sibling holding the older content; name taken = `node_id` is the new file and `conflict_copy` repeats its own id; commit never answers edited-since. E-14/c08 removes the `EditedSince` variants from `CommitError` and `EntryError` in `contracts` | IT-03-7 | No | resolved |
 | **04_blobstore** | | | | |
-| ST-04-8 | Block rewrite with different bytes (nonce reuse): 04 states no behaviour (reject, idempotent-only or allowed); BLOCKED until decided | ST-04-8 (03 ST-03-2 covers caller side) | Yes | owner |
+| ST-04-8 | RESOLVED 2026-11-11 (AZ-3721, owner): a second `write_block` of one index accepts identical bytes only (compare after decrypt) and refuses different bytes with `BlockConflict`; procedure and pass/fail criteria are in 04 `tests.md`; E-10/c06 builds the rule and the `BlockConflict` variant, E-10/c14 the test; 03 maps the error to its own `BlockConflict` (E-14 owner informed, no other change to 03) | ST-04-8 (03 ST-03-2 covers caller side) | Yes (answered) | resolved |
 | **05_sync_feed** | | | | |
 | **06_sharing** | | | | |
 | **08_media_jobs** | | | | |
@@ -77,9 +77,9 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | G-12-1 | BLOCKED: no test-only migration source for failing, killed and irreversible migrations (release binary embeds its migrations) | IT-12-11; NFT-RES-13, NFT-RES-14 | No | decompose |
 | G-12-3 | RESOLVED 2026-11-11 (AZ-3681, owner): reset of the sole active admin is allowed; no `LastAdmin` applies, no refusal error | IT-12-2, AT-12-2 | Yes (answered) | resolved |
 | **13_sync_core** | | | | |
-| IT-13-16 (B) | BLOCKED: `NothingToSend` for a NEW file after a lost commit response depends on 03 returning it for `(parent, name, hash)` (13 risk 2, confirm with 03); otherwise a conflict copy | IT-13-16, IT-13-14 (AC-46) | No | decompose |
+| IT-13-16 (B) | RESOLVED 2026-11-11 (AZ-3732): 03 answers `NothingToSend{revision}` for a live file at (parent, name) with the same current hash, matched by `name_key` (`contracts/03_transfer/upload_service.md`); the test belongs to E-23 (sync_core, component 13) | IT-13-16, IT-13-14 (AC-46) | No | resolved |
 | **14_desktop_daemon** | | | | |
-| ST-14-5 | BLOCKED: Windows reserved-name marker (`%5F`) and ` (2)` suffix are open owner items (canonical-names.md) | ST-14-5, AC-37 (FT-N-19, NFT-SEC-31) | Yes | owner |
+| ST-14-5 | Windows reserved-name marker (`%5F`) and ` (2)` suffix are still open owner items, but they do not block the server: checked 2026-11-11 (AZ-3705) that both are client-side (what a client does with a name its operating system cannot hold, E-05 epic); the server accepts every name except the short reject list of IT-02-1 (`CON`, `a:b`, a `%` all accepted), `name_key` is a pure function of the name, and the server's own conflict-copy suffix is separate. No server rule changes against E-13/c04. ST-14-5 stays BLOCKED on the client wording only | ST-14-5, AC-37 (FT-N-19, NFT-SEC-31) | Yes | owner (client wording) |
 | **16_web_app** | | | | |
 | IT-16-7 | `TooManyFiles` named but the limit that raises it is not stated | IT-16-7 | No | decompose |
 | IT-16-8 | Firefox/Safari download verified up to 2 GiB: mechanism fixed by spike S12; no expected behaviour writable yet | IT-16-8, AC-7 (FT-P-68, NFT-SEC-21) | No | implement |
@@ -100,7 +100,7 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | Header cap | `max_vault_header_bytes` has no default value | IT-20-1, AT-20-1 | No | decompose |
 | Vaults per account | One or many vaults per account undecided (data model A6) | IT-20-7 | Yes | owner |
 | **system/blackbox** | | | | |
-| G-1 | NFC vs NFD names: same or different name; stored normalisation form (the only still-blocked scenario part) | FT-P-15, AC-42 | Yes | owner |
+| G-1 | RESOLVED 2026-11-11 (AZ-3705, owner): one name, stored as sent. `name_key` is NFC, Unicode full case folding, NFC (as built in `sc_names`), so an NFC and an NFD spelling of one name are the same key and the second is a `NameConflict`; the stored name keeps the exact spelling of the first writer; `name_key_version` stays the migration path if the fold ever changes | FT-P-15, AC-42 | Yes (answered) | resolved |
 | G-2 | Exact error text/substring for out-of-range retention, no provider configured, upgrade must be re-run | FT-P-17, FT-N-25, FT-N-39 | No | decompose |
 | G-5 | Audio-only clips in clip-mixed-100: transcode to AAC m4a, pass through, or no derivative | FT-P-27, AC-45 | Yes | owner |
 | G-7 | Time bound for iOS foreground catch-up of a 100-photo backlog | FT-P-31, AC-9 | Yes | owner |

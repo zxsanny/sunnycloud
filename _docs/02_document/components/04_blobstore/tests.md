@@ -301,8 +301,8 @@ row inserted by a racing writer after listing but before delete: file kept (re-c
 **Summary**: 04 must not seal two different plaintexts with one key and nonce.
 **Traces to**: AC-43
 **Attack vector**: caller calls `write_block(handle, i, bytes_A)` then `write_block(handle, i, bytes_B)`.
-**Test procedure**: BLOCKED — the description leaves the rewrite rule to 03 ("security-review item") and states no 04-level behaviour (reject, idempotent-only, or allowed). Test is written once the owner decides; until then 03's ST-03-2 covers the caller side.
-**Expected behavior**: pending decision. **Pass criteria**: pending. **Fail criteria**: two plaintexts at one offset readable as valid.
+**Test procedure**: write block `i` with bytes A and wait for the token; (1) write block `i` again with the same bytes A: it succeeds and the file on disk is byte-identical to before; (2) write block `i` with bytes B (same length, different content): it fails with `BlockConflict` and the file on disk is still byte-identical to before; (3) read the blob: block `i` returns A; (4) repeat (2) with B differing in one bit, in the first byte and in the last byte of the block; (5) a concurrent pair of writers for index `i` with A and B: exactly one content wins and every read returns it; (6) after a simulated crash between the write and the ack (reopen with `open_for_write`) the same bytes A are accepted again.
+**Expected behavior**: an identical second write is accepted and changes nothing; a different second write is refused with `BlockConflict` before any sealing or writing. **Pass criteria**: steps (1) to (6) give exactly the results above; the on-disk bytes of the block never change after its first successful write; no read ever returns two different plaintexts for one index. **Fail criteria**: two plaintexts at one offset readable as valid, a different second write accepted, an identical second write refused, or any byte of the file changed by a refused write.
 
 ## Acceptance Tests
 

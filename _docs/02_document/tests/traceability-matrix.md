@@ -8,7 +8,7 @@ Generated from the coverage indexes of the five scenario files; `UNCOVERED` rows
 |-------|---------|---------------------|----------|----------|
 | AC-1 | v1.0 | One installation supports at least 500 registered users and 100 concurrent syncing sessions, tested at an agg… | NFT-PERF-01, NFT-RES-20, NFT-RES-21 | Covered |
 | AC-2 | v1.0 | A single large-file transfer reaches at least 90% of available link speed, up to 1 Gbps (SSD or NVMe on both… | NFT-PERF-02, NFT-PERF-03, NFT-PERF-04, NFT-PERF-11, NFT-RES-02, NFT-SEC-15, NFT-SEC-18, NFT-SEC-23, NFT-SEC-24 | Covered |
-| AC-3 | v1.0 | An interrupted upload resumes and re-sends at most 10 MiB. | FT-P-01, NFT-PERF-05, NFT-PERF-27, NFT-RES-01, NFT-RES-03, NFT-RES-04, NFT-RES-06, NFT-RES-26, NFT-RES-29 | Covered |
+| AC-3 | v1.0 | An interrupted upload resumes and re-sends at most 16 MiB (4 lanes x 2 MiB in flight plus one 8 MiB checkpoint interval). | FT-P-01, NFT-PERF-05, NFT-PERF-27, NFT-RES-01, NFT-RES-03, NFT-RES-04, NFT-RES-06, NFT-RES-26, NFT-RES-29 | Covered |
 | AC-4 | v1.0 | Files up to 50 GiB can be uploaded and downloaded; finishing an upload takes constant time regardless of file… | FT-P-01, FT-P-03, FT-P-67, NFT-PERF-06, NFT-RES-01, NFT-RES-04, NFT-RES-05, NFT-SEC-20 | Covered |
 | AC-5 | v1.0 | From the moment a file is closed on device A until device B holds the complete verified file, at most 5 s at… | FT-P-07, FT-P-08, NFT-PERF-08, NFT-PERF-09, NFT-RES-20, NFT-RES-21, NFT-SEC-26 | Covered |
 | AC-6 | v1.0 | Server time to answer a listing of a folder with 10,000 entries is at most 300 ms at p95. The API pages large… | FT-P-09, NFT-PERF-10, NFT-RES-21 | Covered |

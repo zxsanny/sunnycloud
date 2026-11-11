@@ -3003,7 +3003,7 @@ Resolved by the owner decisions of 2026-11-03 (rounds 1 and 2) and removed; numb
 
 | Gap | Affects | Needed data / expected result |
 |-----|---------|-------------------------------|
-| G-1 | FT-P-15, AC-42 | Expected handling of NFC vs NFD names (treated as the same name or different; normalisation form stored). |
+| G-1 | FT-P-15, AC-42 | RESOLVED 2026-11-11 (owner): an NFC and an NFD spelling of one name are the same name (the second creation is a name clash); the stored name keeps the spelling of the first writer, and lookups use the NFC-folded key. |
 | G-2 | FT-P-17, FT-N-25, FT-N-39 | Exact error text (or substring) for out-of-range retention, "no provider configured" and "upgrade must be re-run". |
 | G-5 | FT-P-27, AC-45 | Expected result for audio-only clips in clip-mixed-100 (transcoded to AAC m4a, passed through, or no derivative). |
 | G-7 | FT-P-31, AC-9 | Time bound for iOS foreground catch-up of a 100-photo backlog. |

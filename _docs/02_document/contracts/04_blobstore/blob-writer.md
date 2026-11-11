@@ -3,9 +3,9 @@
 **Component**: 04_blobstore
 **Producer task**: E-10/c06 — `_docs/02_tasks/todo/B02-06_blob_writer.md`; the `await_durable` barrier part: E-10/c07 — `B02-07_group_commit_barrier.md` (both renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-14 transfer (start_upload, put_block, stage_small, session reaper), E-18 media_jobs (derived outputs through `write_complete`), E-22 pipelines (large and small upload, media)
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (frozen when E-10/c06 is accepted)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-11
 
 ## Purpose
 
@@ -18,7 +18,7 @@ The behaviour every caller of `BlobWriter` relies on: when bytes are durable, wh
 | `plan` | `account_id, plaintext_size` -> `BlobPlan{blob_id, wrapped_key, master_key_id}` | `KeyUnavailable` | sync, pure |
 | `create_file` | `BlobPlan, preallocate: bool` -> `BlobHandle` | `NoSpace`, `FreeSpaceFloor`, `Io` | async |
 | `open_for_write` | `blob_id, wrapped_key, master_key_id, plaintext_size` -> `BlobHandle` | `BlobMissing`, `KeyUnavailable` | async |
-| `write_block` | `BlobHandle, block_index, plaintext block (hash verified by the caller)` -> `DurableToken` | `NoSpace`, `Io`, `OutOfRange` | async |
+| `write_block` | `BlobHandle, block_index, plaintext block (hash verified by the caller)` -> `DurableToken` | `NoSpace`, `Io`, `OutOfRange`, `BlockConflict` | async |
 | `await_durable` | `DurableToken` -> `()` | `Io` | async |
 | `write_complete` | `account_id, size, ByteStream` -> `WrittenBlob{plan, size}` | `NoSpace`, `FreeSpaceFloor`, `SizeMismatch`, `Io` | async |
 | `discard` | `blob_id` -> `()` | `Io` | async |
@@ -34,7 +34,7 @@ The behaviour every caller of `BlobWriter` relies on: when bytes are durable, wh
 - `write_complete` writes the whole object and syncs it before it returns, and creates **no** `blobs` row; the caller registers the row afterwards (a crash in between leaves an orphan file that the orphan sweep removes). Any error leaves no partial file. A stream shorter or longer than `size` is `SizeMismatch`.
 - Upload sessions write the row (state `uploading`) before the file; `write_complete` callers write the file before the row (AC-68).
 - `discard` of a missing file is `Ok`.
-- Writing one block index twice with different bytes: rule pending E-10/c01 (ST-04-8). Until it is decided, callers write only bytes whose BLAKE3 they verified, and must not rely on any behaviour for a second write of the same index.
+- Writing one block index twice (decided 2026-11-11, AZ-3721): a second write of an index that already holds a block succeeds only with identical bytes (the stored block is decrypted and compared; nothing is written and the same `DurableToken` semantics apply); different bytes fail with `BlockConflict` and nothing is sealed or written, so no two plaintexts ever share a key and nonce. A caller that gets `BlockConflict` cannot finish that blob: 03 maps it to its own `BlockConflict` and the client restarts with a new session. A re-send of the same bytes after a crash (the checkpoint lagged the disk) is therefore always accepted. 03's caller-side rule (hash verified before `write_block`, ST-03-2) stays and is sufficient.
 - The writer never holds a database transaction across a sync or any file I/O. Error text carries ids only; key material never appears in errors, logs or metrics.
 
 ## Non-Goals
@@ -66,3 +66,4 @@ The behaviour every caller of `BlobWriter` relies on: when bytes are durable, wh
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B02) |
+| 1.1.0 | 2026-11-11 | Block-rewrite rule: identical bytes accepted, different bytes `BlockConflict`; new `BlobError::BlockConflict` variant for E-10/c06 in `contracts` part 3 | AZ-3721 |

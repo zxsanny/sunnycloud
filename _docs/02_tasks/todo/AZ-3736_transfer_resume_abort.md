@@ -80,7 +80,7 @@ Then both return `UploadNotFound`
 
 ## Constraints
 
-- Case B of IT-03-4 may legitimately fail the 10 MiB assertion until G-03-1 is decided (03 tests.md note); the result is reported, never relaxed silently.
+- Case B of IT-03-4 asserts 16 MiB (AC-3 as changed 2026-11-11, G-03-1); the result is reported, never relaxed silently.
 - The acceptance run AT-03-1 needs a commit and is part of E-14/c08.
 
 ## Risks & Mitigation
@@ -93,4 +93,4 @@ Then both return `UploadNotFound`
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-03-1: worst case 16 MiB against AC-3's 10 MiB; AC-2's bound comes from E-14/c01 | Owner | open | Medium |
+| G-03-1: worst case 16 MiB against AC-3's 10 MiB; AC-2's bound comes from E-14/c01 | Owner | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |

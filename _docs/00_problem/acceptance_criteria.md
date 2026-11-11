@@ -7,7 +7,7 @@ Numeric targets are initial defaults refined by research (`_docs/00_research/00_
 
 ## Transfer
 - AC-2 [v1.0]: A single large-file transfer reaches at least 90% of available link speed, up to 1 Gbps (SSD or NVMe on both ends, round-trip time of at most 20 ms, file of at least 1 GiB, reverse-proxy request buffering off), including with blob encryption at rest (AC-43). The reference server (REF-SRV) has 8 physical cores, 32 GB RAM, NVMe storage and a 1 GbE link.
-- AC-3 [v1.0]: An interrupted upload resumes and re-sends at most 10 MiB.
+- AC-3 [v1.0]: An interrupted upload resumes and re-sends at most 16 MiB (4 lanes x 2 MiB in flight plus one 8 MiB checkpoint interval). (Changed from 10 MiB on 2026-11-11 by the owner, AZ-3731, G-03-1.)
 - AC-4 [v1.0]: Files up to 50 GiB can be uploaded and downloaded; finishing an upload takes constant time regardless of file size.
 - AC-38 [v1.0]: A block is acknowledged only after it is flushed to disk. After `kill -9` of the server during 100 concurrent uploads, 0 committed files contain missing or zero-filled blocks.
 - AC-39 [v1.0]: 100 upload sessions that each declare 50 GiB are refused beyond the per-account session cap and the quota, and free disk space never falls below the configured floor.

@@ -120,7 +120,7 @@ Then the same `upload_id` and only the missing blocks are returned, the committe
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-03-3: commit response for stale-base and taken-name commits, and whether `EditedSince` can occur (E-14/c01) | Owner | open | Medium |
+| G-03-3: commit response for stale-base and taken-name commits, and whether `EditedSince` can occur (E-14/c01) | Owner | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |
 | Both 03 (upload sniffing) and 08 (worker output check) sniff bytes; no shared helper is planned, so two sniffers may disagree | E-14, E-18 owners | open | Low |
 | `tests/spec-gaps.md` still lists G-10 (inline by MIME, sniffing or name) as an owner item, while 03 §3 says sniffing resolves it | Owner | open | Low |
 

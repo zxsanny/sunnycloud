@@ -101,4 +101,4 @@ Then the progress table is at most 80 MB (fail 100 MB) and download RSS growth a
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-03-1 may lower lanes or checkpoint sizes, which changes AC-2's throughput risk (E-14/c01) | Owner | open | Medium |
+| G-03-1 may lower lanes or checkpoint sizes, which changes AC-2's throughput risk (E-14/c01) | Owner | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |

@@ -64,7 +64,7 @@ Per-entry failures: `NameInvalid`, `ParentDeleted`, `ParentNotFound`, `NotAFolde
 
 ## Test Cases
 
-Contract tests to be completed by E-13/c01 (owning task in brackets).
+Contract-test plan (completed 2026-11-11, AZ-3705): 02's real `publish` runs with 03's real `BlobCommitEffect` and `ReceiptEffect` and 08's real `MediaEnqueueEffect`; each row names its test ID and the task that runs it in brackets. E-13/c16 owns the combined run, E-14/c15 the 03 side, E-18/c06 the 08 side.
 
 | Case | Input | Expected | Notes |
 |------|-------|----------|-------|
@@ -73,7 +73,7 @@ Contract tests to be completed by E-13/c01 (owning task in brackets).
 | entry-failure-rollback | `Entry(UploadNotFound)` after release | that entry's release and writes rolled back; others commit; one seq | IT-02-9 [E-13/c05], IT-03-9 [E-14/c08, E-14/c11] |
 | batch-failure | `on_batch` returns `Batch` | full rollback; no seq | IT-02-10 [E-13/c05] |
 | reaper-vs-commit | reaper racing commit on one session | exactly one winner; reservation released once | IT-03-9 [E-14/c11] |
-| media-job-rollback | failed entry with the real media effect | no job row for it | [E-13/c16, E-14/c15, E-18/c06] |
+| media-job-rollback | failed entry with the real media effect | no job row for it | IT-02-9, IT-08-1 [E-13/c16, E-14/c15, E-18/c06] |
 | foreign-blob | entry naming another account's blob | typed entry failure equal to a random id | ST-02-4 [E-13/c08] |
 
 ## Open items

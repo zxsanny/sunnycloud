@@ -3,9 +3,9 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c08 — `_docs/02_tasks/todo/B03-24_transfer_commit_upload.md` (contributor: E-14/c09 `B03-25_transfer_commit_batch.md`; response mapping decided by spike E-14/c01); keys assigned at Step 4
 **Consumer tasks**: E-13/c16, E-14/c12, E-14/c15, E-14/c16 (this batch); E-21/c02, E-21/c13 (11), E-22/c03 (composition root), E-23/E-26/E-27 through the HTTP API, resolved at Step 4
-**Version**: 1.0.0
-**Status**: draft (frozen when E-14/c01 has recorded G-03-3 and the producer task passes review)
-**Last Updated**: 2026-11-04
+**Version**: 1.1.0
+**Status**: frozen for the response mapping (G-03-3 decided 2026-11-11); the producer task still passes review
+**Last Updated**: 2026-11-11
 
 ## Purpose
 
@@ -17,7 +17,7 @@ Signatures: part 2 (`CommitService`). Behaviour:
 
 | Method | Behaviour | Errors |
 |---|---|---|
-| `commit_upload(actor, CommitUpload)` | Outside any transaction: blocklist against received hashes, whole-file hash from block hashes, `read_head` (<= 64 KiB) and byte sniffing. Target: `Existing` on the node of `base_revision`, else `New{parent_id, name}`. One `publish` call with `BlobCommitEffect` plus injected effects | `NeedBlocks(list)`, `BlocklistMismatch`, `UploadNotFound`, `InvalidName`, `EditedSince` (open: G-03-3), `ParentGone`, `ParentNotFound`, `NotAFolder`, `AccountNotActive` |
+| `commit_upload(actor, CommitUpload)` | Outside any transaction: blocklist against received hashes, whole-file hash from block hashes, `read_head` (<= 64 KiB) and byte sniffing. Target: `Existing` on the node of `base_revision`, else `New{parent_id, name}`. One `publish` call with `BlobCommitEffect` plus injected effects | `NeedBlocks(list)`, `BlocklistMismatch`, `UploadNotFound`, `InvalidName`, `ParentGone`, `ParentNotFound`, `NotAFolder`, `AccountNotActive` |
 | `commit_batch(actor, BatchCommit)` | Up to `batch_max_entries` (500) staged entries in one `publish` call with `ReceiptEffect`, `BlobCommitEffect` and injected effects | `BatchTooLarge`, `CommitIdReused`, `AccountNotActive`; per entry: `EntryError` |
 
 Effects supplied by 03:
@@ -28,13 +28,13 @@ Effects supplied by 03:
 | `ReceiptEffect` | `on_batch` | Insert `(account, commit_id, request_hash, response)` with every entry outcome |
 | `BlobCommitEffect` | `on_entry` | Lock the entry's session or staged row (`FOR UPDATE`); zero rows gives `Entry(UploadNotFound)`; otherwise mark the blob committed and delete the row |
 
-Outcome mapping to `Committed{node_id, revision_id, conflict_copy?}` (draft until G-03-3 is decided):
+Outcome mapping to `Committed{node_id, revision_id, conflict_copy?}` (decided 2026-11-11, AZ-3731, G-03-3). `conflict_copy` is a node id. A client that gets a `conflict_copy` reads the folder again: either the older content sits beside its file, or its own file carries a conflict-copy name:
 
 | `PublishOutcome` | `node_id` | `conflict_copy` |
 |---|---|---|
-| `Created`, `Updated`, `Replaced`, `Revived` | the committed file | absent (`Revived` with a taken name: open) |
-| `ConflictCopied{copy_node}` | the committed file | the copy holding the superseded content |
-| `CreatedAsCopy{node}` | the new file, which carries the conflict-copy name | open |
+| `Created`, `Updated`, `Replaced`, `Revived` | the committed file | absent (02 never reports `Revived` for a taken name: it reports `CreatedAsCopy`) |
+| `ConflictCopied{copy_node}` (stale base) | the committed file, which holds the new content as its current revision | `copy_node`, the sibling named `name (conflict copy ...)` that holds the superseded content |
+| `CreatedAsCopy{node}` (name taken) | the new file, which carries the conflict-copy name | `node`, the same id as `node_id`: it means "saved under a conflict-copy name", so the client re-reads the name |
 | `NoChange{existing_revision}` | the file | absent; `revision_id` = existing revision |
 
 Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410); 02 `NameInvalid` → `InvalidName`.
@@ -44,6 +44,7 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 - Commit time does not depend on file size: no file bytes are read beyond the head (AC-4).
 - The media type comes from bytes only; client type and file name are ignored; unknown is no type (served as attachment).
 - `name_conflict` never occurs on commit.
+- `commit_upload` and `commit_batch` never answer `EditedSince`: 02's `publish` accepts a stale base and answers `ConflictCopied`. `edited_since` stays an error of `delete_node` only. The `EditedSince` variants of `CommitError` and `EntryError` in `contracts` are removed by E-14/c08.
 - `parent_id` is only a hint for an existing file; the node is addressed by id (AC-70).
 - Receipts exist for batches only; the stored response is the serialised `BatchResult`; receipts are per account and live `commit_receipt_ttl` (48 h).
 - An identical batch applies at most once, also under concurrency, without relying on a unique violation.
@@ -63,14 +64,14 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 | Case | Input | Expected | Notes |
 |------|-------|----------|-------|
 | roll-up-only | 1 MiB and 8 GiB commits with a reader decorator | 1 head read each; time within 20% | IT-03-6, PT-03-2 |
-| stale-base | commit on a stale base | `Committed` with the conflict copy; no `EditedSince` | IT-03-7 (pending G-03-3) |
+| stale-base | commit on a stale base | `Committed{node_id = the file, conflict_copy = the older sibling}`; no `EditedSince` | IT-03-7 |
+| name-taken | `Target::New` whose name is taken | `Committed{node_id = n, conflict_copy = n}`, `n` carries the conflict-copy name | IT-03-7 |
 | replay | identical batch resent | stored response; nothing applied | IT-03-8 |
 | id-reused | same `commit_id`, changed entry | `CommitIdReused` | IT-03-8 |
 | reaped-entry | session removed before publish | `UploadNotFound`; reservation released once | IT-03-9 |
 
 ## Open items
 
-- G-03-3: fields for `CreatedAsCopy` and a revived file with a taken name, and whether `EditedSince` stays (E-14/c01, owner).
 - `request_hash` canonical form (entry order, optional fields).
 - `batch_too_large` (more entries than `batch_max_entries`) is 422 (resolved 2026-11-07, G-11-1); a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer.
 
@@ -79,3 +80,4 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
+| 1.1.0 | 2026-11-11 | G-03-3 decided: fields per `PublishOutcome`; `CreatedAsCopy` repeats the node id in `conflict_copy`; `EditedSince` removed from commit | AZ-3731 |

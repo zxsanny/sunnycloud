@@ -26,7 +26,7 @@
 | `plan` | `account_id`, `plaintext_size` | `BlobPlan{blob_id (v4), wrapped_key, master_key_id}`; pure, no I/O | No | `KeyUnavailable` |
 | `create_file` | `BlobPlan`, `preallocate: bool` | `BlobHandle` (header written, space reserved with `fallocate`) | Yes | `NoSpace`, `FreeSpaceFloor`, `Io` |
 | `open_for_write` | `blob_id`, `wrapped_key`, `master_key_id`, `plaintext_size` | `BlobHandle` (reopen after restart or on another request) | Yes | `BlobMissing`, `KeyUnavailable` |
-| `write_block` | `BlobHandle`, `block_index`, `plaintext: Bytes` (whole 2 MiB block, hash already verified by the caller) | `DurableToken`; the bytes are encrypted and written at the deterministic offset | Yes | `NoSpace`, `Io`, `OutOfRange` |
+| `write_block` | `BlobHandle`, `block_index`, `plaintext: Bytes` (whole 2 MiB block, hash already verified by the caller) | `DurableToken`; the bytes are encrypted and written at the deterministic offset. A second write of an index that already holds a block succeeds only with identical bytes (the stored block is decrypted and compared; nothing is written, the token is returned as for a first write); different bytes fail with `BlockConflict` and nothing is written (rule decided 2026-11-11, AZ-3721) | Yes | `NoSpace`, `Io`, `OutOfRange`, `BlockConflict` |
 | `await_durable` | `DurableToken` | `()`; completes only after the group `fdatasync` that covers the write | Yes | `Io` (the caller must not ack) |
 | `write_complete` | `account_id`, `size`, `body: ByteStream` | `WrittenBlob{plan, size}`; file synced, **no row yet** (used for staged small files and derived outputs) | Yes | `NoSpace`, `FreeSpaceFloor`, `SizeMismatch`, `Io` |
 | `discard` | `blob_id` | unlinks the file; missing is `Ok` | Yes | `Io` |
@@ -180,7 +180,7 @@ Kill -9 under 100 concurrent uploads leaves 0 zero-filled acked blocks; a 4 KiB 
 |---|---|
 | Hand-built nonce departs from `aead-stream` | Known-answer tests of the nonce construction, cross-checked against the crate in CI |
 | Home-built random-access use of XChaCha20-Poly1305 STREAM is not reviewed | **Open item for v1.0: external review of the blob encryption** (nonce construction, wrap AAD, rewrite rule) before release; owner item in `canonical-names.md` |
-| Two different plaintexts sealed with the same key and nonce if an unacked block is rewritten with other bytes | 03 verifies the hash before calling `write_block`, so only hash-consistent content is ever written; residual case (client changes a block between two attempts) is a security-review item for the block-rewrite rule |
+| Two different plaintexts sealed with the same key and nonce if an unacked block is rewritten with other bytes | Decided 2026-11-11 (owner, AZ-3721): `write_block` of an index that already holds a block accepts identical bytes only (decrypt the stored block and compare, a re-send after a crash is identical) and refuses different bytes with `BlockConflict` before anything is sealed or written, so a second plaintext is never sealed at a used nonce. 03 still verifies the hash first (ST-03-2) |
 | Group commit stalls on a slow disk (ext4 jbd2) | XFS default; `block_fsync_duration_seconds` alert; gate S14 |
 | Key-check file lost with the volume | `admin keycheck-init` after confirmation; it unwraps a sample of existing blob keys first and refuses on failure |
 | Orphan sweep after a restore deletes live data | default abort-on-partial; `report` first after restore; `admin epoch-bump` prints the warning |
@@ -199,3 +199,18 @@ Must be implemented after: helpers 01, 02, 03, 05, 07 and `contracts`. Depends o
 | WARN | Free-space floor hit, orphan found (report mode), GC unlink of an already missing file, scrub paused too long |
 | INFO | Scrub/GC/orphan cycle start and summary, key rotation batch, startup key check passed |
 No per-chunk or per-block lines. Fields: blob id and account id only; never file names or key material. JSON on stdout.
+
+## 15. External review scope (v1.0 release gate)
+
+The blob encryption is reviewed by an external cryptographer before the v1.0 release (owner item in `canonical-names.md`, risk R08). Decided 2026-11-11 (AZ-3721); the owner names the reviewer and the date, and the review must finish before the v1.0 release tag.
+
+**Items to review**
+1. The hand-built random-access STREAM nonce: prefix, 32-bit chunk counter and final flag, 64 KiB chunks sealed with the raw XChaCha20-Poly1305 cipher so that chunk `i` is written without the sequential encryptor (section 4).
+2. The data-key wrap: a random 256-bit data key per blob, wrapped under the master key of `master_key_id` with AAD = `blob_id`.
+3. The key check at start and the re-wrap of data keys under a new master key without rewriting files (`MasterKeyring::rewrap_batch`).
+4. The rewrite rule: a second `write_block` of one index accepts identical bytes only and never seals a second plaintext at a used nonce.
+5. The file header (magic, format version, nonce prefix) and the truncation defence of the final-chunk flag.
+
+**Evidence package**: this description (sections 4, 8, 12), the contracts `blob-writer.md` and `blob-reader.md`, the known-answer vectors of IT-04-2 for the nonce construction (chunk 0, 1, n-1, single-chunk, empty file, refusal at the counter limit) with their byte-for-byte cross-check against the pinned `aead-stream =0.6.0`, and ST-04-8 for the rewrite rule.
+
+**Out of scope**: the vault construction (E-29, its own review before v1.2); re-encrypting data keys after a master-key leak (R22, accepted).

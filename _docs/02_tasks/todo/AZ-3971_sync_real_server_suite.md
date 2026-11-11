@@ -141,5 +141,5 @@ Then they contain 0 sentinel occurrences
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | AC-7 (B) is BLOCKED until E-14/c02 and E-23/c01 record the new-file rule | E-14 / E-23 | open | Low |
-| AC-3's exact fields depend on G-03-3 (E-14/c01) | Owner | open | Medium |
+| AC-3's exact fields depend on G-03-3 (E-14/c01) | Owner | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |
 | Split of row E-23/c18 into c18a and c18b; pipelines do not reference c18 | E-23 owner | accepted-risk | Low |

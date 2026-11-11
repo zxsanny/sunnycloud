@@ -7,7 +7,7 @@ Collaborators are real: 02 `TreeCommit`/`TreeReader`, 04 `BlobWriter`/`BlobReade
 | AC ID | Acceptance Criterion (short) | Test IDs | Coverage |
 |-------|------------------------------|----------|----------|
 | AC-2 | Large transfer >= 90% of link | PT-03-1, PT-03-4 | Covered here (server ingest/egress) + NFT-PERF-02, NFT-PERF-03 |
-| AC-3 | Resume re-sends <= 10 MiB | IT-03-4, AT-03-1 | Covered here + FT-P-01, NFT-PERF-05, NFT-RES-01 (see gap G-03-1: worst case can exceed 10 MiB) |
+| AC-3 | Resume re-sends <= 10 MiB | IT-03-4, AT-03-1 | Covered here + FT-P-01, NFT-PERF-05, NFT-RES-01 (G-03-1 resolved 2026-11-11: AC-3 is 16 MiB) |
 | AC-4 | 50 GiB; constant-time finish | IT-03-6, PT-03-2, PT-03-5 | Covered here (1 GiB / 8 GiB scale) + FT-P-03, NFT-PERF-06 (50 GiB) |
 | AC-7 | Per-block BLAKE3, whole-file hash from blocks | IT-03-2, IT-03-6, ST-03-2 | Covered here + FT-N-01, FT-N-02, NFT-SEC-21 |
 | AC-8 | Conflict copy surfaced on commit | IT-03-7 | Covered here + FT-P-10 |
@@ -40,7 +40,7 @@ valid: declared 10 MiB -> Started{need_blocks = 0..4, block_size = 2 MiB, lane_l
 repeat same (account, client_key) -> same upload_id; repeat with other declared_size -> ClientKeyMismatch; different key -> new session
 51 GiB -> SizeTooLarge; 9th open session -> SessionCapReached (reservation rolled back); declared 11 GiB -> QuotaExceeded
 free space below floor -> FreeSpaceFloor; name "a/b" -> InvalidName; missing parent -> ParentNotFound; file parent -> NotAFolder
-existing file with content_hash h and start with content_hash h -> NothingToSend{revision} (0 bytes)
+NothingToSend rule (upload_service.md, one case per outcome; E-14/c04): live file at (parent, name) with current hash h and start with content_hash h -> NothingToSend{revision = current} (0 bytes, reserved_bytes unchanged); the same with the name in another case -> NothingToSend (matched by name_key); live file with another hash -> Started; only a tombstoned file at the name -> Started; a live folder at the name -> Started (no error); no node -> Started; base_revision given and its node's current hash is h -> NothingToSend{revision = current}; base_revision unknown or foreign -> Started; no content_hash -> Started
 begin_deletion account -> AccountNotActive; file creation failure injected -> compensating tx leaves 0 session rows, 0 blob rows, reserved_bytes unchanged
 ```
 **Expected result**: as listed; every refusal leaves `QuotaAdmin::view.reserved_bytes` unchanged; the session cap check is serialised by the quota row lock (16 concurrent starts yield exactly 8 sessions).
@@ -72,7 +72,7 @@ tail block length = remaining bytes (1 MiB), not 2 MiB
 **Expected result**:
 ```
 A: need_blocks = only the in-flight blocks, re-sent <= 4 x 2 MiB = 8 MiB, ProgressTable intact
-B: get_upload (lazy load from DB checkpoint) lists acked-but-uncheckpointed blocks again; measured re-send recorded; assertion re-send <= 10 MiB
+B: get_upload (lazy load from DB checkpoint) lists acked-but-uncheckpointed blocks again; measured re-send recorded; assertion re-send <= 16 MiB (AC-3 as changed 2026-11-11, G-03-1)
 ```
 **Max execution time**: 20 s; **Dependencies**: PostgreSQL, 04. Note: with 4 lanes in flight (8 MiB) plus up to 8 MiB uncheckpointed the worst case is 16 MiB; B may legitimately fail the 10 MiB assertion (gap G-03-1).
 

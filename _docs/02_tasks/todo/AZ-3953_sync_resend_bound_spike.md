@@ -86,4 +86,4 @@ Then the row stays `open`, the client tests keep the 10 MiB assertion, and the e
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-03-1: worst-case re-send 16 MiB against AC-3's 10 MiB; affects the client lanes and checkpoints and every client's AC-3 test | Owner (via E-14/c01) | open | Medium |
+| G-03-1: worst-case re-send 16 MiB against AC-3's 10 MiB; affects the client lanes and checkpoints and every client's AC-3 test | Owner (via E-14/c01) | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |

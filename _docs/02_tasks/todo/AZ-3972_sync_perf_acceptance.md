@@ -58,7 +58,7 @@ Then the total time is at most 45 s (failure above 60 s), 0 entries fail, 0 dupl
 **AC-4: Killed 5 GiB upload resumes cheaply (AC-3)**
 Given DS-09 and `shape-flaky` dropping the connection at 10 seeded random offsets
 When the upload resumes after each drop
-Then block PUT bytes per resume (proxy log) stay at or below the bound recorded by E-23/c03 (10 MiB while G-03-1 is open), hashing never restarts from zero, and the server hash equals the local BLAKE3
+Then block PUT bytes per resume (proxy log) stay at or below the bound recorded by E-23/c03 (16 MiB, AC-3 as changed 2026-11-11 by G-03-1), hashing never restarts from zero, and the server hash equals the local BLAKE3
 
 **AC-5: Corruption and version mismatch (AC-7, AC-64)**
 Given the fake and the real server
@@ -106,6 +106,6 @@ Then it is recorded as `NOT-RUN(HW-REF)` in `_docs/_process_leftovers/` and no w
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-03-1 worst-case re-send 16 MiB vs AC-3's 10 MiB (AC-4) | Owner (via E-14/c01, E-23/c03) | open | Medium |
+| G-03-1 worst-case re-send 16 MiB vs AC-3's 10 MiB (AC-4) | Owner (via E-14/c01, E-23/c03) | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |
 | Reference hardware not yet named (G1, G11, R03) | Owner | open | Medium |
 | PT-13-2 runs the mobile configuration on a container host; how it maps to phone memory (RSS vs PSS, resource-limit G2) is not stated | Owner / E-31 | open | Low |

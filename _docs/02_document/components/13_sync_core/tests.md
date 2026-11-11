@@ -16,7 +16,7 @@ Component tests complement the system-level scenarios in `02_document/tests/` an
 | AC-38 | Block acked only on the server's 204 | IT-13-15 | Covered; system NFT-RES-03 |
 | AC-40 | Single-request upload, batch commit by id | IT-13-7, IT-13-8, PT-13-4 | Covered; system FT-N-38, NFT-PERF-07, NFT-RES-22 |
 | AC-41 | `ResyncRequired`, head-first order | IT-13-12 | Covered; system FT-P-13, NFT-RES-07 |
-| AC-46 | `lookup_revisions` rebuild, `NothingToSend` | IT-13-14, IT-13-16 | Covered (new-file leg BLOCKED in IT-13-16); system FT-P-32 |
+| AC-46 | `lookup_revisions` rebuild, `NothingToSend` | IT-13-14, IT-13-16 | Covered (new-file leg unblocked 2026-11-11, AZ-3732); system FT-P-32 |
 | AC-52 | One implementation for mobile; bounded memory; `cancel()` | IT-13-17, IT-13-18, PT-13-2 | Covered; system NFT-RES-LIM-03 |
 | AC-54 | Refuses `http://` by default | IT-13-13, ST-13-1 | Covered; system FT-N-26, NFT-SEC-12 |
 | AC-58 | Concurrent refreshes yield one successor (client) | IT-13-9 | Covered; system NFT-SEC-10, NFT-RES-33 |
@@ -138,7 +138,7 @@ Component tests complement the system-level scenarios in `02_document/tests/` an
 - **Summary**: A commit whose answer is lost is recovered by the same `client_key`.
 - **Traces to**: AC-78, AC-46
 - **Input**: the proxy drops the commit response once (`e2e-ctl`). Case A: new revision of an existing node (base revision set). Case B: brand-new file at `(parent, name, hash)`.
-- **Expected**: A: `start_upload` with the same `client_key` -> `NothingToSend{revision}`, 1 revision, 0 block bytes re-sent. B: BLOCKED — depends on 03 returning `NothingToSend` for a new file (13 risk 2, "confirm with 03"); until then the expected result (conflict copy or `NothingToSend`) cannot be stated.
+- **Expected**: A: `start_upload` with the same `client_key` -> `NothingToSend{revision}`, 1 revision, 0 block bytes re-sent. B: a NEW file whose commit response was lost: `start_upload` with the same parent, name, `client_key` and file hash -> `NothingToSend{revision}` of the live file at that name (03 rule decided 2026-11-11, AZ-3732, `contracts/03_transfer/upload_service.md`), 1 revision, no conflict copy.
 - **Max time / Deps**: 30 s; server, `e2e-ctl`.
 
 ### IT-13-17: `client_key` and `commit_id` rules
