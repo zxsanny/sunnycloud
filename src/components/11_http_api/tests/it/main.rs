@@ -16,5 +16,6 @@ mod middleware;
 mod ops;
 mod ops_metrics;
 mod registry;
+mod shutdown;
 mod version;
 mod worker;

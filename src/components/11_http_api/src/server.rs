@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use sc_observability::{Liveness, ReadinessRegistry, ops_router};
@@ -58,6 +59,8 @@ pub struct BoundServer {
     #[cfg(feature = "test-clock")]
     test_clock: TestClockListener,
     liveness: Liveness,
+    feed_shutdown: CancellationToken,
+    shutdown_grace: Duration,
 }
 
 impl HttpServer {
@@ -153,10 +156,13 @@ impl HttpServer {
             #[cfg(feature = "test-clock")]
             test_clock,
             liveness,
+            feed_shutdown: self.services.feed_shutdown.clone(),
+            shutdown_grace: self.config.shutdown_grace,
         })
     }
 
-    /// Binds every listener, serves until `shutdown_signal` completes, then stops accepting and returns.
+    /// Binds every listener, serves until `shutdown_signal` completes, then shuts down as [`BoundServer::serve`]
+    /// describes and returns.
     pub async fn run(
         self,
         shutdown_signal: impl Future<Output = ()>,
@@ -187,8 +193,10 @@ impl BoundServer {
         self.test_clock.addr
     }
 
-    /// Serves until `shutdown_signal` completes, turns `/readyz` to 503, then stops accepting. Connections
-    /// already open are left to finish; closing them within the grace is E-21/c17.
+    /// Serves until `shutdown_signal` completes, then, in this order: `/readyz` answers 503, every listener stops
+    /// accepting, the held long-polls are woken (`ApiServices::feed_shutdown`), and the open connections are
+    /// closed gracefully for at most `shutdown_grace`, after which a response still streaming is aborted. Returns
+    /// when no connection is open, so within the grace plus the time to drop the connections.
     pub async fn serve(
         self,
         shutdown_signal: impl Future<Output = ()>,
@@ -213,7 +221,10 @@ impl BoundServer {
             liveness.shut_down();
             stop.cancel();
         };
+        // The accept loops own their listeners, so once they are joined nothing accepts any more.
         tokio::join!(public, internal, ops, test_clock, signal);
+        self.feed_shutdown.cancel();
+        self.accept.close_connections(self.shutdown_grace).await;
         Ok(())
     }
 }

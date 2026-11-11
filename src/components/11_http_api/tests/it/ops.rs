@@ -8,7 +8,7 @@ use sunnycloud_http_api::{HttpServer, HttpServerError, Listener};
 use tokio::net::TcpListener;
 
 use crate::harness::checks::{HungCheck, SwitchCheck};
-use crate::harness::clients::{get_request, h1_connect, h1_get, read_body};
+use crate::harness::clients::h1_get;
 use crate::harness::{self, Script, Server, default_config};
 
 const CHECK_NAMES: [&str; 5] = [
@@ -170,31 +170,6 @@ async fn ops_paths_answer_404_on_the_public_and_internal_listeners_and_api_paths
     assert_eq!(api_on_ops, StatusCode::NOT_FOUND);
     assert!(on_ops.iter().all(|status| *status == StatusCode::OK));
     server.stop().await.expect("run returns");
-}
-
-#[tokio::test]
-async fn the_shutdown_signal_turns_readyz_to_503_on_a_connection_opened_before_it() {
-    // Arrange
-    let checks = five_checks();
-    let server = start_with(&checks).await;
-    let mut ops = h1_connect(server.ops).await;
-    let before = ops
-        .send_request(get_request("/readyz"))
-        .await
-        .expect("readyz response");
-    assert_eq!(read_body(before).await.0, StatusCode::OK);
-
-    // Act
-    server.stop().await.expect("run returns");
-    let after = ops
-        .send_request(get_request("/readyz"))
-        .await
-        .expect("readyz response after the signal");
-
-    // Assert
-    let (status, body) = read_body(after).await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-    assert!(body.contains("shutting down"));
 }
 
 #[tokio::test]

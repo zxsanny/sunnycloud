@@ -3,7 +3,7 @@
 **Component**: 11_http_api (library `sunnycloud-http-api`, proposed)
 **Producer task**: E-21/c03 — `_docs/02_tasks/todo/B07-03_crate_skeleton_accept_loop.md` (contributors: E-21/c15 internal router and test-clock listener, E-21/c16 readiness list and ops listener, E-21/c17 shutdown semantics of `run`); keys assigned at Step 4
 **Consumer tasks**: E-22/c03 (composition root builds `ApiServices`), E-22/c04 (binds `HttpConfig`), E-22/c05 (`serve` calls `run` and owns the rest of the shutdown order), E-22/c15 (`openapi` and `healthcheck` commands); E-31 harness (Mode R); resolved at Step 4
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: draft
 **Last Updated**: 2026-11-11
 
@@ -37,7 +37,7 @@ Error names are proposals of E-21/c03; they become final when that task is accep
 | 07 admin | `AdminService`, `AccountService`, `AccountDeletionService` |
 | 08 media_jobs | `ThumbnailStateSource`, `DerivedOpener`, `WorkerAuthenticator`, `WorkerJobs` |
 | 20 vault_service | `VaultService`, optional, absent in v1.0 and v1.1 builds |
-| Runtime handles | `ReadinessCheck` list (registered by 12), the metrics registry of `sc_observability`, the `Clock` of `sc_clock` (the `OffsetClock` handle in builds with feature `test-clock`) |
+| Runtime handles | `ReadinessCheck` list (registered by 12), `feed_shutdown` (a `CancellationToken`, the same one 12 gives `PgChangeFeed::new`; `run` cancels it, see the shutdown order), the metrics registry of `sc_observability`, the `Clock` of `sc_clock` (the `OffsetClock` handle in builds with feature `test-clock`) |
 
 ### `HttpConfig` (typed section bound by 12 through `sc_config`; keys from helper 01)
 
@@ -72,7 +72,16 @@ Error names are proposals of E-21/c03; they become final when that task is accep
 
 ### `run` shutdown order (E-21/c17)
 
-On the shutdown signal: `/readyz` answers 503; every listener stops accepting; held long-polls answer an empty page with the same cursor (the `ChangeFeed` shutdown signal, constructed by 12); open connections get a graceful close and are waited on for at most `shutdown_grace`; a response still streaming at grace end is aborted (RST_STREAM or connection close), never ended as a clean short body; `run` returns within grace + 1 s. What 12 does after `run` returns (scheduler stop, upload checkpoints, final group sync, pool close) is 12's.
+On the shutdown signal, in this order:
+
+1. `/readyz` answers 503 (without running the checks).
+2. Every listener stops accepting; a new connection is refused.
+3. Held long-polls are woken: `run` cancels `ApiServices::feed_shutdown`, and 05's held reads return an empty page with the same cursor (`change-feed.md`). 12 must give 05 this token and no other part of 12 may wait on it, because it fires here and not at the process signal.
+4. Open connections get a graceful close (HTTP/1.1 closes after the request in flight, HTTP/2 sends GOAWAY and lets open streams finish), so a response written on the wake of step 3 is sent before its connection closes; `run` waits for them for at most `shutdown_grace`.
+5. At the end of the grace, every connection still open is dropped. A response still streaming ends as a connection close (HTTP/1.1: before its `Content-Length`; HTTP/2: the stream and connection are closed, the client sees a broken pipe or reset), never as a clean short body.
+6. `run` returns when no connection is open: at once when they all finished, otherwise at the end of the grace, so within grace + 1 s of the signal.
+
+The clock of the grace starts at step 4. What 12 does after `run` returns (scheduler stop, upload checkpoints, final group sync, pool close) is 12's.
 
 ## Invariants
 
@@ -100,7 +109,7 @@ On the shutdown signal: `/readyz` answers 503; every listener stops accepting; h
 | build-and-run | `ApiServices` of port fakes, ephemeral ports | all listeners answer; `run` returns after the signal | Mode S harness of E-21/c03 |
 | h2-settings | raw h2c client reads SETTINGS | initial window 4194304, connection window 33554432 after the first WINDOW_UPDATE, max streams 100, max header list 16384 | IT-11-18 |
 | connection-cap | 60 connections, `max_connections = 50` | 10 refused, `connections_rejected_total` +10 | IT-11-19 |
-| shutdown-order | 20 held long-polls, 3 downloads, grace 2 s | readiness 503 < accept stops < long-polls answered < connections closed; long download reset at grace | IT-11-16 |
+| shutdown-order | 20 held requests, 3 downloads, grace 2 s | readiness 503 < accept stops < held requests answered < connections closed; long download cut at grace; `run` returns within grace + 1 s | IT-11-16; until the changes route exists the held requests are worker `claim` calls waiting on `feed_shutdown` |
 | release-build | build without `test-clock` | `:9091` refused, `/internal/v1/test/clock-offset` 404 | IT-11-9, FT-N-35; the default-feature tests assert the 404s and the empty route table, the refusal follows from the listener and `test_clock_addr` not compiling |
 
 ## Open points
@@ -109,6 +118,8 @@ On the shutdown signal: `/readyz` answers 503; every listener stops accepting; h
 2. `ReadinessCheck` registry: E-21's interface lists a registry provided by 11, while `sc_observability` provides `ReadinessRegistry` and the ops router. This contract follows `sc_observability`: 11 receives the list and mounts the shared router; it adds no second registry.
 3. `AbuseLimiter`: 12 "injects it into 11 where it needs it"; no 11 behaviour in v1.0 needs it (11 only maps `RateLimited`), so it is not an `ApiServices` field.
 4. The test-clock listener address has no key in helper 01's table. `HttpConfig.test_clock_addr` is a field of test builds only; E-22/c04 and the E-01 owner to add the key (default `0.0.0.0:9091`, as the table above) and to set the field only under feature `test-clock`.
+
+5. The ops listener stops accepting at step 2 like the others, so after the signal `/readyz` answers 503 only on a connection that is still busy, and a probe on a new connection is refused. If operators want `/readyz` and `/metrics` scrapeable through the grace, the ops listener would have to stop last; the owner decides, nothing needs it today.
 
 ## Change Log
 
@@ -119,3 +130,4 @@ On the shutdown signal: `/readyz` answers 503; every listener stops accepting; h
 | 1.1.1 | 2026-11-08 | `HttpConfig.download_write_idle` (must be above zero); the accept loop wraps every socket in a write-idle guard | AZ-3803 |
 | 1.2.0 | 2026-11-08 | `HttpConfig.public_url` validated as an origin; `CsrfGuard` is layer 9 of the route stack (`RouteContext.csrf`) | AZ-3808 |
 | 1.3.0 | 2026-11-11 | Worker routes registered for the internal listener; with feature `test-clock`: `HttpConfig.test_clock_addr`, the `:9091` listener bound by `bind` and served by `serve`, `BoundServer::test_clock_addr`, `Listener::TestClock`; Open point 4 | AZ-3831 |
+| 1.4.0 | 2026-11-11 | `run` shutdown order made exact: `ApiServices.feed_shutdown` added and cancelled by `run` after accept stops; connections get a graceful close and are dropped at the end of `shutdown_grace`; `run` returns when none is open | AZ-3833 |

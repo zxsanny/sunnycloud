@@ -59,7 +59,8 @@ pub fn default_config() -> HttpConfig {
             preview: 20 << 20,
             transcode: 10 << 30,
         },
-        shutdown_grace: Duration::from_secs(25),
+        // Not the 25 s default: a raw peer that never closes would otherwise outlast `EVENT_BOUND` at stop.
+        shutdown_grace: Duration::from_secs(1),
         min_client_version: None,
         update_url: None,
         server_info: sample_server_info("0.0.0"),
@@ -126,6 +127,7 @@ pub fn stub_services(script: &Script, metrics: Arc<Metrics>) -> ApiServices {
         worker_jobs: WorkerJobsStub::new(script),
         vault: Some(VaultStub::new(script)),
         readiness: Vec::new(),
+        feed_shutdown: CancellationToken::new(),
         metrics,
         #[cfg(feature = "test-clock")]
         clock: offset_clock.clone(),

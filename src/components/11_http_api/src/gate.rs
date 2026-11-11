@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sc_observability::NoLabels;
+use sc_observability::{NoLabels, log_warn};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::metrics::{ConnectionMetrics, RejectReason};
@@ -8,6 +8,7 @@ use crate::metrics::{ConnectionMetrics, RejectReason};
 /// The global connection cap shared by every listener of one server.
 pub(crate) struct ConnectionGate {
     permits: Arc<Semaphore>,
+    capacity: u32,
     metrics: ConnectionMetrics,
 }
 
@@ -18,11 +19,23 @@ pub(crate) struct ConnectionGuard {
 }
 
 impl ConnectionGate {
-    pub(crate) fn new(max_connections: usize, metrics: ConnectionMetrics) -> Arc<Self> {
+    pub(crate) fn new(max_connections: u32, metrics: ConnectionMetrics) -> Arc<Self> {
         Arc::new(ConnectionGate {
-            permits: Arc::new(Semaphore::new(max_connections)),
+            permits: Arc::new(Semaphore::new(max_connections as usize)),
+            capacity: max_connections,
             metrics,
         })
+    }
+
+    /// Returns when no connection is open: every permit is back. While it waits no new admission succeeds.
+    pub(crate) async fn wait_idle(&self) {
+        // The semaphore is never closed, so an error here is a bug worth a line in the log.
+        if let Err(error) = self.permits.acquire_many(self.capacity).await {
+            log_warn!(
+                "connection gate closed while waiting for connections",
+                err = &error
+            );
+        }
     }
 
     /// `None` when the cap is reached; the refusal is counted.
@@ -66,7 +79,7 @@ mod tests {
 
     use super::*;
 
-    fn gate(max: usize) -> Arc<ConnectionGate> {
+    fn gate(max: u32) -> Arc<ConnectionGate> {
         let build = BuildInfo {
             version: "test",
             commit: "test",
@@ -89,6 +102,27 @@ mod tests {
         assert_eq!(guards.len(), 50);
         assert_eq!(gate.rejected(), 10);
         assert_eq!(gate.open(), 50.0);
+    }
+
+    #[tokio::test]
+    async fn wait_idle_returns_once_the_last_guard_is_dropped() {
+        // Arrange
+        let gate = gate(3);
+        let guards: Vec<_> = (0..3).filter_map(|_| gate.admit()).collect();
+        let waiter = tokio::spawn({
+            let gate = Arc::clone(&gate);
+            async move { gate.wait_idle().await }
+        });
+        tokio::task::yield_now().await;
+
+        // Act
+        let still_waiting = !waiter.is_finished();
+        drop(guards);
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(5), waiter).await;
+
+        // Assert
+        assert!(still_waiting, "three connections are still open");
+        assert!(outcome.is_ok(), "the wait ends when they are all gone");
     }
 
     #[test]

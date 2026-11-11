@@ -32,6 +32,8 @@
 //!
 //! [`AcceptLoop`] is the one loop every listener runs: one task per connection, a global connection cap,
 //! HTTP/1.1 and h2c prior knowledge on one port, and the configured HTTP/2 and header-timeout settings.
+//! [`AcceptLoop::close_connections`] ends its connections at shutdown: a graceful close, then a drop at the end of
+//! the grace (the order of the steps is on [`BoundServer::serve`]).
 
 mod accept;
 mod auth;

@@ -81,6 +81,16 @@ pub struct AcceptLoop {
     gate: Arc<ConnectionGate>,
     builder: Builder<TokioExecutor>,
     write_idle: Duration,
+    close: Arc<CloseSignals>,
+}
+
+/// What [`AcceptLoop::close_connections`] tells the connection tasks.
+#[derive(Default)]
+struct CloseSignals {
+    /// Finish what is in flight and close (`graceful_shutdown`).
+    graceful: CancellationToken,
+    /// The grace is over: drop the connection, ending any response still streaming.
+    abort: CancellationToken,
 }
 
 impl AcceptLoop {
@@ -88,20 +98,38 @@ impl AcceptLoop {
     /// one `AcceptLoop`.
     pub fn new(config: &HttpConfig, metrics: &Metrics) -> Result<Self, HttpServerError> {
         config.check()?;
-        let gate = ConnectionGate::new(
-            config.max_connections,
-            ConnectionMetrics::register(metrics)?,
-        );
+        let max_connections = u32::try_from(config.max_connections).map_err(|_| {
+            HttpServerError::InvalidConfig("max_connections must fit in 32 bits".to_owned())
+        })?;
+        let gate = ConnectionGate::new(max_connections, ConnectionMetrics::register(metrics)?);
         let settings = ConnectionSettings::from_config(config);
         Ok(AcceptLoop {
             gate,
             builder: settings.builder(),
             write_idle: settings.download_write_idle,
+            close: Arc::default(),
         })
     }
 
+    /// Closes every connection served by this loop and its clones, once the listeners have stopped: each one is
+    /// asked to finish its requests and close, and one still open after `grace` is dropped, which resets an
+    /// HTTP/2 stream and cuts an HTTP/1.1 response before its `Content-Length`, never ending it as a short
+    /// body. Returns when no connection is open.
+    pub async fn close_connections(&self, grace: Duration) {
+        self.close.graceful.cancel();
+        if tokio::time::timeout(grace, self.gate.wait_idle())
+            .await
+            .is_err()
+        {
+            log_warn!("connections still open at the end of the shutdown grace, aborting them");
+            self.close.abort.cancel();
+            self.gate.wait_idle().await;
+        }
+    }
+
     /// Accepts on `listener` until `stop` is cancelled, serving every connection with `app` on its own task.
-    /// Connections already open when the loop stops are left to finish.
+    /// Connections already open when the loop stops are left to finish; [`AcceptLoop::close_connections`]
+    /// ends them.
     pub async fn serve(&self, listener: TcpListener, app: Router, stop: CancellationToken) {
         loop {
             let accepted = tokio::select! {
@@ -133,6 +161,7 @@ impl AcceptLoop {
             WriteIdle::new(stream, self.write_idle),
             peer,
             app.clone(),
+            Arc::clone(&self.close),
         ));
     }
 }
@@ -143,17 +172,30 @@ async fn serve_connection(
     stream: WriteIdle<TcpStream>,
     peer: SocketAddr,
     app: Router,
+    close: Arc<CloseSignals>,
 ) {
     let _guard = guard;
     let service = WithPeer {
         app: TowerToHyperService::new(app),
         peer: PeerAddr(peer),
     };
-    if let Err(error) = builder
-        .serve_connection(TokioIo::new(stream), service)
-        .await
-    {
-        log_debug!("connection ended with an error", err = &*error);
+    let connection = builder.serve_connection(TokioIo::new(stream), service);
+    tokio::pin!(connection);
+    let mut closing = false;
+    loop {
+        tokio::select! {
+            result = connection.as_mut() => {
+                if let Err(error) = result {
+                    log_debug!("connection ended with an error", err = &*error);
+                }
+                return;
+            }
+            () = close.graceful.cancelled(), if !closing => {
+                closing = true;
+                connection.as_mut().graceful_shutdown();
+            }
+            () = close.abort.cancelled() => return,
+        }
     }
 }
 
@@ -276,6 +318,25 @@ mod tests {
 
         // Act
         let result = config.check();
+
+        // Assert
+        assert!(matches!(result, Err(HttpServerError::InvalidConfig(_))));
+    }
+
+    #[test]
+    fn a_connection_cap_above_32_bits_is_refused() {
+        // Arrange
+        let mut config = config();
+        config.max_connections = usize::MAX;
+        let build = sc_observability::BuildInfo {
+            version: "test",
+            commit: "test",
+            test_clock: false,
+        };
+        let metrics = Metrics::new(build).expect("registry");
+
+        // Act
+        let result = AcceptLoop::new(&config, &metrics);
 
         // Assert
         assert!(matches!(result, Err(HttpServerError::InvalidConfig(_))));

@@ -9,6 +9,7 @@ use contracts::{
 };
 use sc_clock::Clock;
 use sc_observability::Metrics;
+use tokio_util::sync::CancellationToken;
 
 /// Everything 11 calls, built by 12. 11 constructs none of it.
 pub struct ApiServices {
@@ -37,6 +38,10 @@ pub struct ApiServices {
     pub vault: Option<Arc<dyn VaultService>>,
     /// The checks `/readyz` runs, registered by 12.
     pub readiness: Vec<Arc<dyn ReadinessCheck>>,
+    /// The token 12 gives to 05's `ChangeFeed`: held reads return an empty page when it is cancelled. `run`
+    /// cancels it after readiness has turned 503 and the listeners have stopped, so no other part of 12 should
+    /// wait on it.
+    pub feed_shutdown: CancellationToken,
     pub metrics: Arc<Metrics>,
     pub clock: Arc<dyn Clock>,
     /// The same clock as `clock`, kept as the concrete type the test-clock routes advance.
