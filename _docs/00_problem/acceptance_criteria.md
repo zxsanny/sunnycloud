@@ -64,7 +64,7 @@ Numeric targets are initial defaults refined by research (`_docs/00_research/00_
 - AC-49 [v1.0]: The updater rejects an unsigned build, a build signed with another key and a lower version; the update source is fixed at build time and is never the sync server.
 
 ## Web client
-- AC-50 [v1.0]: A 50 GiB upload from desktop Chrome, Firefox and Safari keeps worker plus page heap at most 150 MB; after closing the tab and re-selecting the file, at most 10 MiB is re-sent; a file edited mid-upload is detected and the upload restarts.
+- AC-50 [v1.0]: A 50 GiB upload from desktop Chrome, Firefox and Safari keeps worker plus page heap at most 150 MB; after closing the tab and re-selecting the file, at most 16 MiB is re-sent (the AC-3 bound, changed from 10 MiB on 2026-11-11 by the owner, AZ-3731); a file edited mid-upload is detected and the upload restarts.
 - AC-51 [v1.0]: A 50 GiB download completes in Chrome, Firefox and Safari with browser heap at most 200 MB.
 
 ## Mobile
