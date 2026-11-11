@@ -1,11 +1,11 @@
 # Contract: http_server — `HttpServer`, `ApiServices`, `HttpConfig`, readiness list, run and shutdown
 
 **Component**: 11_http_api (library `sunnycloud-http-api`, proposed)
-**Producer task**: E-21/c03 — `_docs/02_tasks/todo/B07-03_crate_skeleton_accept_loop.md` (contributors: E-21/c16 readiness list and ops listener, E-21/c17 shutdown semantics of `run`); keys assigned at Step 4
+**Producer task**: E-21/c03 — `_docs/02_tasks/todo/B07-03_crate_skeleton_accept_loop.md` (contributors: E-21/c15 internal router and test-clock listener, E-21/c16 readiness list and ops listener, E-21/c17 shutdown semantics of `run`); keys assigned at Step 4
 **Consumer tasks**: E-22/c03 (composition root builds `ApiServices`), E-22/c04 (binds `HttpConfig`), E-22/c05 (`serve` calls `run` and owns the rest of the shutdown order), E-22/c15 (`openapi` and `healthcheck` commands); E-31 harness (Mode R); resolved at Step 4
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft
-**Last Updated**: 2026-11-08
+**Last Updated**: 2026-11-11
 
 ## Purpose
 
@@ -47,6 +47,7 @@ Error names are proposals of E-21/c03; they become final when that task is accep
 | trusted proxies | `trusted_proxies` | empty (default deny) |
 | internal listener address | `internal_addr` | `0.0.0.0:8081` |
 | ops listener address | `ops_addr` | `0.0.0.0:9090` |
+| test-clock listener address (feature `test-clock` only; the field does not exist in release builds) | not in the key table (Open point 4) | `0.0.0.0:9091` |
 | public listener address | not in the key table (Open point 1) | `:8080` |
 | connection cap | `max_connections` | 4096 |
 | HTTP/1 header timeout | `h1_header_timeout` | 10s |
@@ -67,7 +68,7 @@ Error names are proposals of E-21/c03; they become final when that task is accep
 | public `:8080` | `/api/v1/**`, SPA bundle and SPA fallback | behind Caddy only, h2c prior knowledge and HTTP/1.1 on one port |
 | internal `internal_addr` | `/api/v1/worker-jobs/**`; `GET /internal/v1/test/clock-offset` with feature `test-clock`; every other path 404 | worker bearer; the public router never contains these routes (AC-79) |
 | ops `ops_addr` | `/healthz`, `/readyz`, `/metrics` (router from `sc_observability`) | never routed by Caddy |
-| test-clock `:9091` | `POST /test/clock` | compiled only with feature `test-clock`; absent from release builds (FT-N-35) |
+| test-clock `:9091` | `POST /test/clock` | compiled only with feature `test-clock`; absent from release builds (FT-N-35); bound by `bind` with the other listeners (`BoundServer::test_clock_addr`, `Listener::TestClock` on a bind error); no credential (`api_v1_surface.md` open point 7) |
 
 ### `run` shutdown order (E-21/c17)
 
@@ -100,13 +101,14 @@ On the shutdown signal: `/readyz` answers 503; every listener stops accepting; h
 | h2-settings | raw h2c client reads SETTINGS | initial window 4194304, connection window 33554432 after the first WINDOW_UPDATE, max streams 100, max header list 16384 | IT-11-18 |
 | connection-cap | 60 connections, `max_connections = 50` | 10 refused, `connections_rejected_total` +10 | IT-11-19 |
 | shutdown-order | 20 held long-polls, 3 downloads, grace 2 s | readiness 503 < accept stops < long-polls answered < connections closed; long download reset at grace | IT-11-16 |
-| release-build | build without `test-clock` | `:9091` refused, `/internal/v1/test/clock-offset` 404 | IT-11-9, FT-N-35 |
+| release-build | build without `test-clock` | `:9091` refused, `/internal/v1/test/clock-offset` 404 | IT-11-9, FT-N-35; the default-feature tests assert the 404s and the empty route table, the refusal follows from the listener and `test_clock_addr` not compiling |
 
 ## Open points
 
 1. The public listener address (`:8080`) has no key in helper 01's table; `containerization.md` also says the ops address key "is still to be added" although helper 01 lists `ops_addr`. E-22/c04 and E-01 owner to add the public key.
 2. `ReadinessCheck` registry: E-21's interface lists a registry provided by 11, while `sc_observability` provides `ReadinessRegistry` and the ops router. This contract follows `sc_observability`: 11 receives the list and mounts the shared router; it adds no second registry.
 3. `AbuseLimiter`: 12 "injects it into 11 where it needs it"; no 11 behaviour in v1.0 needs it (11 only maps `RateLimited`), so it is not an `ApiServices` field.
+4. The test-clock listener address has no key in helper 01's table. `HttpConfig.test_clock_addr` is a field of test builds only; E-22/c04 and the E-01 owner to add the key (default `0.0.0.0:9091`, as the table above) and to set the field only under feature `test-clock`.
 
 ## Change Log
 
@@ -116,3 +118,4 @@ On the shutdown signal: `/readyz` answers 503; every listener stops accepting; h
 | 1.1.0 | 2026-11-08 | `HttpConfig.worker_output_limits` added; `request_timeout` and `body_idle_timeout` must be above zero; `BodyLimits` is a layer of the route stack | AZ-3803 |
 | 1.1.1 | 2026-11-08 | `HttpConfig.download_write_idle` (must be above zero); the accept loop wraps every socket in a write-idle guard | AZ-3803 |
 | 1.2.0 | 2026-11-08 | `HttpConfig.public_url` validated as an origin; `CsrfGuard` is layer 9 of the route stack (`RouteContext.csrf`) | AZ-3808 |
+| 1.3.0 | 2026-11-11 | Worker routes registered for the internal listener; with feature `test-clock`: `HttpConfig.test_clock_addr`, the `:9091` listener bound by `bind` and served by `serve`, `BoundServer::test_clock_addr`, `Listener::TestClock`; Open point 4 | AZ-3831 |

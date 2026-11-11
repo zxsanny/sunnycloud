@@ -194,6 +194,8 @@ mod tests {
             public_addr: ([127, 0, 0, 1], 0).into(),
             internal_addr: ([127, 0, 0, 1], 0).into(),
             ops_addr: ([127, 0, 0, 1], 0).into(),
+            #[cfg(feature = "test-clock")]
+            test_clock_addr: ([127, 0, 0, 1], 0).into(),
             max_connections: 7,
             h1_header_timeout: Duration::from_millis(1_234),
             h2_stream_window: 1_111_111,

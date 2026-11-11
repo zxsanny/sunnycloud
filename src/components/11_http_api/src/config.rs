@@ -27,6 +27,9 @@ pub struct HttpConfig {
     pub public_addr: SocketAddr,
     pub internal_addr: SocketAddr,
     pub ops_addr: SocketAddr,
+    /// The `:9091` listener of `POST /test/clock`; exists only in builds with feature `test-clock`.
+    #[cfg(feature = "test-clock")]
+    pub test_clock_addr: SocketAddr,
     pub max_connections: usize,
     pub h1_header_timeout: Duration,
     pub h2_stream_window: u32,

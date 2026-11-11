@@ -1,8 +1,8 @@
 use contracts::{WorkerAuthError, WorkerIdentity};
 use serde_json::Value;
-use sunnycloud_http_api::registry::{ListenerKind, document, mount};
+use sunnycloud_http_api::registry::{ListenerKind, document, mount, production_routes};
 
-use super::support::{def, sample_routers, sample_routers_with, sample_surface};
+use super::support::{def, sample_routers, sample_surface};
 use crate::harness::Script;
 use crate::harness::router_server::{RouterServer, request, request_with, route_context_with};
 
@@ -15,46 +15,6 @@ fn accepting_worker() -> Script {
         Ok::<WorkerIdentity, WorkerAuthError>(WorkerIdentity),
     );
     script
-}
-
-fn without_request_id(mut body: Value) -> Value {
-    body.as_object_mut()
-        .expect("object")
-        .remove("request_id")
-        .expect("request_id");
-    body
-}
-
-#[tokio::test]
-async fn an_internal_route_is_absent_from_the_public_router_and_answered_by_the_internal_one() {
-    // Arrange
-    let (routers, _) = sample_routers_with(&sample_surface(), &accepting_worker());
-    let public = RouterServer::start(routers.public).await;
-    let internal = RouterServer::start(routers.internal).await;
-
-    // Act
-    let on_public = request(public.addr, "POST", "/api/v1/worker-jobs/claims").await;
-    let lease_on_public = request(public.addr, "PUT", "/api/v1/worker-jobs/7/lease").await;
-    let unknown_on_public = request(public.addr, "POST", "/api/v1/worker-jobs/nothing").await;
-    let on_internal = request_with(
-        internal.addr,
-        "POST",
-        "/api/v1/worker-jobs/claims",
-        &WORKER_BEARER,
-    )
-    .await;
-
-    // Assert
-    assert_eq!(on_public.status, 404);
-    assert_eq!(lease_on_public.status, 404);
-    assert_eq!(on_internal.status, 204);
-    assert_eq!(
-        without_request_id(on_public.json()),
-        without_request_id(unknown_on_public.json()),
-        "a worker route on the public listener is indistinguishable from an unknown path"
-    );
-    public.stop().await;
-    internal.stop().await;
 }
 
 #[tokio::test]
@@ -87,6 +47,10 @@ fn the_document_marks_internal_operations_with_the_worker_scheme_and_keeps_worke
         serde_json::from_slice(document(&sample_surface()).as_bytes()).expect("document");
 
     // Act
+    let expected = production_routes()
+        .iter()
+        .filter(|route| route.spec.listener == ListenerKind::Internal)
+        .count();
     let mut internal = 0;
     for item in parsed["paths"].as_object().expect("paths").values() {
         for operation in item.as_object().expect("item").values() {
@@ -104,7 +68,8 @@ fn the_document_marks_internal_operations_with_the_worker_scheme_and_keeps_worke
             }
         }
     }
-    assert_eq!(internal, 3);
+    assert_eq!(internal, expected);
+    assert!(internal >= 8, "the eight worker operations are internal");
 }
 
 #[tokio::test]

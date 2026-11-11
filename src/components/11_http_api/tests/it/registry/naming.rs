@@ -171,7 +171,10 @@ fn every_document_path_is_under_api_v1_or_the_test_clock_and_is_lint_clean() {
     // Assert
     assert!(paths.len() >= 15);
     for path in paths {
-        assert!(path.starts_with("/api/v1/"), "{path}");
+        assert!(
+            path.starts_with("/api/v1/") || path.starts_with("/internal/v1/test/"),
+            "{path}"
+        );
         assert_eq!(lint_path(path), vec![], "{path}");
     }
 }

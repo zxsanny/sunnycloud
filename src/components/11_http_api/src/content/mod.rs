@@ -158,7 +158,7 @@ fn content_range(range: ByteRange, total: u64) -> Result<HeaderValue, Inconsiste
 
 /// The body as it is read, without buffering. A failure is logged here because the server only closes or
 /// resets the connection and keeps no record of why.
-fn stream(body: PlaintextStream, request_id: CorrelationId) -> Body {
+pub(crate) fn stream(body: PlaintextStream, request_id: CorrelationId) -> Body {
     Body::new(Body::from_stream(body).map_err(move |failure| {
         log_error!(
             "content stream failed after the headers were sent",

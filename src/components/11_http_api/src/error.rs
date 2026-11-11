@@ -12,6 +12,8 @@ pub enum Listener {
     Public,
     Internal,
     Ops,
+    #[cfg(feature = "test-clock")]
+    TestClock,
 }
 
 impl fmt::Display for Listener {
@@ -20,6 +22,8 @@ impl fmt::Display for Listener {
             Listener::Public => "public",
             Listener::Internal => "internal",
             Listener::Ops => "ops",
+            #[cfg(feature = "test-clock")]
+            Listener::TestClock => "test-clock",
         })
     }
 }

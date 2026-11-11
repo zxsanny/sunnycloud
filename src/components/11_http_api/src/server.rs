@@ -19,6 +19,8 @@ use crate::registry::{
 };
 use crate::services::ApiServices;
 use crate::spa::SpaBundle;
+#[cfg(feature = "test-clock")]
+use crate::test_clock::{self, TestClockListener};
 use crate::version::VersionGate;
 
 /// The document of this build, as `HttpServer::openapi` returns and `GET /api/v1/openapi.json` serves it.
@@ -26,7 +28,7 @@ pub fn current_document() -> OpenApiDocument {
     document(&production_routes())
 }
 
-/// The API server: its listeners (public, internal, ops, and later test-clock) over one accept loop.
+/// The API server: its listeners (public, internal, ops, and in test builds test-clock) over one accept loop.
 pub struct HttpServer {
     services: Arc<ApiServices>,
     config: HttpConfig,
@@ -53,6 +55,8 @@ pub struct BoundServer {
     ops: TcpListener,
     ops_addr: SocketAddr,
     ops_app: Router,
+    #[cfg(feature = "test-clock")]
+    test_clock: TestClockListener,
     liveness: Liveness,
 }
 
@@ -112,6 +116,18 @@ impl HttpServer {
         let (public, public_addr) = bind(Listener::Public, self.config.public_addr).await?;
         let (internal, internal_addr) = bind(Listener::Internal, self.config.internal_addr).await?;
         let (ops, ops_addr) = bind(Listener::Ops, self.config.ops_addr).await?;
+        #[cfg(feature = "test-clock")]
+        let test_clock = {
+            let (listener, addr) = bind(Listener::TestClock, self.config.test_clock_addr).await?;
+            let app = self
+                .middleware
+                .wrap(test_clock::router(Arc::clone(&self.services.offset_clock)));
+            TestClockListener {
+                listener,
+                addr,
+                app,
+            }
+        };
         let liveness = Liveness::new();
         let context = RouteContext {
             services: Arc::clone(&self.services),
@@ -134,6 +150,8 @@ impl HttpServer {
             ops,
             ops_addr,
             ops_app: ops_app(&self.services, liveness.clone()),
+            #[cfg(feature = "test-clock")]
+            test_clock,
             liveness,
         })
     }
@@ -164,6 +182,11 @@ impl BoundServer {
         self.ops_addr
     }
 
+    #[cfg(feature = "test-clock")]
+    pub fn test_clock_addr(&self) -> SocketAddr {
+        self.test_clock.addr
+    }
+
     /// Serves until `shutdown_signal` completes, turns `/readyz` to 503, then stops accepting. Connections
     /// already open are left to finish; closing them within the grace is E-21/c17.
     pub async fn serve(
@@ -178,13 +201,19 @@ impl BoundServer {
             .accept
             .serve(self.internal, self.internal_app, stop.clone());
         let ops = self.accept.serve(self.ops, self.ops_app, stop.clone());
+        #[cfg(feature = "test-clock")]
+        let test_clock =
+            self.accept
+                .serve(self.test_clock.listener, self.test_clock.app, stop.clone());
+        #[cfg(not(feature = "test-clock"))]
+        let test_clock = std::future::ready(());
         let liveness = self.liveness;
         let signal = async {
             shutdown_signal.await;
             liveness.shut_down();
             stop.cancel();
         };
-        tokio::join!(public, internal, ops, signal);
+        tokio::join!(public, internal, ops, test_clock, signal);
         Ok(())
     }
 }

@@ -25,14 +25,15 @@ tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
 tokio-util = { workspace = true }
 # Same spec as sc_observability: `Instrument` carries the request span across awaits.
 tracing = { version = "0.1", default-features = false, features = ["std"] }
+uuid = { workspace = true }
 
 [features]
-# Adds the `OffsetClock` handle to `ApiServices` and, with E-21/c15, the test-clock routes and listener.
+# Adds the `OffsetClock` handle to `ApiServices`, the clock-offset route on the internal listener and the
+# `:9091` test-clock listener.
 test-clock = ["sc_clock/test-clock"]
 
 [dev-dependencies]
 hyper = { workspace = true, features = ["client", "http1", "http2", "server"] }
 futures-core = { version = "0.3", default-features = false }
 prometheus-parse = "0.2"
-uuid = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }

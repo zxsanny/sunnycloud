@@ -1,11 +1,11 @@
 # Contract: api_v1_surface — `/api/v1` operations, OpenAPI document and cross-route rules
 
 **Component**: 11_http_api
-**Producer task**: E-21/c11 — `_docs/02_tasks/todo/B07-11_route_registry_openapi.md` (contributors: E-21/c04 security headers, E-21/c05 body classes and timeouts, E-21/c07 auth classes and credential transport, E-21/c08 CSRF rule, E-21/c12, c13, c14, c15 route rows); keys assigned at Step 4
+**Producer task**: E-21/c11 — `_docs/02_tasks/todo/B07-11_route_registry_openapi.md` (contributors: E-21/c04 security headers, E-21/c05 body classes and timeouts, E-21/c07 auth classes and credential transport, E-21/c08 CSRF rule, E-21/c12, c13, c14 route rows; E-21/c15 worker and test-clock rows, `_docs/02_tasks/todo/AZ-3831_internal_router_test_clock.md`); keys assigned at Step 4
 **Consumer tasks**: E-21/c18 (CSRF and IDOR generators), E-15/c13 (scope declaration check), E-30/c06 (vault routes, v1.2), E-23 (`HttpSyncClient`, all operations it calls), E-26/c06 (generated `ApiClient`), E-24 and E-27/E-28 (through `sync-core` and `mobile_backup`), E-20/c03 (worker routes), E-31 (FT-P-70, NFT-SEC-09, NFT-SEC-13, NFT-SEC-50); resolved at Step 4
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft
-**Last Updated**: 2026-11-08
+**Last Updated**: 2026-11-11
 
 ## Purpose
 
@@ -91,6 +91,18 @@ Enforcement (E-21/c05), per route, innermost layer in front of the handler and b
 - A block PUT without `Content-Length` (including a chunked one) is answered 411 `length_required` before any body byte is read.
 - The write-idle timer is on the connection's socket, not the route: any response write or flush that makes no progress for `download_write_idle` fails and closes the connection (TCP; HTTP/2 shares it for all streams of the connection). It is the only place that notices a reader that stopped reading. Only a download can be large enough to stall, so no other route is affected in practice.
 
+### Worker routes and the test clock (E-21/c15)
+
+Worker routes are registered with the internal listener only; the registry validates that the internal listener holds only `Worker` routes under `/api/v1/worker-jobs/` and `/internal/v1/test/`, and that the public router holds none. Every other path on the internal listener is the same 404 problem as an unknown path on the public one.
+
+- Auth: `Worker` class, 08 `WorkerAuthenticator` only; no credential, a cookie, a session or device token and a wrong secret all get the one 403 `forbidden`, and no `WorkerJobs` method runs. A call that passes auth must carry `X-Worker-Id` exactly once and non-empty, else 400 `invalid_request` (field `x-worker-id`); it is passed to the port unchanged. A `job_id` that is not a UUID is 400 `invalid_request` (field `job_id`).
+- Bodies are JSON with exactly the fields of 08 section 5 (`{lane}`, `{outcome}`, `{code, disposition}`, `{decoder_ok, image_age_days}`); an unknown field, a missing field or another value is 400 `invalid_request`. `claims` answers 200 `ClaimedJob` (`job_id`, `kind`, `content_hash` as 64 lowercase hex digits, `params_version`, `attempt`, `lease_ms`) or an empty 204; the lease PUT answers 200 `{lease_ms}`; `failure` answers 200 `{result}`.
+- Port errors: `LeaseLost` 409 `lease_lost`, `RevisionObsolete` 404 `revision_obsolete`, `OutputTooLarge` 413 `output_too_large`, `OutputTypeRejected` 422 `output_type_rejected`, `OutputKindRejected` 422 `output_kind_rejected`, `Storage` and `Unexpected` an opaque 500 (`problem_details.md`).
+- `input` is `Timing::Download`: always 200 with the whole decrypted body and the exact `Content-Length` the port reports; `Range` is never read (G-08-4).
+- `outputs/{kind}`: `kind` is `thumb`, `preview` or `transcode`; any other value is 422 `output_kind_rejected` without a port call. `Content-Length` is required (a chunked body is 411 `length_required`, no byte read); `Content-Type` is required and is handed to the port as the media type; `X-Width`, `X-Height` and `X-Duration-Ms` are optional numbers (not a number: 400). The body reaches the port as a stream, cut at the `WorkerOutput` cap of its `{kind}`.
+- Every answer carries `Cache-Control: no-store` (layer 5 default).
+- Test clock, feature `test-clock` only: the clock-offset read is an ordinary `Worker` registry operation (so it is in the document of a test build and absent from a release one); `POST /test/clock` is one router on the `:9091` listener (`HttpConfig.test_clock_addr`), outside the registry and the document, with body `{"advance_seconds": N}` (a whole non-negative number; negative or out of range is 400 `invalid_request`, the offset unchanged) and answer 200 `{"offset_seconds": <new offset>}`; the read answers the same shape. A release build compiles neither route nor the listener: `:9091` is not bound, and both paths are 404 on the listeners that exist.
+
 ### Operations
 
 Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly), `DO` (DeviceOnly), `Adm`, `SG` (ShareGrant), `W`; body class as above; "Mut" = state-changing.
@@ -152,15 +164,15 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 | Media (c14) | GET, HEAD | `/api/v1/nodes/{node_id}/thumbnail?size=small\|preview` | SoD | None | no | `DerivedOpener::open_derived`, then `DownloadService::open_blob_content` |
 | Media (c14) | GET, HEAD | `/api/v1/nodes/{node_id}/transcode` | SoD | None | no | same with `Transcode` |
 | Media (c14) | POST | `/api/v1/thumbnail-states` | SoD | Query | no | `ThumbnailStateSource::states` (Open point 6) |
-| Worker (c15, internal) | POST | `/api/v1/worker-jobs/claims` | W | Small | yes | `WorkerJobs::claim` (200 or 204) |
+| Worker (c15, internal) | POST | `/api/v1/worker-jobs/claims` | W | Small | yes | `WorkerJobs::claim` (200 `ClaimedJob` or 204) |
 | Worker (c15, internal) | PUT, DELETE | `/api/v1/worker-jobs/{job_id}/lease` | W | Small / None | yes | `WorkerJobs::extend_lease` / `release` |
 | Worker (c15, internal) | GET | `/api/v1/worker-jobs/{job_id}/input` | W | None | no | `WorkerJobs::open_input` |
-| Worker (c15, internal) | PUT | `/api/v1/worker-jobs/{job_id}/outputs/{kind}` | W | WorkerOutput | yes | `WorkerJobs::accept_output` |
-| Worker (c15, internal) | PUT | `/api/v1/worker-jobs/{job_id}/result` | W | Small | yes | `WorkerJobs::complete_skipped` |
-| Worker (c15, internal) | POST | `/api/v1/worker-jobs/{job_id}/failure` | W | Small | yes | `WorkerJobs::fail` |
-| Worker (c15, internal) | PUT | `/api/v1/worker-jobs/status` | W | Small | yes | `WorkerJobs::record_status` |
-| Test clock (c15, feature `test-clock`) | GET | `/internal/v1/test/clock-offset` (internal listener) | W | None | no | `OffsetClock::offset` |
-| Test clock (c15, feature `test-clock`) | POST | `/test/clock` (`:9091`) | Open point 7 | Small | yes | `OffsetClock::advance` |
+| Worker (c15, internal) | PUT | `/api/v1/worker-jobs/{job_id}/outputs/{kind}` | W | WorkerOutput | yes | `WorkerJobs::accept_output` (204 `Accepted`, 200 `AlreadyPresent`) |
+| Worker (c15, internal) | PUT | `/api/v1/worker-jobs/{job_id}/result` | W | Small | yes | `WorkerJobs::complete_skipped` (204) |
+| Worker (c15, internal) | POST | `/api/v1/worker-jobs/{job_id}/failure` | W | Small | yes | `WorkerJobs::fail` (200 `{result}`) |
+| Worker (c15, internal) | PUT | `/api/v1/worker-jobs/status` | W | Small | yes | `WorkerJobs::record_status` (204) |
+| Test clock (c15, feature `test-clock`) | GET | `/internal/v1/test/clock-offset` (internal listener) | W | None | no | `OffsetClock::offset` (200 `{offset_seconds}`) |
+| Test clock (c15, feature `test-clock`) | POST | `/test/clock` (`:9091`, outside the document) | none, Open point 7 | 1 KiB | yes | `OffsetClock::advance_seconds` (200 `{offset_seconds}`) |
 | Vault (E-30/c06, v1.2) | - | `/api/v1/vaults/**` | S | - | - | `VaultService` (reserved) |
 | SPA (c11) | GET | every non-`/api` path | Pub | None | no | bundled web index (fallback) |
 
@@ -168,7 +180,7 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 
 - The router and the OpenAPI document contain the same set of (method, path template): 0 undocumented routes, 0 phantom operations.
 - Every operation declares exactly one auth class, one body class, its state-changing flag, its owner port method and every ID parameter.
-- The public router contains no worker or test-clock route; the internal router contains only the worker routes and, with feature `test-clock`, the clock-offset read; every other path there is 404.
+- The public router contains no worker or test-clock route; the internal router contains only the worker routes and, with feature `test-clock`, the clock-offset read; every other path there is 404 (the `:9091` router exists only with feature `test-clock` and is not part of either).
 - Handlers take the account from the authenticated principal, never from a path, query or body field; a foreign id is a 404 equal to a random id.
 - Paths are stable inside `/api/v1`; the document only grows between releases.
 
@@ -202,7 +214,7 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 4. `revisions:lookup` takes up to 1,000 content hashes (about 70 KB as hex JSON), above `Small` (64 KiB); its body class is not assigned (`Query` 128 KiB fits).
 5. The public share thumbnail route is named by 11 §8 and 08 §5 but missing from 06's route table; its exact path and the `size` parameter are taken from 11.
 6. `thumbnail-states`: 08 describes a body of node ids, while `ThumbnailStateSource::states` takes content hashes; One handler must stay one port call. Decided 2026-11-07 (G-08-3): ids of another account and unknown ids are omitted from the answer; a body over 1,000 ids is 422 `batch_too_large`. The node-id versus content-hash mapping step is still open.
-7. Auth on `POST /test/clock` (`:9091`): `observability.md` says "bearer via `e2e-ctl`", but no such credential is defined in 11 or helper 01.
+7. Auth on `POST /test/clock` (`:9091`): `observability.md` says "bearer via `e2e-ctl`", but no such credential is defined in 11 or helper 01. E-21/c15 implements it with no credential (the listener exists only in test images and no proxy routes it); anyone who can reach `:9091` can move server time. E-21 and E-31 owners to define the credential, or confirm the network boundary is enough.
 8. `GET /api/v1/setup` (11 §8, owner 01) is not in 01's route table; `list_providers` already returns `setup_required`.
 9. 11 §8's indicative paths differ from the owners' (`.../login`, `code-exchanges`, `GET/POST device-grants/{user_code}`, `public-shares/{token}/access`); this contract follows the owners, as 11 §8 says.
 10. Request id: 11 (§5 layer 3, IT-11-4) issues a fresh UUIDv7 and does not echo a client `X-Request-Id`; `sc_error::CorrelationId::from_request` keeps a valid incoming value, `sc_observability` AC-3 assumes a caller-set id, and 16's `ApiClient` sends one. Owners of E-02, E-09 and E-21 to decide.
@@ -213,6 +225,11 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 14. CSRF and `ShareGrant`: the grant is a path-scoped cookie resolved by 06 in the handler, so layer 9 does not check `ShareGrant` routes. If a share route with a grant cookie ever mutates state, owners of E-21 and 06 must decide whether it falls under the rule.
 15. CSRF and `Sec-Fetch-Site`/`Origin` together: the rule is an "or" (either proof passes), so `Sec-Fetch-Site: cross-site` with an `Origin` equal to `public_url` passes. A browser never sends that pair; owners of E-21 to say if it should be refused.
 16. Whether the web app's refresh request is cookie-authenticated, and so under CSRF, is not stated by 01 (E-15 owner).
+17. Wire of the test clock: only the request body `{"advance_seconds": N}` is fixed by FT-N-35. The offset answer `{"offset_seconds": N}` (whole seconds, the unit of the advance) is E-21/c15's choice; the supervisor poll (E-20/c09) must read it. `sc_clock` is non-negative and grow-only, while 11 section 4 says the endpoint "sets" the offset; c15 follows `sc_clock`.
+18. The version gate runs before auth on every class but `Public`, `Worker` included. With `min_client_version` set, a worker call without `X-Sunnycloud-Client` is 400, and one below the minimum is 426, before the worker secret is checked, so the uniform 403 of AC-79 holds only for requests that pass the gate. Owners of E-21 and E-20 to say whether the supervisor sends the header or the gate should skip `Worker`.
+19. `WorkerOutput` has `request_timeout` as its total handler time (table above), so a 10 GiB `transcode` output must arrive within 60 s. Owners of E-21 and E-18 to say whether it should follow `Block` and `Staged` (body idle timer, no total cap).
+20. A route declares one success status. `claims` (200 or 204) and `outputs` (204 or 200) document the status of their first-named outcome in the OpenAPI document; the other is only in the table above.
+21. `X-Worker-Id` and the failure `code` are passed to 08 as received (non-empty `X-Worker-Id`; no length or character rule); owner 08 to say whether either needs one. A missing or non-numeric header and a `job_id` that is not a UUID are 400; 08 section 5 lists no status for them.
 
 ## Change Log
 
@@ -222,3 +239,4 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 | 1.1.0 | 2026-11-08 | Body limits and time limits enforced (E-21/c05): enforcement rules, `Timing` clocks, worker output caps, Open points 11 to 13 | AZ-3803 |
 | 1.1.1 | 2026-11-08 | 411 `length_required` and the connection write-idle timer enforced; Open points 11 and 13 closed | AZ-3803 |
 | 1.2.0 | 2026-11-08 | CSRF origin check enforced (E-21/c08): enforcement rules in the CSRF row, Open points 14 to 16, point 3 narrowed | AZ-3808 |
+| 1.3.0 | 2026-11-11 | Worker routes and test-clock endpoints implemented (E-21/c15): section "Worker routes and the test clock", wire of the clock answers, Open point 7 narrowed, Open points 17 to 21 | AZ-3831 |

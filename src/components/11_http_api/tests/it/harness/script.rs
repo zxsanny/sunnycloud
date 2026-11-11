@@ -37,7 +37,7 @@ impl Script {
         self.lock().calls.get(key).copied().unwrap_or(0)
     }
 
-    pub(super) fn take<T: 'static>(&self, key: &'static str) -> Option<T> {
+    pub fn take<T: 'static>(&self, key: &'static str) -> Option<T> {
         let mut inner = self.lock();
         *inner.calls.entry(key).or_default() += 1;
         let boxed = inner.results.get_mut(key)?.pop_front()?;
@@ -53,6 +53,6 @@ impl Script {
     }
 }
 
-pub(super) fn unscripted(key: &'static str) -> Fault {
+pub fn unscripted(key: &'static str) -> Fault {
     Box::new(UnscriptedCall(key))
 }

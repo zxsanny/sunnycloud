@@ -17,3 +17,4 @@ mod ops;
 mod ops_metrics;
 mod registry;
 mod version;
+mod worker;

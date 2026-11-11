@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use sunnycloud_http_api::registry::{HttpMethod, production_routes};
+use sunnycloud_http_api::registry::{HttpMethod, ListenerKind, production_routes};
 
 use super::support::{GROUPS, STATE_CHANGES, read_routes, with_cookie};
 use crate::auth::support::Running;
@@ -76,6 +76,7 @@ async fn the_reads_of_the_production_registry_answer_to_a_cross_site_cookie_requ
     let routes: Vec<_> = production_routes()
         .into_iter()
         .filter(|def| matches!(def.spec.method, HttpMethod::Get))
+        .filter(|def| def.spec.listener == ListenerKind::Public)
         .collect();
     let server = Running::start(&routes).await;
 

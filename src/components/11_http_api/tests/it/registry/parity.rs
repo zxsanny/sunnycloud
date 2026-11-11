@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use serde_json::Value;
-use sunnycloud_http_api::registry::{HttpMethod, document, production_routes};
+use sunnycloud_http_api::registry::{HttpMethod, ListenerKind, document, production_routes};
 use sunnycloud_http_api::{ApiServices, HttpServer, current_document};
 
 use super::support::{concrete, sample_routers, sample_surface};
@@ -53,7 +53,11 @@ async fn the_routers_answer_exactly_the_operations_the_document_lists_per_listen
     // Assert
     assert_eq!(routed_public, operations_on(&document, "public"));
     assert_eq!(routed_internal, operations_on(&document, "internal"));
-    assert!(routed_public.len() >= 15 && routed_internal.len() == 3);
+    let internal_routes = production_routes()
+        .iter()
+        .filter(|route| route.spec.listener == ListenerKind::Internal)
+        .count();
+    assert!(routed_public.len() >= 15 && routed_internal.len() == internal_routes);
     public.stop().await;
     internal.stop().await;
 }
@@ -110,11 +114,24 @@ async fn the_real_servers_routes_match_its_document() {
             }
         }
     }
+    let mut live_internal = BTreeSet::new();
+    for path in operations_on(&document, "internal")
+        .iter()
+        .map(|(_, path)| path)
+    {
+        for method in HttpMethod::ALL {
+            let verb = method.key().to_uppercase();
+            let answer = request(internal, &verb, &concrete(path)).await;
+            if answer.status != 404 && answer.status != 405 {
+                live_internal.insert((verb, path.clone()));
+            }
+        }
+    }
     let on_internal = request(internal, "GET", "/api/v1/server-info").await;
 
     // Assert
     assert_eq!(live, operations_on(&document, "public"));
-    assert!(operations_on(&document, "internal").is_empty());
+    assert_eq!(live_internal, operations_on(&document, "internal"));
     assert_eq!(on_internal.status, 404);
     stop.send(()).expect("server is running");
     task.await.expect("serve joins").expect("serve returns");
@@ -165,6 +182,7 @@ fn the_document_lists_the_system_operations() {
     // Assert
     let expected: BTreeSet<Operation> = production_routes()
         .iter()
+        .filter(|route| route.spec.listener == ListenerKind::Public)
         .map(|route| {
             (
                 route.spec.method.key().to_uppercase(),

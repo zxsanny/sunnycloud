@@ -40,6 +40,8 @@ pub fn default_config() -> HttpConfig {
         public_addr: loopback,
         internal_addr: loopback,
         ops_addr: loopback,
+        #[cfg(feature = "test-clock")]
+        test_clock_addr: loopback,
         max_connections: 4096,
         h1_header_timeout: Duration::from_secs(10),
         h2_stream_window: 4 << 20,

@@ -26,7 +26,6 @@ const CHILDREN: &[Param] = &[
 ];
 const CALLBACK: &[Param] = &[Param::path("provider", ParamType::String)];
 const SHARE_CONTENT: &[Param] = &[Param::id(ParamLocation::Path, "token", ParamType::String)];
-const JOB: &[Param] = &[Param::id(ParamLocation::Path, "job_id", ParamType::Uuid)];
 
 const SOD: AuthClass = AuthClass::SessionOrDevice;
 
@@ -161,32 +160,6 @@ pub fn sample_surface() -> Vec<RouteDef> {
             BodyClass::None,
         )
         .params(SHARE_CONTENT),
-        op(
-            Post,
-            "/api/v1/worker-jobs/claims",
-            "WorkerJobs::claim",
-            AuthClass::Worker,
-            BodyClass::Small,
-        )
-        .internal(),
-        op(
-            Put,
-            "/api/v1/worker-jobs/{job_id}/lease",
-            "WorkerJobs::extend_lease",
-            AuthClass::Worker,
-            BodyClass::Small,
-        )
-        .params(JOB)
-        .internal(),
-        op(
-            Delete,
-            "/api/v1/worker-jobs/{job_id}/lease",
-            "WorkerJobs::release",
-            AuthClass::Worker,
-            BodyClass::None,
-        )
-        .params(JOB)
-        .internal(),
     ];
     let mut defs = production_routes();
     defs.extend(specs.into_iter().map(def));

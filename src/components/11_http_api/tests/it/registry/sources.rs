@@ -8,7 +8,9 @@ const ROUTER_ENTRY_POINTS: [&str; 5] = [
     ".nest_service(",
     "Router::merge",
 ];
-const ALLOWED: &str = "registry/mount.rs";
+/// `test_clock.rs` builds the one router of the `:9091` test-clock listener, which is outside the registry and the
+/// OpenAPI document (`api_v1_surface.md`) and compiled only with feature `test-clock`.
+const ALLOWED: [&str; 2] = ["registry/mount.rs", "test_clock.rs"];
 
 fn rust_files(dir: &Path, found: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).expect("source directory is readable") {
@@ -31,7 +33,7 @@ fn no_route_is_added_to_a_router_except_through_the_registry() {
     // Act
     let offenders: Vec<String> = files
         .iter()
-        .filter(|file| !file.ends_with(ALLOWED))
+        .filter(|file| !ALLOWED.iter().any(|allowed| file.ends_with(allowed)))
         .filter(|file| {
             let text = fs::read_to_string(file).expect("rust file is readable");
             ROUTER_ENTRY_POINTS

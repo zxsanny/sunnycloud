@@ -4,7 +4,7 @@
 use axum::body::Body;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use sc_error::{CorrelationId, DomainError};
+use sc_error::{CorrelationId, DomainError, FieldProblem};
 use sc_observability::log_error;
 
 use crate::port_error::PortError;
@@ -35,6 +35,15 @@ impl ApiProblem {
     pub(crate) fn with_update_url(mut self, url: String) -> ApiProblem {
         self.update_url = Some(url);
         self
+    }
+
+    /// A 400 for one field of the request.
+    pub(crate) fn validation(field: &str, problem: &str, request_id: CorrelationId) -> ApiProblem {
+        let problem = FieldProblem {
+            field: field.to_owned(),
+            problem: problem.to_owned(),
+        };
+        ApiProblem::new(DomainError::Validation(vec![problem]), request_id)
     }
 
     /// A port's own error, converted by [`PortError`].

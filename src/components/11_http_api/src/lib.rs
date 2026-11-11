@@ -27,6 +27,9 @@
 //! route (`content_serving_headers.md`): hostile types are attachments, Range and validators are the same
 //! everywhere, and a failed stream aborts the connection or stream.
 //!
+//! The worker routes (`registry::worker`) are registered for the internal listener only; with feature `test-clock`
+//! the `-test` image adds the clock-offset read there and a `:9091` listener for `POST /test/clock`.
+//!
 //! [`AcceptLoop`] is the one loop every listener runs: one task per connection, a global connection cap,
 //! HTTP/1.1 and h2c prior knowledge on one port, and the configured HTTP/2 and header-timeout settings.
 
@@ -37,6 +40,7 @@ mod content;
 mod csrf;
 mod error;
 mod gate;
+mod json_body;
 mod limits;
 mod metrics;
 mod middleware;
@@ -49,6 +53,8 @@ mod server;
 mod server_info;
 mod services;
 mod spa;
+#[cfg(feature = "test-clock")]
+mod test_clock;
 mod version;
 mod write_idle;
 

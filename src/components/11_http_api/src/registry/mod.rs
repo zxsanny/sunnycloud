@@ -8,6 +8,7 @@ mod naming;
 mod spec;
 mod system;
 mod validate;
+mod worker;
 
 use std::sync::Arc;
 
@@ -38,5 +39,9 @@ pub struct RouteContext {
 
 /// Every operation the server offers. Each group of E-21 adds its own list here.
 pub fn production_routes() -> Vec<RouteDef> {
-    system::routes()
+    let mut routes = system::routes();
+    routes.extend(worker::routes());
+    #[cfg(feature = "test-clock")]
+    routes.extend(crate::test_clock::routes());
+    routes
 }
