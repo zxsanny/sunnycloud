@@ -94,7 +94,7 @@ Then the second waits on the lock and exactly one passes in every round
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-12-3: whether `LastAdmin` applies to the sole-admin reset is decided in E-15/c01 and E-22/c01; if it does, the reset path must use this guard | E-15 / E-22 owners | open | Low |
+| G-12-3: `LastAdmin` does not apply to the sole-admin reset (owner decision 2026-11-11, AZ-3681); the reset path does not use this guard | E-15 / E-22 owners | resolved | Low |
 
 ## Contract
 

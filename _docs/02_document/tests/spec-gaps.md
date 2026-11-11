@@ -55,7 +55,7 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | ID | Gap | Affected tests | Owner decision? | Resolve during |
 |---|---|---|---|---|
 | **01_identity** | | | | |
-| IT-01-17 note | `register_hooks` (late registration entry point for account creation hooks) is described in 12 but not in 01's interface; tests use it by name only (BLOCKED partial) | IT-01-17 | No | decompose |
+| IT-01-17 note | RESOLVED 2026-11-11 (AZ-3681): `register_hooks` is an inherent set-once method of the identity service, called only by 12 before the listeners accept requests; unset means account creation fails closed (01 description, AccountLifecycleHook) | IT-01-17 | No | resolved |
 | **03_transfer** | | | | |
 | G-03-1 | Worst case after a drop is 16 MiB (4 lanes x 2 MiB in flight + up to 8 MiB uncheckpointed) against AC-3 (re-send <= 10 MiB); either lane/checkpoint limits or the AC change | IT-03-4, PT-03-5, AT-03-1; AC-3 (FT-P-01, NFT-PERF-05, NFT-RES-01) | Yes | owner |
 | G-03-3 | Stale-base commit response: tests assert `Committed{conflict_copy}` and no `EditedSince` (02 `ConflictCopied`); 03's wire response for the outcome is not spelled out (gap text only referenced in tests.md) | IT-03-7 | No | decompose |
@@ -75,7 +75,7 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | **11_http_api** | | | | |
 | **12_operator_cli** | | | | |
 | G-12-1 | BLOCKED: no test-only migration source for failing, killed and irreversible migrations (release binary embeds its migrations) | IT-12-11; NFT-RES-13, NFT-RES-14 | No | decompose |
-| G-12-3 | Reset of the sole admin: whether `LastAdmin` applies is left to 01 | IT-12-2, AT-12-2 | Yes | decompose |
+| G-12-3 | RESOLVED 2026-11-11 (AZ-3681, owner): reset of the sole active admin is allowed; no `LastAdmin` applies, no refusal error | IT-12-2, AT-12-2 | Yes (answered) | resolved |
 | **13_sync_core** | | | | |
 | IT-13-16 (B) | BLOCKED: `NothingToSend` for a NEW file after a lost commit response depends on 03 returning it for `(parent, name, hash)` (13 risk 2, confirm with 03); otherwise a conflict copy | IT-13-16, IT-13-14 (AC-46) | No | decompose |
 | **14_desktop_daemon** | | | | |

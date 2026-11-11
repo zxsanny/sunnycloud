@@ -110,6 +110,6 @@ The owner-effect parts of IT-12-2 and IT-12-3 (old token refused after a new set
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-12-3: reset of the sole admin (`LastAdmin` or success) waits for the owner answer recorded by E-15/c01 | E-15/c01 / product owner | open | Low |
+| G-12-3: reset of the sole admin: the owner answered 2026-11-11 (AZ-3681): allowed, exit 0 | E-15/c01 / product owner | resolved | Low |
 | `admin create --note --ttl`: `OperatorIdentityOps::create_admin_invite()` takes no note and no TTL in the identity contract (contract open point 6) | E-15 owner | open | Medium |
 | The error of `reset_admin` for an unknown or non-admin account, and of `revoke` for an unknown or redeemed invite, is not named yet in the identity contract; AC-4 assumes `NotFound` | E-15 owner | open | Low |

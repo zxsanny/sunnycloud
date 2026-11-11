@@ -154,7 +154,7 @@ flowchart TD
 - Technology: Rust, clap, tokio, sqlx 0.9 through helper 07 only, `CancellationToken` for cooperative SIGINT cancellation of long commands.
 - Command-per-module delivery layer (no module over 500 lines); janitor loops are timers around `run_cycle` and hold no logic; `admin gc-run` and `scrub run` call the same `run_cycle` from the CLI process.
 - Hook and cleanup lists are passed to the `DeletionPurger` constructor by the composition root (gap-pass default for G-07-1).
-- Open: `admin reset` of the sole admin and `LastAdmin` (G-12-3, owner, left to E-15); test-only migration source for failing migrations (G-12-1, BLOCKED IT-12-11).
+- Decided 2026-11-11 (AZ-3681): `admin reset` of the sole active admin is allowed, no `LastAdmin` (G-12-3). Open: test-only migration source for failing migrations (G-12-1, BLOCKED IT-12-11).
 
 ### Non-functional requirements
 
@@ -216,7 +216,7 @@ flowchart TD
 | 2 | R06: single process hosts the scheduler and the API | Documented limit; claim-safe cycles; notifier behind a port | architecture |
 | 3 | R12: janitors share CPU and I/O with requests | Drain-until-empty within a time budget; PT-12-2 thresholds | 12 |
 | 4 | R15: composition root grows with every component | Wiring only; grep tests; review rule; vertical slice first | plan |
-| 5 | `admin reset` semantics depend on E-15 (identity is `(provider, id)`) | Reset issues a new admin invite; owner decision G-12-3 | 01, 12 |
+| 5 | `admin reset` semantics depend on E-15 (identity is `(provider, id)`) | Reset issues a new admin invite; allowed for the sole admin (owner decision G-12-3, 2026-11-11) | 01, 12 |
 | 6 | Failing-migration paths untestable in a release binary (G-12-1) | Test-only migration source feature; spike first | 12, helper 07 |
 
 ### Labels

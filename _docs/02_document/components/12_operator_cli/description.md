@@ -33,7 +33,7 @@
 | `EpochAdmin` (`bump_epoch`, `marker_status`) | 05_sync_feed | `admin epoch-bump`; `serve` start check |
 | `MasterKeyring`, `Scrubber` (`start_run`, `run_step`, `finish_run`, `status`), `GcSweeper`, `EpochMarker` | 04_blobstore | `key-check`, `admin keycheck-init`, `admin rewrap`, `scrub ...`, `admin gc-run` |
 | `MediaAdmin` (`requeue_dead`, `stats`) | 08_media_jobs | `admin media-requeue`, `admin media-stats` |
-| `AccountLifecycleHook` (list), `BlobOwnerCleanup` (list) | 02, 03, 05, 06, 07a, 08, 20 / 02, 08 | registered late by 12 (breaks wiring cycles); driven by 07's `DeletionPurger` and 04's GC |
+| `AccountLifecycleHook` (list), `BlobOwnerCleanup` (list) | 02, 03, 05, 06, 07a, 08, 20 / 02, 08 | registered late by 12 (breaks wiring cycles); the identity list goes through `register_hooks` on the identity service (set once, only 12 calls it); driven by 07's `DeletionPurger` and 04's GC |
 | `AuditReader` | helper 04 | `admin audit export` |
 | `Migrator` (`run_pending`, `revert`, `status`, `check_version`) | helper 07 db | `migrate ...`, `serve` start check |
 | `Janitor` (list) | 01, 02, 03, 04, 07, 08, helper 04 | scheduler |
@@ -45,7 +45,7 @@
 | Command | Business call (one) | Result and exit |
 |---|---|---|
 | `admin create [--note] [--ttl]` | `OperatorIdentityOps::create_admin_invite` | prints the one-time admin invite token **once** and the sign-in hint; 0 |
-| `admin reset <account>` | `OperatorIdentityOps::reset_admin` | sessions of that admin revoked, fresh invite printed once; `LastAdmin`/`NotFound` -> 2 |
+| `admin reset <account>` | `OperatorIdentityOps::reset_admin` | sessions of that admin revoked, fresh invite printed once (also for the only active admin, G-12-3); `NotFound` -> 2 |
 | `admin promote\|demote <account>` | `AdminService::update_user` (role) | the last-admin rule is 07's; `LastAdmin` -> 2 |
 | `admin setup-token` | `OperatorIdentityOps::ensure_setup_token` | only while zero accounts exist: replaces the open token, prints it once; otherwise `SetupNotAvailable` -> 2 |
 | `admin invite create\|list\|revoke` | `InviteService` (system scope) | token once on create |
@@ -79,7 +79,7 @@
 
 ## 5. Composition root, scheduler, start-up and shutdown
 
-**Start (`serve`)**: bind typed config and validate (retention 0..90, at least one provider, TTL ranges, `public_url`; unknown `SUNNYCLOUD_*` keys refuse) -> connect with `db_api_url` (helper 07 verifies the role) -> **schema version check**: `check_version` is `Current` or the process exits non-zero (no migrations are run here) -> master key check (04) -> **epoch marker check**: `EpochAdmin::marker_status` reports whether the database epoch is below the `.epoch` marker on the blob volume; if so the process refuses to start and prints `admin epoch-bump` (a restore without a bump would let devices that are ahead keep a stale cursor) -> construct components behind their ports (lifecycle hooks, `DoctorCheck`s, `HealthContributor`s, `ReadinessCheck`s registered here) -> build `ApiServices` and `HttpServer` (listeners: public `:8080`, internal `:8081` for workers, ops `:9090`) -> register the late lists (lifecycle hooks, `BlobOwnerCleanup`s, janitors, checks) -> start the scheduler -> `ready`. One API process (decision 12).
+**Start (`serve`)**: bind typed config and validate (retention 0..90, at least one provider, TTL ranges, `public_url`; unknown `SUNNYCLOUD_*` keys refuse) -> connect with `db_api_url` (helper 07 verifies the role) -> **schema version check**: `check_version` is `Current` or the process exits non-zero (no migrations are run here) -> master key check (04) -> **epoch marker check**: `EpochAdmin::marker_status` reports whether the database epoch is below the `.epoch` marker on the blob volume; if so the process refuses to start and prints `admin epoch-bump` (a restore without a bump would let devices that are ahead keep a stale cursor) -> construct components behind their ports (lifecycle hooks, `DoctorCheck`s, `HealthContributor`s, `ReadinessCheck`s registered here) -> register the late lists (lifecycle hooks, including `register_hooks` on identity, `BlobOwnerCleanup`s, janitors, checks) -> build `ApiServices` and `HttpServer` (listeners: public `:8080`, internal `:8081` for workers, ops `:9090`) -> start the scheduler -> `ready`. The lists are set before any listener accepts a request, so a sign-in never sees an unset hook list. One API process (decision 12).
 
 **Scheduler**: runs named `Janitor`s (`name()`, interval from config, `run_cycle(now)`). The loops contain no logic. 12 constructs the scheduler and the `AbuseLimiter` rate limiter and hands them to 11 (11 constructs neither). Backlog cycles (GC, the account-erase purger) drain until nothing is due, within their time budget. A failed cycle is logged at ERROR with a metric and the loop continues (documented best-effort survival); each cycle claims rows with `SKIP LOCKED` or leases, so no advisory-lock leader is used (a lock would hold a session across the cycle's I/O). `admin gc-run` and `scrub run` call the same `run_cycle` from the CLI process.
 

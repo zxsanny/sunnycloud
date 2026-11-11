@@ -194,7 +194,7 @@ Integration with real components behind the ports (fakes only in unit tests); re
 | 3 | Hook order: 05 and 07a must run last | Order asserted in IT-07-9 | Epic owner |
 | 4 | Claiming the account row for a whole cycle breaks the short-transaction rule | Resolved 2026-11-07 (G-07-2): per-step `FOR UPDATE SKIP LOCKED` claim in its own short transaction, no lease column | Epic owner |
 | 5 | Slow health contributor blocks the page | Per-check timeout (`health_check_timeout`) | Epic owner |
-| 6 | Sole-admin reset semantics (G-12-3) undecided; non-admin status resolved 2026-11-07 (G-S6): 403 `forbidden`, another account's id 404 | Decide G-12-3 with owner/E-21 | Product owner |
+| 6 | Sole-admin reset (G-12-3) decided 2026-11-11 (AZ-3681, owner): allowed, no `LastAdmin`; non-admin status resolved 2026-11-07 (G-S6): 403 `forbidden`, another account's id 404 | none | Product owner |
 | 7 | KNOWN RISK (G-07-2): hooks run on their own connections; a hook inserting a row with a foreign key to `accounts` takes `FOR KEY SHARE` on the `deleting` row, which the purger's `FOR UPDATE` blocks (self-deadlock). `FOR NO KEY UPDATE` avoids it. Owner asked; open | E-17/c06 confirms no deadlock in IT-07-9 (use `FOR NO KEY UPDATE` if it shows) | E-17 / E-15 owners |
 
 ### Labels

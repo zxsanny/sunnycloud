@@ -3,9 +3,9 @@
 **Component**: 01_identity
 **Producer task**: B04-05_invite_redemption_account_creation (E-15/c05)
 **Consumer tasks**: E-11/c03 (quota row), E-12/c06 (account feed), E-13/c13 (root node), E-16/c08 (sharing, no-op), E-22/c03 (registers the list), E-15/c08 (re-bind redemption)
-**Version**: 1.0.0
-**Status**: draft (freezes when E-15/c01 names the registration entry point)
-**Last Updated**: 2026-11-04
+**Version**: 1.1.0
+**Status**: draft (the registration entry point is named; freezes with the first implementation, E-15/c05)
+**Last Updated**: 2026-11-11
 
 ## Purpose
 
@@ -16,7 +16,7 @@ Identity is the only caller of `AccountLifecycleHook::initialize`. This file sta
 | Name | Signature (behavioural) | Throws / Errors | Blocking? |
 |------|-----------|-----------------|-----------|
 | `initialize` | `(tx: &mut DbTx, account_id: AccountId) -> Result<(), error type from contracts>` | any error aborts the account creation | async, inside identity's transaction |
-| registration | entry point named by E-15/c01 (late registration or constructor parameter) | none | called once by 12 at start |
+| registration | `register_hooks(&self, hooks: Vec<Arc<dyn AccountLifecycleHook>>)` on the identity service (inherent, not in `contracts`) | `HooksAlreadyRegistered` on a second call | called once by 12 at start, before the listeners accept requests |
 
 Call order inside one account-creation transaction:
 
@@ -34,6 +34,7 @@ Call order inside one account-creation transaction:
 - When two redemptions of one invite race, the loser's transaction rolls back, so the loser's hooks leave no row (AC-75).
 - `initialize` is not called when no account is created: a re-bind invite (`target_account_id` set, `admin reset`) attaches an identity to an existing account.
 - Identity never imports a hook implementer; the list comes from the composition root (12).
+- The list is set once. If account creation runs while it was never set, it fails closed: typed failure, nothing written, invite redeemable; an unset list is never treated as empty.
 
 ## Non-Goals
 
@@ -53,9 +54,12 @@ Call order inside one account-creation transaction:
 | failing-hook | one hook errors on first call | no rows at all; invite still redeemable; retry succeeds | IT-01-17 |
 | concurrent-loser | 2 and 16 racers on one invite | one account; losers' hooks leave no rows | IT-01-8, NFT-SEC-48 |
 | rebind | invite with `target_account_id` | no `initialize` call; no new account | IT-01-9 |
+| unset-list | `register_hooks` never called, valid invite | typed failure; no rows; invite redeemable | IT-01-17 |
+| second-registration | `register_hooks` twice | second call `HooksAlreadyRegistered`; first list stays | IT-12-7 |
 
 ## Change Log
 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B04) |
+| 1.1.0 | 2026-11-11 | Registration entry point named (`register_hooks`, set once, unset fails closed); spike decision | AZ-3681 |

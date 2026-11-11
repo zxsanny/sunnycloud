@@ -90,4 +90,4 @@ Then each piece of work is listed with its owning epic and ref (E-06 or E-22/c07
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | G-12-1: no test-only migration source; IT-12-11 BLOCKED until this spike ends | This task | open | Medium |
-| G-12-3 is listed in this row's title and in E-15/c01; E-15/c01 records the single answer in both descriptions, this task does not ask it again (closes the duplicate concern on AZ-3681) | E-15/c01 / product owner | open | Low |
+| G-12-3 is listed in this row's title and in E-15/c01; E-15/c01 records the single answer in both descriptions, this task does not ask it again (closes the duplicate concern on AZ-3681); answered 2026-11-11: reset of the sole admin is allowed | E-15/c01 / product owner | resolved | Low |

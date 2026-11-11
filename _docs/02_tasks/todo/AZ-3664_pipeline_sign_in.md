@@ -124,5 +124,5 @@ Integration through the real binaries; the system scenarios stay in E-31.
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `register_hooks` name in 01's interface is still a spike (E-15/c01) | E-15 | open | Low |
+| `register_hooks` is named: an inherent set-once method of the identity service (AZ-3681, 2026-11-11) | E-15 | resolved | Low |
 | Sign in with Apple is v1.1 and has no E-15 child yet | E-15 / owner | open | Low |

@@ -3,9 +3,9 @@
 **Component**: 01_identity
 **Producer task**: B04-08_setup_token_invites_operator_ops (E-15/c08)
 **Consumer tasks**: E-22/c08 (CLI `admin create|reset|setup-token|invite`), E-21/c12 (admin invite routes), AZ-3654 (first-run pipeline), E-15/c12 (AT-01-1)
-**Version**: 1.0.0
-**Status**: draft (freezes when E-15/c01 records the G-12-3 answer)
-**Last Updated**: 2026-11-04
+**Version**: 1.1.0
+**Status**: draft (the G-12-3 answer is recorded; freezes with the first implementation, E-15/c08)
+**Last Updated**: 2026-11-11
 
 ## Purpose
 
@@ -17,7 +17,7 @@ What the setup token, invites and operator operations do, so the CLI (12) and th
 |------|-----------|-----------------|-----------|
 | `OperatorIdentityOps::ensure_setup_token` | `() -> Option<Plaintext>` | none; `None` when any account exists | async, system scope |
 | `OperatorIdentityOps::create_admin_invite` | `() -> Plaintext` | DB errors only | async, system scope |
-| `OperatorIdentityOps::reset_admin` | `(AccountId) -> Plaintext` | sole-admin outcome per G-12-3; the error for an unknown or non-admin account is not named yet (see Non-Goals) | async, system scope |
+| `OperatorIdentityOps::reset_admin` | `(AccountId) -> Plaintext` | none for the only active admin (allowed, G-12-3); the error for an unknown or non-admin account is not named yet (see Non-Goals) | async, system scope |
 | `InviteService::create_invite` | `(admin AccountId, note) -> Plaintext` | DB errors only | async |
 | `InviteService::list` | `() -> [InviteInfo]` (no token) | none | async |
 | `InviteService::revoke` | `(invite id) -> ()` | see Non-Goals | async |
@@ -39,6 +39,7 @@ Redemption outcomes seen at sign-in (`SignInService::complete`): success creates
 - Every token redeems at most once, also under concurrent sign-ins (AC-75).
 - `reset_admin` revokes the target admin's sessions before it returns.
 - Identity has no `LastAdmin` error; promote and demote go through 07.
+- `reset_admin` of the only active admin is allowed (owner decision 2026-11-11, G-12-3): the account keeps role admin and state active, so no last-admin rule applies and there is no refusal error. Until the invite is redeemed nobody can sign in as that admin.
 
 ## Non-Goals
 
@@ -60,9 +61,11 @@ Redemption outcomes seen at sign-in (`SignInService::complete`): success creates
 | setup-with-account | account exists | `None` | IT-01-7, FT-P-78 |
 | invite-single-use | member invite used twice | one account; second refused | FT-N-21 |
 | rebind | `reset_admin(X)`, identity Y redeems | account count unchanged; X identities = {Y} | IT-01-9 |
+| sole-admin-reset | X is the only active admin | fresh invite once; X sessions revoked; X stays admin and active | IT-12-2 |
 
 ## Change Log
 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B04) |
+| 1.1.0 | 2026-11-11 | G-12-3 recorded: reset of the only active admin is allowed, no new error | AZ-3681 |

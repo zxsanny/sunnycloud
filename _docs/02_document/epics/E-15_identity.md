@@ -47,7 +47,7 @@ flowchart LR
 - `public_url` is absolute `https` outside development; `redirect_uri` is built from it, never from Host.
 - At least one provider is configured at start; operators register their own provider apps; a server with no internet cannot authenticate (RESTRICT-20).
 - Device tokens do not rotate in v1.0 and are revocable; the device grant is desktop only; mobile sign-in yields a `sessions` row.
-- Hook list is registered late by E-22 (`register_hooks`, entry point to be named in 01's interface).
+- Hook list is registered late by E-22 through `register_hooks` on the identity service (set once; unset fails closed; AZ-3681, 2026-11-11).
 - GeoIP data comes from a local file behind a `GeoLookup` trait; a missing file means location unknown.
 
 ### Dependencies
@@ -168,7 +168,7 @@ Integration against real PostgreSQL 18 and a mock IdP (mock-idp) with the 12 neg
 - [ ] All ports implemented in the `identity` crate and registered in `contracts`; every OpenAPI operation declares one scope (CI fails otherwise)
 - [ ] Automated tests pass (IT/ST/AT above; unit tests for token format, PKCE, state hashing)
 - [ ] Coverage >= 90% on authenticate, refresh, invite redemption, device mint (critical: security) and >= 75% overall
-- [ ] `register_hooks` entry point named and documented with E-22
+- [x] `register_hooks` entry point named and documented with E-22 (AZ-3681, 2026-11-11)
 - [ ] Install guide covers setup-token printing exception and provider registration
 
 ### Acceptance Criteria
@@ -196,7 +196,7 @@ Integration against real PostgreSQL 18 and a mock IdP (mock-idp) with the 12 neg
 | 3 | Hook ordering at account creation must stay inside one short transaction | IT-01-17; hooks do no I/O | Epic owner |
 | 4 | R09 tenant isolation rests on RLS plus scoping | API role not owner; two-account matrix (AC-59) | Epic owner |
 | 5 | R17/R18 provider and store policy (Apple v1.1 must not change the trait) | Keep `ProviderClient` stable; Apple in a later epic | Architect |
-| 6 | G-12-3 reset of the sole admin: does `LastAdmin` apply? | Decide with owner (spike) | Product owner |
+| 6 | G-12-3 reset of the sole admin: does `LastAdmin` apply? | Decided 2026-11-11 (AZ-3681, owner): reset is allowed, no `LastAdmin` | Product owner |
 
 ### Labels
 

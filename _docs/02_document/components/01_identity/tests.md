@@ -261,7 +261,7 @@ connection 3 -> Err(AccountNotActive)
 ```
 complete -> typed failure; accounts/identities/root node/account_feeds/quota unchanged; invite still redeemable; second attempt without the fault succeeds with all four rows created in one transaction
 ```
-**Max execution time**: 5 s; **Dependencies**: PostgreSQL, 02/05/07a hooks. BLOCKED (partial): the late-registration entry point `register_hooks` is described in 12, not in 01's interface; the test uses it by name only.
+**Max execution time**: 5 s; **Dependencies**: PostgreSQL, 02/05/07a hooks. Hooks are handed over through `register_hooks` (01 description, AccountLifecycleHook; decided 2026-11-11, AZ-3681). A last step creates an account on a fresh service where `register_hooks` was never called: typed failure, nothing written, invite still redeemable.
 
 ## Performance Tests
 

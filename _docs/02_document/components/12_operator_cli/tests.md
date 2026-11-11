@@ -39,7 +39,7 @@ Harness `H2` (Compose `core` stack, test image): services `db`, `migrate`, `api`
 **Summary**: bootstrap commands print secrets once and refuse out-of-state use.
 **Traces to**: AC-23
 **Input data**: empty database (`golden+empty`); `admin setup-token` twice; first account created via the token (consumer, mock-idp); `admin setup-token` again; `admin create --note x --ttl 1h`; `admin reset <admin>`; `admin reset <unknown>`; `admin reset <last admin>` while it is the only admin.
-**Expected result**: setup-token prints a token and a hint, the second call replaces the open token (first no longer works); after any account exists: exit 2 `SetupNotAvailable`; `admin create` prints an invite token once (exit 0), only its SHA-256 is in the database (harness search for the token as bytes/text: 0 hits), token length >= 32 random bytes encoded; `--ttl 1h` expires after the test clock moves 61 min; `reset` revokes the target admin's sessions (old session 401) and prints a fresh invite once; unknown account exit 2 `NotFound`; reset of a sole admin follows the 01/07 rule (`LastAdmin` or success is 01's decision, gap G-12-3); no token appears in logs, `--json` log lines or audit rows.
+**Expected result**: setup-token prints a token and a hint, the second call replaces the open token (first no longer works); after any account exists: exit 2 `SetupNotAvailable`; `admin create` prints an invite token once (exit 0), only its SHA-256 is in the database (harness search for the token as bytes/text: 0 hits), token length >= 32 random bytes encoded; `--ttl 1h` expires after the test clock moves 61 min; `reset` revokes the target admin's sessions (old session 401) and prints a fresh invite once; unknown account exit 2 `NotFound`; reset of a sole active admin succeeds like any other (exit 0, fresh invite once, owner decision G-12-3, 2026-11-11); no token appears in logs, `--json` log lines or audit rows.
 **Max execution time**: 60 s
 **Dependencies**: stack, mock-idp
 
@@ -312,7 +312,7 @@ Harness `H2` (Compose `core` stack, test image): services `db`, `migrate`, `api`
 
 - G-12-1 (BLOCKED, IT-12-11): no test-only migration source for failing, killed and irreversible migrations.
 - G-12-2: `admin restore --at` and `--backup-interval` formats are not stated.
-- G-12-3: reset of the sole admin: whether `LastAdmin` applies is left to 01.
+- G-12-3 (resolved 2026-11-11, AZ-3681): reset of the sole admin is allowed; no `LastAdmin` applies.
 - G-12-5: `admin epoch-bump` exit "0 or 1" conflicts with the table saying 1 means warnings only for doctor; what produces 1 is not defined.
 - G-12-6: `doctor` exit code for missing blobs ("2 or 1 by policy") has no stated policy.
 - G-12-7: exit code on SIGINT cancellation is not defined.
