@@ -156,9 +156,9 @@ Component tests complement the system-level scenarios (`02_document/tests/`) and
 ### IT-14-18: Token store
 - **Summary**: The token lives only in the keychain or a 0600 file.
 - **Traces to**: AC-48
-- **Input**: Linux with and without a Secret Service; a pre-created 0644 token file.
-- **Expected**: keyring entry `sunnycloud/<account id>` when available; else `UserFileTokenStore` file 0600 in a 0700 dir under `$XDG_STATE_HOME` with one WARN; the 0644 file -> `PermissionTooOpen`, not read; token string absent from IPC traffic, logs, `/proc/<pid>/cmdline`, `/proc/<pid>/environ`.
-- **Max time / Deps**: 30 s; system FT-P-61, NFT-SEC-34.
+- **Input**: Linux with a Secret Service unlocked; with no session bus; with a session bus but no Secret Service; with a Secret Service whose keyring is locked and no prompt UI (`NoStorageAccess`); with one whose unlock prompt is never answered; a pre-created 0644 token file; a 0755 token directory.
+- **Expected**: keyring entry `sunnycloud/<account id>` when unlocked; no bus or no Secret Service (decided within 5 s) -> `UserFileTokenStore` file `$XDG_STATE_HOME/sunnycloud/token-<account id>` (`~/.local/state/sunnycloud/` when unset) mode 0600 in a 0700 dir with exactly one WARN record whose `message` is `No Secret Service keyring is available; the device token is stored in a user-only file instead` (14 section 9); locked keyring -> `StoreUnavailable` in under 1 s, no token file, no WARN; unanswered prompt -> `StoreUnavailable` after the 30 s bound, IPC and tray stay responsive; the 0644 file or the 0755 dir -> `PermissionTooOpen`, not read; token string absent from IPC traffic, logs, `/proc/<pid>/cmdline`, `/proc/<pid>/environ`.
+- **Max time / Deps**: 60 s; system FT-P-61, NFT-SEC-34; context measurements in 14 section 5 (spike AZ-3885). Contexts are built per the spike: private `dbus-run-session`, `gnome-keyring-daemon --unlock` fed a throwaway password, a fake token.
 
 ### IT-14-19: Upload checkpoints and LocalIndex errors
 - **Summary**: `upload_checkpoint` rows make a 5 GiB upload resumable; index damage is reported.

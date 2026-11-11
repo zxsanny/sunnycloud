@@ -1360,7 +1360,7 @@ Functional black-box scenarios for sunnycloud. Every scenario drives a public in
 | Step | Consumer Action | Expected System Response |
 |------|----------------|------------------------|
 | 1 | Windows/Linux (keyring present): inspect keychain entries after pairing | One entry for sunnycloud |
-| 2 | Linux without keyring: pair; inspect token file | File in user config dir, mode 0600, owner = user; daemon log has a WARN line about the fallback (text: Gap G-12) |
+| 2 | Linux without keyring (no session bus, or a bus with no Secret Service): pair; inspect token file | File `$XDG_STATE_HOME/sunnycloud/token-<account id>` (`~/.local/state/sunnycloud/token-<account id>` when unset), mode 0600, owner = user, in a 0700 directory; daemon log has exactly one WARN record with `message` = `No Secret Service keyring is available; the device token is stored in a user-only file instead` (G-12, resolved; 14 section 9). With a present but locked keyring: sign-in reports the keyring unavailable, no token file, no WARN |
 | 3 | Search sync root, config JSON and process arguments for the token string | 0 occurrences |
 
 **Expected outcome**: keychain entry exists, or fallback file mode exactly 0600 with 1 warning; 0 token strings elsewhere.

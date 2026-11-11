@@ -72,8 +72,8 @@ Component tests complement the system-level scenarios (`02_document/tests/`) and
 ### IT-16-7: `enqueueUpload` typed errors and queue cap
 - **Summary**: Each typed error has a visible message; the queue caps in-flight `File` objects.
 - **Traces to**: AC-40
-- **Input**: errors injected at the proxy: `InvalidName`, 507 `QuotaExceeded`, `SizeTooLarge`, `SessionCapReached`, `FreeSpaceFloor`, `ParentNotFound`, `AccountNotActive`; selection of 100,000 tiny files (DS-01 expanded) with `web.max_inflight_files` 200.
-- **Expected**: each error shows its own message, other jobs continue; at most 200 `File` objects in flight (heap snapshot count); `TooManyFiles` is returned only when the page refuses a selection — BLOCKED on the trigger: the description names the error but not the limit that raises it.
+- **Input**: errors injected at the proxy: `InvalidName`, 507 `QuotaExceeded`, `SizeTooLarge`, `SessionCapReached`, `FreeSpaceFloor`, `ParentNotFound`, `AccountNotActive`; selection of 100,000 tiny files (DS-01 expanded) with `web.max_inflight_files` 200; a selection of `web.max_selection_files` + 1 files (100,001 with the constant of 100,000, confirmed 2026-11-11, DS-01 expanded).
+- **Expected**: each error shows its own message, other jobs continue; at most 200 `File` objects in flight (heap snapshot count); `TooManyFiles` is returned only when the page refuses a selection: a selection of exactly `web.max_selection_files` files (100,000, spike AZ-3934, confirmed by the owner 2026-11-11; description section 10) is accepted, one of `web.max_selection_files` + 1 files is refused before any `File` reaches the queue, no upload starts, and the page shows "This selection has 100,001 files. The web client takes at most 100,000 files at once. For larger folders use the desktop client." (the constant's value is the only thing the owner may change).
 - **Max time / Deps**: 10 min; server.
 
 ### IT-16-8: Download strategies and labels
@@ -197,7 +197,8 @@ Component tests complement the system-level scenarios (`02_document/tests/`) and
 - **Summary**: A huge selection does not exhaust memory.
 - **Traces to**: AC-40
 - **Load**: 100,000 tiny files selected by folder pick.
-- **Targets / failure**: heap <= 150 MB / above 300 MB; first upload starts <= 5 s / above 15 s.
+- **Targets / failure** (restated 2026-11-11 by the owner, spike AZ-3934; browser memory of all processes): at 100,000 files <= 1.5 GB / above 3 GB and first upload starts <= 15 s / above 30 s; up to 10,000 files the original targets stand (<= 150 MB / above 300 MB; <= 5 s / above 15 s).
+- **Measured 2026-11-11 (spike AZ-3934, developer workstation, informational)**: at 100,000 files Firefox 159.0 adds 976 to 1,374 MB at peak and 566 to 569 MB after 3 s (memory of all browser processes), first request after 6.7 to 7.0 s; Chromium 158 adds 838 to 839 MB at peak and 920 MB after 3 s (JS heap 4.9 MB), first request after 11.2 to 11.4 s. The targets above are not met as browser memory in either engine, and Chromium misses the 5 s start target; the description (section 5, "Selection limit") holds the open choice between restating them and a lower limit.
 
 ### PT-16-5: Public share page open time
 - **Summary**: A share link opens quickly.

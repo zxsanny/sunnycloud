@@ -6,9 +6,9 @@ Scope: the `decoder-runner` process in its container and its only interface, `de
 
 | AC ID | Acceptance Criterion | Test IDs | Coverage |
 |-------|---------------------|----------|----------|
-| AC-10 | WebP 320/1440, orientation swap 5-8, HEIC, SSIM >= 0.95, poster at supplied offset | IT-10-4, IT-10-5, IT-10-6, IT-10-7, PT-10-1; sys FT-P-20, FT-P-22, NFT-PERF-13 | Covered by this file and system scenarios; poster HDR tolerance BLOCKED (IT-10-7) |
+| AC-10 | WebP 320/1440, orientation swap 5-8, HEIC, SSIM >= 0.95, poster at supplied offset | IT-10-4, IT-10-5, IT-10-6, IT-10-7, PT-10-1; sys FT-P-20, FT-P-22, NFT-PERF-13 | Covered by this file and system scenarios; HLG poster SSIM is record-only until the owner sets the tolerance (IT-10-7, G-10-6) |
 | AC-11 | H.264 High 1080p AAC MP4 faststart, lossless remux, 4K HLG tone map | IT-10-8, IT-10-9, IT-10-10, IT-10-11, PT-10-2; sys FT-P-23, FT-P-24, FT-P-25, NFT-PERF-15, NFT-PERF-16 | Covered by this file (correctness on short clips) and system scenarios (speed budgets, `C-REF`) |
-| AC-25 | Whitelists, `VIPS_BLOCK_UNTRUSTED`, limits, hostile corpus -> failure, self-check, containment | IT-10-2, IT-10-12, IT-10-13, IT-10-14, IT-10-15, IT-10-16, IT-10-17, IT-10-18, IT-10-19, ST-10-1, ST-10-2, ST-10-3, ST-10-4; sys FT-N-07, NFT-SEC-28, NFT-SEC-29, NFT-SEC-45, NFT-RES-LIM-04 | Covered by this file and system scenarios; one sub-case BLOCKED (IT-10-18, watchdog) |
+| AC-25 | Whitelists, `VIPS_BLOCK_UNTRUSTED`, limits, hostile corpus -> failure, self-check, containment | IT-10-2, IT-10-12, IT-10-13, IT-10-14, IT-10-15, IT-10-16, IT-10-17, IT-10-18, IT-10-19, ST-10-1, ST-10-2, ST-10-3, ST-10-4; sys FT-N-07, NFT-SEC-28, NFT-SEC-29, NFT-SEC-45, NFT-RES-LIM-04 | Covered by this file and system scenarios; IT-10-18 (watchdog) runs with the `test-freeze` trigger (AZ-3851) |
 | AC-28 | NVENC probe by test encode, exit-code reporting (v1.1) | IT-10-20; sys FT-N-08, FT-P-28, NFT-PERF-18 | Covered for the no-GPU path; GPU path is sys-only (H-GPU, v1.1) |
 | AC-44 | `maxrate`/CRF keep derived at most 20% of original | IT-10-8, PT-10-2; sys FT-P-26, NFT-PERF-20 | Covered by this file (maxrate/compliance of output) and system scenarios (ratio on 100 clips) |
 | AC-45 | Kill within 90 s of last progress; orientation and A/V drift | IT-10-9, IT-10-13, PT-10-3; sys FT-N-06, FT-P-27, NFT-PERF-21 | Covered by this file and system scenarios |
@@ -17,7 +17,7 @@ Scope: the `decoder-runner` process in its container and its only interface, `de
 
 ## Blackbox Tests
 
-Harness `H3`: the real `decoder-general` and `decoder-interactive` images started by Compose from the test stack (`network_mode: none`, read-only rootfs, cgroup limits as production), the socket volume mounted into the harness container. A "test image variant" of the same image adds only a stub layer for tests marked `stub`: `/usr/bin/ffmpeg` and `/usr/bin/vipsthumbnail` are replaced by scripts that behave according to a marker in `in/source` (hang, allocate, ignore signals, `setsid` plus double fork, write to the next job's path, call `ptrace`). The stub layer is built from the same Dockerfile with `--target test-stubs` (mechanism assumed, gap G-10-1). Test config: `decoder_stall_kill=3s`, `decoder_alive_interval=500ms`, `decoder_watchdog=3s`, `decoder_memory_poll_interval=100ms`, `photo_max_pixels` as the case states; the 90 s default is used once (IT-10-13b).
+Harness `H3`: the real `decoder-general` and `decoder-interactive` images started by Compose from the test stack (`network_mode: none`, read-only rootfs, cgroup limits as production), the socket volume mounted into the harness container. A "test image variant" of the same image adds only a stub layer for tests marked `stub`: `ffmpeg`, `ffprobe`, `vipsthumbnail` and `vipsheader` are replaced by one compiled stub binary that behaves according to a marker inside `in/source` (hang, allocate, ignore signals, `setsid` plus double fork, write to the next job's path, call `ptrace`, 1 MiB of stderr) and otherwise logs its argv and environment and runs the real tool. The stub layer is built from the same Dockerfile with `--target test-stubs` and `FEATURES=test-freeze`; mechanism, marker format and release-image check are decided (AZ-3850, G-10-1; description section 13.4). Every test marked `stub` uses it; tests without the mark run against the real tools of the same image. Test config: `decoder_stall_kill=3s`, `decoder_alive_interval=500ms`, `decoder_watchdog=3s`, `decoder_memory_poll_interval=100ms`, `photo_max_pixels` as the case states; the 90 s default is used once (IT-10-13b).
 
 ### IT-10-1: Handshake
 **Summary**: `hello` returns capabilities; a wrong protocol version is refused.
@@ -68,10 +68,10 @@ Harness `H3`: the real `decoder-general` and `decoder-interactive` images starte
 **Dependencies**: decoder container, DS-16
 
 ### IT-10-7: Video poster frame
-**Summary**: `render_still` on a video decodes the frame at `poster_at_ms`; HDR poster tolerance is BLOCKED.
+**Summary**: `render_still` on a video decodes the frame at `poster_at_ms`; the HLG poster part records SSIM only.
 **Traces to**: AC-10
 **Input data**: DS-08 clips with flash frames at known timestamps; `poster_at_ms` 1000 and 900; a 4K HLG clip (DS-06 base).
-**Expected result**: the poster is the frame nearest the requested time (the flash marker color/position matches the manifest for the timestamp, tolerance one frame); `poster_at_ms` is ignored for images; output goes through Profile A to WebP of 320 px. HLG poster correctness is BLOCKED: the SSIM tolerance for HDR poster frames is an open owner item (canonical-names, "poster-frame SSIM tolerance"; description 09 risk 2), so no pass criterion exists; the test records the SSIM value only.
+**Expected result**: the poster is the frame nearest the requested time (the flash marker color/position matches the manifest for the timestamp, tolerance one frame); `poster_at_ms` is ignored for images; output goes through Profile A to WebP of 320 px. The HLG part is record-only: the SSIM tolerance for HDR poster frames is an open owner item (canonical-names, "poster-frame SSIM tolerance"; description 09 risk 2), so it has no pass criterion until the owner answers; the test records the SSIM value of the 320 px poster against the harness SDR render and prints it in the report. Measured values on a SYNTHETIC HLG clip are in description section 13.3 and in G-10-6 (AZ-3851); they are input to the owner, not a criterion.
 **Max execution time**: 60 s
 **Dependencies**: decoder container, DS-08, DS-06
 
@@ -95,7 +95,7 @@ Harness `H3`: the real `decoder-general` and `decoder-interactive` images starte
 **Summary**: HLG input is tone-mapped to SDR BT.709.
 **Traces to**: AC-11
 **Input data**: DS-06 base clip (4K HEVC Main10 HLG, 30 s), `Plan{tone_map true, scale_to_short_edge 1080}`.
-**Expected result**: output 1920x1080 `yuv420p`, `color_primaries/transfer/space = bt709`, H.264 High; mean luma of the output within the reference range from the harness SDR render (tolerance fixed at gate S5; until then the value is recorded, the tags are asserted); the output probe passes `is_compliant`.
+**Expected result**: output 1920x1080 `yuv420p`, `color_primaries/transfer/space = bt709`, H.264 High; the output probe passes `is_compliant`; mean luma (8-bit code values, `signalstats` YAVG over the clip) of the output is within **2.0** of the harness render, which the harness makes with its own ffmpeg using the chain recorded in description section 13.2 on the same base file (proposed from SYNTHETIC measurements: encode noise 0.2, order variants 0.06; confirm on the real DS-06 base at gate S5 on REF-CPU4); a missing tone map (mean luma 60 code values higher) and a wrong order or operator are caught. The tags are asserted exactly. The SDR source of the generator is not the reference: tone mapping changes luma by design (about 81 code values on the synthetic clip).
 **Max execution time**: 600 s on `C`
 **Dependencies**: decoder container, DS-06
 
@@ -155,13 +155,13 @@ Harness `H3`: the real `decoder-general` and `decoder-interactive` images starte
 **Max execution time**: 30 s
 **Dependencies**: decoder container
 
-### IT-10-18: Self-abort watchdog (BLOCKED)
+### IT-10-18: Self-abort watchdog
 **Summary**: a frozen main loop makes the runner abort within `decoder_watchdog`.
 **Traces to**: AC-25
-**Input data**: a way to freeze only the main loop while the watchdog thread runs.
-**Expected result**: BLOCKED. `SIGSTOP` of the process stops every thread, including the watchdog, so it cannot simulate the case, and the description names no test hook (feature flag, magic request, or stub) that blocks the main loop. Missing piece: a test-only trigger, e.g. a protocol request or a stub marker in the runner that sleeps in the main loop. With it the expected result is: process aborts within `decoder_watchdog` (3 s in test config) +/- 1 s whether a job is running or idle, container restarts.
+**Input data**: the `test-stubs` image (built with `FEATURES=test-freeze`); (a) idle runner; (b) runner with a running job (stub marker `hang`, so the main loop is waiting on the guard); the harness sends `SIGUSR1` with `docker kill --signal=USR1` (the `init: true` process forwards it to the runner); control: the release image receives no signal in this test.
+**Expected result**: in (a) and (b) the runner logs `test_freeze_main_loop: main loop blocked`, the watchdog thread keeps running and the process aborts (SIGABRT, exit 134) within `decoder_watchdog` (3 s in test config) + 1 s of the last counter bump (about 3.0 to 3.2 s after the signal; a core-dump handler on the host may add up to 1 s, so the runner sets its own `RLIMIT_CORE=0`), the container restarts, `hello` answers on the new instance within 30 s, `work/` of (b) is gone. Contrast check in the same test: `SIGSTOP` of the runner does not abort it (all threads stop), which is why the trigger is not `SIGSTOP`. Release-image check (CI, AZ-3851): `strings` and `nm` of the release `decoder-runner` show no `test_freeze_main_loop` and no `test_freeze` symbol.
 **Max execution time**: 20 s
-**Dependencies**: decoder test image with the missing hook
+**Dependencies**: decoder test image (`test-freeze`, description section 3 "Self-abort watchdog")
 
 ### IT-10-19: Socket loss and cancel
 **Summary**: closing the connection mid-job acts as `cancel`; `cancel` kills the group and removes `work/`.
@@ -307,7 +307,7 @@ Harness `H3`: the real `decoder-general` and `decoder-interactive` images starte
 | Data Set | Description | Source | Size |
 |----------|-------------|--------|------|
 | DS-03 | 100 JPEG, 20 HEIC, orientations | `gen_photos.py` plus generated orientations 2, 4, 5, 7 | about 450 MB |
-| DS-05 base, DS-06 base | 30 s base clips (1080p SDR, 4K HLG) | `gen_video.py` before looping (the base file must be kept as an artifact, gap G-10-3) | about 60 MB, 100 MB |
+| DS-05 base, DS-06 base | 30 s base clips (1080p SDR, 4K HLG) | `gen_video.py` before looping; the base files are kept as artifacts with the manifest entries of description section 13.5 (G-10-3, requirement on E-31/c21) | about 70 MB, 150 MB (DS-06 3 GB / 20 loops) |
 | DS-07, DS-35 | compliant, edge, control clips | `gen_video.py` | about 300 MB |
 | DS-08 subset | rotated, VFR, flash-frame and beep clips | `gen_video.py mixed` | about 800 MB |
 | DS-16 | red-team media | `gen_redteam.py` | 20 GB apparent, 30 MB allocated |
@@ -324,10 +324,10 @@ Harness `H3`: the real `decoder-general` and `decoder-interactive` images starte
 
 ## Spec gaps found
 
-- G-10-1: no config key or build target for substituting `vipsthumbnail`/`ffmpeg` in a test image is described; tests assume a `test-stubs` image variant.
+- G-10-1: RESOLVED 2026-11-11 (AZ-3850, agent decision, owner may overturn): `test-stubs` Dockerfile target with one compiled stub binary, no runtime config key; description section 13.4. E-19/c15 builds it.
 - G-10-2: whether a descendant that the kill-all walk finds alive (and kills) counts as a hostile-class outcome is ambiguous ("a descendant found alive at this point").
-- G-10-3: DS-05/06 are generated as 10-minute loops; tests need the 30 s base files exposed in the manifest.
-- G-10-4 (BLOCKED, IT-10-18): no way to freeze only the main loop to test the self-abort watchdog.
+- G-10-3: DS-05/06 are generated as 10-minute loops; tests need the 30 s base files exposed in the manifest. Requirement recorded (AZ-3850, description section 13.5); stays open until E-31/c21 ships the files.
+- G-10-4: RESOLVED 2026-11-11 (AZ-3851, agent decision, owner may overturn): feature `test-freeze` with a `SIGUSR1` handler that blocks only the main loop; description section 3 and 13.6; E-19/c07b implements, E-19/c15 and IT-10-18 use it.
 - G-10-5: SVG named `.png`: step 1 of the image profile says `Unsupported` for unsniffable input, while the same paragraph says it fails as `Corrupt`; tests accept either typed code.
-- G-10-6 (BLOCKED, IT-10-7 HLG part): poster-frame HDR tolerance is an open owner item.
+- G-10-6 (IT-10-7 HLG part record-only): poster-frame HDR tolerance is an open owner item; measured SSIM values are recorded (AZ-3851, description section 13.3), the tolerance is still the owner's.
 - G-10-7: the reply type for a peer protocol violation is not in the `DecodeError` list (tests accept a typed error or a closed socket, then require the exit).
