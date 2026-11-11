@@ -100,7 +100,7 @@ async fn the_real_server_applies_the_stack_to_the_public_and_internal_listeners(
 
     // Act
     let info = public.get("/api/v1/server-info").await;
-    let unknown = public.get("/api/v1/nodes/some-id").await;
+    let unknown = public.get("/api/v1/not-a-route").await;
     let preflight = public
         .send("OPTIONS", "/api/v1/server-info", &foreign)
         .await;

@@ -3,7 +3,7 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c10 — `_docs/02_tasks/todo/B07-10_content_header_mapper.md`; keys assigned at Step 4
 **Consumer tasks**: E-21/c13 (node and revision content), E-21/c14 (share content, share thumbnail, thumbnail, transcode); clients E-23 (verified ranged download with resume), E-26 (download strategies, inline preview), E-24, E-27; E-31 (FT-N-11, FT-P-39, NFT-SEC-18, NFT-SEC-19); resolved at Step 4
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: draft
 **Last Updated**: 2026-11-11
 
@@ -58,6 +58,7 @@ A content route reads the request once, with `download_options` (`retained_ok` f
 
 - `Range: bytes=<a>-<b>` is one range `a..=b`; `bytes=<a>-` is `a..=u64::MAX` (03 clamps the end to the size, `api_v1_surface.md` open point 25). A suffix range `bytes=-<n>`, several ranges, a unit other than `bytes`, a value that is not a number and an end before the start are ignored, and the whole content is served.
 - `If-Range` and `If-None-Match` are passed as written; 03 compares them with the entity tag.
+- `retained_ok` is true on `GET` and `HEAD /revisions/{revision_id}/content` for an admin session only (`Authenticated.retained_ok`: a session whose role is admin; a member session and every device token get false). `/nodes/{node_id}/content` opens `Current(node)` and always passes false.
 - `starts_download` (share content only) is true when the request is not a `HEAD` and the range, read as above, is absent or starts at byte 0.
 
 ### Public share content only
@@ -109,3 +110,4 @@ Adds `Access-Control-Allow-Origin: *` to the 200, 206 and 304 answers of `GET` a
 | 1.0.1 | 2026-11-09 | Implemented (AZ-3812): entry point, ETag quoting, allowlist downgrade, name rules, broken-answer 500, open point 2 | implement |
 | 1.0.2 | 2026-11-11 | `RangeNotSatisfiable { total_size }`: the 416 carries `Content-Range: bytes */<total>` and `Accept-Ranges`; open point 2 reduced to the missing `ETag` | owner-approved change |
 | 1.1.0 | 2026-11-11 | Request side (`Range`, `If-Range`, `If-None-Match`, `starts_download`) and the CORS rule of public share content stated (E-21/c14); open points 3 and 4 added | AZ-3830 |
+| 1.2.0 | 2026-11-11 | Node and revision content routes registered (E-21/c13): `retained_ok` rule of the request side | AZ-3829 |

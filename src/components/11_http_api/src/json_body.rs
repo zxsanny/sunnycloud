@@ -2,10 +2,13 @@
 //! few fixed fields.
 
 use axum::body::{Body, to_bytes};
+use sc_clock::Timestamp;
 use sc_error::CorrelationId;
-use serde_json::Value;
+use serde_json::{Map, Value};
+use uuid::Uuid;
 
 use crate::problem::ApiProblem;
+use crate::timestamp::parse_rfc3339;
 
 const FIELD: &str = "body";
 
@@ -36,6 +39,63 @@ pub(crate) fn fields<'a, const N: usize>(
         return None;
     }
     found.try_into().ok()
+}
+
+/// The members of `value` when it is an object whose every key is one of `allowed`.
+pub(crate) fn object<'a>(value: &'a Value, allowed: &[&str]) -> Option<&'a Map<String, Value>> {
+    let members = value.as_object()?;
+    members
+        .keys()
+        .all(|key| allowed.contains(&key.as_str()))
+        .then_some(members)
+}
+
+/// A required member, read with `parse`; `None` when absent, null or of the wrong shape.
+pub(crate) fn required<T>(
+    members: &Map<String, Value>,
+    name: &str,
+    parse: impl FnOnce(&Value) -> Option<T>,
+) -> Option<T> {
+    members
+        .get(name)
+        .filter(|value| !value.is_null())
+        .and_then(parse)
+}
+
+/// An optional member, read with `parse`: absent and null are `Some(None)`, a member of the wrong shape is
+/// `None` (a malformed body).
+pub(crate) fn optional<T>(
+    members: &Map<String, Value>,
+    name: &str,
+    parse: impl FnOnce(&Value) -> Option<T>,
+) -> Option<Option<T>> {
+    match members.get(name).filter(|value| !value.is_null()) {
+        Some(value) => parse(value).map(Some),
+        None => Some(None),
+    }
+}
+
+pub(crate) fn uuid(value: &Value) -> Option<Uuid> {
+    Uuid::parse_str(value.as_str()?).ok()
+}
+
+pub(crate) fn text(value: &Value) -> Option<String> {
+    value.as_str().map(str::to_owned)
+}
+
+/// A `client_mtime` member: `YYYY-MM-DDTHH:MM:SS[.ffffff]Z`.
+pub(crate) fn timestamp(value: &Value) -> Option<Timestamp> {
+    parse_rfc3339(value.as_str()?)
+}
+
+/// A `client_meta` member: any JSON value, stored by the ports as its text.
+pub(crate) fn meta_text(value: &Value) -> Option<String> {
+    Some(value.to_string())
+}
+
+/// The JSON of the `client_meta` text a port returns; text that is not JSON is the port's own fault.
+pub(crate) fn meta_value(text: Option<&str>) -> Result<Value, serde_json::Error> {
+    text.map_or(Ok(Value::Null), serde_json::from_str)
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ mod auth;
 mod cap;
 mod content;
 mod csrf;
+mod datapath;
 mod errors;
 mod h2_settings;
 mod harness;

@@ -8,5 +8,5 @@ mod range;
 mod redaction;
 mod registry;
 mod share_thumbnail;
-mod support;
+pub mod support;
 mod uniform;

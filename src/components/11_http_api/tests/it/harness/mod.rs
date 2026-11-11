@@ -6,6 +6,7 @@ pub mod clients;
 pub mod probe;
 pub mod raw_h2;
 pub mod recording;
+pub mod recording_stream;
 pub mod router_server;
 pub mod script;
 mod stubs;

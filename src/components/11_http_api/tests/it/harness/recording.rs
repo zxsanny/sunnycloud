@@ -41,6 +41,45 @@ macro_rules! recording_port {
     };
 }
 
+recording_port!(RecordingTree: TreeService, TreeServiceError, {
+    async fn create_folder(&self, account: Uuid, parent_id: Uuid, name: &str)
+        -> Result<NodeView, TreeServiceError>;
+    async fn update_node(&self, account: Uuid, node_id: Uuid, new_name: Option<&str>,
+        new_parent: Option<Uuid>) -> Result<NodeView, TreeServiceError>;
+    async fn delete_node(&self, account: Uuid, node_id: Uuid, base_revision: Option<Uuid>)
+        -> Result<(), TreeServiceError>;
+    async fn resolve_path(&self, account: Uuid, path: &str) -> Result<Uuid, TreeServiceError>;
+    async fn find_revisions(&self, account: Uuid, client_device: Option<&str>, page: Page)
+        -> Result<Vec<RevisionRef>, TreeServiceError>;
+});
+
+recording_port!(RecordingTreeReader: TreeReader, TreeReaderError, {
+    async fn get_node(&self, account: Uuid, selector: NodeSelector)
+        -> Result<NodeView, TreeReaderError>;
+    async fn list_children(&self, account: Uuid, folder_id: Uuid, after_name_key: Option<&str>,
+        limit: u32) -> Result<ListingPage, TreeReaderError>;
+    async fn find_live_node(&self, account: Uuid, parent_id: Uuid, name: &str)
+        -> Result<Option<NodeRef>, TreeReaderError>;
+    async fn resolve_live_file(&self, account: Uuid, node_id: Uuid)
+        -> Result<LiveFileLookup, TreeReaderError>;
+    async fn root_node(&self, account: Uuid) -> Result<NodeRef, TreeReaderError>;
+    async fn get_revision(&self, account: Uuid, revision_id: Uuid)
+        -> Result<RevisionView, TreeReaderError>;
+    async fn is_current_or_retained(&self, account: Uuid, revision_id: Uuid)
+        -> Result<bool, TreeReaderError>;
+    async fn describe_blobs(&self, blob_ids: &[Uuid])
+        -> Result<HashMap<Uuid, Vec<String>>, TreeReaderError>;
+    async fn lookup_revisions(&self, account: Uuid, hashes: &[FileHash])
+        -> Result<Vec<RevisionMatch>, TreeReaderError>;
+});
+
+recording_port!(RecordingCommits: CommitService, CommitServiceError, {
+    async fn commit_upload(&self, actor: CommitActor, request: CommitUpload)
+        -> Result<Committed, CommitServiceError>;
+    async fn commit_batch(&self, actor: CommitActor, request: BatchCommit)
+        -> Result<BatchResult, CommitServiceError>;
+});
+
 recording_port!(RecordingShares: ShareService, ShareError, {
     async fn create(&self, account: Uuid, node_id: Uuid, expires_in: Option<Duration>,
         password: Option<&str>) -> Result<CreatedShare, ShareError>;

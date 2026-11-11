@@ -67,7 +67,11 @@ impl ScriptedAuthenticator {
             kind,
             session_or_device_id: id,
             role,
-            label: "test".to_owned(),
+            label: match kind {
+                PrincipalKind::Session => "test",
+                PrincipalKind::Device => "laptop",
+            }
+            .to_owned(),
         };
         HashMap::from([
             (

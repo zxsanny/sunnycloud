@@ -3,6 +3,7 @@
 
 mod classes;
 mod document;
+mod feed;
 mod media;
 mod mount;
 mod naming;
@@ -10,6 +11,8 @@ mod request;
 mod sharing;
 mod spec;
 mod system;
+mod transfer;
+mod tree;
 mod validate;
 mod worker;
 
@@ -45,6 +48,9 @@ pub fn production_routes() -> Vec<RouteDef> {
     let mut routes = system::routes();
     routes.extend(sharing::routes());
     routes.extend(media::routes());
+    routes.extend(tree::routes());
+    routes.extend(transfer::routes());
+    routes.extend(feed::routes());
     routes.extend(worker::routes());
     #[cfg(feature = "test-clock")]
     routes.extend(crate::test_clock::routes());

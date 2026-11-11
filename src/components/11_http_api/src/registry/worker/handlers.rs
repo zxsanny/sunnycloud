@@ -9,8 +9,7 @@ use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use contracts::{AcceptOutcome, ByteStream, DerivedKind, OutputMeta, StreamError, WorkerJobError};
-use http_body_util::BodyExt;
+use contracts::{AcceptOutcome, DerivedKind, OutputMeta, WorkerJobError};
 use sc_error::ErrorCode;
 
 use super::caller::{Caller, JobPath, Worker};
@@ -20,7 +19,7 @@ use super::wire::{
 use crate::content;
 use crate::json_body::{self, malformed};
 use crate::problem::ApiProblem;
-use crate::registry::request::{Answer, BODY_LIMIT};
+use crate::registry::request::{Answer, BODY_LIMIT, byte_stream};
 
 pub(super) async fn claim(State(worker): State<Arc<Worker>>, caller: Caller, body: Body) -> Answer {
     let body = json_body::read(body, BODY_LIMIT, caller.request_id).await?;
@@ -208,11 +207,4 @@ fn number<T: FromStr>(
         .and_then(|text| text.parse().ok())
         .map(Some)
         .ok_or_else(|| ApiProblem::validation(name, "malformed", caller.request_id))
-}
-
-fn byte_stream(body: Body) -> ByteStream {
-    Box::pin(
-        body.map_err(|failure| StreamError::Source(Box::new(failure)))
-            .into_data_stream(),
-    )
 }

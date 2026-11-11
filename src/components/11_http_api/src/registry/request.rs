@@ -2,10 +2,15 @@
 
 use std::sync::Arc;
 
+use std::str::FromStr;
+
+use axum::body::Body;
 use axum::extract::{FromRequestParts, RawPathParams};
-use axum::http::Uri;
 use axum::http::request::Parts;
+use axum::http::{HeaderMap, Uri, header};
 use axum::response::Response;
+use contracts::{ByteStream, Principal, StreamError};
+use http_body_util::BodyExt;
 use sc_clock::Clock;
 use sc_error::{CorrelationId, DomainError};
 use uuid::Uuid;
@@ -50,9 +55,11 @@ pub(super) fn missing_layer(what: &'static str, request_id: CorrelationId) -> Ap
 }
 
 /// The caller of a user route: the account of the principal auth accepted, never one from the path, the query
-/// or the body.
+/// or the body. `retained_ok` is true for an admin session only.
 pub(super) struct User {
     pub(super) account: Uuid,
+    pub(super) principal: Principal,
+    pub(super) retained_ok: bool,
     pub(super) request_id: CorrelationId,
 }
 
@@ -64,6 +71,8 @@ impl FromRequestParts<Services> for User {
         match parts.extensions.get::<Authenticated>() {
             Some(caller) => Ok(User {
                 account: caller.principal.account_id,
+                principal: caller.principal.clone(),
+                retained_ok: caller.retained_ok,
                 request_id,
             }),
             None => Err(missing_layer("authenticated caller", request_id)),
@@ -96,4 +105,102 @@ pub(super) fn query_value<'a>(uri: &'a Uri, name: &str) -> Option<&'a str> {
         .filter_map(|pair| pair.split_once('='))
         .find(|(key, _)| *key == name)
         .map(|(_, value)| value)
+}
+
+/// `name` as a number; absent is `None`, a value that is not one is a 400 for that field.
+pub(super) fn query_number<T: FromStr>(
+    uri: &Uri,
+    name: &'static str,
+    request_id: CorrelationId,
+) -> Result<Option<T>, ApiProblem> {
+    query_value(uri, name)
+        .map(|text| {
+            text.parse()
+                .map_err(|_| ApiProblem::validation(name, "malformed", request_id))
+        })
+        .transpose()
+}
+
+/// `name` as a UUID; absent is `None`, anything else is a 400 for that field.
+pub(super) fn query_uuid(
+    uri: &Uri,
+    name: &'static str,
+    request_id: CorrelationId,
+) -> Result<Option<Uuid>, ApiProblem> {
+    query_value(uri, name)
+        .map(|text| {
+            Uuid::parse_str(text)
+                .map_err(|_| ApiProblem::validation(name, "not_a_uuid", request_id))
+        })
+        .transpose()
+}
+
+/// `name` as the text a client percent-encoded (an opaque page key, a device label); absent is `None`, a bad
+/// escape or bytes that are not UTF-8 are a 400 for that field. A `+` stays a `+`.
+pub(super) fn query_text(
+    uri: &Uri,
+    name: &'static str,
+    request_id: CorrelationId,
+) -> Result<Option<String>, ApiProblem> {
+    query_value(uri, name)
+        .map(|text| {
+            percent_decode(text)
+                .ok_or_else(|| ApiProblem::validation(name, "malformed", request_id))
+        })
+        .transpose()
+}
+
+fn percent_decode(text: &str) -> Option<String> {
+    let mut bytes = Vec::with_capacity(text.len());
+    let mut rest = text.bytes();
+    while let Some(byte) = rest.next() {
+        if byte == b'%' {
+            let high = hex_digit(rest.next()?)?;
+            let low = hex_digit(rest.next()?)?;
+            bytes.push(high << 4 | low);
+        } else {
+            bytes.push(byte);
+        }
+    }
+    String::from_utf8(bytes).ok()
+}
+
+/// The 32 bytes of 64 hex digits, upper or lower case (a block or content hash on the wire).
+pub(super) fn digest(text: &str) -> Option<[u8; 32]> {
+    let digits = text.as_bytes();
+    if digits.len() != 64 {
+        return None;
+    }
+    let mut bytes = [0u8; 32];
+    for (byte, pair) in bytes.iter_mut().zip(digits.chunks_exact(2)) {
+        *byte = hex_digit(pair[0])? << 4 | hex_digit(pair[1])?;
+    }
+    Some(bytes)
+}
+
+fn hex_digit(digit: u8) -> Option<u8> {
+    match digit {
+        b'0'..=b'9' => Some(digit - b'0'),
+        b'a'..=b'f' => Some(digit - b'a' + 10),
+        b'A'..=b'F' => Some(digit - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// The declared `Content-Length`; `None` when absent or not a number.
+pub(super) fn content_length(headers: &HeaderMap) -> Option<u64> {
+    headers
+        .get(header::CONTENT_LENGTH)?
+        .to_str()
+        .ok()?
+        .parse()
+        .ok()
+}
+
+/// A request body as the neutral stream the ports take: chunks as they arrive, never collected.
+pub(super) fn byte_stream(body: Body) -> ByteStream {
+    Box::pin(
+        body.map_err(|failure| StreamError::Source(Box::new(failure)))
+            .into_data_stream(),
+    )
 }

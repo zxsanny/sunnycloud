@@ -30,31 +30,14 @@ pub(in crate::registry) fn thumbnail_kind(size: Option<&str>) -> Option<DerivedK
 }
 
 /// `{content_hashes: [<64 hex digits>, ...]}`, with a count the caller checks. `None` for another shape.
-pub(super) fn hash_texts(body: &Value) -> Option<Vec<&str>> {
+pub(in crate::registry) fn hash_texts(body: &Value) -> Option<Vec<&str>> {
     let [hashes] = crate::json_body::fields(body, ["content_hashes"])?;
     hashes.as_array()?.iter().map(Value::as_str).collect()
 }
 
 /// A content hash as 64 hex digits, upper or lower case.
-pub(super) fn parse_hash(text: &str) -> Option<FileHash> {
-    let digits = text.as_bytes();
-    if digits.len() != 64 {
-        return None;
-    }
-    let mut bytes = [0u8; 32];
-    for (byte, pair) in bytes.iter_mut().zip(digits.chunks_exact(2)) {
-        *byte = (hex(pair[0])? << 4) | hex(pair[1])?;
-    }
-    Some(FileHash::from_bytes(bytes))
-}
-
-fn hex(digit: u8) -> Option<u8> {
-    match digit {
-        b'0'..=b'9' => Some(digit - b'0'),
-        b'a'..=b'f' => Some(digit - b'a' + 10),
-        b'A'..=b'F' => Some(digit - b'A' + 10),
-        _ => None,
-    }
+pub(in crate::registry) fn parse_hash(text: &str) -> Option<FileHash> {
+    crate::registry::request::digest(text).map(FileHash::from_bytes)
 }
 
 /// `{states: {<hash>: ready | pending | failed}}`. A hash with no state to report (no job planned, or unknown to
