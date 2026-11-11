@@ -34,10 +34,10 @@ The decoder's ffmpeg calls run with whitelists that decide both what users can u
 
 ## Acceptance Criteria
 
-**AC-1: Whitelists keep phone clips and refuse the red-team set (AC-25)**
+**AC-1: Whitelists keep phone clips and refuse the red-team container tricks (AC-25)**
 Given the candidate lists and the clips of DS-07, DS-08, DS-35 and the video items of DS-16
 When each clip is probed and transcoded with the lists set
-Then every phone clip succeeds, every DS-16 video item is refused, and the final lists with the per-clip result table are recorded in the component description
+Then every phone clip succeeds, the valid DS-16 control video succeeds, every DS-16 video item that is not a valid MP4 (the `.m3u8` text named `.mp4`, the concat file, the SDP) is refused by the whitelists, and the final lists with the per-clip result table are recorded in the component description. The 20 GB sparse DS-16 video is a structurally valid MP4: no whitelist refuses it, and the job limits (size, duration, timeout; IT-10-20, NFT-RES-LIM-04) contain it, so it is checked there and not here (reworded 2026-11-11 by the owner)
 
 **AC-2: Progress lines arrive under the input whitelist**
 Given an ffmpeg transcode with `-protocol_whitelist file` and the chosen progress sink
@@ -72,7 +72,7 @@ Then AC-3 is recorded as NOT-RUN in `_docs/_process_leftovers/`, the chain is ma
 
 | AC Ref | Initial Data/Conditions | What to Test | Expected Behavior | NFR References |
 |--------|------------------------|-------------|-------------------|----------------|
-| AC-1 | DS-07, DS-08, DS-35, DS-16 | Probe and transcode per clip with the lists | Phone clips pass; DS-16 refused | NFT-SEC-29 step 6, NFT-RES-LIM-04 |
+| AC-1 | DS-07, DS-08, DS-35, DS-16 | Probe and transcode per clip with the lists | Phone clips and the DS-16 control video pass; the DS-16 container tricks are refused; the 20 GB sparse video is contained by the limits (IT-10-20) | NFT-SEC-29 step 6, NFT-RES-LIM-04 |
 | AC-2 | DS-05 base | Progress lines under the whitelist | At least 1 line/s | AC-45 |
 | AC-3 | DS-06 base, REF-CPU4 | Wall time per chain | Chosen chain <= 2.0 s/s | PT-10-2, NFT-PERF-16 |
 

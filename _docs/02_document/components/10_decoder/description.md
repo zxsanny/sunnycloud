@@ -149,7 +149,7 @@ Final lists: `-protocol_whitelist file -format_whitelist mov,matroska,avi,mpegts
 | DS-16 `.m3u8` text named `.mp4` (to `file:///etc/passwd`, `/proc/self/environ`, a `data:` URI) | text | refused, no bytes of the target in any output or log |
 | DS-16 concat file (also with `subfile`), SDP | text | refused: `Format not on whitelist` |
 | same files with `.m3u8`, `.ffconcat`, `.sdp` names | text | refused: `Format not on whitelist 'mov,matroska,avi,mpegts'` |
-| DS-16 20 GB sparse video (valid ftyp, moov, 20 GiB `free` box) | mp4 | probe and transcode succeed: a structurally valid MP4 is not refused by any list; the limits contain it (IT-10-20). The AC-1 sentence "every DS-16 video item is refused" is wrong for this item |
+| DS-16 20 GB sparse video (valid ftyp, moov, 20 GiB `free` box) | mp4 | probe and transcode succeed: a structurally valid MP4 is not refused by any list; the limits contain it (IT-10-20). The AZ-3849 AC-1 sentence "every DS-16 video item is refused" was reworded on 2026-11-11 (owner): this item is contained by the limits, not refused by a list |
 
 Layers: with no whitelist at all, ffmpeg 8.0.1 already refuses the DS-16 items as named (HLS needs a `.m3u8` name, concat checks "Unsafe file name"); with only `-protocol_whitelist file` the `.m3u8` variant stops at the segment-extension check and `http:` and `rtp` at the protocol whitelist; the format whitelist stops every one of them before parsing. The decoder reads `in/source`, which never has an extension. Not covered (no sample): external `dref` data references in MOV, which ffmpeg disables by default.
 
