@@ -40,7 +40,7 @@ The Svelte web bundle is built in the api Dockerfile and served by the API (one 
 | Database role | `sunnycloud` (DML only: no DDL, no `BYPASSRLS`; `audit_log` INSERT and SELECT only). The API never migrates: at start it compares the schema version with its own and refuses to serve on a mismatch; the schema is changed only by the `migrate` service |
 | Health check | `["CMD","sunnycloud","healthcheck"]` calls the ops address `/readyz` (no curl in the image); `start_period: 120s` |
 | Build args | `FEATURES` (empty for release, `test-clock` for the test image), `VERSION`, `REVISION` |
-| Labels | OCI source/version/revision/licenses (`AGPL-3.0-only`), `org.sunnycloud.test-clock=true|false` |
+| Labels | OCI source/version/revision/licenses (`AGPL-3.0-only`), `org.sunnycloud.test-clock=true|false`; decoder: `org.sunnycloud.variant=test-stubs` on the test-stubs image only |
 | Stop | `SIGTERM`, `stop_grace_period: 120s` (in-flight blocks finish; interrupted uploads resume from the received-bitmap, AC-3) |
 
 Release-versus-test rule: the release image is compiled without the `test-clock` feature, so the routes do not exist. CI asserts, in `images` and again in `release.yml` against the **pushed `@digest` of the api and the worker image before signing**, that `POST /test/clock` and `GET /internal/v1/test/clock-offset` return 404 and that the label is `false`; the `-test` tag is never promoted to a release tag or signed as a release (AC-30).
@@ -85,6 +85,7 @@ One image, two containers per supervisor (decision 13). `decoder-interactive` se
 - `ffmpeg -version` contains `--enable-gpl`, does not contain `--enable-nonfree`; `ffmpeg -encoders` lists `aac` and `libx264` and lacks `libfdk_aac` and `libx265`.
 - `ffmpeg -protocols` lists only `file` and `pipe`; `ffmpeg -demuxers` lacks `hls`, `concat`.
 - `pkg-config --modversion libheif` >= 1.22.0; `vips --version` is 8.18.7; `vips -l` lacks svg, pdf, magick loaders.
+- The release decoder image has no test hooks (AZ-3850 and AZ-3851, 10 description sections 13.4 and 13.6), checked on the built image and again on the pushed `@digest` before signing: `docker export | tar -t` lists no `decoder-test-stub` and no `*.real`; `sha256sum` of `ffmpeg`, `ffprobe`, `vipsthumbnail` and `vipsheader` equals the build-stage manifest; `strings` of `decoder-runner` finds no `SCSTUB1` and no `test_freeze_main_loop`, and `nm` finds no `test_freeze` symbol; the image has no label `org.sunnycloud.variant=test-stubs` (that label is set only on the `<tag>-test` stub image, which the harness refuses for performance runs and which is never promoted). A failure stops the release.
 - `/usr/share/sunnycloud/components.cdx.json` exists and lists every source-built component with name, version and CPE (needed because scanners do not see source-built libraries in the package database, AC-63).
 - Source offer: `/usr/share/doc/sunnycloud-decoder/SOURCE-OFFER.txt` and the OCI label `org.sunnycloud.source-offer` point to the release asset `decoder-sources-<version>-<yyyymmdd>.tar.zst` of that exact build (tarballs, patches, recipe; every weekly rebuild publishes its own, see `ci_cd_pipeline.md`) and to `snapshot.debian.org` URLs of the exact Debian source packages (x264 and the others).
 
