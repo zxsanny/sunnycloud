@@ -1,14 +1,19 @@
 //! The route registry: the one list of operations from which the routers, the OpenAPI document and the
 //! security matrices are generated (`api_v1_surface.md`). A route reaches a router only as a [`RouteDef`].
 
+mod account;
+mod admin;
 mod classes;
+mod devices;
 mod document;
 mod feed;
 mod media;
 mod mount;
 mod naming;
 mod request;
+mod sessions;
 mod sharing;
+mod signin;
 mod spec;
 mod system;
 mod transfer;
@@ -46,6 +51,11 @@ pub struct RouteContext {
 /// Every operation the server offers. Each group of E-21 adds its own list here.
 pub fn production_routes() -> Vec<RouteDef> {
     let mut routes = system::routes();
+    routes.extend(signin::routes());
+    routes.extend(sessions::routes());
+    routes.extend(devices::routes());
+    routes.extend(account::routes());
+    routes.extend(admin::routes());
     routes.extend(sharing::routes());
     routes.extend(media::routes());
     routes.extend(tree::routes());

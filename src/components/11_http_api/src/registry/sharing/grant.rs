@@ -9,6 +9,8 @@ use axum::http::{HeaderMap, HeaderValue, header};
 use contracts::AccessGrant;
 use sc_clock::Timestamp;
 
+use crate::registry::request::is_cookie_octet;
+
 pub(super) const COOKIE: &str = "__Secure-share-grant";
 const LINK_PATH: &str = "/api/v1/public-shares/";
 
@@ -60,11 +62,6 @@ pub(super) fn set_cookie(
         grant.value,
     );
     HeaderValue::try_from(cookie).map_err(|_| NotCookieSafe::Value)
-}
-
-/// RFC 6265 `cookie-octet`.
-fn is_cookie_octet(byte: u8) -> bool {
-    matches!(byte, 0x21 | 0x23..=0x2B | 0x2D..=0x3A | 0x3C..=0x5B | 0x5D..=0x7E)
 }
 
 fn is_path_octet(byte: u8) -> bool {

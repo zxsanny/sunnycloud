@@ -3,7 +3,7 @@
 **Component**: 11_http_api (library `sunnycloud-http-api`, proposed)
 **Producer task**: E-21/c03 — `_docs/02_tasks/todo/B07-03_crate_skeleton_accept_loop.md` (contributors: E-21/c15 internal router and test-clock listener, E-21/c16 readiness list and ops listener, E-21/c17 shutdown semantics of `run`); keys assigned at Step 4
 **Consumer tasks**: E-22/c03 (composition root builds `ApiServices`), E-22/c04 (binds `HttpConfig`), E-22/c05 (`serve` calls `run` and owns the rest of the shutdown order), E-22/c15 (`openapi` and `healthcheck` commands); E-31 harness (Mode R); resolved at Step 4
-**Version**: 1.4.1
+**Version**: 1.5.0
 **Status**: draft
 **Last Updated**: 2026-11-11
 
@@ -59,6 +59,7 @@ Error names are proposals of E-21/c03; they become final when that task is accep
 | worker output body caps | `derived_max_thumb`, `derived_max_preview`, `derived_max_transcode` (owned by 08; `WorkerOutputLimits`, bytes) | 5MiB, 20MiB, 10GiB |
 | shutdown grace | `shutdown_grace` | 25s |
 | minimum client version | `min_client_version` | set by the release; one semver or `family=semver,...` |
+| credential format | not in the key table (Open point 6): `credentials.session_cookie`, `credentials.binding_cookie` (each `__Host-` plus a cookie-name token, and different), `credentials.device_token_prefix` | required |
 | `ServerInfo` value | built by 12 from the typed sections and the build (`server_info.md`) | - |
 
 ### Listeners
@@ -121,6 +122,8 @@ The clock of the grace starts at step 4. What 12 does after `run` returns (sched
 
 5. The ops listener stops accepting at step 2 like the others, so after the signal `/readyz` answers 503 only on a connection that is still busy, and a probe on a new connection is refused. If operators want `/readyz` and `/metrics` scrapeable through the grace, the ops listener would have to stop last; the owner decides, nothing needs it today.
 
+6. The names of the two browser cookies and the marker of a device token are not fixed by the documents, so 12 supplies them (`HttpConfig.credentials`) and 11 invents none. `binding_cookie` is new in 1.5.0: the sign-in routes (E-21/c12) set the browser-binding cookie of 01's `AuthorizationRedirect` under it and read it back at the callback. E-22/c04 and the E-01 owner to add the keys.
+
 ## Change Log
 
 | Version | Date | Change | Author |
@@ -132,3 +135,4 @@ The clock of the grace starts at step 4. What 12 does after `run` returns (sched
 | 1.3.0 | 2026-11-11 | Worker routes registered for the internal listener; with feature `test-clock`: `HttpConfig.test_clock_addr`, the `:9091` listener bound by `bind` and served by `serve`, `BoundServer::test_clock_addr`, `Listener::TestClock`; Open point 4 | AZ-3831 |
 | 1.4.0 | 2026-11-11 | `run` shutdown order made exact: `ApiServices.feed_shutdown` added and cancelled by `run` after accept stops; connections get a graceful close and are dropped at the end of `shutdown_grace`; `run` returns when none is open | AZ-3833 |
 | 1.4.1 | 2026-11-11 | Invariant on one port per handler names the share content and node media compositions (E-21/c14); no change to `ApiServices` or `HttpConfig` | AZ-3830 |
+| 1.5.0 | 2026-11-11 | Identity, account and admin routes registered (E-21/c12); `CredentialFormat.binding_cookie` added to `HttpConfig.credentials` (breaking for a caller that builds the struct, not for the key table: Open point 6) | AZ-3828 |

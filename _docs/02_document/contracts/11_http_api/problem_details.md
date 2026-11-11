@@ -3,7 +3,7 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c09 — `_docs/02_tasks/todo/B07-09_error_mapper.md` (statuses for `need_blocks`/`edited_since`/`batch_too_large` decided 2026-11-07, spike E-21/c02); keys assigned at Step 4
 **Consumer tasks**: E-23/c06 (typed error model and wire-code mapping), E-23/c07 (426 handling), E-26/c06 (SPA error mapping), E-20/c03 (`WorkerApi` status mapping), E-24 and E-27 through `sync-core`/`mobile_backup`, E-31 consumer framework; every E-21 handler task (c04..c17) produces errors through it; resolved at Step 4
-**Version**: 1.0.4
+**Version**: 1.0.5
 **Status**: draft (G-11-1 and batch-too-large decided 2026-11-07)
 **Last Updated**: 2026-11-11
 
@@ -72,6 +72,12 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 | feed `cursor` that is not `E.S` (two unsigned decimal numbers joined by a dot) | 422 `invalid_cursor`, the code of the port's `BadCursor`; the port is not called | 05, 11 |
 | staged PUT with no `Content-Length` and a body of unknown length | 411 `length_required` | 11 |
 | feed hold cap (`TooManyHolds`) | 429 `rate_limited` with `Retry-After` | 05, 11 (G-05-2) |
+| device-grant poll not yet approved, polled too fast, denied, expired (`AuthorizationPending`, `SlowDown`, `AccessDenied`, `ExpiredToken`) | 400 with `code` `authorization_pending`, `slow_down`, `access_denied`, `expired_token`; the body is the problem body with `type` `urn:sunnycloud:error:<code>`, `title` the code's words and an extra `error` member equal to `code` (RFC 8628 section 3.5); not in the `sc_error` table (Open point 3) | 01, 11 |
+| mobile code exchange with a code that is single-use spent, PKCE-mismatched or expired (`InvalidCode`) | 400 `invalid_request`, field `code`, problem `invalid`; no `sc_error` row yet | 01, 11 |
+| provider callback refusals the browser must see (`UntrustedState`, `TrustedFailure`, `InvitationRequired`) | not a problem body: 302 to the SPA error route (`api_v1_surface.md`, Identity routes) | 01, 11 |
+| device token on a session-only identity or account route (sessions, devices by id, device grants, link attempts, account deletion) | 403 `forbidden` | 01, 07, 11 (AC-57) |
+| `LastAdmin` on an admin update or the account deletion request | 409 `last_admin` | 07 |
+| unknown target of an admin update, quota or invite revocation | 404 `not_found` | 07 |
 
 ## Invariants
 
@@ -84,7 +90,7 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 ## Non-Goals
 
 - Not covered: the code list and status table themselves (`sc_error`, E-02); per-operation outcome enums (component contracts).
-- Not covered: the RFC 8628 device-poll answers (Open point 3).
+- Not covered: the status and body of the RFC 8628 poll answers beyond the row above (the `sc_error` table has no rows for them).
 
 ## Versioning Rules
 
@@ -106,7 +112,7 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 
 1. G-11-1: closed 2026-11-07 (owner decision): `need_blocks` and `edited_since` are both 409, as in helper 02, 02 and 03; 412 is for `If-Match` header preconditions, which these are not.
 2. Batch too large: closed 2026-11-07 (owner decision): `batch_too_large` is 422 for more entries than `batch_max_entries`; a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer (`size_too_large` family). F5, FT-N-48 and pipeline AZ-3656 follow (413 became 422 for too many entries).
-3. Codes used by owners but missing from helper 02's table: 08 `lease_lost` (409), `revision_obsolete` (404), `thumbnail_not_ready`, `thumbnail_unavailable` (404), output too large (413), type or kind rejected (422) (all of 08's are in the `sc_error` table now and mapped by `PortError for WorkerJobError`); 01 RFC 8628 poll codes (`authorization_pending`, `slow_down`, `access_denied`, `expired_token`) whose status and body shape are not stated; 20's 412 and 428 (v1.2). Each owning epic adds its rows (`sc_error` minor version).
+3. Codes used by owners but missing from helper 02's table: 08 `lease_lost` (409), `revision_obsolete` (404), `thumbnail_not_ready`, `thumbnail_unavailable` (404), output too large (413), type or kind rejected (422) (all of 08's are in the `sc_error` table now and mapped by `PortError for WorkerJobError`); 01 RFC 8628 poll codes (`authorization_pending`, `slow_down`, `access_denied`, `expired_token`): their status and body shape are not stated by 01, so 11 answers 400 with the problem body carrying those words as `code` and as the RFC's `error` member (E-21/c12, narrowest reading; `sc_error::ApiError::parse` reads an unknown code as `internal`, so E-02 should add the four rows and 11 then drops its own body), and the invalid mobile code, the missing-invite and the identity-taken variants of `SignInError` still have no row (11 maps `InvalidCode` to 400 `invalid_request` itself); 20's 412 and 428 (v1.2). Each owning epic adds its rows (`sc_error` minor version).
 4. `Retry-After` value on a 503 whose error carries no `retry_after` is not specified.
 5. Helper 02 still shows the body field as `correlation_id`; this contract uses `request_id` (E-02 decision).
 
@@ -119,3 +125,4 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 | 1.0.2 | 2026-11-11 | Worker route answers (403, 409, 404, 413, 422, 411, 400) added to the fixed rules; open point 3 notes the 08 codes exist in `sc_error` | AZ-3831 |
 | 1.0.3 | 2026-11-11 | Share and media answers (403 for a device on owner share routes, the two thumbnail 404 codes, 422 for `thumbnail-states`; the password row names the wrong password) added to the fixed rules | AZ-3830 |
 | 1.0.4 | 2026-11-11 | Tree, transfer and feed answers (400 for a request that does not bind, 422 `invalid_cursor` for a cursor that is not `E.S`, 411 for a staged PUT of unknown length, the hold cap) added to the fixed rules | AZ-3829 |
+| 1.0.5 | 2026-11-11 | Identity, account and admin answers added to the fixed rules: the four RFC 8628 poll codes (400, own `code` and `error`), an invalid mobile code (400), the callback redirects, 403 for a device token on session-only routes, `last_admin` 409, unknown admin targets 404; open point 3 narrowed | AZ-3828 |

@@ -267,6 +267,7 @@ mod tests {
             },
             credentials: crate::CredentialFormat {
                 session_cookie: "__Host-test".to_owned(),
+                binding_cookie: "__Host-test-binding".to_owned(),
                 device_token_prefix: "dev-".to_owned(),
             },
         }

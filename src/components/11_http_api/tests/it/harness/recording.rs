@@ -41,6 +41,8 @@ macro_rules! recording_port {
     };
 }
 
+pub(super) use recording_port;
+
 recording_port!(RecordingTree: TreeService, TreeServiceError, {
     async fn create_folder(&self, account: Uuid, parent_id: Uuid, name: &str)
         -> Result<NodeView, TreeServiceError>;

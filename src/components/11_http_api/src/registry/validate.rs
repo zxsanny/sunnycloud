@@ -54,14 +54,17 @@ fn check_declaration(spec: &RouteSpec, label: &str, problems: &mut Vec<String>) 
     if spec.summary.is_empty() {
         problems.push(format!("{label}: summary is missing"));
     }
-    if !matches!(spec.success, 200 | 201 | 202 | 204) {
+    if !matches!(spec.success, 200 | 201 | 202 | 204 | 302) {
         problems.push(format!(
             "{label}: success status {} is not declared",
             spec.success
         ));
     }
-    if spec.success == 204 && spec.response.is_some() {
-        problems.push(format!("{label}: a 204 answer has no body schema"));
+    if matches!(spec.success, 204 | 302) && spec.response.is_some() {
+        problems.push(format!(
+            "{label}: a {} answer has no body schema",
+            spec.success
+        ));
     }
     let reads = matches!(spec.method, HttpMethod::Get | HttpMethod::Head);
     if reads && spec.body != BodyClass::None {

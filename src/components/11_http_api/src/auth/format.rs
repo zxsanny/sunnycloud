@@ -14,6 +14,8 @@ const HOST_PREFIX: &str = "__Host-";
 pub struct CredentialFormat {
     /// The full name of the browser session cookie, `__Host-` prefix included.
     pub session_cookie: String,
+    /// The full name of the browser-binding cookie of a sign-in attempt, `__Host-` prefix included.
+    pub binding_cookie: String,
     /// The marker a device token starts with; any other bearer is a session access token.
     pub device_token_prefix: String,
 }
@@ -28,13 +30,14 @@ pub enum CredentialSource {
 impl CredentialFormat {
     pub(crate) fn check(&self) -> Result<(), HttpServerError> {
         let invalid = |reason: &str| Err(HttpServerError::InvalidConfig(reason.to_owned()));
-        let name = self.session_cookie.strip_prefix(HOST_PREFIX).unwrap_or("");
-        if name.is_empty()
-            || !name
-                .bytes()
-                .all(|byte| byte.is_ascii_graphic() && !b"=;,\"\\()<>@:/[]?{}".contains(&byte))
-        {
+        if !is_host_cookie(&self.session_cookie) {
             return invalid("session_cookie must be `__Host-` followed by a cookie-name token");
+        }
+        if !is_host_cookie(&self.binding_cookie) {
+            return invalid("binding_cookie must be `__Host-` followed by a cookie-name token");
+        }
+        if self.binding_cookie == self.session_cookie {
+            return invalid("binding_cookie and session_cookie must differ");
         }
         if self.device_token_prefix.is_empty() {
             return invalid("device_token_prefix must not be empty");
@@ -83,6 +86,14 @@ impl CredentialFormat {
             .find(|(name, value)| *name == self.session_cookie && !value.is_empty())
             .map(|(_, value)| value)
     }
+}
+
+fn is_host_cookie(name: &str) -> bool {
+    let token = name.strip_prefix(HOST_PREFIX).unwrap_or("");
+    !token.is_empty()
+        && token
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic() && !b"=;,\"\\()<>@:/[]?{}".contains(&byte))
 }
 
 /// The token of an `Authorization: Bearer` header; `None` for no header, another scheme or an empty token.

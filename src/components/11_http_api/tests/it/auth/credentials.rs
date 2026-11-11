@@ -126,20 +126,23 @@ async fn the_cookie_authenticates_to_the_account_of_its_session() {
 fn a_credential_format_the_documents_rule_out_is_refused_at_start() {
     // Arrange
     let formats = [
-        ("session", "dev-"),
-        ("__Host-", "dev-"),
-        ("__Host-sid", ""),
-        ("__Host-a b", "dev-"),
-        ("__Host-a=b", "dev-"),
+        ("session", "__Host-bind", "dev-"),
+        ("__Host-", "__Host-bind", "dev-"),
+        ("__Host-sid", "__Host-bind", ""),
+        ("__Host-a b", "__Host-bind", "dev-"),
+        ("__Host-a=b", "__Host-bind", "dev-"),
+        ("__Host-sid", "bind", "dev-"),
+        ("__Host-sid", "__Host-sid", "dev-"),
     ];
 
     // Act
     let outcomes: Vec<_> = formats
         .into_iter()
-        .map(|(cookie, prefix)| {
+        .map(|(cookie, binding, prefix)| {
             let mut config = default_config();
             config.credentials = CredentialFormat {
                 session_cookie: cookie.to_owned(),
+                binding_cookie: binding.to_owned(),
                 device_token_prefix: prefix.to_owned(),
             };
             HttpServer::new(stub_services(&Script::default(), new_metrics()), config).err()

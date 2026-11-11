@@ -20,7 +20,9 @@ const REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 pub struct ApiProblem {
     error: DomainError,
     request_id: CorrelationId,
-    update_url: Option<String>,
+    /// Members spliced into the serialised body: `sc_error` has no field for them, and one may replace a member
+    /// of the table's body (the `code` of an RFC 8628 poll answer).
+    extras: Vec<(&'static str, String)>,
 }
 
 impl ApiProblem {
@@ -28,15 +30,32 @@ impl ApiProblem {
         ApiProblem {
             error,
             request_id,
-            update_url: None,
+            extras: Vec::new(),
         }
     }
 
-    /// Adds the `update_url` extra of an `upgrade_required` body (`server_info.md`); `sc_error` has no field
-    /// for it, so it is spliced into the serialised body.
+    /// Adds the `update_url` extra of an `upgrade_required` body (`server_info.md`).
     pub(crate) fn with_update_url(mut self, url: String) -> ApiProblem {
-        self.update_url = Some(url);
+        self.extras.push(("update_url", url));
         self
+    }
+
+    /// An RFC 8628 device-poll answer: status 400, and `type`, `title` and `code` are the grant's own words
+    /// (`authorization_pending`, ...) because `sc_error` has no row for them (`problem_details.md`, Open point 3).
+    /// The RFC's `error` member carries the same word.
+    pub(crate) fn device_poll(
+        code: &'static str,
+        title: &'static str,
+        request_id: CorrelationId,
+    ) -> ApiProblem {
+        let mut problem = ApiProblem::code(ErrorCode::InvalidRequest, request_id);
+        problem.extras.extend([
+            ("type", format!("urn:sunnycloud:error:{code}")),
+            ("title", title.to_owned()),
+            ("code", code.to_owned()),
+            ("error", code.to_owned()),
+        ]);
+        problem
     }
 
     /// A 400 for one field of the request.
@@ -73,7 +92,7 @@ impl IntoResponse for ApiProblem {
         let ApiProblem {
             error,
             request_id,
-            update_url,
+            extras,
         } = self;
         if let DomainError::Unexpected { .. } = &error {
             log_error!(
@@ -84,7 +103,7 @@ impl IntoResponse for ApiProblem {
         }
         let problem = error.problem(request_id);
         let status = status_of(problem.code.status(), request_id);
-        let body = match serialise(&problem, update_url) {
+        let body = match serialise(&problem, extras) {
             Ok(bytes) => bytes,
             Err(failure) => {
                 log_error!(
@@ -121,14 +140,16 @@ impl IntoResponse for ApiProblem {
 
 fn serialise(
     problem: &sc_error::ProblemBody,
-    update_url: Option<String>,
+    extras: Vec<(&'static str, String)>,
 ) -> Result<Vec<u8>, serde_json::Error> {
-    let Some(url) = update_url else {
+    if extras.is_empty() {
         return serde_json::to_vec(problem);
-    };
+    }
     let mut value = serde_json::to_value(problem)?;
     if let Some(object) = value.as_object_mut() {
-        object.insert("update_url".to_owned(), url.into());
+        for (name, text) in extras {
+            object.insert(name.to_owned(), text.into());
+        }
     }
     serde_json::to_vec(&value)
 }

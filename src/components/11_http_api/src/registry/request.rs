@@ -1,8 +1,9 @@
 //! What the handlers of user and visitor routes read from a request beside its body, and the shapes they share.
 
-use std::sync::Arc;
-
+use std::net::IpAddr;
 use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
 
 use axum::body::Body;
 use axum::extract::{FromRequestParts, RawPathParams};
@@ -17,6 +18,7 @@ use uuid::Uuid;
 
 use super::RouteContext;
 use crate::auth::Authenticated;
+use crate::middleware::ClientIp;
 use crate::port_error::PortError;
 use crate::problem::ApiProblem;
 use crate::services::ApiServices;
@@ -76,6 +78,27 @@ impl FromRequestParts<Services> for User {
                 request_id,
             }),
             None => Err(missing_layer("authenticated caller", request_id)),
+        }
+    }
+}
+
+/// The caller of a public route: no account, only the address the abuse limits count.
+pub(super) struct Anonymous {
+    pub(super) client_ip: IpAddr,
+    pub(super) request_id: CorrelationId,
+}
+
+impl FromRequestParts<Services> for Anonymous {
+    type Rejection = ApiProblem;
+
+    async fn from_request_parts(parts: &mut Parts, state: &Services) -> Result<Self, ApiProblem> {
+        let request_id = request_id(parts, state.clock.as_ref());
+        match parts.extensions.get::<ClientIp>() {
+            Some(client) => Ok(Anonymous {
+                client_ip: client.0,
+                request_id,
+            }),
+            None => Err(missing_layer("client address", request_id)),
         }
     }
 }
@@ -148,6 +171,60 @@ pub(super) fn query_text(
                 .ok_or_else(|| ApiProblem::validation(name, "malformed", request_id))
         })
         .transpose()
+}
+
+/// Every `name=value` of the query in arrival order, form-decoded (`+` is a space, `%XX` a byte); a pair with
+/// no `=` has an empty value. `None` for a bad escape or bytes that are not UTF-8.
+pub(super) fn query_pairs(uri: &Uri) -> Option<Vec<(String, String)>> {
+    let Some(query) = uri.query() else {
+        return Some(Vec::new());
+    };
+    query
+        .split('&')
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| {
+            let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
+            Some((form_decode(name)?, form_decode(value)?))
+        })
+        .collect()
+}
+
+fn form_decode(text: &str) -> Option<String> {
+    percent_decode(&text.replace('+', " "))
+}
+
+/// The value of the cookie `name` among the request's `Cookie` headers.
+pub(super) fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|line| line.to_str().ok())
+        .flat_map(|line| line.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .find(|(cookie, _)| *cookie == name)
+        .map(|(_, value)| value)
+}
+
+/// The `Host` the client addressed: the header, or the `:authority` of an HTTP/2 request.
+pub(super) fn host(headers: &HeaderMap, uri: &Uri) -> Option<String> {
+    match headers.get(header::HOST) {
+        Some(value) => value.to_str().ok().map(str::to_owned),
+        None => uri
+            .authority()
+            .map(|authority| authority.as_str().to_owned()),
+    }
+}
+
+/// RFC 6265 `cookie-octet`.
+pub(super) fn is_cookie_octet(byte: u8) -> bool {
+    matches!(byte, 0x21 | 0x23..=0x2B | 0x2D..=0x3A | 0x3C..=0x5B | 0x5D..=0x7E)
+}
+
+/// A duration in whole seconds, rounded up (the unit of `expires_in` and `interval` on the wire).
+pub(super) fn seconds(duration: Duration) -> u64 {
+    duration
+        .as_secs()
+        .saturating_add(u64::from(duration.subsec_nanos() > 0))
 }
 
 fn percent_decode(text: &str) -> Option<String> {

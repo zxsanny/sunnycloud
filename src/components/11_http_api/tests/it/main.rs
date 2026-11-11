@@ -10,6 +10,7 @@ mod errors;
 mod h2_settings;
 mod harness;
 mod harness_scripting;
+mod identity;
 mod keepalive;
 mod lifecycle;
 mod limits;

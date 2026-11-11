@@ -256,8 +256,8 @@ fn contradictory_declarations_are_refused() {
         ),
         (
             "unknown success status",
-            valid().success(302),
-            "success status 302",
+            valid().success(301),
+            "success status 301",
         ),
         (
             "vault path with another owner",

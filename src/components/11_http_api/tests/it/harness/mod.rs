@@ -6,6 +6,7 @@ pub mod clients;
 pub mod probe;
 pub mod raw_h2;
 pub mod recording;
+pub mod recording_identity;
 pub mod recording_stream;
 pub mod router_server;
 pub mod script;
@@ -85,11 +86,13 @@ pub fn sample_server_info(minimum: &str) -> ServerInfo {
 pub fn test_credentials() -> CredentialFormat {
     CredentialFormat {
         session_cookie: SESSION_COOKIE.to_owned(),
+        binding_cookie: BINDING_COOKIE.to_owned(),
         device_token_prefix: DEVICE_PREFIX.to_owned(),
     }
 }
 
 pub const SESSION_COOKIE: &str = "__Host-test-session";
+pub const BINDING_COOKIE: &str = "__Host-test-binding";
 pub const DEVICE_PREFIX: &str = "dev-";
 
 pub fn new_metrics() -> Arc<Metrics> {
