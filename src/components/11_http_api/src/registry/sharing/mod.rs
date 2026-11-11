@@ -1,6 +1,5 @@
 //! The Sharing operations of `api_v1_surface.md` (06 section 3): the owner's routes to create, list and revoke
-//! a link, and the visitor's routes to open it, verify its password and read its content. The share thumbnail
-//! of the same table is not registered, see `api_v1_surface.md` open point 5.
+//! a link, and the visitor's routes to open it, verify its password and read its content or thumbnail.
 
 mod grant;
 mod owner;
@@ -19,9 +18,14 @@ const SHARE: &str = "/api/v1/shares/{id}";
 const PUBLIC_SHARE: &str = "/api/v1/public-shares/{token}";
 const PASSWORD: &str = "/api/v1/public-shares/{token}/password-verifications";
 const CONTENT: &str = "/api/v1/public-shares/{token}/content";
+const THUMBNAIL: &str = "/api/v1/public-shares/{token}/thumbnail";
 
 const SHARE_ID: &[Param] = &[Param::id(ParamLocation::Path, "id", ParamType::Uuid)];
 const TOKEN: &[Param] = &[Param::id(ParamLocation::Path, "token", ParamType::String)];
+const THUMBNAIL_PARAMS: &[Param] = &[
+    Param::id(ParamLocation::Path, "token", ParamType::String),
+    Param::query("size", ParamType::String),
+];
 const CREATE_PARAMS: &[Param] = &[Param::id(ParamLocation::Body, "node_id", ParamType::Uuid)];
 const LIST_PARAMS: &[Param] = &[Param::id(ParamLocation::Query, "node_id", ParamType::Uuid)];
 
@@ -117,6 +121,31 @@ const fn content(method: HttpMethod) -> RouteSpec {
     .download()
 }
 
+const THUMBNAIL_ERRORS: &[ErrorCode] = &[
+    ErrorCode::InvalidRequest,
+    ErrorCode::NotFound,
+    ErrorCode::PasswordRequired,
+    ErrorCode::RateLimited,
+    ErrorCode::ThumbnailNotReady,
+    ErrorCode::ThumbnailUnavailable,
+    ErrorCode::RangeNotSatisfiable,
+    ErrorCode::ContentUnavailable,
+];
+
+const fn thumbnail(method: HttpMethod) -> RouteSpec {
+    RouteSpec::new(
+        method,
+        THUMBNAIL,
+        "PublicShareService::authorize_derived",
+        AuthClass::ShareGrant,
+        BodyClass::None,
+    )
+    .summary("A link's WebP thumbnail (`size` small or preview), through 03")
+    .params(THUMBNAIL_PARAMS)
+    .errors(THUMBNAIL_ERRORS)
+    .download()
+}
+
 pub(super) fn routes() -> Vec<RouteDef> {
     vec![
         RouteDef::new(CREATE, |context, filter| {
@@ -139,6 +168,12 @@ pub(super) fn routes() -> Vec<RouteDef> {
         }),
         RouteDef::new(content(HttpMethod::Head), |context, filter| {
             on(filter, visitor::content).with_state(services(context))
+        }),
+        RouteDef::new(thumbnail(HttpMethod::Get), |context, filter| {
+            on(filter, visitor::thumbnail).with_state(services(context))
+        }),
+        RouteDef::new(thumbnail(HttpMethod::Head), |context, filter| {
+            on(filter, visitor::thumbnail).with_state(services(context))
         }),
     ]
 }

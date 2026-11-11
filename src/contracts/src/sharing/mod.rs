@@ -5,4 +5,6 @@ mod owner;
 mod public;
 
 pub use owner::{CreatedShare, ShareError, ShareInfo, ShareService};
-pub use public::{AccessGrant, PublicShareError, PublicShareService, ShareContent, ShareOpen};
+pub use public::{
+    AccessGrant, PublicShareError, PublicShareService, ShareContent, ShareDerived, ShareOpen,
+};

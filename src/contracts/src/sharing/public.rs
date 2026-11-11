@@ -49,6 +49,14 @@ pub struct ShareContent {
     pub revision_id: Uuid,
 }
 
+/// The shared file for a derived-file route: the owning account (for the lookup and for 03) with the file that
+/// `DerivedOpener::open_derived_for` takes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShareDerived {
+    pub account_id: Uuid,
+    pub file: LiveFile,
+}
+
 #[derive(Debug, Error)]
 pub enum PublicShareError {
     /// One variant for every missing, expired or revoked link (AC-12).
@@ -90,11 +98,12 @@ pub trait PublicShareService: Send + Sync {
         starts_download: bool,
     ) -> Result<ShareContent, PublicShareError>;
 
-    /// As `authorize_content` for a derived file; the result is the argument of `DerivedOpener::open_derived_for`.
+    /// As `authorize_content` for a derived file; `file` is the argument of `DerivedOpener::open_derived_for` and
+    /// `account_id` is the account 11 passes to 03 for the derived blob.
     async fn authorize_derived(
         &self,
         token: &RawToken,
         grant: Option<&AccessGrant>,
         client_ip: IpAddr,
-    ) -> Result<LiveFile, PublicShareError>;
+    ) -> Result<ShareDerived, PublicShareError>;
 }

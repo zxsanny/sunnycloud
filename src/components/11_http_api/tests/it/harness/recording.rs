@@ -141,7 +141,7 @@ impl PublicShareService for RecordingPublicShares {
         token: &RawToken,
         grant: Option<&AccessGrant>,
         client_ip: IpAddr,
-    ) -> Result<LiveFile, PublicShareError> {
+    ) -> Result<ShareDerived, PublicShareError> {
         self.0.record(format!(
             "PublicShareService::authorize_derived {} {} {client_ip}",
             token.expose(),

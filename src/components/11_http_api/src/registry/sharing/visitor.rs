@@ -9,7 +9,7 @@ use axum::Json;
 use axum::body::Body;
 use axum::extract::{FromRequestParts, RawPathParams, State};
 use axum::http::request::Parts;
-use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use contracts::{AccessGrant, RevisionOrCurrent, ShareOpen};
 use sc_error::{CorrelationId, DomainError, ErrorCode};
@@ -21,9 +21,13 @@ use crate::content::{content_response, download_options, starts_download};
 use crate::json_body::{self, malformed};
 use crate::middleware::ClientIp;
 use crate::problem::ApiProblem;
-use crate::registry::request::{Answer, BODY_LIMIT, Services, missing_layer, refused, request_id};
+use crate::registry::media::wire::{media_type, thumbnail_kind};
+use crate::registry::request::{
+    Answer, BODY_LIMIT, Services, missing_layer, query_value, refused, request_id,
+};
 
 const TOKEN_PARAM: &str = "token";
+const SIZE_PARAM: &str = "size";
 
 /// The caller of a visitor route: the link token of the path, the client address the abuse limits count, and the
 /// grant cookie when the request carries one.
@@ -148,6 +152,40 @@ pub(super) async fn content(
     let mut response = content_response(opened, &method, visitor.request_id);
     allow_any_origin(&mut response);
     Ok(response)
+}
+
+/// 06 authorises the visitor and names the file with its account, 08 finds the derived blob of that file, and 03
+/// streams it. Unlike the content route it carries no cross-origin header: only the bytes of a link are for pages
+/// of other origins (`api_v1_surface.md`).
+pub(super) async fn thumbnail(
+    State(services): State<Services>,
+    visitor: Visitor,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Answer {
+    let kind = thumbnail_kind(query_value(&uri, SIZE_PARAM))
+        .ok_or_else(|| ApiProblem::validation(SIZE_PARAM, "invalid", visitor.request_id))?;
+    let shared = services
+        .public_shares
+        .authorize_derived(&visitor.token, visitor.grant.as_ref(), visitor.client_ip)
+        .await
+        .map_err(refused(visitor.request_id))?;
+    let blob = services
+        .derived
+        .open_derived_for(&shared.file, kind)
+        .await
+        .map_err(refused(visitor.request_id))?;
+    let opened = services
+        .downloads
+        .open_blob_content(
+            shared.account_id,
+            blob,
+            Some(media_type(kind).to_owned()),
+            download_options(&headers),
+        )
+        .await;
+    Ok(content_response(opened, &method, visitor.request_id))
 }
 
 /// `Access-Control-Allow-Origin: *` on the bytes served (200, 206, 304), never with credentials.

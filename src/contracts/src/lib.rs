@@ -79,8 +79,8 @@ pub use registries::{
     ReadinessStatus,
 };
 pub use sharing::{
-    AccessGrant, CreatedShare, PublicShareError, PublicShareService, ShareContent, ShareError,
-    ShareInfo, ShareOpen, ShareService,
+    AccessGrant, CreatedShare, PublicShareError, PublicShareService, ShareContent, ShareDerived,
+    ShareError, ShareInfo, ShareOpen, ShareService,
 };
 pub use transfer::{
     BatchCommit, BatchEntry, BatchEntryResult, BatchResult, BlockAck, CommitService,

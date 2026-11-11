@@ -5,7 +5,7 @@
 //! no port maps many node ids to hashes in one call (`api_v1_surface.md`, open point 6).
 
 mod handlers;
-mod wire;
+pub(super) mod wire;
 
 use axum::routing::on;
 use sc_error::ErrorCode;

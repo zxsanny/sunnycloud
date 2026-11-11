@@ -3,7 +3,7 @@
 **Component**: 08_media_jobs
 **Producer task**: E-18/c09 — `_docs/02_tasks/todo/B05-20_thumbnail_states_derived_opener.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-13/c14 (listing enrichment), E-13/c16 (integration pass), E-21/c14 (thumbnail, transcode and thumbnail-states handlers; share thumbnail); in batch E-18/c12, E-18/c13; pipeline AZ-3661
-**Version**: 1.0.0
+**Version**: 1.0.2
 **Status**: draft (open point 1 waits for E-18/c01)
 **Last Updated**: 2026-11-04
 
@@ -36,7 +36,7 @@ How listings learn thumbnail state and how the thumbnail and transcode routes fi
 | GET, HEAD | `/api/v1/nodes/{node_id}/transcode` | `open_derived(kind = transcode)` | 200 MP4 with Range (served by 03); 404 when none (compliant clips are served as the original through the content route) |
 | POST | `/api/v1/thumbnail-states` | `states` | at most 1,000 ids in the body: more is 422 `batch_too_large`; ids of another account and unknown ids are omitted from the answer (no state leaked) |
 
-The share-link thumbnail: 06 `authorize_derived` checks the token and returns the `LiveFile`; 11 calls `open_derived_for`.
+The share-link thumbnail: 06 `authorize_derived` checks the token and returns `ShareDerived{account_id, file}`; 11 calls `open_derived_for(&file, kind)` and then 03 `open_blob_content(account_id, blob, ...)`.
 
 ## Invariants
 
@@ -77,3 +77,4 @@ The share-link thumbnail: 06 `authorize_derived` checks the token and returns th
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
 | 1.0.1 | 2026-11-07 | Closed open point 1: foreign and unknown ids omitted; over 1,000 ids 422 `batch_too_large` | AZ-3826 |
+| 1.0.2 | 2026-11-11 | The share-link thumbnail: 06 returns `ShareDerived{account_id, file}` (`contracts` part 3 1.1.0); 11 registers the route | owner-approved change |

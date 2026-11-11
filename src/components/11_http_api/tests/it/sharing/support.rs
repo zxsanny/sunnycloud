@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use contracts::{
     AccessGrant, BlobRef, ByteRange, Disposition, Download, DownloadError, DownloadStatus,
-    PublicShareError, ShareContent,
+    LiveFile, NodeKind, PublicShareError, ShareContent, ShareDerived,
 };
 use sc_clock::{Clock, SystemClock};
 use sc_observability::Metrics;
@@ -34,6 +34,8 @@ pub const REVOKE: &str = "ShareService::revoke";
 pub const OPEN: &str = "PublicShareService::open";
 pub const VERIFY: &str = "PublicShareService::verify_password";
 pub const AUTHORIZE_CONTENT: &str = "PublicShareService::authorize_content";
+pub const AUTHORIZE_DERIVED: &str = "PublicShareService::authorize_derived";
+pub const OPEN_DERIVED_FOR: &str = "DerivedOpener::open_derived_for";
 pub const OPEN_REVISION: &str = "DownloadService::open_revision_content";
 pub const OPEN_BLOB: &str = "DownloadService::open_blob_content";
 pub const OPEN_DERIVED: &str = "DerivedOpener::open_derived";
@@ -191,9 +193,23 @@ pub fn allowed() -> Result<ShareContent, PublicShareError> {
     })
 }
 
+/// What 06 returns for a share thumbnail: the file of the link with the account that owns it.
+pub fn shared_file() -> Result<ShareDerived, PublicShareError> {
+    Ok(ShareDerived {
+        account_id: SHARE_ACCOUNT,
+        file: LiveFile {
+            kind: NodeKind::File,
+            revision: None,
+            blob_ref: Some(BLOB_ID),
+        },
+    })
+}
+
+pub const BLOB_ID: Uuid = Uuid::from_u128(0xB10B);
+
 pub fn blob() -> BlobRef {
     BlobRef {
-        blob_id: Uuid::from_u128(0xB10B),
+        blob_id: BLOB_ID,
         size: 2048,
         wrapped_key: vec![1, 2, 3],
         master_key_id: 1,

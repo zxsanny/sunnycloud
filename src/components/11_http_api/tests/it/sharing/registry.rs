@@ -23,7 +23,7 @@ type Row = (
     u16,
 );
 
-const ROWS: [Row; 12] = [
+const ROWS: [Row; 14] = [
     (
         HttpMethod::Post,
         "/api/v1/shares",
@@ -85,6 +85,24 @@ const ROWS: [Row; 12] = [
         BodyClass::None,
         false,
         "PublicShareService::authorize_content",
+        200,
+    ),
+    (
+        HttpMethod::Get,
+        "/api/v1/public-shares/{token}/thumbnail",
+        AuthClass::ShareGrant,
+        BodyClass::None,
+        false,
+        "PublicShareService::authorize_derived",
+        200,
+    ),
+    (
+        HttpMethod::Head,
+        "/api/v1/public-shares/{token}/thumbnail",
+        AuthClass::ShareGrant,
+        BodyClass::None,
+        false,
+        "PublicShareService::authorize_derived",
         200,
     ),
     (

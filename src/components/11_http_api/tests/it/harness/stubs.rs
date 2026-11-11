@@ -164,7 +164,7 @@ stub_port!(PublicShareStub: PublicShareService, PublicShareError, {
     async fn authorize_content(&self, token: &RawToken, grant: Option<&AccessGrant>,
         client_ip: IpAddr, starts_download: bool) -> Result<ShareContent, PublicShareError>;
     async fn authorize_derived(&self, token: &RawToken, grant: Option<&AccessGrant>,
-        client_ip: IpAddr) -> Result<LiveFile, PublicShareError>;
+        client_ip: IpAddr) -> Result<ShareDerived, PublicShareError>;
 });
 
 stub_port!(AccountStub: AccountService, AccountServiceError, {

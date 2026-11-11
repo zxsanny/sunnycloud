@@ -7,5 +7,6 @@ mod password;
 mod range;
 mod redaction;
 mod registry;
+mod share_thumbnail;
 mod support;
 mod uniform;

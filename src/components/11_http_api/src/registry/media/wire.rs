@@ -13,7 +13,7 @@ pub(super) const MAX_HASHES: usize = 1000;
 
 /// The type 08 produces for each kind (08 section 7: WebP stills, MP4 transcodes). `BlobRef` carries no type
 /// and `DerivedOpener` returns none, so 11 names it for 03.
-pub(super) const fn media_type(kind: DerivedKind) -> &'static str {
+pub(in crate::registry) const fn media_type(kind: DerivedKind) -> &'static str {
     match kind {
         DerivedKind::Thumb | DerivedKind::Preview => "image/webp",
         DerivedKind::Transcode => "video/mp4",
@@ -21,7 +21,7 @@ pub(super) const fn media_type(kind: DerivedKind) -> &'static str {
 }
 
 /// `size=small|preview`; absent is `small`, anything else is `None`.
-pub(super) fn thumbnail_kind(size: Option<&str>) -> Option<DerivedKind> {
+pub(in crate::registry) fn thumbnail_kind(size: Option<&str>) -> Option<DerivedKind> {
     match size {
         None | Some("small") => Some(DerivedKind::Thumb),
         Some("preview") => Some(DerivedKind::Preview),

@@ -3,9 +3,9 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c05 — `_docs/02_tasks/todo/B01-14_contracts_part3.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: other batches: E-10, E-13, E-14, E-16, E-18, E-21, E-22, E-30
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (frozen when the producer task is accepted; `VaultService` stays a v1.2 proposal, 20 §1)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-11
 
 ## Purpose
 
@@ -58,7 +58,7 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 | `PublicShareService` | `open` | `token, client_ip` -> `ShareOpen{Available{name, size, media_type, expires_at} \| PasswordRequired \| NotFound}` | `RateLimited{retry_after}` |
 | | `verify_password` | `token, password, client_ip` -> `AccessGrant{value, expires_at}` | `NotFound`, `WrongPassword`, `RateLimited{retry_after}` |
 | | `authorize_content` | `token, Option<AccessGrant>, client_ip, starts_download: bool` -> `ShareContent{account_id, node_id, revision_id}` | `NotFound`, `PasswordRequired`, `RateLimited{retry_after}` |
-| | `authorize_derived` | `token, Option<AccessGrant>, client_ip` -> `LiveFile` (see Open points) | `NotFound`, `PasswordRequired`, `RateLimited{retry_after}` |
+| | `authorize_derived` | `token, Option<AccessGrant>, client_ip` -> `ShareDerived{account_id, file: LiveFile}` (see Open points) | `NotFound`, `PasswordRequired`, `RateLimited{retry_after}` |
 
 `NotFound` is one variant for unknown, expired, revoked, tombstoned and purged links (AC-12).
 
@@ -126,7 +126,7 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 
 ## Open points (flagged in the producer task)
 
-1. `PublicShareService::authorize_derived` is named by 11 §2 and 08 §4 (it returns the `LiveFile` that `open_derived_for` takes) but is missing from 06's own method table; its inputs here mirror `authorize_content`.
+1. `PublicShareService::authorize_derived` is named by 11 §2 and 08 §4 (it returns the `LiveFile` that `open_derived_for` takes, with the account that owns it as `ShareDerived`) but is missing from 06's own method table; its inputs here mirror `authorize_content`.
 2. Worker job DTOs (`ClaimedJob`, `WorkerStatus`, `Lane`, outcomes) are also declared in `media-shared` for the supervisor (09). `contracts` may not import `media-shared` (both layer 2) and 11 may not import it either, so the same wire shape exists twice. Default here: declared in `contracts` for the API side, with identical field names and serde names; a wire test in E-18/E-20 keeps them equal. Alternative for the owner: allow `contracts` (or 11) to import `media-shared`.
 3. 12 lists `GcSweeper::run_cycle` for `admin gc-run`; E-00 does not name `GcSweeper` as a port. This contract treats it as the 04 `Janitor` implementation that 12 picks by name.
 4. `MediaStats` fields and `ScrubStatus.latest_summary` shape are not specified.
@@ -138,3 +138,4 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
+| 1.1.0 | 2026-11-11 | `PublicShareService::authorize_derived` returns `ShareDerived{account_id, file}` instead of a bare `LiveFile`, so 11 can pass the owning account to 03 for the derived blob; owner-approved; 06 does not implement it yet, the callers are 11 (registered share thumbnail route) and the test doubles | owner-approved change |

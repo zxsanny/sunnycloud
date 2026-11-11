@@ -9,7 +9,7 @@ use std::time::Duration;
 use common::{Calls, IP, NOW, fault, id, sorted};
 use contracts::{
     AccessGrant, CreatedShare, LiveFile, NodeKind, PublicShareError, PublicShareService,
-    ShareContent, ShareError, ShareInfo, ShareOpen, ShareService, async_trait,
+    ShareContent, ShareDerived, ShareError, ShareInfo, ShareOpen, ShareService, async_trait,
 };
 use sc_ids::{RawToken, TokenKind};
 use uuid::Uuid;
@@ -129,9 +129,12 @@ impl PublicShareService for Double {
         _token: &RawToken,
         _grant: Option<&AccessGrant>,
         _client_ip: IpAddr,
-    ) -> Result<LiveFile, PublicShareError> {
+    ) -> Result<ShareDerived, PublicShareError> {
         self.0.record("authorize_derived");
-        Ok(folder())
+        Ok(ShareDerived {
+            account_id: id(),
+            file: folder(),
+        })
     }
 }
 
@@ -192,7 +195,8 @@ async fn public_share_service_double_records_all_four_methods() {
     // Assert
     assert_eq!(opened, ShareOpen::NotFound);
     assert_eq!(content.account_id, id());
-    assert_eq!(derived.kind, NodeKind::Folder);
+    assert_eq!(derived.account_id, id());
+    assert_eq!(derived.file.kind, NodeKind::Folder);
     assert_eq!(
         calls.sorted(),
         sorted(vec![
