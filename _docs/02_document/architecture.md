@@ -73,7 +73,7 @@ Shared crates: `contracts` (server-only: the port traits that server components 
 **Open items for Step 4 review** (remaining owner items, not resolved in these documents; see `canonical-names.md`):
 - Vault share links beyond v1.2.
 - Windows reserved-name marker (`%5F`) and the ` (2)` collision suffix for escaped names.
-- Poster-frame SSIM tolerance.
+- Poster-frame SSIM tolerance: decided 2026-11-11 (owner): >= 0.95 against the harness render of an equivalent chain.
 - WASM split in 13: trim (a risk-register item).
 - External review of the blob encryption before v1.0.
 - Windows signing and the Apple and Google developer accounts.
