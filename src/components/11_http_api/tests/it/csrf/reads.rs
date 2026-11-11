@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use sunnycloud_http_api::registry::{HttpMethod, ListenerKind, production_routes};
 
 use super::support::{GROUPS, STATE_CHANGES, read_routes, with_cookie};
-use crate::auth::support::Running;
+use crate::auth::support::{MEMBER_TOKEN, Running};
 
 const CROSS_SITE: [(&str, &str); 2] = [
     ("origin", "https://evil.example"),
@@ -71,7 +71,7 @@ fn no_get_or_head_of_the_registry_is_declared_state_changing_except_the_named_ca
 }
 
 #[tokio::test]
-async fn the_reads_of_the_production_registry_answer_to_a_cross_site_cookie_request() {
+async fn the_reads_of_the_production_registry_are_not_refused_for_a_cross_site_cookie_request() {
     // Arrange
     let routes: Vec<_> = production_routes()
         .into_iter()
@@ -89,7 +89,7 @@ async fn the_reads_of_the_production_registry_answer_to_a_cross_site_cookie_requ
                 server.public.addr,
                 "GET",
                 def.spec.path,
-                "anything",
+                MEMBER_TOKEN,
                 &CROSS_SITE,
             )
             .await,
@@ -98,7 +98,11 @@ async fn the_reads_of_the_production_registry_answer_to_a_cross_site_cookie_requ
 
     // Assert
     for (path, answer) in &answers {
-        assert_eq!(answer.status, 200, "{path}");
+        let refused = answer.status == 403 && answer.json()["code"] == "csrf_rejected";
+        assert!(
+            !refused,
+            "{path}: a read with a live session cookie was refused as cross-site"
+        );
     }
     server.stop().await;
 }

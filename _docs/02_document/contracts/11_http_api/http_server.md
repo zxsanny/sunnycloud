@@ -3,7 +3,7 @@
 **Component**: 11_http_api (library `sunnycloud-http-api`, proposed)
 **Producer task**: E-21/c03 — `_docs/02_tasks/todo/B07-03_crate_skeleton_accept_loop.md` (contributors: E-21/c15 internal router and test-clock listener, E-21/c16 readiness list and ops listener, E-21/c17 shutdown semantics of `run`); keys assigned at Step 4
 **Consumer tasks**: E-22/c03 (composition root builds `ApiServices`), E-22/c04 (binds `HttpConfig`), E-22/c05 (`serve` calls `run` and owns the rest of the shutdown order), E-22/c15 (`openapi` and `healthcheck` commands); E-31 harness (Mode R); resolved at Step 4
-**Version**: 1.4.0
+**Version**: 1.4.1
 **Status**: draft
 **Last Updated**: 2026-11-11
 
@@ -86,7 +86,7 @@ The clock of the grace starts at step 4. What 12 does after `run` returns (sched
 ## Invariants
 
 - 11 constructs no business service, no scheduler, no rate limiter and no database pool; it only holds what `ApiServices` gives it.
-- Every handler calls exactly one port of `ApiServices` (the share thumbnail route is the documented composition of 06, 08 and 03, see `api_v1_surface.md`).
+- Every handler calls exactly one port of `ApiServices`, except the content routes, which compose the port that decides what may be served with 03 that serves it: share content is 06 then 03, a node's thumbnail or transcode is 08 then 03 (and the share thumbnail, once its contract allows it, 06, 08, 03; see `api_v1_surface.md`).
 - Auth is checked before any request body is read; an unread body is dropped and its flow-control credit released.
 - Excess connections above `max_connections` are refused and counted in `connections_rejected_total{reason}`.
 - Builds without feature `test-clock` contain neither test-clock route nor the `:9091` listener.
@@ -131,3 +131,4 @@ The clock of the grace starts at step 4. What 12 does after `run` returns (sched
 | 1.2.0 | 2026-11-08 | `HttpConfig.public_url` validated as an origin; `CsrfGuard` is layer 9 of the route stack (`RouteContext.csrf`) | AZ-3808 |
 | 1.3.0 | 2026-11-11 | Worker routes registered for the internal listener; with feature `test-clock`: `HttpConfig.test_clock_addr`, the `:9091` listener bound by `bind` and served by `serve`, `BoundServer::test_clock_addr`, `Listener::TestClock`; Open point 4 | AZ-3831 |
 | 1.4.0 | 2026-11-11 | `run` shutdown order made exact: `ApiServices.feed_shutdown` added and cancelled by `run` after accept stops; connections get a graceful close and are dropped at the end of `shutdown_grace`; `run` returns when none is open | AZ-3833 |
+| 1.4.1 | 2026-11-11 | Invariant on one port per handler names the share content and node media compositions (E-21/c14); no change to `ApiServices` or `HttpConfig` | AZ-3830 |

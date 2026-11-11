@@ -8,6 +8,7 @@ use sc_error::CorrelationId;
 use uuid::Uuid;
 
 use crate::problem::ApiProblem;
+use crate::registry::request::request_id;
 
 pub(super) const WORKER_ID_HEADER: &str = "x-worker-id";
 const JOB_PARAM: &str = "job_id";
@@ -18,14 +19,6 @@ const KIND_PARAM: &str = "kind";
 pub(super) struct Worker {
     pub(super) jobs: Arc<dyn WorkerJobs>,
     pub(super) clock: Arc<dyn Clock>,
-}
-
-pub(super) fn request_id(parts: &Parts, clock: &dyn Clock) -> CorrelationId {
-    parts
-        .extensions
-        .get::<CorrelationId>()
-        .copied()
-        .unwrap_or_else(|| CorrelationId::new(sc_ids::new_id(clock)))
 }
 
 /// The authenticated worker's call: its `X-Worker-Id`, passed through to the port, and the request id.

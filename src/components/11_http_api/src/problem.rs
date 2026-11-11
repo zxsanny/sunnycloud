@@ -4,7 +4,9 @@
 use axum::body::Body;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use sc_error::{CorrelationId, DomainError, FieldProblem};
+use sc_error::{
+    BusinessError, BusinessParams, CorrelationId, DomainError, ErrorCode, FieldProblem,
+};
 use sc_observability::log_error;
 
 use crate::port_error::PortError;
@@ -44,6 +46,20 @@ impl ApiProblem {
             problem: problem.to_owned(),
         };
         ApiProblem::new(DomainError::Validation(vec![problem]), request_id)
+    }
+
+    /// A business failure with `code` and no parameters.
+    pub(crate) fn code(code: ErrorCode, request_id: CorrelationId) -> ApiProblem {
+        let error = BusinessError::new(code, BusinessParams::default());
+        ApiProblem::new(DomainError::Business(error), request_id)
+    }
+
+    /// The one 404 for a missing, foreign, expired or revoked resource (`BusinessError::not_found`).
+    pub(crate) fn not_found(request_id: CorrelationId) -> ApiProblem {
+        ApiProblem::new(
+            DomainError::Business(BusinessError::not_found()),
+            request_id,
+        )
     }
 
     /// A port's own error, converted by [`PortError`].

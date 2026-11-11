@@ -57,6 +57,7 @@ mod services;
 mod spa;
 #[cfg(feature = "test-clock")]
 mod test_clock;
+mod timestamp;
 mod version;
 mod write_idle;
 

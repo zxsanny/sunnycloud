@@ -20,6 +20,7 @@ pub struct Script {
 struct Inner {
     results: HashMap<&'static str, VecDeque<Box<dyn Any + Send>>>,
     calls: HashMap<&'static str, usize>,
+    log: Vec<String>,
 }
 
 impl Script {
@@ -35,6 +36,16 @@ impl Script {
     /// How many times `key` was called, scripted or not.
     pub fn calls(&self, key: &'static str) -> usize {
         self.lock().calls.get(key).copied().unwrap_or(0)
+    }
+
+    /// Appends one line to the ordered log of what the recording stubs were called with.
+    pub fn record(&self, line: String) {
+        self.lock().log.push(line);
+    }
+
+    /// Every recorded call, in the order the calls happened.
+    pub fn log(&self) -> Vec<String> {
+        self.lock().log.clone()
     }
 
     pub fn take<T: 'static>(&self, key: &'static str) -> Option<T> {

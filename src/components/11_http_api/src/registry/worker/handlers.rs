@@ -11,7 +11,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use contracts::{AcceptOutcome, ByteStream, DerivedKind, OutputMeta, StreamError, WorkerJobError};
 use http_body_util::BodyExt;
-use sc_error::{BusinessError, BusinessParams, CorrelationId, DomainError, ErrorCode};
+use sc_error::ErrorCode;
 
 use super::caller::{Caller, JobPath, Worker};
 use super::wire::{
@@ -20,11 +20,7 @@ use super::wire::{
 use crate::content;
 use crate::json_body::{self, malformed};
 use crate::problem::ApiProblem;
-
-type Answer = Result<Response, ApiProblem>;
-
-/// The body limit layer has already capped a request at its class, so reading a JSON body whole is bounded.
-const BODY_LIMIT: usize = usize::MAX;
+use crate::registry::request::{Answer, BODY_LIMIT};
 
 pub(super) async fn claim(State(worker): State<Arc<Worker>>, caller: Caller, body: Body) -> Answer {
     let body = json_body::read(body, BODY_LIMIT, caller.request_id).await?;
@@ -97,10 +93,10 @@ pub(super) async fn put_output(
     request: Request,
 ) -> Answer {
     let kind = output_kind(job.kind.as_deref())
-        .ok_or_else(|| business(ErrorCode::OutputKindRejected, caller.request_id))?;
+        .ok_or_else(|| ApiProblem::code(ErrorCode::OutputKindRejected, caller.request_id))?;
     let (parts, body) = request.into_parts();
     let length = number::<u64>(&parts.headers, "content-length", &caller)?
-        .ok_or_else(|| business(ErrorCode::LengthRequired, caller.request_id))?;
+        .ok_or_else(|| ApiProblem::code(ErrorCode::LengthRequired, caller.request_id))?;
     let meta = output_meta(&parts.headers, &caller)?;
     let outcome = worker
         .jobs
@@ -171,11 +167,6 @@ pub(super) async fn record_status(
 fn refused(caller: &Caller) -> impl FnOnce(WorkerJobError) -> ApiProblem {
     let request_id = caller.request_id;
     move |error| ApiProblem::from_port(error, request_id)
-}
-
-fn business(code: ErrorCode, request_id: CorrelationId) -> ApiProblem {
-    let error = BusinessError::new(code, BusinessParams::default());
-    ApiProblem::new(DomainError::Business(error), request_id)
 }
 
 /// The kind of a worker output route; any other value is a kind no job produces.

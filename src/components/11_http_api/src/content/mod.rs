@@ -5,6 +5,7 @@
 //! whose type is not on the allowlist as an attachment, never the other way round (AC-47).
 
 mod disposition;
+mod request;
 #[cfg(test)]
 mod tests;
 
@@ -17,6 +18,8 @@ use sc_error::{CorrelationId, DomainError};
 use sc_observability::log_error;
 
 use crate::problem::ApiProblem;
+
+pub(crate) use request::{download_options, starts_download};
 
 /// A `Download` that cannot be rendered: 03 broke its own contract. Answered as an opaque 500 and logged.
 #[derive(Debug, thiserror::Error)]

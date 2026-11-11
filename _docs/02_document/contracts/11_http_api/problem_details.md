@@ -3,7 +3,7 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c09 — `_docs/02_tasks/todo/B07-09_error_mapper.md` (statuses for `need_blocks`/`edited_since`/`batch_too_large` decided 2026-11-07, spike E-21/c02); keys assigned at Step 4
 **Consumer tasks**: E-23/c06 (typed error model and wire-code mapping), E-23/c07 (426 handling), E-26/c06 (SPA error mapping), E-20/c03 (`WorkerApi` status mapping), E-24 and E-27 through `sync-core`/`mobile_backup`, E-31 consumer framework; every E-21 handler task (c04..c17) produces errors through it; resolved at Step 4
-**Version**: 1.0.2
+**Version**: 1.0.3
 **Status**: draft (G-11-1 and batch-too-large decided 2026-11-07)
 **Last Updated**: 2026-11-11
 
@@ -50,7 +50,7 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 | missing blob file | 404 `content_unavailable`, never 5xx | 03, 04 (AC-73) |
 | quota exceeded | 507 `quota_exceeded`, nothing reserved | 07a |
 | last admin | 409 `last_admin` | 07 (G-11-5) |
-| password-protected share without grant | 401 `password_required` | 06 (G-9) |
+| password-protected share without grant, or a wrong password | 401 `password_required`, no file name, size or type in the body | 06 (G-9) |
 | non-admin on an admin route | 403 `forbidden` | 07, 11 (G-S6) |
 | `resync_required` | 410 with `reason` | 05 |
 | block PUT without `Content-Length` | 411 | 11 |
@@ -64,6 +64,9 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 | worker output over the cap of its kind | 413 `output_too_large` from 08; a declared length over the `WorkerOutput` cap is 413 `size_too_large` from 11 | 08, 11 |
 | worker output the sniffer rejects, or a kind the job does not produce (an unknown `{kind}` included) | 422 `output_type_rejected`, 422 `output_kind_rejected` | 08, 11 |
 | worker output without `Content-Length` | 411 `length_required` | 11 |
+| a device token on an owner share route | 403 `forbidden` | 06, 11 (AC-57) |
+| thumbnail or transcode not yet produced / never produced | 404 `thumbnail_not_ready` / 404 `thumbnail_unavailable` | 08 |
+| `thumbnail-states` with more than 1,000 hashes | 422 `batch_too_large` | 08, 11 |
 | worker call without `X-Worker-Id`, a `job_id` that is not a UUID, a malformed worker body or header | 400 `invalid_request` | 11 |
 
 ## Invariants
@@ -110,3 +113,4 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B07) |
 | 1.0.1 | 2026-11-07 | Closed open points 1 and 2: `need_blocks`, `edited_since` 409; `batch_too_large` 422, body over `Batch` class 413 | AZ-3800 |
 | 1.0.2 | 2026-11-11 | Worker route answers (403, 409, 404, 413, 422, 411, 400) added to the fixed rules; open point 3 notes the 08 codes exist in `sc_error` | AZ-3831 |
+| 1.0.3 | 2026-11-11 | Share and media answers (403 for a device on owner share routes, the two thumbnail 404 codes, 422 for `thumbnail-states`; the password row names the wrong password) added to the fixed rules | AZ-3830 |

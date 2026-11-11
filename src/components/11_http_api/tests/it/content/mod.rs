@@ -5,4 +5,4 @@ mod abort;
 mod errors;
 mod headers;
 mod ranges;
-mod support;
+pub mod support;

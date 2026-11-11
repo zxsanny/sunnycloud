@@ -25,7 +25,6 @@ const CHILDREN: &[Param] = &[
     Param::query("limit", ParamType::Integer),
 ];
 const CALLBACK: &[Param] = &[Param::path("provider", ParamType::String)];
-const SHARE_CONTENT: &[Param] = &[Param::id(ParamLocation::Path, "token", ParamType::String)];
 
 const SOD: AuthClass = AuthClass::SessionOrDevice;
 
@@ -44,7 +43,8 @@ fn op(
 }
 
 /// A slice of the real surface covering every shape the generators handle: nested paths, a colon form, a
-/// block body, HEAD beside GET, a GET that mutates, admin, share grant and the worker group.
+/// block body, HEAD beside GET, a GET that mutates and admin, beside the production routes (the share grant and
+/// worker groups among them).
 pub fn sample_surface() -> Vec<RouteDef> {
     use HttpMethod::*;
     let specs = [
@@ -152,14 +152,6 @@ pub fn sample_surface() -> Vec<RouteDef> {
             BodyClass::None,
         )
         .params(NODE),
-        op(
-            Get,
-            "/api/v1/public-shares/{token}/content",
-            "PublicShareService::authorize_content",
-            AuthClass::ShareGrant,
-            BodyClass::None,
-        )
-        .params(SHARE_CONTENT),
     ];
     let mut defs = production_routes();
     defs.extend(specs.into_iter().map(def));

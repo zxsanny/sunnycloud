@@ -3,7 +3,7 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c10 — `_docs/02_tasks/todo/B07-10_content_header_mapper.md`; keys assigned at Step 4
 **Consumer tasks**: E-21/c13 (node and revision content), E-21/c14 (share content, share thumbnail, thumbnail, transcode); clients E-23 (verified ranged download with resume), E-26 (download strategies, inline preview), E-24, E-27; E-31 (FT-N-11, FT-P-39, NFT-SEC-18, NFT-SEC-19); resolved at Step 4
-**Version**: 1.0.2
+**Version**: 1.1.0
 **Status**: draft
 **Last Updated**: 2026-11-11
 
@@ -52,9 +52,17 @@ Inline types are exactly `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `
 
 A `Partial` download without a range inside `total_size`, a negative `total_size` or an `etag` that is not a header value is a broken 03 answer: it is logged and answered as an opaque 500. `HEAD` uses the same call and the same headers with no body. One byte range per request (03 serves a single range; multi-range is answered as a full 200 or 416, never as multipart).
 
+### Request side (E-21/c14)
+
+A content route reads the request once, with `download_options` (`retained_ok` false unless the route says otherwise, `Range`, `If-Range`, `If-None-Match`) and passes it to 03:
+
+- `Range: bytes=<a>-<b>` is one range `a..=b`; `bytes=<a>-` is `a..=u64::MAX` (03 clamps the end to the size, `api_v1_surface.md` open point 25). A suffix range `bytes=-<n>`, several ranges, a unit other than `bytes`, a value that is not a number and an end before the start are ignored, and the whole content is served.
+- `If-Range` and `If-None-Match` are passed as written; 03 compares them with the entity tag.
+- `starts_download` (share content only) is true when the request is not a `HEAD` and the range, read as above, is absent or starts at byte 0.
+
 ### Public share content only
 
-May add `Access-Control-Allow-Origin: *`; never `Access-Control-Allow-Credentials`.
+Adds `Access-Control-Allow-Origin: *` to the 200, 206 and 304 answers of `GET` and `HEAD .../public-shares/{token}/content`; never `Access-Control-Allow-Credentials`, never `Access-Control-Expose-Headers`, and nothing on its errors, its preflight or any other route.
 
 ## Invariants
 
@@ -89,6 +97,10 @@ May add `Access-Control-Allow-Origin: *`; never `Access-Control-Allow-Credential
 
 2. The 416 carries no `ETag` or `Cache-Control: private`: `DownloadError::RangeNotSatisfiable` carries only `total_size`. AC-3 of AZ-3812 says every answer has `ETag`; adding the tag to the error is a further contracts change if the owner wants it.
 
+3. The type of a derived blob (thumbnail, transcode) is not known to 11: `BlobRef` and `DerivedOpener` carry none, so 11 names `image/webp` or `video/mp4` per derived kind (`api_v1_surface.md` open point 26).
+
+4. `ByteRange` cannot hold a suffix or open-ended range (`api_v1_surface.md` open point 25).
+
 ## Change Log
 
 | Version | Date | Change | Author |
@@ -96,3 +108,4 @@ May add `Access-Control-Allow-Origin: *`; never `Access-Control-Allow-Credential
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B07) |
 | 1.0.1 | 2026-11-09 | Implemented (AZ-3812): entry point, ETag quoting, allowlist downgrade, name rules, broken-answer 500, open point 2 | implement |
 | 1.0.2 | 2026-11-11 | `RangeNotSatisfiable { total_size }`: the 416 carries `Content-Range: bytes */<total>` and `Accept-Ranges`; open point 2 reduced to the missing `ETag` | owner-approved change |
+| 1.1.0 | 2026-11-11 | Request side (`Range`, `If-Range`, `If-None-Match`, `starts_download`) and the CORS rule of public share content stated (E-21/c14); open points 3 and 4 added | AZ-3830 |
