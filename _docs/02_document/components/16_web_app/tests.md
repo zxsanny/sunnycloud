@@ -198,7 +198,7 @@ Component tests complement the system-level scenarios (`02_document/tests/`) and
 - **Traces to**: AC-40
 - **Load**: 100,000 tiny files selected by folder pick.
 - **Targets / failure** (restated 2026-11-11 by the owner, spike AZ-3934; browser memory of all processes): at 100,000 files <= 1.5 GB / above 3 GB and first upload starts <= 15 s / above 30 s; up to 10,000 files the original targets stand (<= 150 MB / above 300 MB; <= 5 s / above 15 s).
-- **Measured 2026-11-11 (spike AZ-3934, developer workstation, informational)**: at 100,000 files Firefox 159.0 adds 976 to 1,374 MB at peak and 566 to 569 MB after 3 s (memory of all browser processes), first request after 6.7 to 7.0 s; Chromium 158 adds 838 to 839 MB at peak and 920 MB after 3 s (JS heap 4.9 MB), first request after 11.2 to 11.4 s. The targets above are not met as browser memory in either engine, and Chromium misses the 5 s start target; the description (section 5, "Selection limit") holds the open choice between restating them and a lower limit.
+- **Measured 2026-11-11 (spike AZ-3934, developer workstation, informational)**: at 100,000 files Firefox 159.0 adds 976 to 1,374 MB and starts after 6.7 to 7.0 s, Chromium 158 adds 838 to 839 MB and starts after 11.2 to 11.4 s, Playwright WebKit (Linux), not Safari, adds 250 MB and starts after 1.4 to 1.5 s; at 10,000 files at most 146 MB and 1.3 s in all three. All meet the restated targets; description section 5 "Selection limit" has the full table.
 
 ### PT-16-5: Public share page open time
 - **Summary**: A share link opens quickly.
