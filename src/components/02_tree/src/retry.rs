@@ -1,4 +1,4 @@
-use contracts::{TreeCommitError, TreeServiceError};
+use contracts::{LifecycleError, TreeCommitError, TreeServiceError};
 use sc_db::{Db, DbError, DbTx, RunError, Scope};
 
 use crate::error::TreeError;
@@ -50,6 +50,18 @@ impl TxFailure for TreeCommitError {
         match self {
             TreeCommitError::Unexpected(fault) => fault.downcast_ref::<DbError>(),
             _ => None,
+        }
+    }
+}
+
+impl TxFailure for LifecycleError {
+    fn from_db(error: DbError) -> Self {
+        LifecycleError::Unexpected(Box::new(error))
+    }
+
+    fn db_error(&self) -> Option<&DbError> {
+        match self {
+            LifecycleError::Unexpected(fault) => fault.downcast_ref::<DbError>(),
         }
     }
 }

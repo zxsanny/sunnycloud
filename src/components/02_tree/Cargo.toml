@@ -31,6 +31,8 @@ sunnycloud-sync-feed = { path = "../05_sync_feed" }
 # test effect (component dev-dependencies, ADR-015).
 sunnycloud-quota = { path = "../07a_quota" }
 sunnycloud-blobstore = { path = "../04_blobstore" }
+# The vault erase hook (20) that runs before the tree's in the account purge (AZ-3925 AC-4).
+sunnycloud-vault-service = { path = "../20_vault_service" }
 # The statement-order test reads sqlx's statement events.
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }

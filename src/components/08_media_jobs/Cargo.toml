@@ -25,6 +25,13 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+# The real `TreeCommit::publish` (02) with its quota ledger (07a) and feed stamp (05) for the rollback case of
+# the tree-commit contract (component dev-dependencies, ADR-015).
+sunnycloud-tree = { path = "../02_tree" }
+sunnycloud-quota = { path = "../07a_quota" }
+sunnycloud-sync-feed = { path = "../05_sync_feed" }
+# The statement-count test reads sqlx's statement events.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }

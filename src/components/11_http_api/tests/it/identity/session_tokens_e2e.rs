@@ -1,5 +1,6 @@
 //! AC-3 of AZ-4236: sync-core's real client runs a mobile code exchange and then a refresh against the real sign-in
 //! and session routes, with 01's ports as recording stubs; both answers decode and the refresh rotates the pair.
+//! AC-3 of AZ-4238: the same client reads the server's refusal of a used code as `SyncError::InvalidCode`.
 
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -9,6 +10,7 @@ use sc_config::Secret;
 use sc_ids::TokenKind;
 use sync_core::{
     Credential, CredentialProvider, CredentialUnavailable, HttpSyncClient, PersistFailed, SyncApi,
+    SyncError,
 };
 use sync_core_proto::SessionTokens;
 
@@ -120,6 +122,42 @@ async fn sync_core_exchanges_a_mobile_code_and_then_refreshes_against_the_real_r
         ["SignInService::exchange_mobile_code mob-CODE_1 ver-IFIER"]
     );
     assert_eq!(stack.log(REFRESH), ["SessionService::refresh ref-FIRST_1"]);
+    drop(terminator);
+    stack.stop().await;
+}
+
+#[tokio::test]
+async fn sync_core_reads_the_refusal_of_a_used_mobile_code_as_invalid_code() {
+    // Arrange
+    let stack = Stack::start().await;
+    stack.script.push(
+        EXCHANGE,
+        Ok::<_, SignInError>(issued("acc-FIRST_1", "ref-FIRST_1")),
+    );
+    stack.script.push(
+        EXCHANGE,
+        Err::<IssuedTokens, SignInError>(SignInError::InvalidCode),
+    );
+    let terminator = Terminator::start(stack.public).await;
+    let (api, _) = HttpSyncClient::connect_with_roots(
+        client_config(format!("https://{}", terminator.addr), "android"),
+        Arc::new(MobileHost::default()),
+        vec![terminator.ca.clone()],
+    )
+    .await
+    .expect("the client connects through the terminator");
+    let first = api.exchange_mobile_code("mob-CODE_1", "ver-IFIER").await;
+
+    // Act
+    let reused = api.exchange_mobile_code("mob-CODE_1", "ver-IFIER").await;
+
+    // Assert
+    assert!(first.is_ok(), "{first:?}");
+    assert_eq!(reused, Err(SyncError::InvalidCode));
+    assert_eq!(
+        stack.log(EXCHANGE),
+        ["SignInService::exchange_mobile_code mob-CODE_1 ver-IFIER"; 2]
+    );
     drop(terminator);
     stack.stop().await;
 }

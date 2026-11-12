@@ -87,4 +87,4 @@ Then each revision row is gone, the tombstoned file's `current_revision_id` is c
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `data_model.md` §12.2 says the tree's erase batches still stamp the feed and adjust quota; 02 §2 `erase_batch` states neither | E-13 owner | open | Low |
+| `data_model.md` §12.2 says the tree's erase batches still stamp the feed and adjust quota; 02 §2 `erase_batch` states neither | E-13 owner | resolved 2026-11-12: no stamp, no quota change; §12.2 corrected | Low |

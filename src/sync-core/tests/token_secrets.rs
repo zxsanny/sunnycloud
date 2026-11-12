@@ -9,7 +9,7 @@ mod support;
 use std::fmt::Debug;
 use std::time::Duration;
 
-use auth_support::{FakeAuth, SpyCredentials, connected_as, root_view};
+use auth_support::{FakeAuth, SpyCredentials, connected_as, field_refused, root_view};
 use request_support::{capture_logs, clock};
 use sc_error::ErrorCode;
 use serde_json::json;
@@ -118,10 +118,7 @@ async fn no_failure_path_of_the_token_lifecycle_leaks_a_token() {
     // 6. a reused code, and a malformed exchange answer that quotes the tokens
     {
         let script = Script::new()
-            .on(
-                Route::MobileCodeExchange,
-                Answer::problem_with("invalid_code", 400, "Invalid code"),
-            )
+            .on(Route::MobileCodeExchange, field_refused("code", "invalid"))
             .on(Route::MobileCodeExchange, Answer::json(200, &leaky));
         let (api, fixture) = connected_as(script, SpyCredentials::session(Duration::ZERO)).await;
         let reused = api

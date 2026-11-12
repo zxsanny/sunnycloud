@@ -8,7 +8,7 @@ mod support;
 
 use std::time::{Duration, Instant};
 
-use auth_support::{FakeAuth, SpyCredentials, connected_as, requests_to, root_view};
+use auth_support::{FakeAuth, SpyCredentials, connected_as, field_refused, requests_to, root_view};
 use request_support::clock;
 use sc_error::ErrorCode;
 use serde_json::{Value, json};
@@ -105,10 +105,7 @@ async fn a_reused_mobile_code_is_invalid_and_a_good_one_returns_the_session_toke
     let answer = json!({ "access_token": "A", "refresh_token": "R", "expires_in": 900 });
     let script = Script::new()
         .on(Route::MobileCodeExchange, Answer::json(200, &answer))
-        .on(
-            Route::MobileCodeExchange,
-            Answer::problem_with("invalid_code", 400, "Invalid code"),
-        );
+        .on(Route::MobileCodeExchange, field_refused("code", "invalid"));
     let (api, fixture) = connected_as(script, SpyCredentials::session(Duration::ZERO)).await;
 
     // Act
@@ -125,6 +122,34 @@ async fn a_reused_mobile_code_is_invalid_and_a_good_one_returns_the_session_toke
         json!({ "code": "one-time", "code_verifier": "verifier" })
     );
     assert_eq!(sent[0].header("authorization"), None);
+}
+
+#[tokio::test]
+async fn only_the_code_exchange_reads_a_refused_code_field_and_other_400_answers_keep_their_mapping()
+ {
+    // Arrange
+    let script = Script::new()
+        .on(
+            Route::MobileCodeExchange,
+            field_refused("body", "malformed"),
+        )
+        .on(Route::DeviceTokens, field_refused("code", "invalid"));
+    let (api, _fixture) = connected_as(script, SpyCredentials::session(Duration::ZERO)).await;
+
+    // Act
+    let malformed = api.exchange_mobile_code("one-time", "verifier").await;
+    let polled = api.device_grant_poll("device-code").await;
+
+    // Assert
+    for (result, code) in [
+        (malformed.map(|_| ()), "invalid_request"),
+        (polled.map(|_| ()), "invalid_request"),
+    ] {
+        assert!(
+            matches!(&result, Err(SyncError::Unexpected { code: got, .. }) if got == code),
+            "{result:?}"
+        );
+    }
 }
 
 fn poll_refusal(code: &str) -> Answer {

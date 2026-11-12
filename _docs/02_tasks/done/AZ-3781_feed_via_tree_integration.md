@@ -79,4 +79,4 @@ Then the counter advances by one, the publish commits and notifies, and B's read
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| These cases need the real 02 crate from 05's tests; the E-00 crate-graph test forbids edges between component crates and does not say whether dev-dependencies count; otherwise the cases must live in the composition root's tests (owned by E-22) | E-00 / E-22 | open | Medium |
+| These cases need the real 02 crate from 05's tests; the E-00 crate-graph test forbids edges between component crates and does not say whether dev-dependencies count; otherwise the cases must live in the composition root's tests (owned by E-22) | E-00 / E-22 | resolved 2026-11-12: dev-dependencies between components are allowed (ADR-015) | Medium |

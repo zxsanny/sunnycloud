@@ -1,4 +1,5 @@
-//! The wire-code table of `sync_api.md`: the only place a problem body becomes a typed error or a planner input.
+//! The wire-code table of `sync_api.md`: where a problem body becomes a typed error or a planner input. The one
+//! exception is a route's own `Refusal` (`request/path.rs`): the mobile code exchange reads its refused code.
 //!
 //! Rows are keyed by `sc_error::ErrorCode` with no wildcard arm, so a code added to or renamed in
 //! `sc_error` stops this crate from building until its row is decided.

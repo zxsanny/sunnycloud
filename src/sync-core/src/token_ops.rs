@@ -4,6 +4,7 @@
 
 use bytes::Bytes;
 use sc_config::Secret;
+use sc_error::ErrorCode;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use sync_core_proto::{DeviceAuthorization, DevicePoll, DeviceToken, SessionTokens};
@@ -19,8 +20,8 @@ const REFRESH_TOKENS: &str = "/api/v1/auth/refresh-tokens";
 const DEVICE_SELF: &str = "/api/v1/devices/me";
 const SESSION_CURRENT: &str = "/api/v1/sessions/current";
 
-/// The wire code of a reused, expired or wrong-verifier mobile code; it has no `sc_error` row yet (`sync_api.md` open point 3).
-const INVALID_CODE: &str = "invalid_code";
+/// The request field the server names when it refuses a mobile code.
+const CODE_FIELD: &str = "code";
 
 pub(crate) async fn device_grant_request(
     path: &RequestPath,
@@ -59,15 +60,34 @@ pub(crate) async fn exchange_mobile_code(
 ) -> Result<SessionTokens, SyncError> {
     let body = json!({ "code": code, "code_verifier": code_verifier });
     let request = json_post(path, MOBILE_CODE_EXCHANGES, &body);
-    let answer = anonymous(path, "exchange_mobile_code", request)
+    let answer = path
+        .send_anonymous_reading("exchange_mobile_code", request, refused_code)
         .await
-        .map_err(|error| match error {
-            SyncError::Unexpected { code, .. } if code == INVALID_CODE => SyncError::InvalidCode,
-            other => other,
-        })?;
+        .map_err(into_error)?;
     let tokens = decode("exchange_mobile_code", answer)?;
     path.resume_auth();
     Ok(tokens)
+}
+
+/// A reused, expired, unknown or wrong-verifier code is 400 `invalid_request` naming the field `code`: `sc_error`
+/// has no row of its own for it, so only this route reads that answer as `InvalidCode`. Any other answer, an
+/// unreadable body included, goes to the wire table.
+fn refused_code(status: u16, body: &[u8]) -> Option<SyncError> {
+    if status != 400 {
+        return None;
+    }
+    let problem: Value = serde_json::from_slice(body).ok()?;
+    let invalid_request =
+        problem.get("code").and_then(Value::as_str) == Some(ErrorCode::InvalidRequest.as_str());
+    let names_code = problem
+        .get("problems")
+        .and_then(Value::as_array)
+        .is_some_and(|problems| {
+            problems
+                .iter()
+                .any(|item| item.get("field").and_then(Value::as_str) == Some(CODE_FIELD))
+        });
+    (invalid_request && names_code).then_some(SyncError::InvalidCode)
 }
 
 /// One rotation request. The refresh token travels in the body only, and the request carries no access token.

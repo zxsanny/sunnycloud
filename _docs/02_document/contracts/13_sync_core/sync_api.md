@@ -51,7 +51,7 @@ Transport: one HTTP/2 client per `HttpSyncClient`, TLS 1.3 only, ALPN h2, HTTPS 
 | `download(revision, sink, resume_from)` | `GET /api/v1/revisions/{id}/content` with `Range` | `Verified{file_hash}` | `HashMismatch{block}`, `NotFound`, `BlobUnavailable`, `Io` | c11 |
 | `poll_changes(cursor, wait, limit)`, `head_cursor()` | `GET /api/v1/changes?cursor=&wait=&limit=`, `GET /api/v1/changes/head` | `ChangePage` or `ResyncRequired{reason}`; `Cursor` | `ProtocolViolation{detail}` | c12 |
 | `device_grant_request`, `device_grant_poll` | `POST /api/v1/device-grants`, `POST /api/v1/device-tokens` | `DeviceAuthorization`; `DevicePoll` | none | c13 |
-| `exchange_mobile_code(code, code_verifier)` | `POST /api/v1/auth/mobile-code-exchanges` | `SessionTokens` | `InvalidCode` | c13 |
+| `exchange_mobile_code(code, code_verifier)` | `POST /api/v1/auth/mobile-code-exchanges` | `SessionTokens` | `InvalidCode` (the server's 400 `invalid_request` naming the field `code`; read by the route before the wire table, AZ-4238) | c13 |
 | `refresh()` | `POST /api/v1/auth/refresh-tokens` | `SessionTokens` | `Unauthorized` | c13 |
 | `sign_out()` | `DELETE /api/v1/devices/me` (13 §2; see open point 4) | `()` | none | c13 |
 | `cancel()` | none | every in-flight operation ends with `Cancelled` within 1 s; nothing is sent afterwards | none | c14 |
@@ -120,7 +120,7 @@ Common errors on every operation: `Transport`, `Cancelled`, `UpgradeRequired`, `
 
 1. `ApiError::parse` (`sc_error`) turns an unknown code into `internal`; IT-13-13 expects `Unexpected{code: "weird_code", ...}` with the raw code kept. E-23/c06 needs the raw code from the parser (E-02 owner).
 2. `EditedSince{current}`: the problem body (`problem_details.md`, `sc_error` `BusinessParams`) has no field carrying the current revision id.
-3. `InvalidCode` (reused or expired mobile code) and the RFC 8628 device-poll answers (`authorization_pending`, `slow_down`, `access_denied`, `expired_token`) have no rows in the `sc_error` table yet (`sc_error.md` open point 1); E-15 adds them.
+3. `InvalidCode` (reused or expired mobile code) has no `sc_error` row; until E-15 adds one, the server answers 400 `invalid_request` naming the field `code` and sync-core reads that answer on the code exchange only (AZ-4238, 2026-11-12). The RFC 8628 device-poll answers (`authorization_pending`, `slow_down`, `access_denied`, `expired_token`) have no rows in the `sc_error` table yet (`sc_error.md` open point 1); E-15 adds them.
 4. `sign_out` uses `DELETE /api/v1/devices/me`, which `api_v1_surface.md` declares `DeviceOnly`: a mobile session would get 403. The mobile sign-out route (for example `DELETE /api/v1/sessions/current`) needs an owner answer (E-15, E-21, E-27).
 5. Handling of 500 and 503 outside block PUTs (retry with backoff, or surfaced) is not stated; IT-13-15 covers block PUTs only.
 6. Gate S1 may require a second HTTP/2 connection (13 risk 1); the decision is E-23/c02's and would add a config key.

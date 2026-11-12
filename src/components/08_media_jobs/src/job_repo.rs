@@ -36,6 +36,10 @@ const ENQUEUE: &str = concat!(
     ") ON CONFLICT ON CONSTRAINT jobs_key DO NOTHING"
 );
 
+/// The account's queued jobs, at most `$2`, on `jobs_queued_idx`.
+const COUNT_QUEUED: &str = "SELECT count(*) FROM (SELECT 1 FROM jobs WHERE account_id = $1 AND status = 'queued' \
+     LIMIT $2::bigint) AS queued";
+
 /// One statement: the next candidate of the lane in claim-index order is locked with `SKIP LOCKED`, and the
 /// update either leases it or, when its attempts are exhausted (an expired lease of the last attempt), marks it
 /// `dead` in place. `exhausted` and `was` tell the caller which happened.
@@ -182,6 +186,17 @@ pub(crate) async fn enqueue(
         .execute(tx.conn())
         .await?;
     Ok(done.rows_affected() == 1)
+}
+
+/// The number of queued jobs of `account`, counted up to `limit`.
+pub(crate) async fn count_queued(tx: &mut DbTx, account: Uuid, limit: u64) -> Result<u64, DbError> {
+    let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+    let count: i64 = sqlx::query_scalar(COUNT_QUEUED)
+        .bind(account)
+        .bind(limit)
+        .fetch_one(tx.conn())
+        .await?;
+    u64::try_from(count).map_err(|_| overflow("queued count"))
 }
 
 /// id, kind, content hash, params_version, attempts, exhausted, was running.

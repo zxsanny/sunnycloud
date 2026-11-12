@@ -24,6 +24,10 @@ pub struct Request {
     pub max_attempts: u32,
 }
 
+/// A route's own reading of an error answer (status, raw body), consulted before the wire table: `Some`
+/// replaces the table's value. For a refusal the table cannot tell apart because it is keyed by code only.
+pub(crate) type Refusal = fn(u16, &[u8]) -> Option<SyncError>;
+
 /// Whether a request carries the session credential and is answered to a 401 by a token rotation.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Auth {
@@ -121,7 +125,7 @@ impl RequestPath {
     /// Sends `request`, retrying transport failures and 429 up to `max_attempts` sends. `op` names the
     /// operation in logs. A 401 rotates the session's tokens and repeats the request once, outside `max_attempts`.
     pub async fn send(&self, op: &'static str, request: Request) -> Result<WireResponse, Mapped> {
-        self.run(op, request, Auth::Session).await
+        self.run(op, request, Auth::Session, None).await
     }
 
     /// `send` without credential and without token rotation: the sign-in routes and the rotation itself.
@@ -130,7 +134,17 @@ impl RequestPath {
         op: &'static str,
         request: Request,
     ) -> Result<WireResponse, Mapped> {
-        self.run(op, request, Auth::Anonymous).await
+        self.run(op, request, Auth::Anonymous, None).await
+    }
+
+    /// `send_anonymous` for a route that reads some refusals itself: `refusal` sees each error answer first.
+    pub(crate) async fn send_anonymous_reading(
+        &self,
+        op: &'static str,
+        request: Request,
+        refusal: Refusal,
+    ) -> Result<WireResponse, Mapped> {
+        self.run(op, request, Auth::Anonymous, Some(refusal)).await
     }
 
     async fn run(
@@ -138,6 +152,7 @@ impl RequestPath {
         op: &'static str,
         request: Request,
         auth: Auth,
+        refusal: Option<Refusal>,
     ) -> Result<WireResponse, Mapped> {
         let max_attempts = request.max_attempts.max(1);
         let mut attempt = 0;
@@ -147,7 +162,7 @@ impl RequestPath {
             self.check_for(auth).map_err(Mapped::Error)?;
             // Read before the credential: a rotation that finishes in between only makes the next step a no-op.
             let generation = self.generation.load(Ordering::Acquire);
-            let failure = match self.send_once(&request, auth).await {
+            let failure = match self.send_once(&request, auth, refusal).await {
                 Ok(response) => return Ok(response),
                 Err(failure) => failure,
             };
@@ -177,7 +192,12 @@ impl RequestPath {
         }
     }
 
-    async fn send_once(&self, request: &Request, auth: Auth) -> Result<WireResponse, Failure> {
+    async fn send_once(
+        &self,
+        request: &Request,
+        auth: Auth,
+        refusal: Option<Refusal>,
+    ) -> Result<WireResponse, Failure> {
         let sent = tokio::select! {
             biased;
             () = self.cancel.cancelled() => return Err(Failure::error(SyncError::Cancelled)),
@@ -192,8 +212,12 @@ impl RequestPath {
             .iter()
             .map(|(name, value)| (name.as_str(), value.as_str()))
             .collect();
+        let mapped = match refusal.and_then(|read| read(response.status, &response.body)) {
+            Some(error) => Mapped::Error(error),
+            None => map_problem(response.status, &headers, &response.body),
+        };
         Err(Failure {
-            mapped: map_problem(response.status, &headers, &response.body),
+            mapped,
             status: Some(response.status),
             request_id: response
                 .header("x-request-id")

@@ -24,6 +24,10 @@ tokio = { workspace = true, features = ["macros", "sync"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
+# The real `TreeCommit::publish` (02) with its quota ledger (07a) for the "via 02" cases (component
+# dev-dependencies, ADR-015).
+sunnycloud-tree = { path = "../02_tree" }
+sunnycloud-quota = { path = "../07a_quota" }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
 # The ERROR test installs the capturing subscriber of sc_observability on its thread; the statement test

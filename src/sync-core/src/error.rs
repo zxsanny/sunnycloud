@@ -10,8 +10,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 /// Every failure an operation of `SyncApi` can end with: the common errors first, then the
-/// per-operation errors of `sync_api.md`. Wire codes become values of this type only in
-/// [`map_problem`](crate::map_problem).
+/// per-operation errors of `sync_api.md`. Wire codes become values of this type in
+/// [`map_problem`](crate::map_problem), and `InvalidCode` in the mobile code exchange's own reading.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum SyncError {
     #[error("transport failure ({0:?})")]

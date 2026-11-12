@@ -339,3 +339,10 @@ pub fn root_view() -> Answer {
         }),
     )
 }
+
+/// The server's 400 `invalid_request` for one request field (11's `ApiProblem::validation`). For `field` `code`
+/// it is the refusal of an unknown, used or expired mobile code.
+pub fn field_refused(field: &str, problem: &str) -> Answer {
+    Answer::problem(ErrorCode::InvalidRequest)
+        .extra("problems", json!([{ "field": field, "problem": problem }]))
+}
