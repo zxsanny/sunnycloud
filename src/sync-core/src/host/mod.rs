@@ -7,6 +7,6 @@ mod io;
 mod memory_store;
 
 pub use checkpoint::{BatchRecord, CheckpointStore, StoreError, UploadCheckpoint, UploadState};
-pub use credential::{Credential, CredentialProvider, PersistFailed};
+pub use credential::{Credential, CredentialProvider, CredentialUnavailable, PersistFailed};
 pub use io::{DownloadSink, FileIdentity, FileSource, ProgressSink};
 pub use memory_store::MemoryCheckpointStore;

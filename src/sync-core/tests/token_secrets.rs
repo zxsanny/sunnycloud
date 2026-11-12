@@ -139,10 +139,8 @@ async fn no_failure_path_of_the_token_lifecycle_leaks_a_token() {
     // 7. a granted token comes back in a result that is printed
     {
         let granted = json!({
-            "status": "token",
-            "access": "ACC-SENTINEL-t",
-            "refresh": "REF-SENTINEL-t",
-            "expires_in": 900,
+            "access_token": "ACC-SENTINEL-t",
+            "token_type": "Bearer",
         });
         let script = Script::new().always(Route::DeviceTokens, Answer::json(200, &granted));
         let (api, fixture) = connected_as(script, SpyCredentials::device()).await;

@@ -5,7 +5,7 @@ use std::io::ErrorKind;
 use std::time::Duration;
 
 use sc_error::TransportKind;
-use sync_core_proto::ResyncReason;
+use sync_core_proto::{DeviceRefusal, ResyncReason};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -27,6 +27,10 @@ pub enum SyncError {
     },
     #[error("unauthorized")]
     Unauthorized,
+    /// The host could not give a credential (a locked keyring, a store call past its bound, no stored token).
+    /// Nothing was sent; it never rotates tokens or stops work, and the next call reads the host again.
+    #[error("credential unavailable")]
+    CredentialUnavailable,
     /// `retry_after` is `None` when the server sent no delay; the caller then uses its own backoff.
     #[error("rate limited")]
     RateLimited { retry_after: Option<Duration> },
@@ -87,6 +91,9 @@ pub enum SyncError {
     ProtocolViolation { detail: &'static str },
     #[error("invalid code")]
     InvalidCode,
+    /// An RFC 8628 poll refusal; `device_grant_poll` answers it as its outcome, not as an error.
+    #[error("device grant refused ({0:?})")]
+    DeviceGrantRefused(DeviceRefusal),
 }
 
 impl SyncError {

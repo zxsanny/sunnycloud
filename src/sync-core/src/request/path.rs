@@ -10,7 +10,7 @@ use sync_core_proto::RetryPolicy;
 use super::jitter::jitter;
 use super::transport::{Method, Transport, WireRequest, WireResponse};
 use crate::error::{Mapped, SyncError};
-use crate::host::CredentialProvider;
+use crate::host::{Credential, CredentialProvider, CredentialUnavailable};
 use crate::wire_table::map_problem;
 
 /// One request of an operation. `max_attempts` counts sends: 1 means no retry, so a 429 surfaces as
@@ -107,8 +107,15 @@ impl RequestPath {
     }
 
     /// Whether the host's credential is a desktop device token, which has no refresh token.
-    pub(crate) fn is_device_credential(&self) -> bool {
-        self.credentials.bearer().refresh.is_none()
+    pub(crate) fn is_device_credential(&self) -> Result<bool, SyncError> {
+        Ok(self.credential()?.refresh.is_none())
+    }
+
+    /// The host's credential for one request. Unavailable is not a refusal: nothing is stopped or rotated.
+    pub(super) fn credential(&self) -> Result<Credential, SyncError> {
+        self.credentials
+            .bearer()
+            .map_err(|CredentialUnavailable| SyncError::CredentialUnavailable)
     }
 
     /// Sends `request`, retrying transport failures and 429 up to `max_attempts` sends. `op` names the
@@ -176,7 +183,7 @@ impl RequestPath {
             () = self.cancel.cancelled() => return Err(Failure::error(SyncError::Cancelled)),
             sent = self.transmit(request, auth) => sent,
         };
-        let response = sent.map_err(|kind| Failure::error(SyncError::Transport(kind)))?;
+        let response = sent.map_err(Failure::error)?;
         if (200..300).contains(&response.status) {
             return Ok(response);
         }
@@ -196,16 +203,12 @@ impl RequestPath {
     }
 
     /// The credential is read only while no rotation is in flight, so no request carries a new access token
-    /// before the host stored it.
-    async fn transmit(
-        &self,
-        request: &Request,
-        auth: Auth,
-    ) -> Result<WireResponse, sc_error::TransportKind> {
+    /// before the host stored it. Without a credential nothing is sent.
+    async fn transmit(&self, request: &Request, auth: Auth) -> Result<WireResponse, SyncError> {
         let bearer = match auth {
             Auth::Session => {
                 let _idle = self.refresh_gate.read().await;
-                Some(self.credentials.bearer().access)
+                Some(self.credential()?.access)
             }
             Auth::Anonymous => None,
         };
@@ -218,6 +221,7 @@ impl RequestPath {
                 body: request.body.clone(),
             })
             .await
+            .map_err(SyncError::Transport)
     }
 
     /// Stops the account's work on `account_not_active`; logs an answer the table does not know.

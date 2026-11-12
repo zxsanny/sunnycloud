@@ -56,7 +56,7 @@ Transport: one HTTP/2 client per `HttpSyncClient`, TLS 1.3 only, ALPN h2, HTTPS 
 | `sign_out()` | `DELETE /api/v1/devices/me` (13 §2; see open point 4) | `()` | none | c13 |
 | `cancel()` | none | every in-flight operation ends with `Cancelled` within 1 s; nothing is sent afterwards | none | c14 |
 
-Common errors on every operation: `Transport`, `Cancelled`, `UpgradeRequired`, `Unauthorized`, `RateLimited{retry_after}`, `AccountNotActive`, `Unexpected{code, request_id}`.
+Common errors on every operation: `Transport`, `Cancelled`, `UpgradeRequired`, `Unauthorized`, `CredentialUnavailable` (the host's credential could not be read; nothing was sent, AZ-4231), `RateLimited{retry_after}`, `AccountNotActive`, `Unexpected{code, request_id}`. `DeviceGrantRefused` is internal: the device poll answers it as an outcome.
 
 ### Wire-code table (the only place wire codes become typed errors; E-23/c06)
 

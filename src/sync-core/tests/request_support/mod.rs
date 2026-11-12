@@ -11,8 +11,8 @@ use sc_clock::{Clock, ManualClock, MonotonicInstant, Timestamp};
 use sc_config::Secret;
 use sc_error::TransportKind;
 use sync_core::{
-    BoxFuture, Credential, CredentialProvider, Method, PersistFailed, Request, Transport,
-    WireRequest, WireResponse,
+    BoxFuture, Credential, CredentialProvider, CredentialUnavailable, Method, PersistFailed,
+    Request, Transport, WireRequest, WireResponse,
 };
 use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
@@ -37,12 +37,12 @@ impl SentinelCredentials {
 }
 
 impl CredentialProvider for SentinelCredentials {
-    fn bearer(&self) -> Credential {
+    fn bearer(&self) -> Result<Credential, CredentialUnavailable> {
         self.bearer_calls.fetch_add(1, Ordering::SeqCst);
-        Credential {
+        Ok(Credential {
             access: Secret::new(ACCESS.to_owned()),
             refresh: Some(Secret::new(REFRESH.to_owned())),
-        }
+        })
     }
 
     fn on_rotated(

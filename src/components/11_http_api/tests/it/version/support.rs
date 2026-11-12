@@ -123,6 +123,7 @@ impl Gated {
             .collect();
         let context = RouteContext {
             services: Arc::new(services),
+            public_url: config.public_url,
             openapi: document(&defs),
             server_info: config.server_info,
             credentials: config.credentials,

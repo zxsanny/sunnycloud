@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use ipc_schema::{LoginState, LogoutOutcome};
-use sc_clock::Clock;
+use sc_clock::{Clock, Timestamp};
 use sync_core::{SyncApi, SyncError};
 use sync_core_proto::{ServerUrl, UrlError};
 use thiserror::Error;
@@ -37,17 +37,21 @@ pub struct SignInServer {
     pub api: Arc<dyn SyncApi>,
 }
 
-/// What the user needs to approve the device. Never a token; `Debug` hides the user code.
+/// What the user needs to approve the device, and when the code stops working. Never a token; `Debug` hides the
+/// user code.
 #[derive(Clone, PartialEq, Eq)]
 pub struct LoginStarted {
     pub verification_url: String,
     pub user_code: String,
+    /// The grant's `expires_in` counted from the moment the answer arrived.
+    pub expires_at: Timestamp,
 }
 
 impl fmt::Debug for LoginStarted {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LoginStarted")
             .field("verification_url", &self.verification_url)
+            .field("expires_at", &self.expires_at)
             .finish_non_exhaustive()
     }
 }
@@ -163,6 +167,14 @@ impl Session {
                 SyncError::Transport(_) => LoginError::ServerUnreachable,
                 other => LoginError::Server(other),
             })?;
+        let expires_at = self
+            .shared
+            .clock
+            .now_utc()
+            .checked_add(Duration::from_secs(grant.expires_in))
+            .ok_or(LoginError::Server(SyncError::ProtocolViolation {
+                detail: "device grant expiry out of range",
+            }))?;
         self.open_browser(&grant.verification_uri);
         self.shared.set(LoginState::Pending);
         let task = tokio::spawn(poll_grant(
@@ -175,6 +187,7 @@ impl Session {
         Ok(LoginStarted {
             verification_url: grant.verification_uri,
             user_code: grant.user_code,
+            expires_at,
         })
     }
 
@@ -199,8 +212,9 @@ impl Session {
         Ok(LogoutOutcome { server_revoked })
     }
 
-    /// Every sync loop reports its errors here. `Unauthorized` (the token was revoked or is gone) signs out;
-    /// anything else, an unreachable server or identity provider included, changes nothing.
+    /// Every sync loop reports its errors here. `Unauthorized` (a 401 to a request that carried the token) signs
+    /// out; anything else changes nothing: an unreachable server or identity provider, and `CredentialUnavailable`
+    /// (the store could not be read, so nothing was sent).
     pub fn note_sync_error(&self, error: &SyncError) {
         if *error != SyncError::Unauthorized {
             return;

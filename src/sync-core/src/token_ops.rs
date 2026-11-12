@@ -6,7 +6,7 @@ use bytes::Bytes;
 use sc_config::Secret;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-use sync_core_proto::{DeviceAuthorization, DevicePoll, SessionTokens};
+use sync_core_proto::{DeviceAuthorization, DevicePoll, DeviceToken, SessionTokens};
 
 use crate::error::SyncError;
 use crate::request::{Method, Request, RequestPath, WireResponse};
@@ -35,20 +35,21 @@ pub(crate) async fn device_grant_request(
     )
 }
 
-/// A new token ends a stop of work: the host stores it next.
+/// 200 is the token; the four RFC 8628 refusals (400) are the other outcomes; anything else is an error. A new
+/// token ends a stop of work: the host stores it next.
 pub(crate) async fn device_grant_poll(
     path: &RequestPath,
     device_code: &str,
 ) -> Result<DevicePoll, SyncError> {
     let request = json_post(path, DEVICE_TOKENS, &json!({ "device_code": device_code }));
-    let poll: DevicePoll = decode(
-        "device_grant_poll",
-        anonymous(path, "device_grant_poll", request).await?,
-    )?;
-    if matches!(poll, DevicePoll::Token(_)) {
-        path.resume_auth();
-    }
-    Ok(poll)
+    let response = match anonymous(path, "device_grant_poll", request).await {
+        Ok(response) => response,
+        Err(SyncError::DeviceGrantRefused(refusal)) => return Ok(refusal.into()),
+        Err(error) => return Err(error),
+    };
+    let token: DeviceToken = decode("device_grant_poll", response)?;
+    path.resume_auth();
+    Ok(DevicePoll::Token(token))
 }
 
 pub(crate) async fn exchange_mobile_code(
@@ -84,7 +85,7 @@ pub(crate) async fn request_refresh(
 
 /// Revokes the caller's own credential: a device token through the device route, a session through its own.
 pub(crate) async fn sign_out(path: &RequestPath) -> Result<(), SyncError> {
-    let target = if path.is_device_credential() {
+    let target = if path.is_device_credential()? {
         DEVICE_SELF
     } else {
         SESSION_CURRENT

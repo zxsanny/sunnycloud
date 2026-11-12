@@ -134,6 +134,7 @@ impl HttpServer {
         let liveness = Liveness::new();
         let context = RouteContext {
             services: Arc::clone(&self.services),
+            public_url: self.config.public_url.clone(),
             openapi: self.openapi.clone(),
             server_info: self.config.server_info.clone(),
             credentials: self.config.credentials.clone(),

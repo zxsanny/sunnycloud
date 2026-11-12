@@ -40,6 +40,7 @@ async fn a_grant_start_receives_the_forwarded_client_address_and_answers_the_cod
         json!({
             "device_code": "dc-DEVICE_code",
             "user_code": user_code,
+            "verification_uri": "https://sunnycloud.test/device",
             "interval": 5,
             "expires_in": 600,
         })

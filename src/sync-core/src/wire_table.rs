@@ -5,7 +5,7 @@
 
 use sc_error::{ApiError, ErrorCode};
 use serde_json::Value;
-use sync_core_proto::ResyncReason;
+use sync_core_proto::{DeviceRefusal, ResyncReason};
 
 use crate::error::{Mapped, PlannerInput, SyncError};
 
@@ -116,9 +116,15 @@ fn unexpected(
     raw: &RawProblem,
     correlation: &Option<sc_error::CorrelationId>,
 ) -> Mapped {
-    // `ApiError::parse` folds an unknown code into `internal`; the raw code is what the caller reports.
+    // `ApiError::parse` folds an unknown code into `internal`; the raw code is what the caller reports. The
+    // RFC 8628 poll refusals have no `sc_error` row (`problem_details.md` open point 3), so they arrive here.
     let code = match (code, &raw.code) {
-        (ErrorCode::Internal, Some(raw_code)) => raw_code.clone(),
+        (ErrorCode::Internal, Some(raw_code)) => {
+            if let Some(refusal) = DeviceRefusal::from_code(raw_code) {
+                return Mapped::Error(SyncError::DeviceGrantRefused(refusal));
+            }
+            raw_code.clone()
+        }
         _ => code.as_str().to_owned(),
     };
     let request_id = raw

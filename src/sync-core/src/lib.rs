@@ -29,9 +29,9 @@ pub use download::Verified;
 pub use error::{Mapped, PlannerInput, SyncError};
 pub use hash_ops::{HashCheckpoint, HashedFile};
 pub use host::{
-    BatchRecord, CheckpointStore, Credential, CredentialProvider, DownloadSink, FileIdentity,
-    FileSource, MemoryCheckpointStore, PersistFailed, ProgressSink, StoreError, UploadCheckpoint,
-    UploadState,
+    BatchRecord, CheckpointStore, Credential, CredentialProvider, CredentialUnavailable,
+    DownloadSink, FileIdentity, FileSource, MemoryCheckpointStore, PersistFailed, ProgressSink,
+    StoreError, UploadCheckpoint, UploadState,
 };
 pub use request::{BoxFuture, Method, Request, RequestPath, Transport, WireRequest, WireResponse};
 pub use small::{

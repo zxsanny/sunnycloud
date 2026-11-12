@@ -3,11 +3,13 @@
 //! The four RFC 8628 poll refusals are not in the `sc_error` table, so `poll` answers them itself with distinct
 //! machine-readable codes; every other refusal is the port's mapped answer.
 
-use axum::Json;
+use std::sync::Arc;
+
 use axum::body::Body;
 use axum::extract::{RawPathParams, State};
 use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
+use axum::{Extension, Json};
 use contracts::DeviceGrantError;
 use sc_error::CorrelationId;
 use sc_ids::UserCode;
@@ -21,9 +23,23 @@ use crate::registry::request::{
 
 const USER_CODE_PARAM: &str = "user_code";
 
+/// The web app's device approval page: `<public_url>/device` (AZ-4231, owner decision 2026-11-12). It is the
+/// grant's `verification_uri`, so the daemon opens the browser on the configured origin, never a request's `Host`.
+#[derive(Clone)]
+pub(super) struct ApprovalPage(Arc<str>);
+
+impl ApprovalPage {
+    /// `public_url` has at most one trailing slash: the CSRF guard refuses any other form at startup.
+    pub(super) fn new(public_url: &str) -> ApprovalPage {
+        let origin = public_url.strip_suffix('/').unwrap_or(public_url);
+        ApprovalPage(Arc::from(format!("{origin}/device")))
+    }
+}
+
 /// The daemon starts a grant with its own address as the requester's, so the approver can compare it.
 pub(super) async fn request(
     State(services): State<Services>,
+    Extension(page): Extension<ApprovalPage>,
     caller: Anonymous,
     body: Body,
 ) -> Answer {
@@ -35,7 +51,7 @@ pub(super) async fn request(
         .request(&name, &platform, caller.client_ip)
         .await
         .map_err(refused(request_id))?;
-    Ok(Json(wire::authorization(&grant)).into_response())
+    Ok(Json(wire::authorization(&grant, &page.0)).into_response())
 }
 
 /// The daemon polls with its device code; the token is in the answer that finally carries it, once.

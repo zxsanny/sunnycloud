@@ -376,3 +376,4 @@ Recommended execution order (topological; ties by key). Test-epic refs (E-31) ar
 | AZ-4027 | mobile_vault_screen | 5 | AZ-4026, AZ-3999, AZ-4000, AZ-3990, AZ-4003 | AZ-3637 |
 | AZ-3675 | pipeline_vault | 5 | AZ-4009, AZ-4010, AZ-4011, AZ-4012, AZ-4013, AZ-3913, AZ-3923, AZ-3924, AZ-3925, AZ-3926, AZ-3927, AZ-3928, AZ-3841, AZ-3697, AZ-3948, AZ-3655, AZ-3657, AZ-3665, AZ-3954, AZ-3652, AZ-4025, AZ-4026, AZ-4027 | AZ-3648 |
 | AZ-4231 | device_login_wire | 3 | AZ-3828, AZ-3966, AZ-3959 | AZ-3650 |
+| AZ-4236 | session_token_wire | 2 | AZ-4231, AZ-3828, AZ-3966 | AZ-3650 |

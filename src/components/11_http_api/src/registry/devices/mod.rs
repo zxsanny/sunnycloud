@@ -4,6 +4,7 @@
 mod handlers;
 mod wire;
 
+use axum::Extension;
 use axum::routing::on;
 use sc_error::ErrorCode;
 
@@ -117,7 +118,9 @@ const REVOKE_SELF: RouteSpec = RouteSpec::new(
 pub(super) fn routes() -> Vec<RouteDef> {
     vec![
         RouteDef::new(REQUEST, |context, filter| {
-            on(filter, handlers::request).with_state(services(context))
+            on(filter, handlers::request)
+                .layer(Extension(handlers::ApprovalPage::new(&context.public_url)))
+                .with_state(services(context))
         }),
         RouteDef::new(POLL, |context, filter| {
             on(filter, handlers::poll).with_state(services(context))

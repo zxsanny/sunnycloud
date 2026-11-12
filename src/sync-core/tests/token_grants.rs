@@ -14,18 +14,10 @@ use sc_error::ErrorCode;
 use serde_json::{Value, json};
 use support::{Answer, Route, Script};
 use sync_core::{SyncApi, SyncError};
-use sync_core_proto::{DeviceAuthorization, DevicePoll, SessionTokens};
+use sync_core_proto::{DeviceAuthorization, DevicePoll, DeviceToken, SessionTokens, TokenType};
 
 fn body(request: &support::LoggedRequest) -> Value {
     serde_json::from_slice(&request.body).expect("the client sent a JSON body")
-}
-
-fn tokens(access: &str) -> SessionTokens {
-    SessionTokens {
-        access: access.to_owned(),
-        refresh: None,
-        expires_in: 3600,
-    }
 }
 
 #[tokio::test]
@@ -138,26 +130,37 @@ async fn a_reused_mobile_code_is_invalid_and_a_good_one_returns_the_session_toke
     assert_eq!(sent[0].header("authorization"), None);
 }
 
+fn poll_refusal(code: &str) -> Answer {
+    Answer::problem_with(code, 400, "Device grant")
+}
+
 #[tokio::test]
-async fn device_grant_polls_answer_pending_slow_down_denied_expired_and_a_token_in_order() {
+async fn device_grant_polls_decode_the_four_400_codes_and_the_200_token_in_order() {
     // Arrange
-    let authorization = DeviceAuthorization {
-        device_code: "dc".to_owned(),
-        user_code: "ABCD-1234".to_owned(),
-        verification_uri: "https://cloud.example/device".to_owned(),
-        interval: 5,
-    };
+    let grant = json!({
+        "device_code": "dc",
+        "user_code": "ABCD-1234",
+        "verification_uri": "https://cloud.example/device",
+        "interval": 5,
+        "expires_in": 600,
+    });
     let script = [
-        DevicePoll::Pending,
-        DevicePoll::SlowDown,
-        DevicePoll::Denied,
-        DevicePoll::Expired,
-        DevicePoll::Token(tokens("device-token")),
+        "authorization_pending",
+        "slow_down",
+        "access_denied",
+        "expired_token",
     ]
     .iter()
     .fold(
-        Script::new().on(Route::DeviceGrants, Answer::json(200, &authorization)),
-        |script, poll| script.on(Route::DeviceTokens, Answer::json(200, poll)),
+        Script::new().on(Route::DeviceGrants, Answer::json(200, &grant)),
+        |script, code| script.on(Route::DeviceTokens, poll_refusal(code)),
+    )
+    .on(
+        Route::DeviceTokens,
+        Answer::json(
+            200,
+            &json!({ "access_token": "device-token", "token_type": "Bearer" }),
+        ),
     );
     let (api, fixture) = connected_as(script, SpyCredentials::device()).await;
 
@@ -169,7 +172,16 @@ async fn device_grant_polls_answer_pending_slow_down_denied_expired_and_a_token_
     }
 
     // Assert
-    assert_eq!(requested, Ok(authorization));
+    assert_eq!(
+        requested,
+        Ok(DeviceAuthorization {
+            device_code: "dc".to_owned(),
+            user_code: "ABCD-1234".to_owned(),
+            verification_uri: "https://cloud.example/device".to_owned(),
+            interval: 5,
+            expires_in: 600,
+        })
+    );
     assert_eq!(
         polls,
         vec![
@@ -177,7 +189,10 @@ async fn device_grant_polls_answer_pending_slow_down_denied_expired_and_a_token_
             Ok(DevicePoll::SlowDown),
             Ok(DevicePoll::Denied),
             Ok(DevicePoll::Expired),
-            Ok(DevicePoll::Token(tokens("device-token"))),
+            Ok(DevicePoll::Token(DeviceToken {
+                access_token: "device-token".to_owned(),
+                token_type: TokenType::Bearer,
+            })),
         ]
     );
     let grant = requests_to(&fixture, Route::DeviceGrants);
@@ -189,6 +204,64 @@ async fn device_grant_polls_answer_pending_slow_down_denied_expired_and_a_token_
     assert_eq!(polled.len(), 5);
     assert_eq!(body(&polled[0]), json!({ "device_code": "dc" }));
     assert!(polled.iter().all(|p| p.header("authorization").is_none()));
+}
+
+#[tokio::test]
+async fn any_other_poll_answer_is_a_typed_error() {
+    // Arrange
+    let script = Script::new()
+        .on(Route::DeviceTokens, poll_refusal("invalid_request"))
+        .on(
+            Route::DeviceTokens,
+            Answer::json(200, &json!({ "status": "pending" })),
+        )
+        .on(
+            Route::DeviceTokens,
+            Answer::json(200, &json!({ "access_token": "t", "token_type": "MAC" })),
+        );
+    let (api, _fixture) = connected_as(script, SpyCredentials::device()).await;
+
+    // Act
+    let mut polls = Vec::new();
+    for _ in 0..3 {
+        polls.push(api.device_grant_poll("dc").await);
+    }
+
+    // Assert
+    let malformed = Err(SyncError::ProtocolViolation {
+        detail: "malformed response body",
+    });
+    assert!(
+        matches!(&polls[0], Err(SyncError::Unexpected { code, .. }) if code == "invalid_request"),
+        "{:?}",
+        polls[0]
+    );
+    assert_eq!(polls[1], malformed);
+    assert_eq!(polls[2], malformed);
+}
+
+#[tokio::test]
+async fn a_grant_answer_without_expires_in_is_a_protocol_violation() {
+    // Arrange
+    let grant = json!({
+        "device_code": "dc",
+        "user_code": "ABCD-1234",
+        "verification_uri": "https://cloud.example/device",
+        "interval": 5,
+    });
+    let script = Script::new().on(Route::DeviceGrants, Answer::json(200, &grant));
+    let (api, _fixture) = connected_as(script, SpyCredentials::device()).await;
+
+    // Act
+    let requested = api.device_grant_request("Work laptop", "linux").await;
+
+    // Assert
+    assert_eq!(
+        requested,
+        Err(SyncError::ProtocolViolation {
+            detail: "malformed response body",
+        })
+    );
 }
 
 #[tokio::test]

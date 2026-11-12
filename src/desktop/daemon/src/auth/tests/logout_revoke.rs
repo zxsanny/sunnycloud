@@ -1,5 +1,5 @@
 //! AC-5 (IT-14-21 at the unit tier) and AC-6 of AZ-3908: revocation signs out and stops the loops; logout
-//! deletes the local token even when the server is down.
+//! deletes the local token even when the server is down. AC-5 of AZ-4231: an unavailable credential never signs out.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -114,6 +114,24 @@ async fn an_unreachable_server_or_identity_provider_does_not_sign_out() {
     // Assert
     assert_eq!(h.session.login_status(), LoginState::Approved);
     assert_eq!(work, Some(42));
+}
+
+#[tokio::test]
+async fn an_unavailable_credential_keeps_the_session_signed_in_and_a_later_401_signs_out() {
+    // Arrange
+    let h = signed_in().await;
+
+    // Act
+    h.session.note_sync_error(&SyncError::CredentialUnavailable);
+    let during_outage = h.session.login_status();
+    let work = h.session.while_signed_in(async { 42 }).await;
+    h.session.note_sync_error(&SyncError::Unauthorized);
+
+    // Assert
+    assert_eq!(during_outage, LoginState::Approved);
+    assert_eq!(work, Some(42));
+    assert_eq!(h.session.login_status(), LoginState::SignedOut);
+    assert_eq!(h.stored_token().as_deref(), Some(DEVICE_TOKEN));
 }
 
 #[tokio::test]

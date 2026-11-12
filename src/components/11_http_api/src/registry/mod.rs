@@ -40,6 +40,8 @@ use crate::version::VersionGate;
 /// What a handler is built from.
 pub struct RouteContext {
     pub services: Arc<ApiServices>,
+    /// The configured `public_url`: the web app's origin, from which the device grant names its approval page.
+    pub public_url: String,
     pub openapi: OpenApiDocument,
     pub server_info: ServerInfo,
     pub credentials: CredentialFormat,

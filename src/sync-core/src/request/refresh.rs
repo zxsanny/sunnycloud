@@ -29,7 +29,8 @@ impl RequestPath {
         if self.generation.load(Ordering::Acquire) != seen {
             return Ok(());
         }
-        let Some(refresh) = self.credentials.bearer().refresh else {
+        // An unavailable credential ends the call with `CredentialUnavailable` and leaves the session as it is.
+        let Some(refresh) = self.credential()?.refresh else {
             tracing::warn!("device token refused, stopping work");
             self.stop_auth();
             return Err(SyncError::Unauthorized);

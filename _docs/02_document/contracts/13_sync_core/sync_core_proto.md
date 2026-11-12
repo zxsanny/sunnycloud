@@ -3,7 +3,7 @@
 **Component**: 13_sync_core (crate `sync-core-proto`; builds native and `wasm32-unknown-unknown`)
 **Producer task**: E-23/c04 — `_docs/02_tasks/todo/B09-04_sync_core_proto.md` (contributor: E-23/c05 `UploadPlanner`, `_docs/02_tasks/todo/B09-05_upload_planner.md`); keys assigned at Step 4
 **Consumer tasks**: this batch: E-23/c05..c18 (every `sync-core` and `sync-core-wasm` task); other batches through `sync-core`, `sync-core-wasm` or `mobile_backup`: E-24 (14 daemon), E-26 (16 web Worker, through the WASM exports), E-27 and E-28 (`mobile_backup`); resolved at Step 4
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft
 **Last Updated**: 2026-11-04
 
@@ -44,8 +44,10 @@ Sources: `components/13_sync_core/description.md` §1, §2, §3, §7; `module-la
 | `BatchEntry` | `staged_key`, `parent`, `name`, `base_revision?`, `file_hash`, `client_meta?`, `import_hint?` | |
 | `BatchCommit` | `commit_id: Uuid`, `entries: [BatchEntry]` (<= `batch_max_entries`) | |
 | `BatchResult` | per entry `Committed{node, revision, conflict_copy?}` \| `EntryError{code}` | |
-| `DeviceAuthorization` | `device_code`, `user_code`, `verification_uri`, `interval` | |
-| `DevicePoll` | `Token(..)` \| `Pending` \| `SlowDown` \| `Denied` \| `Expired` | |
+| `DeviceAuthorization` | `device_code`, `user_code`, `verification_uri`, `interval`, `expires_in` (seconds) | as `POST /api/v1/device-grants` answers (AZ-4231) |
+| `DevicePoll` | `Token(DeviceToken)` \| `Pending` \| `SlowDown` \| `Denied` \| `Expired` | built from a 200 `{access_token, token_type: "Bearer"}` or a 400 code (AZ-4231) |
+| `DeviceToken` | `access_token`, `token_type` (`Bearer`) | a secret: never printed by `Debug` |
+| `DeviceRefusal` | `authorization_pending`, `slow_down`, `access_denied`, `expired_token` (`from_code`) | the four 400 codes of the poll |
 | `SessionTokens` | `access`, `refresh`, `expires_in` | token values are secrets: wrapped in `sync-core`, never `Debug`-printed |
 
 ### Functions and state machines
@@ -83,7 +85,7 @@ Sources: `components/13_sync_core/description.md` §1, §2, §3, §7; `module-la
 - The planner never has more than `min(4, lanes_max)` blocks in flight, never re-sends an acked block unless `on_session`/`on_commit` re-lists it, resends a block after `HashRejected`, never emits `Commit` while a needed block is outstanding, and keeps the same `client_key` across `RestartSession` (the caller re-hashes first after `BlocklistMismatch`).
 - `BlockConflict`: `Wait{retry_after}` then `RereadSession`; still needed → resend (counts as `Transient`); not needed and sent by this run → `Acked`; otherwise → `RestartSession`.
 - `check_page` never repairs a page: any rule violation is an error naming the rule.
-- No type here carries a token outside `SessionTokens`, and no DTO field is a local path.
+- No type here carries a token outside `SessionTokens` and `DeviceToken`, and no DTO field is a local path.
 
 ## Non-Goals
 
@@ -122,3 +124,4 @@ Sources: `components/13_sync_core/description.md` §1, §2, §3, §7; `module-la
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B09) |
+| 1.1.0 | 2026-11-12 | `DeviceAuthorization.expires_in`; `DevicePoll` decoded from the server's 200 token or 400 code; `DeviceToken`, `DeviceRefusal` | AZ-4231 |

@@ -13,15 +13,16 @@ use sync_core::{
     SyncError, Verified,
 };
 use sync_core_proto::{
-    BatchCommit, BatchResult, ChangePage, Cursor, DeviceAuthorization, DevicePoll, FileHash,
-    Hash32, ListingPage, NodeView, PageToken, ResumeHashState, RevisionRef, RevisionView,
-    SessionTokens, Staged,
+    BatchCommit, BatchResult, ChangePage, Cursor, DeviceAuthorization, DevicePoll, DeviceToken,
+    FileHash, Hash32, ListingPage, NodeView, PageToken, ResumeHashState, RevisionRef, RevisionView,
+    SessionTokens, Staged, TokenType,
 };
 use tokio::sync::Notify;
 use uuid::Uuid;
 
 pub(super) const USER_CODE: &str = "BCDF-GHJK";
 pub(super) const VERIFICATION_URL: &str = "https://sync.example.test/device";
+pub(super) const EXPIRES_IN_SECS: u64 = 600;
 
 pub(super) struct FakeApi {
     clock: Arc<ManualClock>,
@@ -43,6 +44,7 @@ impl FakeApi {
                 user_code: USER_CODE.to_owned(),
                 verification_uri: VERIFICATION_URL.to_owned(),
                 interval: interval_secs,
+                expires_in: EXPIRES_IN_SECS,
             }),
             polls: Mutex::new(VecDeque::new()),
             granted_at: Mutex::new(None),
@@ -101,10 +103,9 @@ impl FakeApi {
 }
 
 pub(super) fn token(access: &str) -> DevicePoll {
-    DevicePoll::Token(SessionTokens {
-        access: access.to_owned(),
-        refresh: None,
-        expires_in: 0,
+    DevicePoll::Token(DeviceToken {
+        access_token: access.to_owned(),
+        token_type: TokenType::Bearer,
     })
 }
 

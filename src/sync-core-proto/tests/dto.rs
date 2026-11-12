@@ -8,8 +8,8 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use sync_core_proto::{
     BatchResult, ChangePage, ChangeState, CommitOutcome, Cursor, DeviceAuthorization, DevicePoll,
-    EntryResult, ListingPage, NodeKind, RevisionView, ServerInfo, SessionTokens, Staged,
-    StartOutcome, UploadSession, effective_lanes,
+    DeviceRefusal, DeviceToken, EntryResult, ListingPage, NodeKind, RevisionView, ServerInfo,
+    SessionTokens, Staged, StartOutcome, TokenType, UploadSession, effective_lanes,
 };
 
 const H1: &str = "2d3adedff11b61f14c886e35afa036736dcd87a74d27b5c1510225d0f592e213";
@@ -241,33 +241,92 @@ fn batch_result_round_trips_both_entry_kinds() {
 }
 
 #[test]
-fn device_flow_dtos_round_trip() {
-    let authorization: DeviceAuthorization = round_trip(json!({
+fn device_flow_dtos_round_trip_in_the_server_shapes() {
+    // Arrange
+    let grant = json!({
         "device_code": "dc", "user_code": "ABCD-EFGH", "verification_uri": "https://s.test/device",
-        "interval": 5
-    }));
-    assert_eq!(authorization.interval, 5);
+        "interval": 5, "expires_in": 600
+    });
+    let token = json!({ "access_token": "a", "token_type": "Bearer" });
 
-    let token: DevicePoll = round_trip(json!({
-        "status": "token", "access": "a", "refresh": null, "expires_in": 900
-    }));
-    assert!(matches!(token, DevicePoll::Token(_)));
-    for status in ["pending", "slow_down", "denied", "expired"] {
-        let poll: DevicePoll = round_trip(json!({ "status": status }));
-        assert!(!matches!(poll, DevicePoll::Token(_)));
-    }
+    // Act
+    let authorization: DeviceAuthorization = round_trip(grant);
+    let token: DeviceToken = round_trip(token);
+
+    // Assert
+    assert_eq!(authorization.verification_uri, "https://s.test/device");
+    assert_eq!((authorization.interval, authorization.expires_in), (5, 600));
+    assert_eq!(token.access_token, "a");
+    assert_eq!(token.token_type, TokenType::Bearer);
 }
 
 #[test]
-fn session_tokens_debug_never_prints_a_token() {
+fn a_grant_without_expires_in_or_a_token_of_another_type_is_refused() {
+    // Arrange
+    let grant = json!({
+        "device_code": "dc", "user_code": "ABCD-EFGH", "verification_uri": "https://s.test/device",
+        "interval": 5
+    });
+    let token = json!({ "access_token": "a", "token_type": "MAC" });
+
+    // Act
+    let grant = serde_json::from_value::<DeviceAuthorization>(grant);
+    let token = serde_json::from_value::<DeviceToken>(token);
+
+    // Assert
+    assert!(grant.is_err());
+    assert!(token.is_err());
+}
+
+#[test]
+fn the_four_rfc_8628_codes_are_the_four_poll_outcomes_and_nothing_else_is() {
+    // Arrange
+    let codes = [
+        "authorization_pending",
+        "slow_down",
+        "access_denied",
+        "expired_token",
+        "invalid_request",
+        "pending",
+    ];
+
+    // Act
+    let outcomes: Vec<Option<DevicePoll>> = codes
+        .iter()
+        .map(|code| DeviceRefusal::from_code(code).map(DevicePoll::from))
+        .collect();
+
+    // Assert
+    assert_eq!(
+        outcomes,
+        [
+            Some(DevicePoll::Pending),
+            Some(DevicePoll::SlowDown),
+            Some(DevicePoll::Denied),
+            Some(DevicePoll::Expired),
+            None,
+            None,
+        ]
+    );
+}
+
+#[test]
+fn token_debug_never_prints_a_token() {
+    // Arrange
     let tokens = SessionTokens {
         access: "ACCESS-SECRET".into(),
         refresh: Some("REFRESH-SECRET".into()),
         expires_in: 900,
     };
+    let device = DeviceToken {
+        access_token: "DEVICE-SECRET".into(),
+        token_type: TokenType::Bearer,
+    };
 
-    let printed = format!("{tokens:?} {:?}", DevicePoll::Token(tokens.clone()));
+    // Act
+    let printed = format!("{tokens:?} {:?}", DevicePoll::Token(device));
 
+    // Assert
     assert!(!printed.contains("SECRET"), "{printed}");
 }
 
@@ -327,7 +386,8 @@ fn parsers_never_panic_on_random_text() {
             serde_json::from_str::<ServerInfo>(&text).is_ok(),
             serde_json::from_str::<RevisionView>(&text).is_ok(),
             serde_json::from_str::<BatchResult>(&text).is_ok(),
-            serde_json::from_str::<DevicePoll>(&text).is_ok(),
+            serde_json::from_str::<DeviceToken>(&text).is_ok(),
+            serde_json::from_str::<DeviceAuthorization>(&text).is_ok(),
             sync_core_proto::ServerUrl::parse(&text, true).is_ok(),
         ];
         accepted += results.iter().filter(|ok| **ok).count();

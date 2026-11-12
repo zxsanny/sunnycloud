@@ -3,7 +3,7 @@
 **Component**: 13_sync_core (crate `sync-core`)
 **Producer task**: E-23/c14 — `_docs/02_tasks/todo/B09-15_sync_host_traits_foundation.md`; keys assigned at Step 4
 **Consumer tasks**: this batch: E-23/c07, c09a, c09b, c10, c11, c13, c15, c18a; E-28/c05 (Keychain store); other batches: E-24 (14 token store, `PlatformFs` file source, LocalIndex checkpoint store, download sink, progress), E-27 (`mobile_backup`: `TokenVault` bridge, `AssetSource::open_read`, checkpoint DB, progress); resolved at Step 4
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft
 **Last Updated**: 2026-11-04
 
@@ -17,7 +17,7 @@ Sources: `components/13_sync_core/description.md` §2 (host-implemented traits),
 
 | Trait | Method | Signature (indicative) | Errors | Notes |
 |---|---|---|---|---|
-| `CredentialProvider` | `bearer` | `() -> Credential` | none | called per request; the core never keeps the value longer than one request |
+| `CredentialProvider` | `bearer` | `() -> Result<Credential, CredentialUnavailable>` | `CredentialUnavailable` | called per request; the core never keeps the value longer than one request; on `CredentialUnavailable` nothing is sent and the call answers `SyncError::CredentialUnavailable`, never retried, never a refresh or a stop of authentication (AZ-4231) |
 | | `on_rotated` | `(access: Secret, refresh: Secret) -> Result<(), PersistFailed>` | `PersistFailed` | returns only after the pair is durably stored; the error type follows the Step 5 gap default (retry once, then the refresh counts as rejected) |
 | `FileSource` | `len` | `() -> u64` | `Io` | |
 | | `read_at` | `(offset: u64, len: u32) -> Result<bytes, Io>` | `Io` | at most one block per call |
@@ -66,13 +66,14 @@ All traits are object-safe and `Send + Sync`, so hosts pass `Arc<dyn Trait>` and
 | no-cursor | `CheckpointStore` surface | no cursor method exists | IT-13-12 |
 | secret-print | `Debug`/`Display` of a `Credential` with sentinel values | `***` only | ST-13-2 |
 | memory-store | save, load, clear, batches across threads | consistent results | IT-13-7, IT-13-17 |
+| credential-unavailable | provider answers `CredentialUnavailable`, then recovers | no request sent and authentication not stopped; the next call carries the token | AZ-4231 AC-5 |
 
 ## Open points
 
 1. `UploadCheckpoint.state` values are not listed in 13; E-23/c14 proposes them (for example hashing, uploading, committing) and records them here.
 2. Whether hash progress (`ResumeHashState`, checkpoint every `sync.hash_checkpoint_blocks`) is stored through `CheckpointStore::save` or handed to the host another way is not stated; E-23/c09a decides with c14.
 3. The unit of `ProgressSink::on_progress(done, total)` (bytes or blocks) is not stated.
-4. What `bearer()` returns when the host holds no credential (signed out) is not stated.
+4. Closed 2026-11-12 (AZ-4231): a host with no credential (signed out) or an unreadable store answers `CredentialUnavailable`.
 5. 13 §2 names the field `commit_id` while §3 calls the same value `client_key`; this contract keeps 13's field name.
 
 ## Change Log
@@ -80,3 +81,4 @@ All traits are object-safe and `Send + Sync`, so hosts pass `Arc<dyn Trait>` and
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B09) |
+| 1.1.0 | 2026-11-12 | `bearer()` is fallible (`CredentialUnavailable`); open point 4 closed | AZ-4231 |

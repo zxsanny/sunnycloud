@@ -29,10 +29,16 @@ impl fmt::Display for Credential {
 #[error("credential persist failed")]
 pub struct PersistFailed;
 
+/// The host holds no credential it can give now: its store is locked, unreadable or past its time bound, or no
+/// token is stored. The core sends nothing and answers `SyncError::CredentialUnavailable`; it never signs out for it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
+#[error("credential unavailable")]
+pub struct CredentialUnavailable;
+
 /// Credentials of the signed-in user, owned by the host.
 pub trait CredentialProvider: Send + Sync {
     /// Called before every request; the core drops the value when that request ends.
-    fn bearer(&self) -> Credential;
+    fn bearer(&self) -> Result<Credential, CredentialUnavailable>;
 
     /// Returns only after the pair is durably stored. No request uses `access` before this returned `Ok`.
     fn on_rotated(

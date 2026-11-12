@@ -1,5 +1,5 @@
-//! The JSON of the device routes. The grant's names are RFC 8628's (`device_code`, `user_code`, `interval`,
-//! `expires_in`, `access_token`, `token_type`); the plaintext codes and the token are in these answers only.
+//! The JSON of the device routes. The grant's names are RFC 8628's (`device_code`, `user_code`, `verification_uri`,
+//! `interval`, `expires_in`, `access_token`, `token_type`); the plaintext codes and the token are in these answers only.
 
 use contracts::{ApprovalView, Decision, DeviceAuthorization, DeviceInfo, DeviceToken};
 use sc_ids::{RawToken, TokenKind};
@@ -35,10 +35,11 @@ pub(super) fn decision(body: &Value) -> Option<Decision> {
     }
 }
 
-pub(super) fn authorization(grant: &DeviceAuthorization) -> Value {
+pub(super) fn authorization(grant: &DeviceAuthorization, verification_uri: &str) -> Value {
     json!({
         "device_code": grant.device_code.expose(),
         "user_code": grant.user_code.as_str(),
+        "verification_uri": verification_uri,
         "interval": seconds(grant.interval),
         "expires_in": seconds(grant.expires_in),
     })
@@ -97,10 +98,15 @@ pub(super) const GRANT: SchemaRef = SchemaRef {
     build: || {
         json!({
             "type": "object",
-            "required": ["device_code", "user_code", "interval", "expires_in"],
+            "required": ["device_code", "user_code", "verification_uri", "interval", "expires_in"],
             "properties": {
                 "device_code": {"type": "string"},
                 "user_code": {"type": "string"},
+                "verification_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "The web app's device approval page: the configured public URL plus `/device`."
+                },
                 "interval": {"type": "integer", "description": "Seconds between polls."},
                 "expires_in": {"type": "integer", "description": "Seconds."}
             }

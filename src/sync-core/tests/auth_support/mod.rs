@@ -3,7 +3,7 @@
 //! tokens on a test clock, rotating refresh tokens with a 30 s reuse grace) and a host credential spy.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -11,7 +11,9 @@ use sc_clock::{Clock, ManualClock, MonotonicInstant};
 use sc_config::Secret;
 use sc_error::ErrorCode;
 use serde_json::{Value, json};
-use sync_core::{Credential, CredentialProvider, HttpSyncClient, PersistFailed};
+use sync_core::{
+    Credential, CredentialProvider, CredentialUnavailable, HttpSyncClient, PersistFailed,
+};
 
 use crate::connect_support::{config, valid_info};
 use crate::support::{Answer, Fault, Fixture, LoggedRequest, Route, Script};
@@ -208,6 +210,7 @@ pub struct SpyCredentials {
     persisted: Mutex<Vec<(String, String)>>,
     persist_started: Mutex<Vec<Instant>>,
     persist_returned: Mutex<Vec<Instant>>,
+    unavailable: AtomicBool,
 }
 
 impl SpyCredentials {
@@ -232,7 +235,13 @@ impl SpyCredentials {
             persisted: Mutex::new(Vec::new()),
             persist_started: Mutex::new(Vec::new()),
             persist_returned: Mutex::new(Vec::new()),
+            unavailable: AtomicBool::new(false),
         })
+    }
+
+    /// While set, `bearer` answers `CredentialUnavailable`, as a locked keyring does.
+    pub fn set_unavailable(&self, unavailable: bool) {
+        self.unavailable.store(unavailable, Ordering::SeqCst);
     }
 
     /// The next `n` calls of `on_rotated` fail.
@@ -259,12 +268,15 @@ impl SpyCredentials {
 }
 
 impl CredentialProvider for SpyCredentials {
-    fn bearer(&self) -> Credential {
+    fn bearer(&self) -> Result<Credential, CredentialUnavailable> {
+        if self.unavailable.load(Ordering::SeqCst) {
+            return Err(CredentialUnavailable);
+        }
         let (access, refresh) = locked(&self.pair).clone();
-        Credential {
+        Ok(Credential {
             access: Secret::new(access),
             refresh: refresh.map(Secret::new),
-        }
+        })
     }
 
     /// Keeps the new pair in memory at once and then spends `persist_delay` on the slow store, as a host does.

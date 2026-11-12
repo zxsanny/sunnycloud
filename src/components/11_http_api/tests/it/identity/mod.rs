@@ -4,6 +4,7 @@
 
 mod account;
 mod admin;
+mod device_login_e2e;
 mod devices;
 mod limits;
 mod operations;

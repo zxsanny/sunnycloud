@@ -102,6 +102,7 @@ pub fn route_context_for(
     let body_limits = BodyLimits::new(&config, http_metrics, services.clock.clone());
     RouteContext {
         services: Arc::new(services),
+        public_url: config.public_url,
         openapi,
         server_info: config.server_info,
         credentials: config.credentials,

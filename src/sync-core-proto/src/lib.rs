@@ -17,7 +17,9 @@ mod transfer;
 mod tree;
 mod url;
 
-pub use auth::{DeviceAuthorization, DevicePoll, SessionTokens};
+pub use auth::{
+    DeviceAuthorization, DevicePoll, DeviceRefusal, DeviceToken, SessionTokens, TokenType,
+};
 pub use cursor::{BadCursor, Cursor};
 pub use feed::{ChangeItem, ChangePage, ChangeState, ResyncReason};
 pub use hashing::{ResumableFileHasher, ResumeHashState, hash_block};

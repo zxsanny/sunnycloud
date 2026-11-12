@@ -41,8 +41,8 @@ pub(super) async fn poll_grant(
             }
             Ok(DevicePoll::Denied) => return finish(&shared, LoginState::Denied),
             Ok(DevicePoll::Expired) => return finish(&shared, LoginState::Expired),
-            Ok(DevicePoll::Token(tokens)) => {
-                let state = match shared.save(Token::new(tokens.access)).await {
+            Ok(DevicePoll::Token(token)) => {
+                let state = match shared.save(Token::new(token.access_token)).await {
                     Ok(()) => LoginState::Approved,
                     Err(error) => {
                         tracing::error!(%error, "the device token could not be stored; sign in again");

@@ -1,15 +1,17 @@
-//! AC-3 and AC-4 of AZ-3908 (IT-14-23 at the unit tier): poll pacing, terminal states, `HttpsRequired`.
+//! AC-3 and AC-4 of AZ-3908 (IT-14-23 at the unit tier): poll pacing, terminal states, `HttpsRequired`; AC-3 of
+//! AZ-4231: the login's expiry comes from the grant's `expires_in`.
 
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use std::time::Duration;
 
 use ipc_schema::LoginState;
+use sc_clock::{Clock, Timestamp};
 use sc_error::TransportKind;
 use sync_core::{SyncApi, SyncError};
 use sync_core_proto::DevicePoll;
 
-use super::fake_api::{FakeApi, USER_CODE, VERIFICATION_URL, token};
+use super::fake_api::{EXPIRES_IN_SECS, FakeApi, USER_CODE, VERIFICATION_URL, token};
 use super::{ACCOUNT, DEVICE_TOKEN, harness};
 use crate::auth::{LoginError, SignInServer};
 use crate::ipc::tests::capture::Captured;
@@ -39,6 +41,8 @@ async fn login_polls_at_the_interval_adds_five_seconds_after_slow_down_and_store
         ]),
     );
 
+    let asked_at = h.clock.now_utc();
+
     // Act
     let started = h
         .session
@@ -51,6 +55,12 @@ async fn login_polls_at_the_interval_adds_five_seconds_after_slow_down_and_store
     // Assert
     assert_eq!(started.verification_url, VERIFICATION_URL);
     assert_eq!(started.user_code, USER_CODE);
+    assert_eq!(
+        started.expires_at,
+        Timestamp::from_unix_micros(
+            asked_at.as_unix_micros() + i64::try_from(EXPIRES_IN_SECS * 1_000_000).expect("fits")
+        )
+    );
     assert!(!format!("{started:?}").contains(USER_CODE));
     assert_eq!(pending, LoginState::Pending);
     assert_eq!(settled, LoginState::Approved);

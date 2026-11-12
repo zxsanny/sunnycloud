@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
 use sc_config::Secret;
-use sync_core::{Credential, CredentialProvider, PersistFailed};
+use sync_core::{Credential, CredentialProvider, CredentialUnavailable, PersistFailed};
 use uuid::Uuid;
 
 use super::token_store::TokenStore;
 
 /// sync-core's credential source: reads the device token through the store for every request and keeps no copy.
 ///
-/// `bearer` cannot fail (13 host traits), so a missing or unreadable token is sent as an empty bearer: the server
-/// answers 401, sync-core reports `Unauthorized`, and the session moves to signed-out.
+/// A missing or unreadable token is `CredentialUnavailable`: sync-core sends nothing and the session stays signed
+/// in, so a locked keyring pauses sync and never signs the user out (AZ-4231, owner decision 2026-11-12).
 pub struct StoreCredentials {
     store: Arc<dyn TokenStore>,
     account: Uuid,
@@ -22,21 +22,20 @@ impl StoreCredentials {
 }
 
 impl CredentialProvider for StoreCredentials {
-    fn bearer(&self) -> Credential {
-        let access = match self.store.load(self.account) {
-            Ok(Some(token)) => token,
+    fn bearer(&self) -> Result<Credential, CredentialUnavailable> {
+        match self.store.load(self.account) {
+            Ok(Some(access)) => Ok(Credential {
+                access,
+                refresh: None,
+            }),
             Ok(None) => {
                 tracing::warn!(component = "token_store", "no device token is stored");
-                Secret::new(String::new())
+                Err(CredentialUnavailable)
             }
             Err(error) => {
                 tracing::error!(component = "token_store", %error, "the device token could not be read");
-                Secret::new(String::new())
+                Err(CredentialUnavailable)
             }
-        };
-        Credential {
-            access,
-            refresh: None,
         }
     }
 

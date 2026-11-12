@@ -69,10 +69,10 @@ Then no request is sent, the call answers `CredentialUnavailable`, authenticatio
 
 ## Open points
 
-1. The SPA route of the device approval page, for `verification_uri`. 16 does not name it; E-26 or the owner names it.
+1. Resolved 2026-11-12 (owner): the approval page is the SPA route `/device`, so `verification_uri` = `<public_url>/device`.
 
 ## Flagged concerns
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| Approval page route not named (open point 1) | E-26 / owner | open | Medium |
+| Approval page route not named (open point 1) | E-26 / owner | resolved 2026-11-12: `/device` | Medium |
