@@ -1,5 +1,6 @@
-//! Desktop sync daemon: the local IPC server over `DaemonControl` lives in [`ipc`], file-system access in [`platform_fs`], the SQLite index in [`local_index`].
+//! Desktop sync daemon: sign-in and the device token in [`auth`], the local IPC server over `DaemonControl` lives in [`ipc`], file-system access in [`platform_fs`], the SQLite index in [`local_index`].
 
+pub mod auth;
 pub mod delete_guard;
 pub mod ipc;
 pub mod local_index;

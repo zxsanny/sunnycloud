@@ -10,7 +10,6 @@ pub(super) use idle::{GcPoint, Probe};
 mod idle {
     use std::convert::Infallible;
 
-    #[derive(Default)]
     pub struct Probe;
 
     pub enum GcPoint {
@@ -20,6 +19,10 @@ mod idle {
     }
 
     impl Probe {
+        pub(in crate::gc_sweeper) fn new() -> Self {
+            Probe
+        }
+
         pub(in crate::gc_sweeper) async fn at(&self, _point: GcPoint) -> Result<(), Infallible> {
             Ok(())
         }
@@ -52,12 +55,15 @@ mod hooked {
         async fn at(&self, point: GcPoint) -> Result<(), GcHookStop>;
     }
 
-    #[derive(Default)]
     pub struct Probe {
         pub(in crate::gc_sweeper) hook: Option<Arc<dyn GcHook>>,
     }
 
     impl Probe {
+        pub(in crate::gc_sweeper) fn new() -> Self {
+            Probe { hook: None }
+        }
+
         pub(in crate::gc_sweeper) async fn at(&self, point: GcPoint) -> Result<(), GcHookStop> {
             match &self.hook {
                 Some(hook) => hook.at(point).await,

@@ -21,6 +21,7 @@ impl PortError for TreeServiceError {
             Self::IsRoot => business(ErrorCode::InvalidRequest),
             Self::EditedSince { .. } => business(ErrorCode::EditedSince),
             Self::InvalidCursor => business(ErrorCode::InvalidCursor),
+            Self::AccountNotActive => business(ErrorCode::AccountNotActive),
             Self::Unexpected(source) => fault(source, request_id),
         }
     }

@@ -1,5 +1,5 @@
 #[cfg(unix)]
-mod capture;
+pub(crate) mod capture;
 mod connection;
 mod fake;
 mod lines;

@@ -140,7 +140,13 @@ fn violations(graph: &Graph) -> Vec<String> {
         for dep in &package.deps {
             let target = graph.get(dep);
             if let Some(target) = target {
-                if is_component(package) && is_component(target) && package.name != target.name {
+                // A dev-dependency between components is allowed (owner decision 2026-11-12, ADR-015): tests run
+                // against another component's real code; only normal and build edges couple shipped crates.
+                if is_component(package)
+                    && is_component(target)
+                    && package.name != target.name
+                    && !package.dev_only.contains(dep)
+                {
                     found.push(format!("component edge {} -> {}", package.name, dep));
                 }
                 if CLIENTS.contains(&package.name.as_str())
@@ -310,6 +316,16 @@ fn testdb_as_a_normal_or_build_dependency_is_rejected() {
             "sc_ratelimit depends on sc_testdb outside dev-dependencies",
         ]
     );
+}
+
+#[test]
+fn component_dev_edge_is_accepted() {
+    let mut graph = workspace_graph();
+    add_dev_edge(&mut graph, "sunnycloud-sharing", "sunnycloud-quota");
+
+    let found = violations(&graph);
+
+    assert!(found.is_empty(), "forbidden edges: {found:?}");
 }
 
 #[test]

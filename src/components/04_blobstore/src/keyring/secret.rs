@@ -69,6 +69,8 @@ impl Drop for MasterSecret {
 
 impl ZeroizeOnDrop for MasterSecret {}
 
+const _: () = crate::data_key::zeroizes_on_drop::<MasterSecret>();
+
 impl fmt::Debug for MasterSecret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("MasterSecret(<redacted>)")

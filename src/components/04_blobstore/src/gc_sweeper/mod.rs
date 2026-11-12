@@ -130,7 +130,7 @@ impl GcSweeper {
             lease: config.gc_claim_lease,
             budget: config.gc_cycle_budget,
             shutdown,
-            probe: Probe::default(),
+            probe: Probe::new(),
         })
     }
 

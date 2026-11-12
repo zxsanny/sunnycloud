@@ -41,6 +41,11 @@ impl Drop for DataKey {
 
 impl ZeroizeOnDrop for DataKey {}
 
+/// Compile-time check (ST-04-7): the build fails if a key type stops wiping itself on drop.
+pub(crate) const fn zeroizes_on_drop<T: ZeroizeOnDrop>() {}
+
+const _: () = zeroizes_on_drop::<DataKey>();
+
 impl fmt::Debug for DataKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("DataKey(<redacted>)")

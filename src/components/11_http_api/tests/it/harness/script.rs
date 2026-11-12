@@ -48,6 +48,17 @@ impl Script {
         self.lock().log.clone()
     }
 
+    /// The state counter of the recording stubs: how many recorded calls went to a port method that changes
+    /// state ([`STATE_CHANGING_PORT_METHODS`]).
+    pub fn state_changes(&self) -> usize {
+        self.lock()
+            .log
+            .iter()
+            .filter_map(|line| line.split_whitespace().next())
+            .filter(|key| STATE_CHANGING_PORT_METHODS.contains(key))
+            .count()
+    }
+
     pub fn take<T: 'static>(&self, key: &'static str) -> Option<T> {
         let mut inner = self.lock();
         *inner.calls.entry(key).or_default() += 1;
@@ -63,6 +74,42 @@ impl Script {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
+
+/// The port methods of the recording stubs that write state, from the owners' port contracts (`contracts`).
+/// Reads, and the visitor checks of 06 whose only write is an access audit, are not listed.
+pub const STATE_CHANGING_PORT_METHODS: [&str; 31] = [
+    "TreeService::create_folder",
+    "TreeService::update_node",
+    "TreeService::delete_node",
+    "UploadService::start_upload",
+    "UploadService::put_block",
+    "UploadService::abort_upload",
+    "UploadService::stage_small",
+    "CommitService::commit_upload",
+    "CommitService::commit_batch",
+    "ShareService::create",
+    "ShareService::revoke",
+    "PublicShareService::verify_password",
+    "SignInService::begin",
+    "SignInService::complete",
+    "SignInService::begin_link",
+    "SignInService::complete_link",
+    "SignInService::exchange_mobile_code",
+    "SessionService::refresh",
+    "SessionService::revoke",
+    "SessionService::revoke_all",
+    "SessionService::touch",
+    "DeviceGrantService::request",
+    "DeviceGrantService::poll",
+    "DeviceGrantService::decide",
+    "DeviceGrantService::revoke_device",
+    "DeviceGrantService::revoke_self",
+    "InviteService::create_invite",
+    "InviteService::revoke",
+    "AdminService::update_user",
+    "AdminService::set_quota",
+    "AccountDeletionService::request",
+];
 
 pub fn unscripted(key: &'static str) -> Fault {
     Box::new(UnscriptedCall(key))

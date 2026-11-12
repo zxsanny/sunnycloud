@@ -14,6 +14,7 @@ mod identity;
 mod keepalive;
 mod lifecycle;
 mod limits;
+mod matrices;
 mod middleware;
 mod ops;
 mod ops_metrics;

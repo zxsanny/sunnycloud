@@ -21,7 +21,7 @@ mod unix;
 mod windows;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub use error::EndpointRefused;
 pub use lines::MAX_LINE_BYTES;

@@ -34,6 +34,9 @@ pub enum TreeServiceError {
     EditedSince { current_revision: Uuid },
     #[error("invalid cursor")]
     InvalidCursor,
+    /// The account is being deleted or disabled (`AccountGuard::ensure_active`), as on commit.
+    #[error("account not active")]
+    AccountNotActive,
     #[error("unexpected failure")]
     Unexpected(#[source] Fault),
 }

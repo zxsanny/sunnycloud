@@ -17,10 +17,16 @@ path = "src/main.rs"
 [lints]
 workspace = true
 
+[features]
+# Debug builds only (sync-core refuses it in release): accepts an `http://` server address for login.
+allow-plain-http = ["sync-core/allow-plain-http"]
+
 [dependencies]
 sync-core = { path = "../../sync-core" }
 sync-core-proto = { path = "../../sync-core-proto" }
 sc_names = { path = "../../shared/names" }
+sc_clock = { path = "../../shared/clock" }
+sc_config = { path = "../../shared/config" }
 bytes = { workspace = true }
 rusqlite = { workspace = true, features = ["bundled"] }
 serde = { workspace = true, features = ["std"] }
@@ -30,6 +36,8 @@ ipc_schema = { path = "../../desktop/ipc_schema" }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "io-util", "rt", "sync", "time", "macros"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
+# v1 mode (default feature): Secret Service through zbus-secret-service-keyring-store on Linux, Credential Manager on Windows.
+keyring = "=4.2.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -46,4 +54,5 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [dev-dependencies]
+sc_error = { path = "../../shared/error", default-features = false, features = ["client"] }
 tempfile = "3"

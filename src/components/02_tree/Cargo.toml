@@ -14,12 +14,17 @@ contracts = { path = "../../contracts" }
 sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }
 sc_error = { path = "../../shared/error" }
+# Name rules and the case-insensitive key (helper 06), the injected clock (helper 03, no SQL now()), ids.
+sc_names = { path = "../../shared/names" }
+sc_clock = { path = "../../shared/clock" }
+sc_ids = { path = "../../shared/ids_hashing" }
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 thiserror = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
-# The tests read and write the tables with plain statements on the transaction's connection.
-sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+# The real feed stamp and notifier (05) that the mutations call last.
+sunnycloud-sync-feed = { path = "../05_sync_feed" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
-uuid = { workspace = true, features = ["v4"] }
