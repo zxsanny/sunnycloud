@@ -33,7 +33,7 @@ use crate::error::{BlobIds, blob_error_from_io, event_fault};
 use crate::header::Header;
 use crate::keyring::MasterKeyring;
 use crate::path::blob_path;
-use block::{OpenBlob, blob_ids, check_block, format_failure, layout_of};
+use block::{BlockLocks, OpenBlob, blob_ids, check_block, format_failure, layout_of};
 
 pub struct FileBlobWriter {
     root: PathBuf,
@@ -47,6 +47,8 @@ pub struct FileBlobWriter {
     /// The declared size of each blob between `plan` and `create_file`: the port's `create_file` takes the plan
     /// only, and the file length, the reserved space and the handle all depend on the size.
     planned: Mutex<HashMap<Uuid, i64>>,
+    /// Makes the check-then-write of one block index atomic within this writer; the process holds one writer.
+    blocks: Arc<BlockLocks>,
     /// Counts the block writes in flight for the scrub's pause; absent in a process that has no scrub gauge.
     activity: Option<ActivityGauge>,
     #[cfg(feature = "sync-hook")]
@@ -82,6 +84,7 @@ impl FileBlobWriter {
             barrier,
             io: Arc::new(Semaphore::new(threads.clamp(1, Semaphore::MAX_PERMITS))),
             planned: Mutex::new(HashMap::new()),
+            blocks: Arc::new(BlockLocks::new()),
             activity: None,
             #[cfg(feature = "sync-hook")]
             directory_syncs: AtomicU64::new(0),
@@ -277,10 +280,12 @@ impl BlobWriter for FileBlobWriter {
         let root = self.root.clone();
         let keyring = Arc::clone(&self.keyring);
         let plan = handle.plan.clone();
+        let blocks = Arc::clone(&self.blocks);
         let file = self
             .blocking(move || {
                 let blob = OpenBlob::open(&root, &keyring, &plan, layout)?;
-                blob.write_block(block_index, &plaintext)?;
+                let _held = blocks.lock(plan.blob_id, block_index);
+                blob.write_block_once(block_index, &plaintext)?;
                 Ok(blob.file)
             })
             .await?;

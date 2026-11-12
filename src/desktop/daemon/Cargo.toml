@@ -14,12 +14,21 @@ path = "src/lib.rs"
 name = "sunnycloud-daemon"
 path = "src/main.rs"
 
+# The offline manifest signer (ADR-017 Notes): shares the manifest type with the updater's verifier.
+[[bin]]
+name = "update-sign"
+path = "src/bin/update-sign.rs"
+
 [lints]
 workspace = true
 
 [features]
 # Debug builds only (sync-core refuses it in release): accepts an `http://` server address for login.
 allow-plain-http = ["sync-core/allow-plain-http"]
+# Debug builds only (refused in release at compile time): pins the test updater keys A and R in place of the
+# release keys and lets tests point the updater at a local release host. Enabled only by this crate's own
+# dev-dependency below, so no release tree contains it.
+test-update-trust = []
 
 [dependencies]
 sync-core = { path = "../../sync-core" }
@@ -38,6 +47,13 @@ tokio = { workspace = true, features = ["net", "io-util", "rt", "sync", "time", 
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 # v1 mode (default feature): Secret Service through zbus-secret-service-keyring-store on Linux, Credential Manager on Windows.
 keyring = "=4.2.0"
+base64 = { workspace = true }
+ed25519-dalek = "3.0.0"
+reqwest = { workspace = true, features = ["rustls-no-provider"] }
+rustls = { workspace = true }
+rustls-platform-verifier = "0.7.1"
+sha2 = { workspace = true }
+zeroize = "1.9"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -54,5 +70,6 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [dev-dependencies]
+sunnycloud-daemon = { path = ".", features = ["test-update-trust"] }
 sc_error = { path = "../../shared/error", default-features = false, features = ["client"] }
 tempfile = "3"

@@ -1,4 +1,3 @@
-#[cfg(unix)]
 pub(crate) mod capture;
 mod connection;
 mod fake;

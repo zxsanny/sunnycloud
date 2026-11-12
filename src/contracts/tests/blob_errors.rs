@@ -51,6 +51,7 @@ fn blob_error_name(error: &BlobError) -> &'static str {
         BlobError::RangeNotSatisfiable => "range_not_satisfiable",
         BlobError::OutOfRange => "out_of_range",
         BlobError::SizeMismatch => "size_mismatch",
+        BlobError::BlockConflict => "block_conflict",
     }
 }
 
@@ -66,7 +67,7 @@ fn key_error_name(error: &KeyError) -> &'static str {
 }
 
 #[test]
-fn blob_error_has_exactly_the_nine_variants_of_the_contract() {
+fn blob_error_has_exactly_the_ten_variants_of_the_contract() {
     // Arrange
     let all = [
         BlobError::NoSpace,
@@ -78,13 +79,14 @@ fn blob_error_has_exactly_the_nine_variants_of_the_contract() {
         BlobError::RangeNotSatisfiable,
         BlobError::OutOfRange,
         BlobError::SizeMismatch,
+        BlobError::BlockConflict,
     ];
 
     // Act
     let names: BTreeSet<_> = all.iter().map(blob_error_name).collect();
 
     // Assert
-    assert_eq!(names.len(), 9);
+    assert_eq!(names.len(), 10);
 }
 
 #[test]

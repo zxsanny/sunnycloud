@@ -4004,18 +4004,25 @@ dependencies = [
 name = "sunnycloud-daemon"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "bytes",
+ "ed25519-dalek",
  "ipc_schema",
  "keyring",
  "libc",
+ "reqwest",
  "rusqlite",
  "rustix 1.1.6",
+ "rustls",
+ "rustls-platform-verifier",
  "sc_clock",
  "sc_config",
  "sc_error",
  "sc_names",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
+ "sunnycloud-daemon",
  "sync-core",
  "sync-core-proto",
  "tempfile",
@@ -4024,6 +4031,7 @@ dependencies = [
  "tracing",
  "uuid",
  "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]

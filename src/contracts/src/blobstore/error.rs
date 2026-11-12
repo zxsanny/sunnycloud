@@ -28,6 +28,10 @@ pub enum BlobError {
     /// The stream is shorter or longer than the declared size.
     #[error("size mismatch")]
     SizeMismatch,
+    /// The block index already holds other bytes, or a region that does not authenticate (a torn write).
+    /// Nothing was sealed or written; the blob cannot be finished and the upload restarts with a new blob.
+    #[error("block already written with other bytes")]
+    BlockConflict,
 }
 
 #[derive(Debug, Error)]
