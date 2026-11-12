@@ -1,14 +1,16 @@
 #![allow(dead_code)]
 
+use std::io::Read;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use decoder_runner::{
-    Ceilings, Exit, Job, JobContext, JobHandler, JobLimits, RunnerConfig, RunnerError, serve,
+    Ceilings, Exit, Heartbeat, Job, JobContext, JobHandler, JobLimits, RunnerConfig, RunnerError,
+    Watchdog, serve,
 };
 use media_shared::decoder_protocol::{
     Capabilities, FrameReader, ImageResult, Limits, Message, Polled, Reply, Request, Response,
@@ -25,6 +27,8 @@ pub struct Scripted {
     pub ignore_cancel: bool,
     pub panics: bool,
     pub jobs: Mutex<Vec<Job>>,
+    /// The bytes of `in/source` as each job read them through `JobContext::input`.
+    pub inputs: Mutex<Vec<Vec<u8>>>,
     pub cancels: AtomicUsize,
     pub running: AtomicUsize,
 }
@@ -37,6 +41,7 @@ impl Scripted {
             ignore_cancel: false,
             panics: false,
             jobs: Mutex::new(Vec::new()),
+            inputs: Mutex::new(Vec::new()),
             cancels: AtomicUsize::new(0),
             running: AtomicUsize::new(0),
         }
@@ -91,6 +96,12 @@ impl JobHandler for Scripted {
     fn run(&self, job: &Job, context: &JobContext) -> Response {
         assert!(!self.panics, "scripted job panic");
         self.jobs.lock().expect("jobs").push(job.clone());
+        let mut input = Vec::new();
+        context
+            .input()
+            .read_to_end(&mut input)
+            .expect("read the verified input");
+        self.inputs.lock().expect("inputs").push(input);
         self.running.fetch_add(1, Ordering::SeqCst);
         let started = Instant::now();
         let mut emitted = 0;
@@ -143,11 +154,23 @@ pub fn ceilings() -> Ceilings {
     }
 }
 
-pub fn config(path: PathBuf, alive_interval: Duration) -> RunnerConfig {
+pub const CONTROL_BYTES: &[u8] = b"control input";
+
+/// `<root>/<name>/in/source` holding `content`; returns the job directory.
+pub fn make_job(root: &Path, name: &str, content: &[u8]) -> PathBuf {
+    let job = root.join(name);
+    std::fs::create_dir_all(job.join("in")).expect("create in/");
+    std::fs::write(job.join("in/source"), content).expect("write in/source");
+    job
+}
+
+pub fn config(path: PathBuf, scratch_root: PathBuf, alive_interval: Duration) -> RunnerConfig {
     RunnerConfig {
         socket_path: path,
         socket_gid: None,
+        scratch_root,
         alive_interval,
+        watchdog: Duration::from_secs(30),
         write_timeout: Duration::from_secs(5),
         cancel_wait: Duration::from_secs(4),
         ceilings: ceilings(),
@@ -164,9 +187,9 @@ pub fn greedy_limits() -> Limits {
     }
 }
 
-pub fn render_still() -> Request {
+pub fn render_still_in(job_dir: &Path) -> Request {
     Request::RenderStill {
-        job_dir: "/scratch/job".into(),
+        job_dir: job_dir.to_str().expect("utf8 path").into(),
         max_edge: 320,
         poster_at_ms: None,
         limits: greedy_limits(),
@@ -180,7 +203,10 @@ pub fn hello() -> Request {
 pub struct Fixture {
     pub handler: Arc<Scripted>,
     pub path: PathBuf,
+    /// The scratch root of this runner; it holds the valid job `job` made at start.
+    pub scratch: PathBuf,
     stop: Arc<AtomicBool>,
+    _watchdog: Watchdog,
     thread: Option<JoinHandle<Result<Exit, RunnerError>>>,
     _dir: TempDir,
 }
@@ -198,21 +224,36 @@ impl Fixture {
         let handler = Arc::new(handler);
         let dir = TempDir::new().expect("tempdir");
         let path = dir.path().join("decoder.sock");
-        let mut config = config(path.clone(), alive_interval);
+        let scratch = dir.path().join("scratch");
+        make_job(&scratch, "job", CONTROL_BYTES);
+        let mut config = config(path.clone(), scratch.clone(), alive_interval);
         edit(&mut config);
         let listener = decoder_runner::socket::bind(&path, None).expect("bind");
         let stop = Arc::new(AtomicBool::new(false));
+        let heartbeat = Arc::new(Heartbeat::new());
+        let watchdog =
+            Watchdog::spawn(Arc::clone(&heartbeat), config.watchdog).expect("spawn watchdog");
         let thread = {
             let (handler, stop) = (Arc::clone(&handler), Arc::clone(&stop));
-            thread::spawn(move || serve_on(&listener, &handler, &config, &stop))
+            thread::spawn(move || serve_on(&listener, &handler, &config, &stop, &heartbeat))
         };
         Self {
             handler,
             path,
+            scratch,
             stop,
+            _watchdog: watchdog,
             thread: Some(thread),
             _dir: dir,
         }
+    }
+
+    pub fn job_dir(&self) -> PathBuf {
+        self.scratch.join("job")
+    }
+
+    pub fn render_still(&self) -> Request {
+        render_still_in(&self.job_dir())
     }
 
     pub fn connect(&self) -> Client {
@@ -236,8 +277,9 @@ fn serve_on(
     handler: &Arc<Scripted>,
     config: &RunnerConfig,
     stop: &AtomicBool,
+    heartbeat: &Heartbeat,
 ) -> Result<Exit, RunnerError> {
-    serve(listener, handler, config, stop)
+    serve(listener, handler, config, stop, heartbeat)
 }
 
 impl Drop for Fixture {

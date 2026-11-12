@@ -2,7 +2,10 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use decoder_runner::{Exit, NoExecutors, RunnerConfig, RunnerError, health, serve, socket};
+use decoder_runner::{
+    Exit, Heartbeat, NoExecutors, RunnerConfig, RunnerError, Watchdog, disable_dumps, health,
+    serve, socket,
+};
 use sc_config::ConfigSources;
 use sc_observability::logging::Level;
 use sc_observability::{Component, LogConfig, LogFormat, init_logging, log_error, log_info};
@@ -63,12 +66,18 @@ fn run(sources: &ConfigSources) -> ExitCode {
 
 fn serve_process(sources: &ConfigSources) -> Result<Exit, RunnerError> {
     let config = RunnerConfig::load(sources)?;
+    disable_dumps()?;
+    #[cfg(feature = "test-freeze")]
+    decoder_runner::test_freeze::install()?;
     let listener = socket::bind(&config.socket_path, config.socket_gid)?;
     log_info!("decoder runner listening");
+    let heartbeat = Arc::new(Heartbeat::new());
+    let _watchdog = Watchdog::spawn(Arc::clone(&heartbeat), config.watchdog)?;
     serve(
         &listener,
         &Arc::new(NoExecutors),
         &config,
         &AtomicBool::new(false),
+        &heartbeat,
     )
 }

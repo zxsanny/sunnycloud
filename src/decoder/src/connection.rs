@@ -19,6 +19,8 @@ use crate::config::RunnerConfig;
 use crate::error::RunnerError;
 use crate::job::{Job, JobContext, JobHandler, JobMessage, JobSpec};
 use crate::limits::LimitClass;
+use crate::safe_open::open_input;
+use crate::watchdog::Heartbeat;
 
 /// Longest wait of any blocking call of the loop.
 pub const TICK: Duration = Duration::from_millis(50);
@@ -53,6 +55,7 @@ struct Connection<'a, H> {
     stream: UnixStream,
     handler: &'a Arc<H>,
     config: &'a RunnerConfig,
+    heartbeat: &'a Heartbeat,
     reader: FrameReader,
     session: Session,
     job: Option<RunningJob>,
@@ -63,6 +66,7 @@ pub fn serve_connection<H: JobHandler>(
     stream: UnixStream,
     handler: &Arc<H>,
     config: &RunnerConfig,
+    heartbeat: &Heartbeat,
 ) -> ConnectionEnd {
     let timeouts = stream
         .set_read_timeout(Some(TICK))
@@ -77,6 +81,7 @@ pub fn serve_connection<H: JobHandler>(
         stream,
         handler,
         config,
+        heartbeat,
         reader: FrameReader::new(),
         session: Session::new(),
         job: None,
@@ -92,6 +97,7 @@ pub fn serve_connection<H: JobHandler>(
 
 impl<H: JobHandler> Connection<'_, H> {
     fn step(&mut self) -> Result<(), ConnectionEnd> {
+        self.heartbeat.beat();
         self.forward_job_messages()?;
         self.send_alive_if_due()?;
         match self.reader.poll_request(&mut self.stream) {
@@ -172,9 +178,17 @@ impl<H: JobHandler> Connection<'_, H> {
     }
 
     fn start(&mut self, job: Job) -> Result<(), ConnectionEnd> {
+        let input = match open_input(&self.config.scratch_root, job.spec.job_dir()) {
+            Ok(input) => input,
+            Err(refused) => {
+                log_warn!("job input refused", err = &refused);
+                self.session.job_finished();
+                return self.reply(Response::Error(DecodeError::Corrupt));
+            }
+        };
         let cancel = Arc::new(AtomicBool::new(false));
         let (sender, messages) = channel();
-        let context = JobContext::new(Arc::clone(&cancel), sender.clone());
+        let context = JobContext::new(input, Arc::clone(&cancel), sender.clone());
         let handler = Arc::clone(self.handler);
         let spawned = thread::Builder::new()
             .name("decoder-job".into())
@@ -315,7 +329,7 @@ impl<H: JobHandler> Connection<'_, H> {
         if !matches!(end, ConnectionEnd::Fatal(_)) {
             log_warn!("connection ended while a job ran: job cancelled");
         }
-        if let Err(error) = wait_for_stop(&job.thread, self.config.cancel_wait) {
+        if let Err(error) = wait_for_stop(&job.thread, self.config.cancel_wait, self.heartbeat) {
             log_error!("job did not stop after cancel", err = &error);
             return ConnectionEnd::Fatal(error);
         }
@@ -326,9 +340,14 @@ impl<H: JobHandler> Connection<'_, H> {
     }
 }
 
-fn wait_for_stop(thread: &JoinHandle<()>, limit: Duration) -> Result<(), RunnerError> {
+fn wait_for_stop(
+    thread: &JoinHandle<()>,
+    limit: Duration,
+    heartbeat: &Heartbeat,
+) -> Result<(), RunnerError> {
     let deadline = Instant::now() + limit;
     while !thread.is_finished() {
+        heartbeat.beat();
         if Instant::now() >= deadline {
             return Err(RunnerError::JobStuck);
         }

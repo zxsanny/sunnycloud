@@ -13,6 +13,12 @@
 //!   race with the job's response).
 //! - Every requested limit is clamped to the runner's ceilings ([`JobLimits::clamp`]) before
 //!   the handler sees it. A `probe` carries no limits and runs under the photo ceilings.
+//! - Before the handler sees a job, `job_dir` is resolved inside `decoder_scratch_root` with no
+//!   symlink and `in/source` is opened as a regular single-link file ([`safe_open`]); anything
+//!   else is answered `Corrupt` and no handler runs.
+//! - The loop bumps a [`Heartbeat`] on every pass and a [`Watchdog`] thread aborts the process
+//!   when it stops moving for `decoder_watchdog`. With the `test-freeze` feature (test images
+//!   only) `SIGUSR1` freezes the loop so that this can be shown.
 //! - A client violation is answered `ProtocolViolation` and [`serve`] returns
 //!   [`Exit::ProtocolViolation`]; the binary then exits with code 2.
 
@@ -22,8 +28,13 @@ pub mod error;
 pub mod health;
 pub mod job;
 pub mod limits;
+pub mod safe_open;
 pub mod server;
 pub mod socket;
+mod sys;
+#[cfg(feature = "test-freeze")]
+pub mod test_freeze;
+pub mod watchdog;
 
 pub use config::RunnerConfig;
 pub use connection::TICK;
@@ -31,6 +42,7 @@ pub use error::RunnerError;
 pub use job::{Job, JobContext, JobHandler, JobSpec, NoExecutors};
 pub use limits::{Ceilings, JobLimits, LimitClass};
 pub use server::{Exit, serve};
+pub use watchdog::{Heartbeat, Watchdog, disable_dumps};
 
 /// The only protocol version this runner speaks.
 pub const PROTOCOL_VERSION: u32 = 1;

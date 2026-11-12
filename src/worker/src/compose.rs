@@ -38,6 +38,7 @@ struct SlotKeys<'a> {
 
 pub(crate) fn assemble(
     settings: &WorkerSettings,
+    worker_id: &str,
     metrics: &Metrics,
     clock: Arc<dyn Clock>,
     shutdown: &Shutdown,
@@ -48,7 +49,7 @@ pub(crate) fn assemble(
     let gid = u32::try_from(gid).map_err(|_| WorkerError::Unset("decoder_gid"))?;
     let api = Arc::new(WorkerApiClient::new(ApiConfig::from_settings(
         settings,
-        worker_id(settings),
+        worker_id.to_owned(),
     ))?);
     let access = ApiAccess::new();
     let decoders = DecoderMetrics::register(metrics)?;
@@ -141,8 +142,9 @@ fn scratch_key(name: SlotName) -> &'static str {
     }
 }
 
-/// `worker_id`, or the host name and a random suffix, so two supervisors on one host differ.
-fn worker_id(settings: &WorkerSettings) -> String {
+/// `worker_id`, or the host name and a random suffix, so two supervisors on one host differ. The suffix is new
+/// on every call, so the process resolves it once and hands the same value to every API client.
+pub fn worker_id(settings: &WorkerSettings) -> String {
     settings.worker_id.clone().unwrap_or_else(|| {
         let host = rustix::system::uname()
             .nodename()

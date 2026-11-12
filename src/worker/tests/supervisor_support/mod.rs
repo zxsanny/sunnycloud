@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use sc_clock::{Clock, ManualClock, Timestamp};
 use sc_observability::{BuildInfo, Metrics};
-use sunnycloud_worker::{WorkerError, load_settings, run_worker};
+use sunnycloud_worker::{WorkerError, load_settings, run_worker, worker_id};
 use tempfile::TempDir;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -152,9 +152,16 @@ impl Harness {
         )));
         let (stop, stopped) = oneshot::channel::<()>();
         let metrics = Arc::clone(&self.metrics);
-        let task = tokio::spawn(run_worker(settings, metrics, clock, async move {
-            stopped.await.expect("the stop signal is sent");
-        }));
+        let worker_id = worker_id(&settings);
+        let task = tokio::spawn(run_worker(
+            settings,
+            worker_id,
+            metrics,
+            clock,
+            async move {
+                stopped.await.expect("the stop signal is sent");
+            },
+        ));
         Running { stop, task }
     }
 

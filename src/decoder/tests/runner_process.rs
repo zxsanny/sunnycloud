@@ -2,14 +2,15 @@
 //! AC-1, AC-2, AC-6, AC-8 and the honest report of the missing executors.
 mod common;
 
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::io::Read;
+use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use common::{Client, Received, hello, render_still};
+use common::{CONTROL_BYTES, Client, Received, hello, make_job, render_still_in};
 use media_shared::decoder_protocol::Request;
 use media_shared::decoder_protocol::{DecodeError, Response};
 use tempfile::TempDir;
@@ -28,6 +29,7 @@ fn command(socket: &Path) -> Command {
 struct Runner {
     child: Child,
     socket: PathBuf,
+    job_dir: PathBuf,
     _dir: TempDir,
 }
 
@@ -39,7 +41,10 @@ impl Runner {
     fn start_with(edit: impl FnOnce(&mut Command)) -> Self {
         let dir = TempDir::new().expect("tempdir");
         let socket = dir.path().join("decoder.sock");
+        let scratch = dir.path().join("scratch");
+        let job_dir = make_job(&scratch, "job", CONTROL_BYTES);
         let mut command = command(&socket);
+        command.env("SUNNYCLOUD_DECODER_SCRATCH_ROOT", &scratch);
         edit(&mut command);
         let child = command
             .stdout(Stdio::piped())
@@ -49,6 +54,7 @@ impl Runner {
         let runner = Self {
             child,
             socket,
+            job_dir,
             _dir: dir,
         };
         runner.wait_for_socket();
@@ -65,6 +71,20 @@ impl Runner {
 
     fn connect(&self) -> Client {
         Client::new(UnixStream::connect(&self.socket).expect("connect"))
+    }
+
+    /// Stops the runner and returns what it logged.
+    fn kill_and_read_log(&mut self) -> String {
+        self.child.kill().expect("kill runner");
+        self.child.wait().expect("reap runner");
+        let mut log = String::new();
+        self.child
+            .stdout
+            .take()
+            .expect("piped stdout")
+            .read_to_string(&mut log)
+            .expect("read the log");
+        log
     }
 
     fn exit_code_within(&mut self, limit: Duration) -> Option<i32> {
@@ -232,7 +252,7 @@ fn jobs_are_reported_unsupported_and_self_check_fails_while_no_executor_exists()
     let runner = Runner::start();
     let mut client = runner.connect();
 
-    client.send(render_still());
+    client.send(render_still_in(&runner.job_dir));
     let job = client.expect_response(SECOND);
     client.send(Request::SelfCheck {
         forbidden_targets: Vec::new(),
@@ -261,4 +281,56 @@ fn health_fails_without_a_socket_and_passes_with_one() {
     assert!(String::from_utf8_lossy(&down.stdout).contains("socket_missing"));
     assert_eq!(up.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&up.stdout).contains("\"ok\""));
+}
+
+#[test]
+fn hostile_inputs_are_refused_by_the_real_runner_without_reading_or_logging_their_target() {
+    let mut runner = Runner::start();
+    let scratch = runner.job_dir.parent().expect("scratch root").to_owned();
+    let fifo_in = scratch.join("fifo/in");
+    std::fs::create_dir_all(&fifo_in).expect("fifo job");
+    assert!(
+        Command::new("mkfifo")
+            .arg(fifo_in.join("source"))
+            .status()
+            .expect("mkfifo")
+            .success()
+    );
+    let link_in = scratch.join("link/in");
+    std::fs::create_dir_all(&link_in).expect("link job");
+    symlink("/etc/passwd", link_in.join("source")).expect("symlink");
+    let mut client = runner.connect();
+
+    let mut refusals = Vec::new();
+    for job in ["fifo", "link"] {
+        let sent = Instant::now();
+        client.send(render_still_in(&scratch.join(job)));
+        refusals.push((client.expect_response(SECOND), sent.elapsed()));
+    }
+    client.send(render_still_in(&runner.job_dir));
+    let control = client.expect_response(SECOND);
+    let log = runner.kill_and_read_log();
+
+    for (response, elapsed) in refusals {
+        assert_eq!(response, Response::Error(DecodeError::Corrupt));
+        assert!(elapsed < SECOND, "{elapsed:?}");
+    }
+    assert_eq!(control, Response::Error(DecodeError::Unsupported));
+    assert!(log.contains("job input refused"), "{log}");
+    assert!(!log.contains("root:"), "{log}");
+}
+
+#[test]
+fn the_runner_is_non_dumpable_so_an_abort_calls_no_core_handler() {
+    let runner = Runner::start();
+
+    let own = std::fs::metadata("/proc/self/status")
+        .expect("own status")
+        .uid();
+    let runner_owner = std::fs::metadata(format!("/proc/{}/status", runner.child.id()))
+        .expect("runner status")
+        .uid();
+
+    // The kernel hands the /proc files of a non-dumpable process to root.
+    assert_eq!(runner_owner, 0, "the test process itself is owned by {own}");
 }

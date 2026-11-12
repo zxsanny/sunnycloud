@@ -13,7 +13,13 @@ path = "src/main.rs"
 [lints]
 workspace = true
 
+[features]
+# Test images only (10_decoder description section 3): SIGUSR1 freezes the main loop so the
+# watchdog can be shown to abort. Nothing depends on this crate, so no other build can enable it.
+test-freeze = []
+
 [dependencies]
+libc = "0.2"
 media-shared = { path = "../media-shared" }
 sc_config = { path = "../shared/config" }
 sc_observability = { path = "../shared/observability" }

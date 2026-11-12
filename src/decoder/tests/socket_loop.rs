@@ -5,7 +5,7 @@ use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use common::{Fixture, MIB, Received, Scripted, ceilings, greedy_limits, hello, render_still};
+use common::{Fixture, MIB, Received, Scripted, ceilings, greedy_limits, hello};
 use decoder_runner::{Exit, JobSpec, LimitClass, RunnerError};
 use media_shared::decoder_protocol::{DecodeError, Event, ImageResult, Reply, Request, Response};
 use media_shared::policy::Plan;
@@ -35,12 +35,12 @@ fn ac3_second_job_request_is_busy_and_the_first_job_is_unaffected() {
         Duration::from_secs(30),
     );
     let mut client = fixture.connect();
-    client.send(render_still());
+    client.send(fixture.render_still());
     wait_until("the job to start", SECOND, || {
         fixture.handler.running.load(Ordering::SeqCst) == 1
     });
 
-    client.send(render_still());
+    client.send(fixture.render_still());
     let second = client.expect_response(SECOND);
     let first = client.expect_response(2 * SECOND);
 
@@ -56,7 +56,7 @@ fn hello_while_a_job_runs_is_a_violation_that_ends_the_runner() {
         Duration::from_secs(30),
     );
     let mut client = fixture.connect();
-    client.send(render_still());
+    client.send(fixture.render_still());
     wait_until("the job to start", SECOND, || {
         fixture.handler.running.load(Ordering::SeqCst) == 1
     });
@@ -74,7 +74,7 @@ fn ac4_alive_every_interval_while_busy_progress_per_line_and_nothing_idle() {
     let handler = Scripted::new(Duration::from_millis(1500)).lines(3);
     let fixture = Fixture::start(handler, interval);
     let mut client = fixture.connect();
-    client.send(render_still());
+    client.send(fixture.render_still());
 
     let mut alive_at = Vec::new();
     let mut progress = Vec::new();
@@ -116,7 +116,7 @@ fn ac5_cancel_answers_cancelled_within_two_seconds_and_calls_the_cancel_path() {
         Duration::from_secs(30),
     );
     let mut client = fixture.connect();
-    client.send(render_still());
+    client.send(fixture.render_still());
     wait_until("the job to start", SECOND, || {
         fixture.handler.running.load(Ordering::SeqCst) == 1
     });
@@ -142,7 +142,7 @@ fn ac5_connection_loss_cancels_without_a_reply_and_the_next_connection_is_served
         Duration::from_secs(30),
     );
     let mut first = fixture.connect();
-    first.send(render_still());
+    first.send(fixture.render_still());
     wait_until("the job to start", SECOND, || {
         fixture.handler.running.load(Ordering::SeqCst) == 1
     });
@@ -165,7 +165,7 @@ fn ac5_connection_loss_cancels_without_a_reply_and_the_next_connection_is_served
         second.expect_response(SECOND),
         Response::Capabilities(_)
     ));
-    second.send(render_still());
+    second.send(fixture.render_still());
     wait_until("the second job", SECOND, || {
         fixture.handler.jobs.lock().expect("jobs").len() == 2
     });
@@ -201,7 +201,7 @@ fn ac7_photo_request_runs_with_the_photo_ceilings() {
     );
     let mut client = fixture.connect();
 
-    client.send(render_still());
+    client.send(fixture.render_still());
     client.expect_response(SECOND);
 
     let job = fixture.handler.last_job();
@@ -221,7 +221,7 @@ fn ac7_video_request_runs_with_the_video_ceilings() {
     let mut client = fixture.connect();
 
     client.send(Request::Transcode {
-        job_dir: "/scratch/job".into(),
+        job_dir: fixture.job_dir().to_str().expect("utf8").into(),
         plan: Plan::Remux,
         limits: greedy_limits(),
     });
@@ -245,7 +245,7 @@ fn ac7_limits_below_the_ceiling_are_kept() {
     limits.cpu = 1;
 
     client.send(Request::RenderStill {
-        job_dir: "/scratch/job".into(),
+        job_dir: fixture.job_dir().to_str().expect("utf8").into(),
         max_edge: 320,
         poster_at_ms: None,
         limits,
@@ -270,7 +270,7 @@ fn a_probe_runs_under_the_photo_ceilings() {
     let mut client = fixture.connect();
 
     client.send(Request::Probe {
-        job_dir: "/scratch/job".into(),
+        job_dir: fixture.job_dir().to_str().expect("utf8").into(),
     });
     client.expect_response(SECOND);
 
@@ -299,7 +299,7 @@ fn a_job_that_ignores_cancel_ends_the_runner_instead_of_overlapping_the_next_job
         config.cancel_wait = Duration::from_millis(200);
     });
     let mut client = fixture.connect();
-    client.send(render_still());
+    client.send(fixture.render_still());
     wait_until("the job to start", SECOND, || {
         fixture.handler.running.load(Ordering::SeqCst) == 1
     });
@@ -318,7 +318,7 @@ fn a_panicking_job_ends_the_runner() {
     );
     let mut client = fixture.connect();
 
-    client.send(render_still());
+    client.send(fixture.render_still());
 
     let outcome = fixture.outcome();
     assert!(

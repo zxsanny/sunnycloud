@@ -6,6 +6,9 @@
 //! This library exists so the tests run the same entry points as the binary.
 
 mod api;
+#[cfg(feature = "test-clock")]
+mod clock_poll;
+mod clock_source;
 mod compose;
 mod decoder_client;
 mod error;
@@ -22,6 +25,9 @@ use std::ffi::OsString;
 use std::process::ExitCode;
 
 pub use api::{ApiConfig, ApiConfigError, ApiError, WorkerApiClient};
+#[cfg(feature = "test-clock")]
+pub use clock_poll::{OffsetError, apply_offset, follow_api_offset};
+pub use compose::worker_id;
 pub use decoder_client::{
     Backoff, BackoffError, CallError, DecoderConn, DecoderMetrics, EventSink, GateFailure,
     GatedConn, PROTOCOL_VERSION, Slot, SlotConfig, SlotName, SlotReadiness, SlotState, Unhealthy,

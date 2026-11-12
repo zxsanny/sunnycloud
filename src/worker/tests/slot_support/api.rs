@@ -90,6 +90,8 @@ struct State {
     claim_status: Option<u16>,
     /// Statuses of the next `PUT status` calls, first first; 204 once they are used up.
     status_replies: VecDeque<u16>,
+    /// `offset_seconds` of the test-clock route; `None` answers 404, as an API without the route does.
+    clock_offset: Option<u64>,
 }
 
 pub struct ScriptedApi {
@@ -138,6 +140,11 @@ impl ScriptedApi {
         entry.lease_status = 409;
     }
 
+    /// The test-image route `GET /internal/v1/test/clock-offset` answers 200 with this offset.
+    pub fn set_clock_offset(&self, seconds: u64) {
+        self.state().clock_offset = Some(seconds);
+    }
+
     pub fn base_url(&self) -> String {
         self.peer.base_url()
     }
@@ -157,6 +164,10 @@ fn answer(state: &Mutex<State>, request: &Recorded) -> Reply {
             Some(entry) if entry.input_status == 200 => Reply::bytes(entry.input.clone()),
             Some(entry) => Reply::status(entry.input_status),
             None => Reply::status(409),
+        },
+        ("GET", ["internal", "v1", "test", "clock-offset"]) => match state.clock_offset {
+            Some(seconds) => Reply::json(200, &format!(r#"{{"offset_seconds":{seconds}}}"#)),
+            None => Reply::status(404),
         },
         ("PUT", ["status"]) => Reply::status(state.status_replies.pop_front().unwrap_or(204)),
         ("DELETE", [id, "lease"]) => match entry(&state, id) {

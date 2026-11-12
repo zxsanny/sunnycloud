@@ -1,6 +1,6 @@
-//! The runner's view of the `decoder-runner` config section: only what the socket loop reads.
-//! The remaining keys of the section (scratch root, watchdog, memory poll, pixel and codec
-//! limits) belong to the executors and the watchdog.
+//! The runner's view of the `decoder-runner` config section: what the socket loop, the safe
+//! open and the watchdog read. The remaining keys (memory poll, pixel and codec limits) belong
+//! to the executors.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -16,7 +16,11 @@ const CANCEL_WAIT: Duration = Duration::from_secs(4);
 pub struct RunnerConfig {
     pub socket_path: PathBuf,
     pub socket_gid: Option<u32>,
+    /// The tree every `job_dir` must lie in.
+    pub scratch_root: PathBuf,
     pub alive_interval: Duration,
+    /// How long the main loop may stay silent before the runner aborts itself.
+    pub watchdog: Duration,
     /// A write that blocks this long (a supervisor that stopped reading) ends the connection.
     pub write_timeout: Duration,
     pub cancel_wait: Duration,
@@ -53,6 +57,20 @@ impl RunnerConfig {
             alive_interval.is_zero(),
             &mut problems,
         );
+        let watchdog = settings.decoder_watchdog.get();
+        if watchdog <= alive_interval {
+            problems.push(KeyProblem::new(
+                "decoder_watchdog",
+                Reason::OutOfRange {
+                    min: "above decoder_alive_interval".into(),
+                    max: "no maximum".into(),
+                },
+            ));
+        }
+        let scratch_root = PathBuf::from(&settings.decoder_scratch_root);
+        if !scratch_root.is_absolute() {
+            problems.push(KeyProblem::new("decoder_scratch_root", Reason::WrongType));
+        }
         let photo = job_limits(
             settings.photo_cpu,
             settings.photo_memory.bytes(),
@@ -80,8 +98,12 @@ impl RunnerConfig {
         Ok(Self {
             socket_path: PathBuf::from(&settings.decoder_socket_path),
             socket_gid,
+            scratch_root,
             alive_interval,
-            write_timeout: settings.decoder_watchdog.get(),
+            watchdog,
+            // Half the watchdog: a write blocked by a supervisor that stopped reading ends that connection
+            // before the silent main loop would make the watchdog abort the whole runner.
+            write_timeout: watchdog / 2,
             cancel_wait: CANCEL_WAIT,
             ceilings: Ceilings { photo, video },
         })
@@ -199,6 +221,31 @@ mod tests {
         };
         let keys: Vec<&str> = problems.iter().map(|p| p.key.as_str()).collect();
         assert_eq!(keys, ["decoder_gid", "decoder_alive_interval"]);
+    }
+
+    #[test]
+    fn a_watchdog_not_above_the_alive_interval_and_a_relative_scratch_root_are_refused() {
+        let result = RunnerConfig::load(&sources(&[
+            ("SUNNYCLOUD_ENVIRONMENT", "development"),
+            ("SUNNYCLOUD_DECODER_ALIVE_INTERVAL", "5s"),
+            ("SUNNYCLOUD_DECODER_WATCHDOG", "5s"),
+            ("SUNNYCLOUD_DECODER_SCRATCH_ROOT", "scratch"),
+        ]));
+
+        let Err(ConfigError::Invalid(problems)) = result else {
+            panic!("expected a refusal, got {result:?}");
+        };
+        let keys: Vec<&str> = problems.iter().map(|p| p.key.as_str()).collect();
+        assert_eq!(keys, ["decoder_watchdog", "decoder_scratch_root"]);
+    }
+
+    #[test]
+    fn the_scratch_root_and_the_watchdog_default_to_the_documented_values() {
+        let config = RunnerConfig::load(&sources(&[])).expect("defaults are valid");
+
+        assert_eq!(config.scratch_root, PathBuf::from("/scratch"));
+        assert_eq!(config.watchdog, Duration::from_secs(20));
+        assert_eq!(config.write_timeout, Duration::from_secs(10));
     }
 
     #[test]

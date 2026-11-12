@@ -4,14 +4,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DOUBLES: [&str; 6] = [
-    "Fake",
-    "Mock",
-    "Scripted",
-    "Stub",
-    "Passthrough",
-    "OffsetClock",
-];
+const DOUBLES: [&str; 5] = ["Fake", "Mock", "Scripted", "Stub", "Passthrough"];
+
+/// The `-test` build's clock (AZ-3875) is the one sanctioned name outside this list, and only in the files that
+/// feature `test-clock` compiles.
+const OFFSET_CLOCK: &str = "OffsetClock";
+const OFFSET_CLOCK_FILES: [&str; 2] = ["clock_poll.rs", "clock_source.rs"];
 
 fn sources(dir: &Path, found: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).expect("list the sources") {
@@ -106,4 +104,31 @@ fn ac2_no_test_double_is_named_in_non_test_sources() {
 
     // Assert
     assert!(found.is_empty(), "{found:?}");
+}
+
+#[test]
+fn az3875_the_offset_clock_is_named_only_in_files_the_test_clock_feature_compiles() {
+    // Arrange
+    let files = all_production_text();
+    let lib = production_text(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"));
+
+    // Act
+    let found: Vec<String> = files
+        .iter()
+        .filter(|(path, text)| text.contains(OFFSET_CLOCK) && !is_offset_clock_file(path))
+        .map(|(path, _)| path.display().to_string())
+        .collect();
+
+    // Assert
+    assert!(found.is_empty(), "{found:?} name {OFFSET_CLOCK}");
+    assert!(
+        lib.contains("#[cfg(feature = \"test-clock\")]\nmod clock_poll;"),
+        "the poll module is not gated by the feature"
+    );
+}
+
+fn is_offset_clock_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| OFFSET_CLOCK_FILES.contains(&name))
 }

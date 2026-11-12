@@ -6,6 +6,8 @@
 //! mis-routed claim is never read as an obsolete revision. The client measures no lease or backoff time and
 //! sets no request timeout: no key defines one, so callers bound a call themselves.
 
+#[cfg(feature = "test-clock")]
+mod clock;
 mod error;
 mod input;
 mod output;
@@ -76,7 +78,7 @@ pub struct WorkerApiClient {
 /// Which statuses a route documents besides the common 403 and 5xx.
 #[derive(Clone, Copy)]
 enum Call {
-    /// Claim and status: 403 only.
+    /// Claim, status and the clock offset: 403 only.
     Unleased,
     /// Lease, release, result and failure: 409.
     Leased,

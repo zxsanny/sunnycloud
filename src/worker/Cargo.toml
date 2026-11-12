@@ -46,4 +46,5 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 tokio = { workspace = true, features = ["macros"] }
 
 [features]
-test-clock = []
+# The `-test` image only: the supervisor follows the API's clock offset (09 section 2, "Test clock").
+test-clock = ["sc_clock/test-clock"]

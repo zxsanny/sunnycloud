@@ -1,6 +1,7 @@
 //! The seam between the socket loop and the executors (E-19/c08 to c11): what a job is, what
 //! the loop gives the handler, and what the handler may tell the loop while it runs.
 
+use std::fs::File;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
@@ -28,6 +29,16 @@ pub enum JobSpec {
     },
 }
 
+impl JobSpec {
+    pub fn job_dir(&self) -> &str {
+        match self {
+            JobSpec::Probe { job_dir }
+            | JobSpec::RenderStill { job_dir, .. }
+            | JobSpec::Transcode { job_dir, .. } => job_dir,
+        }
+    }
+}
+
 /// One admitted job request with the limits it runs under, already clamped to the ceilings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Job {
@@ -45,15 +56,28 @@ pub(crate) enum JobMessage {
     Done(Box<Response>),
 }
 
-/// What a running job sees of the loop: the cancel flag and the progress channel.
+/// What a running job sees of the loop: the verified input, the cancel flag and the progress
+/// channel.
 pub struct JobContext {
+    input: File,
     cancel: Arc<AtomicBool>,
     messages: Sender<JobMessage>,
 }
 
 impl JobContext {
-    pub(crate) fn new(cancel: Arc<AtomicBool>, messages: Sender<JobMessage>) -> Self {
-        Self { cancel, messages }
+    pub(crate) fn new(input: File, cancel: Arc<AtomicBool>, messages: Sender<JobMessage>) -> Self {
+        Self {
+            input,
+            cancel,
+            messages,
+        }
+    }
+
+    /// `in/source`, already opened by the safe open: a regular file with one link, in the
+    /// job's own directory. An executor reads this file and never opens `job_dir/in/source`
+    /// by path itself.
+    pub fn input(&self) -> &File {
+        &self.input
     }
 
     /// True once the client sent `cancel`, the connection closed, or the runner is ending.

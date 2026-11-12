@@ -60,11 +60,18 @@ async fn every_typed_decoder_failure_reaches_the_caller_as_its_own_variant() {
     ];
     for expected in cases {
         // Arrange
-        let (_dir, _handler, _runner, mut conn) = start(Response::Error(expected)).await;
+        let (_dir, _handler, runner, mut conn) = start(Response::Error(expected)).await;
 
         // Act
         let result = conn
-            .render_still("/scratch/job", 320, None, limits(), &mut |_| {}, pending())
+            .render_still(
+                &runner.job_dir(),
+                320,
+                None,
+                limits(),
+                &mut |_| {},
+                pending(),
+            )
             .await;
 
         // Assert
@@ -82,12 +89,12 @@ async fn every_typed_decoder_failure_reaches_the_caller_as_its_own_variant() {
 #[tokio::test]
 async fn a_finished_job_returns_its_typed_result() {
     // Arrange
-    let (_dir, handler, _runner, mut conn) = start(Response::ImageResult(image())).await;
+    let (_dir, handler, runner, mut conn) = start(Response::ImageResult(image())).await;
 
     // Act
     let result = conn
         .render_still(
-            "/scratch/job",
+            &runner.job_dir(),
             320,
             Some(1500),
             limits(),
@@ -104,7 +111,7 @@ async fn a_finished_job_returns_its_typed_result() {
 #[tokio::test]
 async fn alive_and_progress_events_reach_the_caller_while_the_job_runs() {
     // Arrange
-    let (_dir, handler, _runner, mut conn) = start(Response::ImageResult(image())).await;
+    let (_dir, handler, runner, mut conn) = start(Response::ImageResult(image())).await;
     *handler.run_for.lock().expect("run_for") = Duration::from_millis(150);
     handler.progress_lines.store(2, Ordering::SeqCst);
     let mut events = Vec::new();
@@ -112,7 +119,7 @@ async fn alive_and_progress_events_reach_the_caller_while_the_job_runs() {
     // Act
     let result = conn
         .render_still(
-            "/scratch/job",
+            &runner.job_dir(),
             320,
             None,
             limits(),
@@ -137,14 +144,14 @@ async fn alive_and_progress_events_reach_the_caller_while_the_job_runs() {
 #[tokio::test]
 async fn the_cancel_future_cancels_the_job_and_leaves_the_connection_usable() {
     // Arrange
-    let (_dir, handler, _runner, mut conn) = start(Response::ImageResult(image())).await;
+    let (_dir, handler, runner, mut conn) = start(Response::ImageResult(image())).await;
     *handler.run_for.lock().expect("run_for") = Duration::from_secs(30);
 
     // Act
     let result = within(
         WAIT,
         conn.render_still(
-            "/scratch/job",
+            &runner.job_dir(),
             320,
             None,
             limits(),
@@ -164,13 +171,20 @@ async fn the_cancel_future_cancels_the_job_and_leaves_the_connection_usable() {
 #[tokio::test]
 async fn dropping_a_running_call_closes_the_connection_and_cancels_the_job() {
     // Arrange
-    let (_dir, handler, _runner, mut conn) = start(Response::ImageResult(image())).await;
+    let (_dir, handler, runner, mut conn) = start(Response::ImageResult(image())).await;
     *handler.run_for.lock().expect("run_for") = Duration::from_secs(30);
 
     // Act
     let abandoned = tokio::time::timeout(
         Duration::from_millis(80),
-        conn.render_still("/scratch/job", 320, None, limits(), &mut |_| {}, pending()),
+        conn.render_still(
+            &runner.job_dir(),
+            320,
+            None,
+            limits(),
+            &mut |_| {},
+            pending(),
+        ),
     )
     .await;
 
@@ -187,10 +201,10 @@ async fn dropping_a_running_call_closes_the_connection_and_cancels_the_job() {
 #[tokio::test]
 async fn a_probe_answered_with_the_wrong_result_kind_is_a_violation() {
     // Arrange
-    let (_dir, _handler, _runner, mut conn) = start(Response::ImageResult(image())).await;
+    let (_dir, _handler, runner, mut conn) = start(Response::ImageResult(image())).await;
 
     // Act
-    let result = conn.probe("/scratch/job", &mut |_| {}, pending()).await;
+    let result = conn.probe(&runner.job_dir(), &mut |_| {}, pending()).await;
 
     // Assert
     assert!(matches!(result, Err(CallError::Violation(_))), "{result:?}");
@@ -211,7 +225,7 @@ fn video_probe() -> Probe {
 #[tokio::test]
 async fn probe_and_transcode_return_their_typed_results() {
     // Arrange
-    let (_dir, handler, _runner, mut conn) = start(Response::Probe(video_probe())).await;
+    let (_dir, handler, runner, mut conn) = start(Response::Probe(video_probe())).await;
     let plan = Plan::Transcode {
         encoder: Encoder::Cpu,
         scale_to_short_edge: 720,
@@ -221,13 +235,13 @@ async fn probe_and_transcode_return_their_typed_results() {
     };
 
     // Act
-    let probed = conn.probe("/scratch/job", &mut |_| {}, pending()).await;
+    let probed = conn.probe(&runner.job_dir(), &mut |_| {}, pending()).await;
     *handler.answer.lock().expect("answer") = Response::TranscodeResult(TranscodeResult {
         probe_of_output: video_probe(),
         bytes: 99,
     });
     let transcoded = conn
-        .transcode("/scratch/job", plan, limits(), &mut |_| {}, pending())
+        .transcode(&runner.job_dir(), plan, limits(), &mut |_| {}, pending())
         .await;
 
     // Assert

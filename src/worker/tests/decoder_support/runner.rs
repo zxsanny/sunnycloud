@@ -6,9 +6,11 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use decoder_runner::{
-    Ceilings, Exit, Job, JobContext, JobHandler, JobLimits, RunnerConfig, RunnerError, serve,
+    Ceilings, Exit, Heartbeat, Job, JobContext, JobHandler, JobLimits, RunnerConfig, RunnerError,
+    serve,
 };
 use media_shared::decoder_protocol::{Capabilities, Response, SelfCheckItem, SelfCheckReport};
+use tempfile::TempDir;
 
 const MIB: u64 = 1 << 20;
 pub const BUILD_TIMESTAMP: u64 = 1_700_000_000;
@@ -116,7 +118,7 @@ impl JobHandler for Handler {
     }
 }
 
-fn config(socket: PathBuf, alive_interval: Duration) -> RunnerConfig {
+fn config(socket: PathBuf, scratch_root: PathBuf, alive_interval: Duration) -> RunnerConfig {
     let limits = |wall| JobLimits {
         cpu: 2,
         memory_bytes: 128 * MIB,
@@ -127,7 +129,9 @@ fn config(socket: PathBuf, alive_interval: Duration) -> RunnerConfig {
     RunnerConfig {
         socket_path: socket,
         socket_gid: None,
+        scratch_root,
         alive_interval,
+        watchdog: Duration::from_secs(30),
         write_timeout: Duration::from_secs(5),
         cancel_wait: Duration::from_secs(4),
         ceilings: Ceilings {
@@ -137,8 +141,11 @@ fn config(socket: PathBuf, alive_interval: Duration) -> RunnerConfig {
     }
 }
 
-/// The real runner socket loop on its own thread, listening at `socket`.
+/// The real runner socket loop on its own thread, listening at `socket`. The runner checks every job
+/// directory before the handler runs, so it owns a real scratch tree with one job holding a regular
+/// `in/source` file.
 pub struct Runner {
+    scratch: TempDir,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<Result<Exit, RunnerError>>>,
 }
@@ -147,16 +154,30 @@ impl Runner {
     pub fn start(socket: &Path, handler: &Arc<Handler>, alive_interval: Duration) -> Self {
         let listener: UnixListener =
             decoder_runner::socket::bind(socket, None).expect("the runner binds its socket");
-        let config = config(socket.to_path_buf(), alive_interval);
+        let scratch = tempfile::tempdir().expect("a scratch root");
+        let input = scratch.path().join("job").join("in");
+        std::fs::create_dir_all(&input).expect("the job input folder");
+        std::fs::write(input.join("source"), b"source bytes").expect("the job input file");
+        let config = config(
+            socket.to_path_buf(),
+            scratch.path().to_path_buf(),
+            alive_interval,
+        );
         let stop = Arc::new(AtomicBool::new(false));
         let thread = {
             let (handler, stop) = (Arc::clone(handler), Arc::clone(&stop));
-            thread::spawn(move || serve(&listener, &handler, &config, &stop))
+            thread::spawn(move || serve(&listener, &handler, &config, &stop, &Heartbeat::new()))
         };
         Self {
+            scratch,
             stop,
             thread: Some(thread),
         }
+    }
+
+    /// The job directory to send in a request: inside the runner's scratch root.
+    pub fn job_dir(&self) -> String {
+        self.scratch.path().join("job").display().to_string()
     }
 
     /// The runner exits: the loop ends and the listener closes, leaving the stale socket file as a crash

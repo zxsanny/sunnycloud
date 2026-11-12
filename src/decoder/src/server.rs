@@ -13,6 +13,7 @@ use crate::config::RunnerConfig;
 use crate::connection::{ConnectionEnd, TICK, serve_connection};
 use crate::error::RunnerError;
 use crate::job::JobHandler;
+use crate::watchdog::Heartbeat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exit {
@@ -22,20 +23,23 @@ pub enum Exit {
     ProtocolViolation,
 }
 
+/// Runs the accept loop. Every pass of it, idle or serving, bumps `heartbeat`.
 pub fn serve<H: JobHandler>(
     listener: &UnixListener,
     handler: &Arc<H>,
     config: &RunnerConfig,
     stop: &AtomicBool,
+    heartbeat: &Heartbeat,
 ) -> Result<Exit, RunnerError> {
     while !stop.load(Ordering::Acquire) {
+        heartbeat.beat();
         match listener.accept() {
             Ok((stream, _)) => {
                 stream
                     .set_nonblocking(false)
                     .map_err(RunnerError::io("make connection blocking"))?;
                 log_info!("connection accepted");
-                match serve_connection(stream, handler, config) {
+                match serve_connection(stream, handler, config, heartbeat) {
                     ConnectionEnd::Closed => log_info!("connection closed"),
                     ConnectionEnd::Violation => return Ok(Exit::ProtocolViolation),
                     ConnectionEnd::Fatal(error) => return Err(error),

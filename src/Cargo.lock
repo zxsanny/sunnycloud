@@ -631,6 +631,7 @@ checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 name = "decoder-runner"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "media-shared",
  "sc_config",
  "sc_observability",
@@ -3584,6 +3585,12 @@ name = "sunnycloud-vault-service"
 version = "0.1.0"
 dependencies = [
  "contracts",
+ "sc_config",
+ "sc_db",
+ "sc_testdb",
+ "sqlx",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

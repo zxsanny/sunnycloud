@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use sc_clock::{Clock, SystemClock};
+use sc_clock::Clock;
 use sc_config::WorkerSettings;
 use sc_observability::logging::Level;
 use sc_observability::{
@@ -18,7 +18,8 @@ use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 
-use crate::compose::assemble;
+use crate::clock_source::ProcessClock;
+use crate::compose::{assemble, worker_id};
 use crate::error::WorkerError;
 use crate::probe::{self, probe_target};
 use crate::scratch::sweep_all;
@@ -36,13 +37,9 @@ pub async fn serve(env: BTreeMap<String, String>) -> Result<(), WorkerError> {
         commit: option_env!("SUNNYCLOUD_GIT_COMMIT").unwrap_or("unknown"),
         test_clock: cfg!(feature = "test-clock"),
     })?);
-    run_worker(
-        settings,
-        metrics,
-        Arc::new(SystemClock::new()),
-        termination(),
-    )
-    .await
+    let worker_id = worker_id(&settings);
+    let clock = ProcessClock::start(&settings, &worker_id)?;
+    run_worker(settings, worker_id, metrics, clock.clock(), termination()).await
 }
 
 /// The supervisor (09 section 3): sweep both scratch roots, serve the ops endpoints, run both slot loops and
@@ -53,13 +50,14 @@ pub async fn serve(env: BTreeMap<String, String>) -> Result<(), WorkerError> {
 /// cancelled and their leases released. Returns once every slot loop has ended.
 pub async fn run_worker(
     settings: Arc<WorkerSettings>,
+    worker_id: String,
     metrics: Arc<Metrics>,
     clock: Arc<dyn Clock>,
     stop: impl Future<Output = ()>,
 ) -> Result<(), WorkerError> {
     let addr = ops_addr(&settings)?;
     let shutdown = Shutdown::new();
-    let parts = assemble(&settings, &metrics, clock, &shutdown)?;
+    let parts = assemble(&settings, &worker_id, &metrics, clock, &shutdown)?;
     sweep_all(&parts.roots)?;
     let listener = TcpListener::bind(addr)
         .await

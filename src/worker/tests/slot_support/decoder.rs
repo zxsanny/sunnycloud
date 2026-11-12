@@ -91,6 +91,7 @@ struct Script {
     cancels: Vec<Instant>,
     self_check_ok: bool,
     nvenc_probe_ok: bool,
+    build_timestamp: u64,
 }
 
 pub struct FakeDecoder {
@@ -118,6 +119,7 @@ impl FakeDecoder {
             cancels: Vec::new(),
             self_check_ok: true,
             nvenc_probe_ok: false,
+            build_timestamp: capabilities().build_timestamp,
         }));
         let in_flight = Arc::new(AtomicUsize::new(0));
         let most_in_flight = Arc::new(AtomicUsize::new(0));
@@ -177,6 +179,12 @@ impl FakeDecoder {
     /// From now on `self_check` reports a failed item.
     pub fn fail_self_checks(&self) -> &Self {
         self.script().self_check_ok = false;
+        self
+    }
+
+    /// From now on `hello` reports this image build time (Unix seconds).
+    pub fn built_at(&self, unix_seconds: u64) -> &Self {
+        self.script().build_timestamp = unix_seconds;
         self
     }
 
@@ -269,6 +277,7 @@ async fn serve(stream: UnixStream, shared: Shared) {
                 script.hellos += 1;
                 Response::Capabilities(Capabilities {
                     nvenc_probe_ok: script.nvenc_probe_ok,
+                    build_timestamp: script.build_timestamp,
                     ..capabilities()
                 })
             }
