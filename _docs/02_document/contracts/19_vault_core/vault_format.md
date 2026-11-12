@@ -91,7 +91,7 @@ Proposal length with these widths: 229 bytes. Field order, byte order and the ex
 6. If the review rejects `aead-stream`, libsodium `secretstream` replaces the chunk stream and `format_version` changes (R23).
 7. The vault's own name is an encrypted field of the header (decided 2026-11-11 with the encrypted-names answer, AZ-3913): nonce 24 bytes, name up to 255 bytes, tag 16 bytes; whether it is an AAD-covered field or a separate AEAD value, and its position in the field order, are frozen by E-29/c01 with the reviewer. `max_vault_header_bytes` (default 1024, `20_vault_service`) leaves room for it.
 
-Owners and dates of the open points (AZ-4004, draft): points 1 to 3 and 7 are frozen by E-29/c01 together with the reviewer; point 4 by E-29/c03 with the E-13 owner; point 5 by E-29/c02 after the Argon2 measurements (AZ-4005); point 6 by the review outcome. The dates are set when the owner fixes the review schedule (OWNER); until then no implementation task treats any open point as decided.
+Owners and dates of the open points (AZ-4004, draft): points 1 to 3 and 7 are frozen by E-29/c01 together with the reviewer; point 4 by E-29/c03 with the E-13 owner; point 5 by E-29/c02 after the Argon2 measurements (AZ-4005); point 6 by the review outcome. The review runs after the freeze of points 1 to 3 and 7 and after E-29/c03, c04 and c06 are implemented (owner, 2026-11-12); calendar dates are set when a reviewer is booked. Until a point is frozen no implementation task treats it as decided.
 
 ## Change Log
 
