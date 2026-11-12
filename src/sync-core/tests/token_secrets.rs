@@ -40,8 +40,8 @@ async fn no_failure_path_of_the_token_lifecycle_leaks_a_token() {
     let (logs, _guard) = capture_logs();
     let mut visible = String::new();
     let leaky = json!({
-        "access": "ACC-SENTINEL-9",
-        "refresh": "REF-SENTINEL-9",
+        "access_token": "ACC-SENTINEL-9",
+        "refresh_token": "REF-SENTINEL-9",
         "expires_in": "REF-SENTINEL-9",
     });
 

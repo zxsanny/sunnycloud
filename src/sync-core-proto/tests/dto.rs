@@ -261,6 +261,28 @@ fn device_flow_dtos_round_trip_in_the_server_shapes() {
 }
 
 #[test]
+fn session_tokens_decode_the_server_answer_and_refuse_the_old_shape() {
+    // Arrange
+    let server = json!({ "access_token": "a", "refresh_token": "r", "expires_in": 900 });
+    let old = json!({ "access": "a", "refresh": "r", "expires_in": 900 });
+
+    // Act
+    let tokens: SessionTokens = round_trip(server);
+    let old = serde_json::from_value::<SessionTokens>(old);
+
+    // Assert
+    assert_eq!(
+        (
+            tokens.access_token.as_str(),
+            tokens.refresh_token.as_str(),
+            tokens.expires_in
+        ),
+        ("a", "r", 900)
+    );
+    assert!(old.is_err());
+}
+
+#[test]
 fn a_grant_without_expires_in_or_a_token_of_another_type_is_refused() {
     // Arrange
     let grant = json!({
@@ -314,8 +336,8 @@ fn the_four_rfc_8628_codes_are_the_four_poll_outcomes_and_nothing_else_is() {
 fn token_debug_never_prints_a_token() {
     // Arrange
     let tokens = SessionTokens {
-        access: "ACCESS-SECRET".into(),
-        refresh: Some("REFRESH-SECRET".into()),
+        access_token: "ACCESS-SECRET".into(),
+        refresh_token: "REFRESH-SECRET".into(),
         expires_in: 900,
     };
     let device = DeviceToken {

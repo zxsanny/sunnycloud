@@ -189,12 +189,13 @@ fn violations(graph: &Graph) -> Vec<String> {
     found
 }
 
+/// A normal edge: a dev-only entry for the same target, if the real graph has one, is dropped.
 fn add_edge(graph: &mut Graph, from: &str, to: &str) {
-    graph
+    let package = graph
         .get_mut(from)
-        .unwrap_or_else(|| panic!("{from} missing from the graph"))
-        .deps
-        .insert(to.to_string());
+        .unwrap_or_else(|| panic!("{from} missing from the graph"));
+    package.deps.insert(to.to_string());
+    package.dev_only.remove(to);
 }
 
 fn add_dev_edge(graph: &mut Graph, from: &str, to: &str) {

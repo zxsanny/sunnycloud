@@ -12,12 +12,12 @@ pub struct DeviceAuthorization {
     pub expires_in: u64,
 }
 
-/// Token values are secrets: `Debug` never prints them.
+/// The 200 answer of `POST /api/v1/auth/mobile-code-exchanges` and `POST /api/v1/auth/refresh-tokens`;
+/// `expires_in` is seconds. Token values are secrets: `Debug` never prints them.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionTokens {
-    pub access: String,
-    /// Absent for a desktop device token, which never rotates (13 §2).
-    pub refresh: Option<String>,
+    pub access_token: String,
+    pub refresh_token: String,
     pub expires_in: u64,
 }
 

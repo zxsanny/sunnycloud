@@ -84,7 +84,7 @@ impl FakeAuth {
             .expect("test clock stays in range");
         state.expires.insert(access.clone(), expires);
         state.refresh = refresh.clone();
-        json!({ "access": access, "refresh": refresh, "expires_in": ACCESS_TTL.as_secs() })
+        json!({ "access_token": access, "refresh_token": refresh, "expires_in": ACCESS_TTL.as_secs() })
     }
 
     /// A new sign-in (code exchange or device grant): a fresh valid pair, and the revocation is over.

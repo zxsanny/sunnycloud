@@ -48,7 +48,7 @@ Sources: `components/13_sync_core/description.md` §1, §2, §3, §7; `module-la
 | `DevicePoll` | `Token(DeviceToken)` \| `Pending` \| `SlowDown` \| `Denied` \| `Expired` | built from a 200 `{access_token, token_type: "Bearer"}` or a 400 code (AZ-4231) |
 | `DeviceToken` | `access_token`, `token_type` (`Bearer`) | a secret: never printed by `Debug` |
 | `DeviceRefusal` | `authorization_pending`, `slow_down`, `access_denied`, `expired_token` (`from_code`) | the four 400 codes of the poll |
-| `SessionTokens` | `access`, `refresh`, `expires_in` | token values are secrets: wrapped in `sync-core`, never `Debug`-printed |
+| `SessionTokens` | `access_token`, `refresh_token`, `expires_in` (seconds) | built from the 200 answer of `/auth/mobile-code-exchanges` and `/auth/refresh-tokens` (AZ-4236); token values are secrets: wrapped in `sync-core`, never `Debug`-printed |
 
 ### Functions and state machines
 
@@ -124,4 +124,4 @@ Sources: `components/13_sync_core/description.md` §1, §2, §3, §7; `module-la
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B09) |
-| 1.1.0 | 2026-11-12 | `DeviceAuthorization.expires_in`; `DevicePoll` decoded from the server's 200 token or 400 code; `DeviceToken`, `DeviceRefusal` | AZ-4231 |
+| 1.1.0 | 2026-11-12 | `SessionTokens` field names follow the server (`access_token`, `refresh_token`, AZ-4236); `DeviceAuthorization.expires_in`; `DevicePoll` decoded from the server's 200 token or 400 code; `DeviceToken`, `DeviceRefusal` | AZ-4231 |

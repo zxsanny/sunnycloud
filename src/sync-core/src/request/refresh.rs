@@ -45,13 +45,11 @@ impl RequestPath {
             }
             Err(error) => return Err(error),
         };
-        let Some(next) = tokens.refresh else {
-            return Err(SyncError::ProtocolViolation {
-                detail: "refresh answer without a refresh token",
-            });
-        };
-        self.persist(Secret::new(tokens.access), Secret::new(next))
-            .await?;
+        self.persist(
+            Secret::new(tokens.access_token),
+            Secret::new(tokens.refresh_token),
+        )
+        .await?;
         self.generation.fetch_add(1, Ordering::Release);
         Ok(())
     }

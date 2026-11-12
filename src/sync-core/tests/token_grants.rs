@@ -86,11 +86,7 @@ async fn a_new_sign_in_ends_the_stop_after_a_revoked_session() {
         .exchange_mobile_code("one-time", "verifier")
         .await
         .expect("the fake mints a pair");
-    let refresh = signed_in
-        .refresh
-        .clone()
-        .expect("a session has a refresh token");
-    credentials.store(&signed_in.access, &refresh);
+    credentials.store(&signed_in.access_token, &signed_in.refresh_token);
     let after = api.root_node().await;
 
     // Assert
@@ -102,12 +98,13 @@ async fn a_new_sign_in_ends_the_stop_after_a_revoked_session() {
 async fn a_reused_mobile_code_is_invalid_and_a_good_one_returns_the_session_tokens() {
     // Arrange
     let granted = SessionTokens {
-        access: "A".to_owned(),
-        refresh: Some("R".to_owned()),
+        access_token: "A".to_owned(),
+        refresh_token: "R".to_owned(),
         expires_in: 900,
     };
+    let answer = json!({ "access_token": "A", "refresh_token": "R", "expires_in": 900 });
     let script = Script::new()
-        .on(Route::MobileCodeExchange, Answer::json(200, &granted))
+        .on(Route::MobileCodeExchange, Answer::json(200, &answer))
         .on(
             Route::MobileCodeExchange,
             Answer::problem_with("invalid_code", 400, "Invalid code"),

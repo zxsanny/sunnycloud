@@ -1,12 +1,13 @@
 //! Folder create, rename, move and delete. Each call is one short transaction: `AccountGuard::ensure_active`
 //! first, the node writes, `FeedStamp::stamp` last, COMMIT, then `FeedNotifier::notify`. A failure rolls back
-//! and consumes no `seq`. Only a move takes the account advisory lock.
+//! and consumes no `seq`. Of these only a move takes the account advisory lock; `publish` (`crate::publish`) takes
+//! it too.
 
 use std::sync::Arc;
 
 use contracts::{
     AccountGuard, AccountGuardError, FeedNotifier, FeedStamp, FeedStampError, NodeKind, NodeState,
-    NodeView, Seq, TouchedNodes, TreeServiceError,
+    NodeView, QuotaLedger, Seq, TouchedNodes, TreeServiceError,
 };
 use sc_clock::Clock;
 use sc_db::{Db, DbError, DbTx, Scope};
@@ -20,19 +21,22 @@ use crate::retry::run_retrying;
 /// The unique index that keeps names unique per folder by `name_key`; it is the arbiter of a name conflict.
 const NAME_INDEX: &str = "nodes_parent_name_key";
 
-/// The tree mutations of `TreeService`. The trait itself is implemented once the path and device queries exist.
+/// The tree mutations of `TreeService` and the `TreeCommit` port. `TreeService` itself is implemented once the
+/// path and device queries exist.
 pub struct PgTreeService {
-    db: Db,
-    guard: Arc<dyn AccountGuard>,
-    stamp: Arc<dyn FeedStamp>,
-    notifier: Arc<dyn FeedNotifier>,
-    clock: Arc<dyn Clock>,
+    pub(crate) db: Db,
+    pub(crate) guard: Arc<dyn AccountGuard>,
+    pub(crate) quota: Arc<dyn QuotaLedger>,
+    pub(crate) stamp: Arc<dyn FeedStamp>,
+    pub(crate) notifier: Arc<dyn FeedNotifier>,
+    pub(crate) clock: Arc<dyn Clock>,
 }
 
 impl PgTreeService {
     pub fn new(
         db: Db,
         guard: Arc<dyn AccountGuard>,
+        quota: Arc<dyn QuotaLedger>,
         stamp: Arc<dyn FeedStamp>,
         notifier: Arc<dyn FeedNotifier>,
         clock: Arc<dyn Clock>,
@@ -40,6 +44,7 @@ impl PgTreeService {
         PgTreeService {
             db,
             guard,
+            quota,
             stamp,
             notifier,
             clock,

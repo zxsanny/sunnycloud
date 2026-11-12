@@ -1,16 +1,39 @@
-//! An account with its root folder and feed row, and `PgTreeService` wired to the real 05 stamp and notifier on
-//! the same database. Probes run as the superuser, so they see every row whatever the scope.
+//! An account with its root folder, feed row and quota row, and `PgTreeService` wired to the real 05 stamp and
+//! notifier and the real 07a ledger on the same database. Probes run as the superuser, so they see every row
+//! whatever the scope.
 
+use std::cell::Cell;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use contracts::{AccountGuard, AccountGuardError, async_trait};
+use contracts::{AccountGuard, AccountGuardError, FeedNotifier, Seq, async_trait};
 use sc_db::DbTx;
 use sqlx::PgConnection;
+use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
 use sunnycloud_sync_feed::{InProcessNotifier, PgFeedStamp};
 use sunnycloud_tree::PgTreeService;
 use uuid::Uuid;
 
+use crate::statements;
 use crate::support::{Fixture, account_with_root, node};
+
+/// The installation default limit of the ledger in these tests: large enough never to refuse.
+const DEFAULT_QUOTA: i64 = 1 << 40;
+
+tokio::task_local! {
+    /// The `seq` the notifier was woken with inside the current task, when a test scopes it.
+    pub static NOTIFIED: Cell<Option<Seq>>;
+}
+
+/// The real in-process notifier, observed: each wake is marked in the statement log and kept in [`NOTIFIED`].
+pub struct ProbeNotifier(pub Arc<InProcessNotifier>);
+
+impl FeedNotifier for ProbeNotifier {
+    fn notify(&self, account: Uuid, seq: Seq) {
+        statements::mark("notify");
+        let _outside_a_scope = NOTIFIED.try_with(|cell| cell.set(Some(seq)));
+        self.0.notify(account, seq);
+    }
+}
 
 /// The `AccountGuard` port backed at its boundary (the real guard is wired by E-13/c16): it reads the account
 /// state `FOR SHARE` as the identity guard does, and records whether the transaction had written or locked
@@ -57,7 +80,7 @@ impl AccountGuard for StateGuard {
 
 pub struct Tree {
     pub fixture: Fixture,
-    pub service: PgTreeService,
+    pub service: Arc<PgTreeService>,
     pub guard: Arc<StateGuard>,
     pub notifier: Arc<InProcessNotifier>,
     pub account: Uuid,
@@ -69,18 +92,20 @@ impl Tree {
         let fixture = Fixture::new().await;
         let account = Uuid::new_v4();
         let mut owner = fixture.owner_conn().await;
-        let root = account_with_root(&mut owner, account).await;
-        feed_row(&mut owner, account).await;
+        let root = account_rows(&mut owner, account).await;
         close(owner).await;
         let guard = Arc::new(StateGuard::default());
         let notifier = InProcessNotifier::new();
-        let service = PgTreeService::new(
+        let service = Arc::new(PgTreeService::new(
             fixture.api.clone(),
             guard.clone(),
+            Arc::new(PgQuotaLedger::new(QuotaConfig {
+                default_quota_bytes: DEFAULT_QUOTA,
+            })),
             Arc::new(PgFeedStamp),
-            notifier.clone(),
+            Arc::new(ProbeNotifier(notifier.clone())),
             sc_testdb::clock_at_start(),
-        );
+        ));
         Tree {
             fixture,
             service,
@@ -89,6 +114,15 @@ impl Tree {
             account,
             root,
         }
+    }
+
+    /// One more account on the same database, with its root, feed and quota rows; returns it and its root.
+    pub async fn add_account(&self) -> (Uuid, Uuid) {
+        let account = Uuid::new_v4();
+        let mut owner = self.fixture.owner_conn().await;
+        let root = account_rows(&mut owner, account).await;
+        close(owner).await;
+        (account, root)
     }
 
     /// The account's feed counter.
@@ -141,6 +175,18 @@ impl Tree {
         drop(service);
         fixture.finish().await;
     }
+}
+
+/// The account, its root, its feed row and its quota row; returns the root.
+async fn account_rows(conn: &mut PgConnection, account: Uuid) -> Uuid {
+    let root = account_with_root(conn, account).await;
+    feed_row(conn, account).await;
+    sqlx::query("INSERT INTO quota (account_id) VALUES ($1)")
+        .bind(account)
+        .execute(&mut *conn)
+        .await
+        .expect("insert quota row");
+    root
 }
 
 pub async fn feed_row(conn: &mut PgConnection, account: Uuid) {

@@ -78,9 +78,9 @@ Contract-test plan (completed 2026-11-11, AZ-3705): 02's real `publish` runs wit
 
 ## Open items
 
-- `Updated` versus `Replaced`: the difference is not defined (02 §2).
+- Decided 2026-11-12 (owner, AZ-3709): `Updated` = a commit whose `base_revision` is the current revision (a normal edit); `Replaced` = a commit without `base_revision` onto an existing live file.
 - Which of `BlocklistMismatch` and `NotFound` is the single foreign/unknown blob answer (02 risks (c)).
-- Part 2 open point 3: 08's job key needs the account id, which `PublishedEntry` lacks; E-13 decides whether `PublishedEntry` gains `account_id` or effects take it from `CommitActor`.
+- Decided 2026-11-12 (owner, AZ-3709): effects take the account id from `CommitActor`; `PublishedEntry` stays as it is (no contracts change).
 - Part 2 open point 4: `StoredResponse` must be 03's serialised `BatchResult` (see `../03_transfer/commit_service.md`).
 - Reviving an ancestor before the cascade has marked its descendants clears `cascade_pending`, so unmarked descendants come back live (E-13/c06).
 

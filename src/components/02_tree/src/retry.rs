@@ -1,4 +1,4 @@
-use contracts::TreeServiceError;
+use contracts::{TreeCommitError, TreeServiceError};
 use sc_db::{Db, DbError, DbTx, RunError, Scope};
 
 use crate::error::TreeError;
@@ -41,6 +41,19 @@ impl TxFailure for TreeServiceError {
     }
 }
 
+impl TxFailure for TreeCommitError {
+    fn from_db(error: DbError) -> Self {
+        TreeCommitError::Unexpected(Box::new(error))
+    }
+
+    fn db_error(&self) -> Option<&DbError> {
+        match self {
+            TreeCommitError::Unexpected(fault) => fault.downcast_ref::<DbError>(),
+            _ => None,
+        }
+    }
+}
+
 /// Runs `f` in one transaction scoped to `scope`. When the database aborts the transaction for a deadlock or a
 /// serialization failure, whether inside `f` or at commit, the whole unit of work runs once more in a new
 /// transaction. A second abort is returned as it is: the unexpected tier.
@@ -49,8 +62,23 @@ pub async fn run_retrying<T, E: TxFailure>(
     scope: Scope,
     f: impl AsyncFn(&mut DbTx) -> Result<T, E>,
 ) -> Result<T, E> {
-    match run_once(db, scope, &f).await {
-        Err(error) if aborted(&error) => run_once(db, scope, &f).await,
+    run_retrying_each(db, scope, || async |tx: &mut DbTx| f(tx).await).await
+}
+
+/// [`run_retrying`] with a fresh unit of work from `attempt` for each try. The future of a call through a borrowed
+/// `AsyncFn` is not provably `Send` for every lifetime, so a caller inside an `async_trait` method (whose future
+/// must be `Send`) builds each attempt by value instead.
+pub(crate) async fn run_retrying_each<
+    T,
+    E: TxFailure,
+    F: AsyncFnOnce(&mut DbTx) -> Result<T, E>,
+>(
+    db: &Db,
+    scope: Scope,
+    attempt: impl Fn() -> F,
+) -> Result<T, E> {
+    match run_once(db, scope, attempt()).await {
+        Err(error) if aborted(&error) => run_once(db, scope, attempt()).await,
         outcome => outcome,
     }
 }
@@ -58,14 +86,12 @@ pub async fn run_retrying<T, E: TxFailure>(
 async fn run_once<T, E: TxFailure>(
     db: &Db,
     scope: Scope,
-    f: &impl AsyncFn(&mut DbTx) -> Result<T, E>,
+    f: impl AsyncFnOnce(&mut DbTx) -> Result<T, E>,
 ) -> Result<T, E> {
-    db.run(scope, async |tx| f(tx).await)
-        .await
-        .map_err(|error| match error {
-            RunError::Closure(error) => error,
-            RunError::Db(error) => E::from_db(error),
-        })
+    db.run(scope, f).await.map_err(|error| match error {
+        RunError::Closure(error) => error,
+        RunError::Db(error) => E::from_db(error),
+    })
 }
 
 fn aborted(error: &impl TxFailure) -> bool {

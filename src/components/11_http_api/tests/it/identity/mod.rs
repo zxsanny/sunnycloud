@@ -10,6 +10,8 @@ mod limits;
 mod operations;
 mod redaction;
 mod registry;
+mod session_tokens_e2e;
 mod sessions;
 mod signin;
 mod support;
+mod tls_terminator;

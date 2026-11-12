@@ -4238,9 +4238,12 @@ dependencies = [
  "sc_names",
  "sc_testdb",
  "sqlx",
+ "sunnycloud-blobstore",
+ "sunnycloud-quota",
  "sunnycloud-sync-feed",
  "thiserror 2.0.21",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
