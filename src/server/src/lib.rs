@@ -16,6 +16,7 @@ mod handler;
 mod healthcheck;
 pub mod janitor;
 mod log;
+mod migration;
 mod outcome;
 mod output;
 mod run;

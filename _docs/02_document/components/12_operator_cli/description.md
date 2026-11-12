@@ -63,7 +63,7 @@
 | `admin media-stats` | `MediaAdmin::stats` | queue depth per lane and status; 0 |
 | `admin dev-seed` | `DevSeed::seed` | refused when `environment = production` |
 | `migrate [run]` | `Migrator::run_pending` (uses `db_migrator_url`) | see section 4 |
-| `migrate status` | `Migrator::status` (either role; the API role can read the migrations table) | applied, pending, dirty, unknown-newer; newer than binary -> 2 |
+| `migrate status` | `Migrator::status` (either role; the API role can read the migrations table) | applied, pending, dirty, checksum-mismatch, unknown-newer; any dirty version, checksum mismatch or newer-than-binary version -> 2 (owner decision 2026-11-12) |
 | `migrate revert [--steps N] --yes` | `Migrator::revert` (uses `db_migrator_url`) | CI and recovery only |
 | `doctor [--pre-flight] [--json] [--backup-interval D] [--attest-backup]` | every registered `DoctorCheck` (`--backup-interval` is a duration such as `24h`) | 0 ok, 1 warnings only, 2 any failure (a missing blob is a failure) |
 | `serve`, `healthcheck`, `openapi`, `version` | composition root + `HttpServer` / local | `serve` runs section 5 and exits non-zero when the schema is not current or the database epoch is below the `.epoch` marker; healthcheck probes `127.0.0.1:9090/readyz`; `openapi` prints the document used by CI diffs |

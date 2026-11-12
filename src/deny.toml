@@ -17,7 +17,16 @@ allow = [
     "ISC",
 ]
 # Only rustls-platform-verifier's wasm32 target pulls it (the Mozilla root bundle); no shipped host target links it.
-exceptions = [{ crate = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] }]
+exceptions = [
+    { crate = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] },
+    # vault-core (v1.2): UniFFI runtime crates of the mobile build (file-level copyleft, not GPL; iOS allowlist AZ-4007 AC-5).
+    { crate = "uniffi", allow = ["MPL-2.0"] },
+    { crate = "uniffi_core", allow = ["MPL-2.0"] },
+    { crate = "uniffi_internal_macros", allow = ["MPL-2.0"] },
+    { crate = "uniffi_macros", allow = ["MPL-2.0"] },
+    { crate = "uniffi_meta", allow = ["MPL-2.0"] },
+    { crate = "uniffi_pipeline", allow = ["MPL-2.0"] },
+]
 private = { ignore = true }
 
 [bans]

@@ -161,7 +161,7 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 | Devices (c12) | PATCH | `/api/v1/device-grants/{id}` | SO | Small | yes | `DeviceGrantService::decide` |
 | Devices (c12) | GET | `/api/v1/devices` | SO | None | no | `DeviceGrantService::list_devices` |
 | Devices (c12) | DELETE | `/api/v1/devices/{id}` | SO | None | yes | `DeviceGrantService::revoke_device` |
-| Devices (c12) | DELETE | `/api/v1/devices/me` | DO | None | yes | `DeviceGrantService::revoke_self` (Open point 2) |
+| Devices (c12) | DELETE | `/api/v1/devices/me` | DO | None | yes | `DeviceGrantService::revoke_self` (DeviceOnly, owner decision 2026-11-12) |
 | Account (c12) | GET | `/api/v1/accounts/me` | SoD | None | no | `AccountService::view` |
 | Account (c12) | DELETE | `/api/v1/accounts/me` | SO | Small | yes | `AccountDeletionService::request` (202) |
 | Account (c12) | GET | `/api/v1/accounts/me/quota` | SoD | None | no | `AccountService::quota_view` |

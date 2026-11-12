@@ -231,7 +231,8 @@ fn a_valid_configuration_gets_past_the_configuration_stage() {
     let serve = run(&watch, &setup, &["serve"]);
     let migrate = run(&watch, &setup, &["migrate"]);
 
-    // Assert: both stop at the command whose task has not landed (exit 2), not at configuration (exit 3).
+    // Assert: both get past configuration (exit 3) and stop later with exit 2: `serve` is not implemented yet and
+    // `migrate` finds no database behind the migrator URL.
     assert_eq!(serve.code(), Some(2), "{}", serve.stderr());
     assert_eq!(migrate.code(), Some(2), "{}", migrate.stderr());
 }
@@ -265,7 +266,8 @@ fn commands_that_use_no_provider_worker_token_or_master_key_get_past_configurati
         // Act
         let run = run(&watch, &setup, args);
 
-        // Assert: the command whose task has not landed stops at "not implemented" (2), never at configuration (3).
+        // Assert: each stops after configuration (exit 2: no database behind the URL, or not implemented yet),
+        // never at configuration (3).
         assert_eq!(run.code(), Some(2), "{args:?}: {}", run.stderr());
         assert!(!run.stderr().contains("invalid configuration"), "{args:?}");
         assert!(

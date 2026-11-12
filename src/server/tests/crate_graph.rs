@@ -155,7 +155,10 @@ fn violations(graph: &Graph) -> Vec<String> {
             if dep == "sunnycloud-server" {
                 found.push(format!("{} depends on sunnycloud-server", package.name));
             }
-            if dep == "wasm-bindgen" && package.name != "sync-core-wasm" {
+            if dep == "wasm-bindgen"
+                && package.name != "sync-core-wasm"
+                && package.name != "vault-core"
+            {
                 found.push(format!("{} depends on wasm-bindgen", package.name));
             }
             if package.name == "sync-core-wasm" && WASM_FORBIDDEN.contains(&dep.as_str()) {

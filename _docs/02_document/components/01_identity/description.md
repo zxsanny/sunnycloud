@@ -24,7 +24,7 @@ All methods are async; DB-touching methods take the unit-of-work handle `DbTx` (
 | `authenticate` | `Credential{Session(token)\|Device(token)}` | `Principal{account_id, kind, session_or_device_id, role, label}` | `Unauthenticated` (missing, unknown, expired, revoked: one variant, same DB path) |
 | `revalidate` | `&Principal` | `bool` | none (cache at most `session_cache_ttl`) |
 | `require` | `&Principal, Scope` | `Result<(), Forbidden>` | `Forbidden` |
-`Scope` = `Public`, `SessionOnly` (approve-device, create-share, delete-account, link-provider, device/session management), `SessionOrDevice` (tree, transfer, feed, quota read, `DELETE /devices/me`), `Admin` (session with role admin). Worker routes on the internal listener are not in this scope model: 08 `WorkerAuthenticator` owns them and a user or device token never opens them (AC-79). Every OpenAPI operation of the public listener declares one scope and CI fails on an operation without one.
+`Scope` = `Public`, `SessionOnly` (approve-device, create-share, delete-account, link-provider, device/session management), `SessionOrDevice` (tree, transfer, feed, quota read), `Admin` (session with role admin). `DELETE /devices/me` (`revoke_self`) is device-only (owner decision 2026-11-12): 11 declares it `DeviceOnly` and `revoke_self` refuses a session principal, so a browser removes a device through `DELETE /devices/{id}`. Worker routes on the internal listener are not in this scope model: 08 `WorkerAuthenticator` owns them and a user or device token never opens them (AC-79). Every OpenAPI operation of the public listener declares one scope and CI fails on an operation without one.
 
 ### SignInService
 | Method | Input | Output | Errors |
@@ -101,7 +101,7 @@ Methods that change account rows take the caller's `&mut DbTx`, so 07 can combin
 | `/api/v1/device-tokens` | POST | Public | poll with `device_code` (RFC 8628 error codes) |
 | `/api/v1/device-grants?user_code=` / `/{id}` | GET / PATCH | SessionOnly | view requester vs approver; `{decision}` |
 | `/api/v1/devices` / `/{id}` | GET / DELETE | SessionOnly | list, revoke device |
-| `/api/v1/devices/me` | DELETE | SessionOrDevice (device token) | a desktop revokes its own token (sign-out); a session principal is refused here |
+| `/api/v1/devices/me` | DELETE | DeviceOnly (owner decision 2026-11-12) | a desktop revokes its own token (sign-out); a session principal is refused |
 | `/api/v1/admin/invites` / `/{id}` | POST, GET / DELETE | Admin | invite management (member invites) |
 Mobile sign-in result is a normal `sessions` row (`client_kind` android/ios) with refresh rotation, not a device token (the device grant is desktop only and yields a sync-only token).
 

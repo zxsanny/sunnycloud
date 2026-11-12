@@ -56,7 +56,7 @@ Destructive commands: `admin user delete`, `admin rewrap`, `admin epoch-bump`, `
 |---------|-----------|---------------------|--------|------|------|
 | `serve` | none | composition root + `HttpServer` | start-up log lines | refusal non-zero; SIGTERM 0; SIGINT 130 | E-22/c05 |
 | `migrate [run]` | none | `Migrator::run_pending` (`db_migrator_url`) | applied versions | 0; failure, checksum mismatch, unknown-newer 2; missing migrator secret 3 | E-22/c07 |
-| `migrate status` | none | `Migrator::status` (either role) | applied, pending, dirty, unknown-newer | 0; unknown-newer 2 | E-22/c07 |
+| `migrate status` | none | `Migrator::status` (either role: the migrator secret when set, else the API URL) | applied, pending, dirty, checksum-mismatch, unknown-newer | 0; dirty, checksum mismatch or unknown-newer 2 (owner decision 2026-11-12) | E-22/c07 |
 | `migrate revert` | `[--steps N] --yes` | `Migrator::revert` | reverted versions | 0; `IrreversibleMigration` 2; no `--yes` on non-TTY 3 | E-22/c07 |
 | `admin setup-token` | none | `OperatorIdentityOps::ensure_setup_token` | token once and a sign-in hint | 0; `SetupNotAvailable` 2 with nothing on stdout | E-22/c08 |
 | `admin create` | `[--note] [--ttl]` | `OperatorIdentityOps::create_admin_invite` | invite token once and a sign-in hint | 0 | E-22/c08 |

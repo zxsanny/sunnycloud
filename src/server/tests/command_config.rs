@@ -39,7 +39,7 @@ fn problem_keys(error: &ConfigError) -> Vec<String> {
 }
 
 #[test]
-fn only_serve_and_the_migrator_step_ask_anything_of_configuration() {
+fn only_serve_and_the_migrate_commands_ask_anything_of_configuration() {
     // Act
     let unrestricted = [
         &["version"][..],
@@ -47,7 +47,6 @@ fn only_serve_and_the_migrator_step_ask_anything_of_configuration() {
         &["healthcheck"],
         &["key-check"],
         &["admin", "setup-token"],
-        &["migrate", "status"],
     ]
     .map(check_of);
 
@@ -55,6 +54,14 @@ fn only_serve_and_the_migrator_step_ask_anything_of_configuration() {
     assert!(unrestricted.iter().all(|c| *c == ConfigCheck::Unrestricted));
     assert_eq!(check_of(&["migrate"]), ConfigCheck::MigratorUrl);
     assert_eq!(check_of(&["migrate", "run"]), ConfigCheck::MigratorUrl);
+    assert_eq!(
+        check_of(&["migrate", "revert", "--yes"]),
+        ConfigCheck::MigratorUrl
+    );
+    assert_eq!(
+        check_of(&["migrate", "status"]),
+        ConfigCheck::AnyDatabaseUrl
+    );
     assert_eq!(check_of(&["serve"]), ConfigCheck::Server);
 }
 
@@ -97,6 +104,19 @@ fn the_migrator_step_binds_no_key_of_another_section() {
     assert!(keys.contains(&"db_migrator_url") && keys.contains(&"db_pool_max"));
     assert!(!keys.contains(&"db_api_url") && !keys.contains(&"master_key_file"));
     assert!(problem_keys(&serve).len() >= 6, "{serve:?}");
+}
+
+#[test]
+fn migrate_status_binds_the_database_keys_of_either_role_and_nothing_else() {
+    // Act
+    let keys = ConfigCheck::AnyDatabaseUrl.keys();
+
+    // Assert
+    assert!(keys.contains(&"db_migrator_url") && keys.contains(&"db_api_url"));
+    assert!(
+        keys.iter()
+            .all(|key| key.starts_with("db_") || *key == "environment")
+    );
 }
 
 #[test]

@@ -3,7 +3,7 @@
 **Component**: 01_identity
 **Producer task**: B04-03_authenticator_scopes_cache (E-15/c03)
 **Consumer tasks**: E-21/c07 (auth extraction per route class), E-12/c05 (long-poll auth recheck), E-15/c06, E-15/c07, E-15/c10 (revocation paths), E-15/c12, E-15/c13
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (freezes when the `DeviceOnly` question in Non-Goals is answered)
 **Last Updated**: 2026-11-04
 
@@ -45,6 +45,22 @@ How a caller's credential becomes a `Principal`, how the scope check works, and 
 
 `SessionOnly` covers at least approve-device, create-share, delete-account, link-provider and device/session management (AC-57). `SessionOrDevice` covers tree, transfer, feed and quota reads.
 
+## Scope table per identity operation (AZ-3693, 2026-11-12)
+
+The auth class each operation must declare in 11's route registry. The CI check `tests/it/registry/scopes.rs` (11_http_api) holds the same table, reads the generated OpenAPI document (`x-owner-method`, `x-auth-class`) and fails, naming the operation and its expected class, on any difference. 01 scope maps to 11 class one to one: `Public`, `SessionOnly`, `SessionOrDevice`, `Admin`.
+
+| Operation (owner method) | Scope |
+|---|---|
+| `SignInService::list_providers`, `begin`, `complete`, `exchange_mobile_code` | `Public` |
+| `SessionService::refresh` | `Public` |
+| `DeviceGrantService::request`, `poll` | `Public` |
+| `SessionService::list`, `revoke` | `SessionOnly` |
+| `SignInService::begin_link` | `SessionOnly` |
+| `DeviceGrantService::lookup_for_approval`, `decide`, `list_devices`, `revoke_device` | `SessionOnly` |
+| `InviteService::create_invite`, `list`, `revoke` | `Admin` |
+| AC-57, owned elsewhere: `ShareService::create` (06), `AccountDeletionService::request` (07) | `SessionOnly` |
+| `DeviceGrantService::revoke_self` (`DELETE /api/v1/devices/me`) | 11 class `DeviceOnly` (owner decision 2026-11-12; 01 has no device-only scope value, so the check names 11's class directly) |
+
 ## Invariants
 
 - Every dead credential yields the same `Unauthenticated` value and the same database work (one read on a unique hash index, no write); the reason is never exposed to the caller.
@@ -80,3 +96,4 @@ How a caller's credential becomes a `Principal`, how the scope check works, and 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B04) |
+| 1.1.0 | 2026-11-12 | Scope table per identity operation and its CI check | AZ-3693 |

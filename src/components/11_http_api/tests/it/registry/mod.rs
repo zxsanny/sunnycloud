@@ -7,6 +7,7 @@ mod naming;
 mod oas_validator;
 mod parity;
 mod placement;
+mod scopes;
 mod sources;
 mod spa;
 mod support;

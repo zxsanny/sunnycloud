@@ -11,7 +11,7 @@ use sc_config::{
     ApiSettings, ConfigError, ConfigSection, ConfigSources, Environment, KeyProblem, Reader,
     Reason, Settings, TABLE, load_keys,
 };
-use sc_db::DbConfig;
+use sc_db::{DbConfig, DbRole};
 use sunnycloud_admin::AdminConfig;
 use sunnycloud_blobstore::BlobstoreConfig;
 use sunnycloud_identity::IdentityConfig;
@@ -77,8 +77,11 @@ pub enum ConfigCheck {
     /// Nothing is checked here: `version`, `openapi` and `healthcheck` use no section, and for every other
     /// command the documents do not say which keys its builders read, so its task binds them.
     Unrestricted,
-    /// The database keys of the migrator step, and the migrator secret must be present (`migrate`, `migrate run`).
+    /// The database keys of the migrator step, and the migrator secret must be present (`migrate`, `migrate run`,
+    /// `migrate revert`).
     MigratorUrl,
+    /// The database keys of either role: the migrator secret when present, else the API URL (`migrate status`).
+    AnyDatabaseUrl,
     /// Every key `sunnycloud` reads, bound and validated (`serve`).
     Server,
 }
@@ -96,6 +99,12 @@ impl ConfigCheck {
                     (key.starts_with("db_") && *key != API_URL_KEY) || *key == "environment"
                 })
                 .collect(),
+            ConfigCheck::AnyDatabaseUrl => TABLE
+                .iter()
+                .filter(|spec| spec.read_by.contains(Reader::Api))
+                .map(|spec| spec.key)
+                .filter(|key| key.starts_with("db_") || *key == "environment")
+                .collect(),
             ConfigCheck::Server => TABLE
                 .iter()
                 .filter(|spec| spec.read_by.contains(Reader::Api))
@@ -110,10 +119,10 @@ impl Command {
         match self {
             Command::Serve => ConfigCheck::Server,
             Command::Migrate(args) => match args.action {
-                None | Some(MigrateAction::Run) => ConfigCheck::MigratorUrl,
-                Some(MigrateAction::Status | MigrateAction::Revert { .. }) => {
-                    ConfigCheck::Unrestricted
+                None | Some(MigrateAction::Run | MigrateAction::Revert { .. }) => {
+                    ConfigCheck::MigratorUrl
                 }
+                Some(MigrateAction::Status) => ConfigCheck::AnyDatabaseUrl,
             },
             _ => ConfigCheck::Unrestricted,
         }
@@ -125,12 +134,8 @@ pub(crate) async fn check(command: &Command, services: &ServiceContext) -> Resul
     let check = command.config_check();
     match check {
         ConfigCheck::Unrestricted => Ok(()),
-        ConfigCheck::MigratorUrl => {
-            let sources = services.get::<ConfigSources>().await?;
-            let settings = load_keys::<ApiSettings>(&sources, &check.keys())?;
-            if DbConfig::from_settings(&settings).db_migrator_url.is_none() {
-                return Err(ConfigError::MissingSecret(MIGRATOR_URL_KEY.to_owned()).into());
-            }
+        ConfigCheck::MigratorUrl | ConfigCheck::AnyDatabaseUrl => {
+            database(check, services).await?;
             Ok(())
         }
         ConfigCheck::Server => {
@@ -138,6 +143,25 @@ pub(crate) async fn check(command: &Command, services: &ServiceContext) -> Resul
             Ok(())
         }
     }
+}
+
+/// The database a `migrate` command connects to and the role it connects as: the migrator secret when present;
+/// without it, the API URL for [`ConfigCheck::AnyDatabaseUrl`] and a refusal naming the secret otherwise.
+pub(crate) async fn database(
+    check: ConfigCheck,
+    services: &ServiceContext,
+) -> Result<(DbConfig, DbRole), CliError> {
+    let sources = services.get::<ConfigSources>().await?;
+    let settings = load_keys::<ApiSettings>(&sources, &ConfigCheck::MigratorUrl.keys())?;
+    let migrator = DbConfig::from_settings(&settings);
+    if migrator.db_migrator_url.is_some() {
+        return Ok((migrator, DbRole::Migrator));
+    }
+    if check != ConfigCheck::AnyDatabaseUrl {
+        return Err(ConfigError::MissingSecret(MIGRATOR_URL_KEY.to_owned()).into());
+    }
+    let settings = load_keys::<ApiSettings>(&sources, &check.keys())?;
+    Ok((DbConfig::from_settings(&settings), DbRole::Api))
 }
 
 /// The settings of `serve`, bound with every key of the server table.

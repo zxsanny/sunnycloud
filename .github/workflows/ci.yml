@@ -173,3 +173,35 @@ jobs:
           scripts/ci/watchdog.sh --name check-release-symbols -- scripts/ci/check-release-symbols.sh
           --image sunnycloud-api:ci /usr/local/bin/sunnycloud
           --image sunnycloud-worker:ci /usr/local/bin/sunnycloud-worker
+
+  # v1.2 only (E-29, AZ-4007): the vault-core matrix (native, WASM, UniFFI). No v1.0 or v1.1 release build runs
+  # or links vault-core (ADR-016, FT-P-73); this PR gate job builds nothing that ships.
+  vault-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [native, wasm, uniffi]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src
+          key: vault-core-${{ matrix.leg }}-${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          cache-on-failure: true
+      - name: Install cargo-deny
+        if: matrix.leg == 'native'
+        run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-deny
+      - name: vault-core ${{ matrix.leg }} leg
+        run: scripts/ci/watchdog.sh --name vault-core-${{ matrix.leg }} -- src/vault-core/ci/vault-core-ci.sh ${{ matrix.leg }}
+      - name: cargo deny licence allowlist of the iOS build graph
+        if: matrix.leg == 'native'
+        run: scripts/ci/watchdog.sh --name vault-core-licences -- src/vault-core/ci/vault-core-ci.sh licences
+      - name: Swift leg (NOT-RUN(H-MAC) without the owner Mac; blocks only the release gate)
+        if: matrix.leg == 'uniffi'
+        run: scripts/ci/watchdog.sh --name vault-core-swift -- src/vault-core/ci/vault-core-ci.sh swift

@@ -8,3 +8,38 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+default = []
+# zxcvbn strength rule of check_passphrase (19 §3); off by default because of its WASM size (risk 5).
+passphrase-policy = ["dep:zxcvbn"]
+# The OS-backed RandomSource; native targets only (getrandom has no wasm32-unknown-unknown backend).
+os-rng = ["dep:getrandom"]
+uniffi = ["dep:uniffi"]
+# The WASM adapter (19 §5, wasm-bindgen =0.2.130, --target web); its exports come with E-29/c10.
+wasm = ["dep:wasm-bindgen"]
+# Only for the uniffi-bindgen binary that generates the Kotlin and Swift bindings in CI.
+uniffi-cli = ["uniffi", "uniffi/cli", "uniffi/cargo-metadata"]
+
+# Exact crypto pins of 19 §1. chacha20poly1305, blake3 and argon2 are declared here rather than through the
+# workspace table because their default features (getrandom, std, parallel) must stay off and an inherited
+# dependency cannot turn defaults off.
+[dependencies]
+chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["alloc"] }
+aead-stream = { workspace = true, features = ["alloc"] }
+argon2 = { version = "=0.6.0", default-features = false, features = ["alloc", "zeroize"] }
+blake3 = { version = "=1.8.7", default-features = false }
+zeroize = { version = "1.8", default-features = false, features = ["alloc"] }
+subtle = { workspace = true }
+zxcvbn = { version = "3.1", default-features = false, optional = true }
+getrandom = { workspace = true, optional = true }
+uniffi = { version = "=0.32.2", default-features = false, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.80"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["uniffi-cli"]
