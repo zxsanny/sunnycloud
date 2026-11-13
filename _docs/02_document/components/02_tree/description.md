@@ -122,7 +122,7 @@ Listing must stay an index scan plus PK lookups (CI plan check on DS-02 with the
 **Error handling**: typed `TreeError`, no catch-and-continue; unexpected DB errors go to the central handler.
 
 ## 6. Configuration keys
-`tombstone_horizon` (90d, shared with 05 for the horizon), `listing_default_limit` (1000), `listing_max_limit`, `cascade_batch_size` (5000), `purge_batch_size` (5000), `tree_maintenance_interval` (30 s; each tick drains cascade and purge until nothing is due within a time budget), `conflict_copy_time_zone` (UTC). `retention` is read by 04 only. Durations tests override with milliseconds.
+`tombstone_horizon` (90d, shared with 05 for the horizon), `listing_default_limit` (1000), `listing_max_limit`, `cascade_batch_size` (5000), `purge_batch_size` (5000), `tree_maintenance_interval` (30 s; each tick drains cascade and purge until nothing is due within a time budget), `conflict_copy_time_zone` (UTC; the only accepted value, other zones are refused at start, owner decision 2026-11-13). `retention` is read by 04 only. Durations tests override with milliseconds.
 
 ## 7. Security notes
 Every query carries `account_id`; foreign ids are 404 (AC-59 matrix). Names: server rejects `/`, NUL, `.`/`..`, control and bidi-control characters, over 255 bytes; accepts everything else (AC-37). RLS is defence in depth; maintenance loops use system scope through helper 07. Restore is operator-only (CLI, system scope).

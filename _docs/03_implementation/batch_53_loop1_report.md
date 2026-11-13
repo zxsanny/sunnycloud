@@ -36,7 +36,7 @@ Three parallel workers on disjoint crates (`02_tree`, `sync-core`, `01_identity`
 CI-parity (`CARGO_INCREMENTAL=0`): fmt, workspace clippy `-D warnings`, workspace tests on PostgreSQL 18 (3124 passed, 0 failed, 20 ignored), wasm build and the four check scripts all exit 0.
 
 No defect found in the reviewed paths (publish outcomes, the upload loop's checkpoint handling, the limiter and audit placement). Warnings (recorded):
-- `conflict_copy_time_zone` is accepted by the config (for example `Europe/Kyiv`) but not applied: helper 06 formats UTC only and `PgTreeService::new` has no `TreeConfig`. Names are UTC, the default. Owner question for the next batch: validate the key as UTC-only, or apply zones (time-zone data in helper 06 and the config handed to the service).
+- `conflict_copy_time_zone` is accepted by the config (for example `Europe/Kyiv`) but not applied: helper 06 formats UTC only and `PgTreeService::new` has no `TreeConfig`. Names are UTC, the default. Owner decision 2026-11-13: UTC only; `TreeConfig::validate` refuses any other value (`WrongType`), test `config::a_time_zone_other_than_utc_is_refused`.
 - `sync_conflict_copies_total` is not emitted: wiring a counter needs a `PgTreeService` constructor change and the composition root; ownership is open (E-09 / E-13).
 - `upload` and `upload_small` are inherent methods, not `SyncApi` trait methods (moving them needs every `SyncApi` test double to implement them); `sync_api.md` open point 9.
 - `HashedFile` carries no source identity: the before-commit check compares with the identity read when `upload` starts, plus the per-block hash check (open point 9).

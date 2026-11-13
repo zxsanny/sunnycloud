@@ -148,7 +148,7 @@ fn every_key_accepts_an_override() {
         ("SUNNYCLOUD_CASCADE_BATCH_SIZE", "7"),
         ("SUNNYCLOUD_PURGE_BATCH_SIZE", "9"),
         ("SUNNYCLOUD_TREE_MAINTENANCE_INTERVAL", "250ms"),
-        ("SUNNYCLOUD_CONFLICT_COPY_TIME_ZONE", "Europe/Kyiv"),
+        ("SUNNYCLOUD_CONFLICT_COPY_TIME_ZONE", " UTC "),
     ];
 
     // Act
@@ -164,7 +164,7 @@ fn every_key_accepts_an_override() {
             cascade_batch_size: 7,
             purge_batch_size: 9,
             tree_maintenance_interval: Duration::from_millis(250),
-            conflict_copy_time_zone: "Europe/Kyiv".to_owned(),
+            conflict_copy_time_zone: " UTC ".to_owned(),
         }
     );
     assert_eq!(config.validate(), Vec::new());
@@ -207,6 +207,15 @@ fn a_blank_time_zone_is_refused() {
     assert_refused_then_accepted(
         "conflict_copy_time_zone",
         |config| config.conflict_copy_time_zone = " ".to_owned(),
+        |config| config.conflict_copy_time_zone = "UTC".to_owned(),
+    );
+}
+
+#[test]
+fn a_time_zone_other_than_utc_is_refused() {
+    assert_refused_then_accepted(
+        "conflict_copy_time_zone",
+        |config| config.conflict_copy_time_zone = "Europe/Kyiv".to_owned(),
         |config| config.conflict_copy_time_zone = "UTC".to_owned(),
     );
 }

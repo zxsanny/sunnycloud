@@ -6,6 +6,8 @@ use sc_config::{KeyProblem, Reason, Settings};
 pub const DEFAULT_PURGE_BATCH_SIZE: u64 = 5000;
 /// `tree_maintenance_interval` when the key is unset; the key table has no default for it.
 pub const DEFAULT_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(30);
+/// The only accepted value of `conflict_copy_time_zone`.
+const CONFLICT_COPY_TIME_ZONE: &str = "UTC";
 
 /// The tree section of the key table, typed. Defaults and the production range of `tombstone_horizon` come from
 /// `sc_config`; the two keys that table leaves unset take the defaults above.
@@ -61,11 +63,18 @@ impl TreeConfig {
         if self.tree_maintenance_interval.is_zero() {
             problems.push(at_least("tree_maintenance_interval", "1ms"));
         }
-        if self.conflict_copy_time_zone.trim().is_empty() {
-            problems.push(KeyProblem::new(
+        // Conflict-copy names are formatted in UTC only (owner decision 2026-11-13): another zone would be
+        // accepted and silently ignored, so it is refused at start.
+        match self.conflict_copy_time_zone.trim() {
+            "" => problems.push(KeyProblem::new(
                 "conflict_copy_time_zone",
                 Reason::MissingRequired,
-            ));
+            )),
+            CONFLICT_COPY_TIME_ZONE => {}
+            _ => problems.push(KeyProblem::new(
+                "conflict_copy_time_zone",
+                Reason::WrongType,
+            )),
         }
         problems
     }
