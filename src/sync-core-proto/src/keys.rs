@@ -23,6 +23,7 @@ pub fn reuse_or_new_key(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 pub enum BatchIdError {
     #[error("a batch commit id is a UUIDv7")]
     NotV7,

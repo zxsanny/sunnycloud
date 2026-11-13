@@ -49,6 +49,18 @@ const INSERT_CODE: &str = "INSERT INTO login_codes (code_hash, account_id, code_
 const CONSUME_CODE: &str = "DELETE FROM login_codes WHERE code_hash = $1 \
     RETURNING account_id, code_challenge, client_kind, (extract(epoch FROM expires_at) * 1000000)::bigint";
 
+const DELETE_FOR_ACCOUNT: &str = "DELETE FROM login_codes WHERE account_id = $1";
+
+/// Deletes the unexchanged codes of `account`, so none of them mints a session later.
+pub(crate) async fn delete_for_account(tx: &mut DbTx, account: Uuid) -> Result<(), DbError> {
+    sqlx::query(DELETE_FOR_ACCOUNT)
+        .bind(account)
+        .execute(tx.conn())
+        .await
+        .map(drop)?;
+    Ok(())
+}
+
 pub(crate) async fn insert(tx: &mut DbTx, code: &NewLoginCode<'_>) -> Result<(), DbError> {
     sqlx::query(INSERT_CODE)
         .bind(code.code_hash.as_bytes().as_slice())

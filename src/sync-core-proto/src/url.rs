@@ -3,6 +3,7 @@ use std::fmt;
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 pub enum UrlError {
     /// The scheme is `http` and the caller's build does not allow plain HTTP (AC-54).
     #[error("plain http is not allowed")]

@@ -1,6 +1,8 @@
 //! The statements that run before the caller's account is known (system scope) and the session insert of a
 //! sign-in. The four system-scope doors of the device grant are here too, because a pending grant has no
-//! account; their statements are in `device_grant_repo`. The credential probes of the authenticator are one statement each: a read on a unique `*_hash` index
+//! account; their statements are in `device_grant_repo`. So are the doors of the invites and the setup token
+//! (`invites` belongs to no account) and of the operator's admin reset, whose statements are in `invite_repo`,
+//! `registration_repo` and `operator_repo`. The credential probes of the authenticator are one statement each: a read on a unique `*_hash` index
 //! (authenticate) or on the primary key (revalidate), joined to the account. Expiry, revocation and account
 //! state are returned as columns and decided in code, never in the `WHERE` clause, so every dead credential
 //! costs the same database work.
@@ -10,20 +12,20 @@ use std::sync::Arc;
 use sc_clock::Timestamp;
 use sc_db::{Db, DbError, RunError, Scope};
 use sc_ids::TokenHash;
-use thiserror::Error;
 use uuid::Uuid;
 
-use contracts::{AccountLifecycleHook, Decision, LifecycleError, PrincipalKind};
-use sc_audit::{AuditError, AuditWriter};
+use contracts::{AccountLifecycleHook, Decision, PrincipalKind};
+use sc_audit::AuditWriter;
 
-use crate::account_repo::{self, ListedAccount, NewIdentity};
-use crate::audit_events;
+use crate::account_repo::{self, ListedAccount};
 use crate::device_grant_repo::{
     self, Approver, DecideOutcome, NewDeviceToken, NewGrant, PendingGrant, PollStep,
 };
-use crate::invite_repo;
+use crate::invite_repo::{self, ListedInvite, NewInvite};
 use crate::janitor_repo::{self, Target};
 use crate::login_code_repo;
+use crate::operator_repo::{self, ResetError};
+use crate::registration_repo::{self, CreateError, NewRegistration, Redeemed};
 use crate::session_repo::{self, NewSession};
 
 /// Columns of a probe, undecided.
@@ -296,79 +298,68 @@ pub(crate) async fn identity_by_provider_id(
     )
 }
 
-/// An account created from an invite: the rows identity writes and what the provider said about the user.
-pub(crate) struct NewRegistration<'a> {
-    pub invite_token_hash: &'a [u8],
-    pub account_id: Uuid,
-    pub display_name: &'a str,
-    pub identity: NewIdentity<'a>,
-    pub now: Timestamp,
-}
-
-/// Why the account-creation transaction rolled back.
-#[derive(Debug, Error)]
-pub(crate) enum CreateError {
-    /// No open invite for the token, or a concurrent redemption won the race.
-    #[error("the invite is not redeemable")]
-    InviteNotRedeemable,
-    #[error("an account lifecycle hook failed")]
-    Hook(#[source] LifecycleError),
-    /// The mandatory `account_created` event was not written; nothing was created.
-    #[error("the account-created audit event was not written")]
-    Audit(#[source] AuditError),
-    /// The invite carries a role outside the `invites_grants_role` CHECK; a damaged database.
-    #[error("unexpected invite role")]
-    UnexpectedRole,
-    #[error(transparent)]
-    Db(#[from] DbError),
-}
-
-/// The audit code of an invite's `grants_role`.
-fn role_code(role: &str) -> Option<&'static str> {
-    match role {
-        "user" => Some("user"),
-        "admin" => Some("admin"),
-        _ => None,
-    }
-}
-
-/// Creates the account in one transaction: the `accounts` and `identities` rows, `initialize` of every hook in
-/// registration order, the conditional redemption, then the mandatory `account_created` audit event as the last
-/// statement. Any failure rolls all of it back, so the invite stays redeemable. System scope: the invite is
-/// resolved before any account exists, and the feed hook reads the installation epoch from the other accounts'
-/// rows.
-pub(crate) async fn create_account(
+/// Redeems the token an unknown identity presented (`registration_repo`): an account created from an invite or
+/// the setup token, or the identity bound to a re-bind invite's account. System scope: the token is resolved
+/// before any account is known, and the feed hook reads the installation epoch from the other accounts' rows.
+pub(crate) async fn redeem_invite(
     db: &Db,
     registration: &NewRegistration<'_>,
-    hooks: &[Arc<dyn AccountLifecycleHook>],
+    hooks: Option<&[Arc<dyn AccountLifecycleHook>]>,
     audit: &AuditWriter,
-) -> Result<(), RunError<CreateError>> {
-    let (account, now) = (registration.account_id, registration.now);
+) -> Result<Redeemed, RunError<CreateError>> {
     db.run_system("account_create", async |tx| {
-        let invite = invite_repo::open_invite(tx, registration.invite_token_hash, now)
-            .await?
-            .ok_or(CreateError::InviteNotRedeemable)?;
-        account_repo::insert_account(
-            tx,
-            account,
-            registration.display_name,
-            &invite.grants_role,
-            now,
-        )
-        .await?;
-        account_repo::insert_identity(tx, &registration.identity).await?;
-        for hook in hooks {
-            hook.initialize(tx, account)
-                .await
-                .map_err(CreateError::Hook)?;
-        }
-        if !invite_repo::redeem(tx, invite.id, account, now).await? {
-            return Err(CreateError::InviteNotRedeemable);
-        }
-        let role = role_code(&invite.grants_role).ok_or(CreateError::UnexpectedRole)?;
-        let event =
-            audit_events::account_created(account, registration.identity.id, invite.id, role);
-        audit.record_in(tx, event).await.map_err(CreateError::Audit)
+        registration_repo::redeem(tx, registration, hooks, audit).await
+    })
+    .await
+}
+
+/// Stores a new token row. `invites` belongs to no account: system scope.
+pub(crate) async fn insert_invite(
+    db: &Db,
+    invite: &NewInvite<'_>,
+) -> Result<(), RunError<DbError>> {
+    db.run_system("invite_create", async |tx| {
+        invite_repo::insert(tx, invite).await
+    })
+    .await
+}
+
+/// Member and operator admin invites for the admin list; `invites` belongs to no account: system scope.
+pub(crate) async fn list_invites(db: &Db) -> Result<Vec<ListedInvite>, RunError<DbError>> {
+    db.run_system("invite_list", async |tx| invite_repo::list(tx).await)
+        .await
+}
+
+/// Revokes an open member or admin invite; `false` when there is none. System scope, as `insert_invite`.
+pub(crate) async fn revoke_invite(db: &Db, id: Uuid) -> Result<bool, RunError<DbError>> {
+    db.run_system("invite_revoke", async |tx| {
+        invite_repo::revoke(tx, id).await
+    })
+    .await
+}
+
+/// The setup token, issued only while no account exists: the check reads every account, system scope.
+pub(crate) async fn replace_setup_token(
+    db: &Db,
+    setup: &NewInvite<'_>,
+) -> Result<bool, RunError<DbError>> {
+    db.run_system("setup_token", async |tx| {
+        operator_repo::replace_setup_token(tx, setup).await
+    })
+    .await
+}
+
+/// The operator's admin reset (no caller account): it writes the account's credentials and an invite, system
+/// scope.
+pub(crate) async fn reset_admin(
+    db: &Db,
+    account: Uuid,
+    rebind: &NewInvite<'_>,
+    now: Timestamp,
+    audit: &AuditWriter,
+) -> Result<(), RunError<ResetError>> {
+    db.run_system("admin_reset", async |tx| {
+        operator_repo::reset_admin(tx, account, rebind, now, audit).await
     })
     .await
 }

@@ -14,6 +14,7 @@ pub mod auth;
 pub mod device;
 pub mod fixtures;
 pub mod geoip;
+pub mod invites;
 pub mod logs;
 pub mod provider;
 pub mod registration;

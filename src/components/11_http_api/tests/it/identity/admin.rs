@@ -259,6 +259,24 @@ async fn an_invite_shows_its_token_once_and_the_list_never_shows_one() {
 }
 
 #[tokio::test]
+async fn revoking_an_unknown_revoked_or_redeemed_invite_is_404() {
+    // Arrange
+    let stack = Stack::start().await;
+    stack.script.push(
+        "InviteService::revoke",
+        Err::<(), InviteError>(InviteError::NotFound),
+    );
+    let path = format!("/api/v1/admin/invites/{INVITE}");
+
+    // Act
+    let reply = as_admin(&stack, "DELETE", &path, "").await;
+
+    // Assert
+    assert_eq!((reply.status, reply.code().as_str()), (404, "not_found"));
+    stack.stop().await;
+}
+
+#[tokio::test]
 async fn no_admin_route_is_open_to_a_member_a_device_or_no_credential() {
     // Arrange
     let stack = Stack::start().await;

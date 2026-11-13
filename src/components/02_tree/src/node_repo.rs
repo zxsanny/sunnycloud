@@ -187,7 +187,7 @@ pub(crate) async fn view(
     row.map(|row| node_view(id, &row)).transpose()
 }
 
-fn node_view(id: Uuid, row: &PgRow) -> Result<NodeView, DbError> {
+pub(crate) fn node_view(id: Uuid, row: &PgRow) -> Result<NodeView, DbError> {
     let deleted: bool = row.try_get(3)?;
     let content_hash: Option<Vec<u8>> = row.try_get(6)?;
     let client_mtime: Option<i64> = row.try_get(8)?;
@@ -212,7 +212,7 @@ fn node_view(id: Uuid, row: &PgRow) -> Result<NodeView, DbError> {
     })
 }
 
-fn kind(row: &PgRow, index: usize) -> Result<NodeKind, DbError> {
+pub(crate) fn kind(row: &PgRow, index: usize) -> Result<NodeKind, DbError> {
     match row.try_get::<&str, _>(index)? {
         "file" => Ok(NodeKind::File),
         "folder" => Ok(NodeKind::Folder),
@@ -220,7 +220,7 @@ fn kind(row: &PgRow, index: usize) -> Result<NodeKind, DbError> {
     }
 }
 
-fn file_hash(bytes: Vec<u8>) -> Result<FileHash, DbError> {
+pub(crate) fn file_hash(bytes: Vec<u8>) -> Result<FileHash, DbError> {
     let bytes: [u8; 32] = bytes.try_into().map_err(|bytes: Vec<u8>| {
         DbError::Other(format!("content hash of {} bytes", bytes.len()))
     })?;

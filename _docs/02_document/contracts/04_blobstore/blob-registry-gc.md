@@ -2,7 +2,7 @@
 
 **Component**: 04_blobstore
 **Producer task**: E-10/c09 — `_docs/02_tasks/todo/B02-09_blob_registry_gc_queue.md` (`BlobRegistry`, `BlobCatalog`, `GcQueue`); E-10/c10 — `B02-10_gc_sweeper.md` (`GcSweeper` and its calls into `BlobOwnerCleanup`) (both renamed to their AZ keys at Step 4)
-**Consumer tasks**: E-13 tree (GC scheduling in publish, delete, cascade and purge; reinstate in restore; ownership check through `BlobCatalog`; implements `BlobOwnerCleanup` in E-13/c13), E-14 transfer (register rows, `get_ref` for downloads, row removal by the session reaper), E-18 media_jobs (derived rows, `Due::Now` scheduling, implements `BlobOwnerCleanup` in E-18/c10), E-17 / E-13 erase hooks (`pending_for_account`), E-22 (`admin gc-run`, scheduler)
+**Consumer tasks**: E-13 tree (GC scheduling in publish, delete, cascade and purge; reinstate in restore; ownership check by the composite foreign key on `revisions`, not through `BlobCatalog` (AZ-3712, 2026-11-13); implements `BlobOwnerCleanup` in E-13/c13), E-14 transfer (register rows, `get_ref` for downloads, row removal by the session reaper), E-18 media_jobs (derived rows, `Due::Now` scheduling, implements `BlobOwnerCleanup` in E-18/c10), E-17 / E-13 erase hooks (`pending_for_account`), E-22 (`admin gc-run`, scheduler)
 **Version**: 1.0.0
 **Status**: draft (frozen when E-10/c10 is accepted)
 **Last Updated**: 2026-11-04

@@ -4,6 +4,7 @@ use bytes::Bytes;
 
 /// Size and modification time (nanoseconds since the Unix epoch) of a source file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct FileIdentity {
     pub size: u64,
     pub mtime_ns: i64,
@@ -31,6 +32,7 @@ pub trait DownloadSink: Send + Sync {
 
 /// Progress of one operation. `on_progress` must be cheap; the unit (bytes or blocks) is chosen by each
 /// operation and counts acknowledged work only.
+#[cfg_attr(feature = "uniffi", uniffi::export(with_foreign))]
 pub trait ProgressSink: Send + Sync {
     fn on_progress(&self, done: u64, total: u64);
 }

@@ -8,6 +8,7 @@ use thiserror::Error;
 ///
 /// The derived order relies on the field order: `epoch` first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Cursor {
     pub epoch: u64,
     pub seq: u64,

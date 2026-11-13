@@ -79,6 +79,7 @@ fn identity_rows(id: CorrelationId) -> Vec<Row> {
         Code(ErrorCode::NotFound) => DeviceGrantError::NotFound,
         Code(ErrorCode::Forbidden) => DeviceGrantError::Forbidden,
         Fault => DeviceGrantError::Unexpected(fault()),
+        Code(ErrorCode::NotFound) => InviteError::NotFound,
         Fault => InviteError::Unexpected(fault()),
     ]
 }

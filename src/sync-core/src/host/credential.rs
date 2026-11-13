@@ -7,6 +7,7 @@ use thiserror::Error;
 ///
 /// Both values are `Secret`s, so no formatting of a credential shows them.
 #[derive(Clone)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Credential {
     pub access: Secret<String>,
     pub refresh: Option<Secret<String>>,

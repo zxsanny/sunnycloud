@@ -4,6 +4,7 @@ use crate::MAX_CLIENT_LANES;
 
 /// `GET /api/v1/server-info`. Unknown fields are ignored.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ServerInfo {
     pub block_size: u64,
     pub max_lanes: u32,

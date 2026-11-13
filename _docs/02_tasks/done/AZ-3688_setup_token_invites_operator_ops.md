@@ -112,8 +112,8 @@ Then the outcome is the one recorded by E-15/c01 (allowed as in AC-5, or refused
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `revoke` of an unknown or already redeemed invite: result not stated in 01 | E-15 owner | open | Low |
-| `reset_admin` revokes sessions only; whether the admin's device tokens are also revoked is not stated | E-15 owner | open | Low |
+| `revoke` of an unknown or already redeemed invite: result not stated in 01 | E-15 owner | resolved 2026-11-13 (owner): `NotFound` for unknown, revoked or redeemed alike, so revoke reveals nothing | Low |
+| `reset_admin` revokes sessions only; whether the admin's device tokens are also revoked is not stated | E-15 owner | resolved 2026-11-13 (owner): `reset_admin` also revokes the admin's device tokens | Low |
 | G-12-3 owner answer: reset of the only active admin is allowed (2026-11-11, AZ-3681) | Product owner | resolved | Low |
 
 ## Contract

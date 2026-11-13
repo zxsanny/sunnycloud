@@ -110,16 +110,25 @@ fn quota_admin(e: &QuotaAdminError) -> &'static str {
     }
 }
 
-fn only_unexpected() -> [&'static str; 5] {
+fn invite(e: &InviteError) -> &'static str {
+    match e {
+        InviteError::NotFound => "NotFound",
+        InviteError::Unexpected(_) => "Unexpected",
+    }
+}
+
+fn operator(e: &OperatorIdentityError) -> &'static str {
+    match e {
+        OperatorIdentityError::NotFound => "NotFound",
+        OperatorIdentityError::NotAnAdmin => "NotAnAdmin",
+        OperatorIdentityError::Unexpected(_) => "Unexpected",
+    }
+}
+
+fn only_unexpected() -> [&'static str; 3] {
     [
         match RevalidatorError::Unexpected(fault()) {
             RevalidatorError::Unexpected(_) => "Unexpected",
-        },
-        match InviteError::Unexpected(fault()) {
-            InviteError::Unexpected(_) => "Unexpected",
-        },
-        match OperatorIdentityError::Unexpected(fault()) {
-            OperatorIdentityError::Unexpected(_) => "Unexpected",
         },
         match AccountAdminError::Unexpected(fault()) {
             AccountAdminError::Unexpected(_) => "Unexpected",
@@ -288,7 +297,23 @@ fn admin_and_quota_variants_match_the_contract_tables() {
         ["QuotaExceeded", "InvariantViolation", "Unexpected"]
     );
     assert_eq!(quota_names, ["NotFound", "InvalidLimit", "Unexpected"]);
-    assert_eq!(only_unexpected(), ["Unexpected"; 5]);
+    assert_eq!(only_unexpected(), ["Unexpected"; 3]);
+}
+
+#[test]
+fn invite_and_operator_variants_match_the_operator_identity_ops_contract() {
+    let invite_names = [
+        invite(&InviteError::NotFound),
+        invite(&InviteError::Unexpected(fault())),
+    ];
+    let operator_names = [
+        operator(&OperatorIdentityError::NotFound),
+        operator(&OperatorIdentityError::NotAnAdmin),
+        operator(&OperatorIdentityError::Unexpected(fault())),
+    ];
+
+    assert_eq!(invite_names, ["NotFound", "Unexpected"]);
+    assert_eq!(operator_names, ["NotFound", "NotAnAdmin", "Unexpected"]);
 }
 
 #[test]

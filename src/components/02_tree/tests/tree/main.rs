@@ -1,7 +1,8 @@
 //! Tree skeleton (AZ-3706): settings, typed errors, the retry-once rule and the `nodes`/`revisions` migration;
 //! folder create, rename, move and delete (AZ-3708); `TreeCommit::publish` (AZ-3709); the account lifecycle hook
 //! and the blob owner cleanup (AZ-3717, AZ-3925 AC-4); the cascade and purge janitors (AZ-3714); the conflict
-//! outcomes of `publish` (AZ-3710); on a real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
+//! outcomes of `publish` (AZ-3710); the node and listing reads (AZ-3707); the blob ownership check of `publish`
+//! (AZ-3712); on a real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
 
 mod config;
 mod conflict_support;
@@ -24,12 +25,16 @@ mod mutation_names;
 mod mutation_noop;
 mod mutation_support;
 mod publish_batch;
+mod publish_blob_owner;
 mod publish_concurrency;
 mod publish_conflicts;
 mod publish_outcomes;
 mod publish_protocol;
 mod publish_revival;
 mod publish_support;
+mod reader_listing;
+mod reader_lookups;
+mod reader_support;
 mod retry;
 mod rls;
 mod statements;

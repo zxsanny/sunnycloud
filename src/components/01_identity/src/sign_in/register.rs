@@ -1,7 +1,8 @@
-//! The registration branch of `complete`: an unknown identity that presented an invite becomes an account, in
-//! one short transaction that also runs every registered `AccountLifecycleHook::initialize` (01 §2,
-//! AccountLifecycleHook; contract `account_creation_hooks.md`). The provider exchange has finished before it
-//! opens.
+//! The registration branch of `complete`: an unknown identity that presented a token redeems it in one short
+//! transaction (`registration_repo`). A member or operator admin invite, or the setup token while no account
+//! exists, creates an account and runs every registered `AccountLifecycleHook::initialize` (01 §2; contract
+//! `account_creation_hooks.md`); a re-bind invite binds the identity to its existing account and runs no hook
+//! (contract `operator_identity_ops.md`). The provider exchange has finished before the transaction opens.
 
 use std::sync::Arc;
 
@@ -11,9 +12,10 @@ use sc_ids::new_id;
 
 use super::{ACTIVE, IdentitySignIn, unexpected};
 use crate::account_repo::{IDENTITY_KEY, NewIdentity};
-use crate::auth_repo::{self, CreateError, KnownIdentity, NewRegistration};
+use crate::auth_repo::{self, KnownIdentity};
 use crate::error::{HooksAlreadyRegistered, IdentityError};
 use crate::provider::ProviderIdentity;
+use crate::registration_repo::{CreateError, NewRegistration, Redeemed};
 
 /// The display name of a new account whose provider sent neither a name nor a username.
 const DEFAULT_DISPLAY_NAME: &str = "User";
@@ -28,9 +30,10 @@ impl IdentitySignIn {
         self.hooks.set(hooks).map_err(|_| HooksAlreadyRegistered)
     }
 
-    /// Creates the account of `identity` from the invite whose token hashes to `invite_token_hash`. No invite,
-    /// an unknown, expired or already redeemed one, a lost race, and (with `email_allowlist` set) an email that
-    /// is missing or not on the list are all `InvitationRequired`, with nothing written.
+    /// Redeems for `identity` the token that hashes to `invite_token_hash`: the created or re-bound account. No
+    /// token, an unknown, expired or already redeemed one, a setup token while an account exists, a lost race,
+    /// and (with `email_allowlist` set) an email that is missing or not on the list are all
+    /// `InvitationRequired`, with nothing written.
     pub(super) async fn register(
         &self,
         provider: &str,
@@ -41,10 +44,7 @@ impl IdentitySignIn {
         if !self.email_allowed(identity.email.as_deref()) {
             return Err(SignInError::InvitationRequired);
         }
-        let hooks = self.hooks.get().ok_or_else(|| {
-            tracing::error!("account_hooks_not_registered");
-            unexpected(IdentityError::HooksNotRegistered)
-        })?;
+        let hooks = self.hooks.get().map(Vec::as_slice);
         let now = self.clock.now_utc();
         let (account_id, identity_id) = (new_id(self.clock.as_ref()), new_id(self.clock.as_ref()));
         let registration = NewRegistration {
@@ -64,12 +64,21 @@ impl IdentitySignIn {
             },
             now,
         };
-        match auth_repo::create_account(&self.db, &registration, hooks, &self.audit).await {
-            Ok(()) => Ok(KnownIdentity {
+        match auth_repo::redeem_invite(&self.db, &registration, hooks, &self.audit).await {
+            Ok(Redeemed::Created) => Ok(KnownIdentity {
                 identity_id,
                 account_id,
                 account_state: ACTIVE.to_owned(),
             }),
+            Ok(Redeemed::Rebound { account, state }) => Ok(KnownIdentity {
+                identity_id,
+                account_id: account,
+                account_state: state,
+            }),
+            Err(RunError::Closure(CreateError::HooksNotRegistered)) => {
+                tracing::error!("account_hooks_not_registered");
+                Err(unexpected(IdentityError::HooksNotRegistered))
+            }
             Err(RunError::Closure(CreateError::InviteNotRedeemable)) => {
                 Err(SignInError::InvitationRequired)
             }

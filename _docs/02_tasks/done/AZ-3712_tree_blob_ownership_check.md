@@ -91,5 +91,5 @@ Then the entry is `Created`
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| Which of `BlocklistMismatch` and `NotFound` is the single answer is not fixed (02 risks (c)); E-21 maps it to the wire | E-13 owner, E-21 | open | Low |
+| Which of `BlocklistMismatch` and `NotFound` is the single answer is not fixed (02 risks (c)); E-21 maps it to the wire | E-13 owner, E-21 | resolved 2026-11-13 (owner): `BlocklistMismatch`, as `publish` already answers an unknown blob | Low |
 | ST-02-4 in tests.md is still marked BLOCKED; the owner was fixed at the Step 5 gap pass | tests.md writers | resolved | Low |

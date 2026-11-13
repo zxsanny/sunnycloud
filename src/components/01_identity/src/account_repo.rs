@@ -25,6 +25,10 @@ const TOUCH_IDENTITY: &str = "UPDATE identities \
 
 const LOCK_STATE: &str = "SELECT state FROM accounts WHERE id = $1 FOR UPDATE";
 
+const LOCK_ROLE_STATE: &str = "SELECT role, state FROM accounts WHERE id = $1 FOR UPDATE";
+
+const DELETE_IDENTITIES: &str = "DELETE FROM identities WHERE account_id = $1";
+
 const SET_ROLE: &str = "UPDATE accounts SET role = $2 WHERE id = $1";
 
 const SET_STATE: &str = "UPDATE accounts SET state = $2 WHERE id = $1";
@@ -49,7 +53,7 @@ const DELETE_OWNED: [&str; 5] = [
     "DELETE FROM device_grants WHERE account_id = $1",
     "DELETE FROM device_tokens WHERE account_id = $1",
     "DELETE FROM sessions WHERE account_id = $1",
-    "DELETE FROM identities WHERE account_id = $1",
+    DELETE_IDENTITIES,
 ];
 
 const DELETE_ACCOUNT: &str = "DELETE FROM accounts WHERE id = $1";
@@ -167,6 +171,27 @@ pub(crate) async fn lock(tx: &mut DbTx, account: Uuid) -> Result<Option<String>,
         .bind(account)
         .fetch_optional(tx.conn())
         .await?)
+}
+
+/// Takes the row lock of `account` and returns its `(role, state)`; `None` when it does not exist.
+pub(crate) async fn lock_role_state(
+    tx: &mut DbTx,
+    account: Uuid,
+) -> Result<Option<(String, String)>, DbError> {
+    Ok(sqlx::query_as::<_, (String, String)>(LOCK_ROLE_STATE)
+        .bind(account)
+        .fetch_optional(tx.conn())
+        .await?)
+}
+
+/// Removes every identity of `account`; the account row stays.
+pub(crate) async fn delete_identities(tx: &mut DbTx, account: Uuid) -> Result<(), DbError> {
+    sqlx::query(DELETE_IDENTITIES)
+        .bind(account)
+        .execute(tx.conn())
+        .await
+        .map(drop)?;
+    Ok(())
 }
 
 /// Whether the account exists (and so had its role set).

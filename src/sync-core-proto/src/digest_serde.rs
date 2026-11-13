@@ -14,19 +14,33 @@ fn nibble(byte: u8) -> Option<u8> {
     }
 }
 
-fn decode<T: From<[u8; 32]>, E: Error>(text: &str) -> Result<T, E> {
+/// Why a digest text was refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum BadDigest {
+    #[error("a digest is 64 hex characters")]
+    Length,
+    #[error("a digest holds only hex characters")]
+    NotHex,
+}
+
+/// The 32 bytes of a digest written as 64 hex characters (either case).
+pub(crate) fn decode_hex(text: &str) -> Result<[u8; 32], BadDigest> {
     let bytes = text.as_bytes();
     if bytes.len() != 64 {
-        return Err(E::custom("a digest is 64 hex characters"));
+        return Err(BadDigest::Length);
     }
     let mut out = [0u8; 32];
     for (slot, pair) in out.iter_mut().zip(bytes.chunks_exact(2)) {
         match (nibble(pair[0]), nibble(pair[1])) {
             (Some(high), Some(low)) => *slot = (high << 4) | low,
-            _ => return Err(E::custom("a digest holds only hex characters")),
+            _ => return Err(BadDigest::NotHex),
         }
     }
-    Ok(T::from(out))
+    Ok(out)
+}
+
+fn decode<T: From<[u8; 32]>, E: Error>(text: &str) -> Result<T, E> {
+    decode_hex(text).map(T::from).map_err(E::custom)
 }
 
 pub fn serialize<T: Display, S: Serializer>(value: &T, serializer: S) -> Result<S::Ok, S::Error> {

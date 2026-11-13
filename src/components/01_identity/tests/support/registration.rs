@@ -248,6 +248,14 @@ impl FaultyHook {
         })
     }
 
+    /// A double that never fails: it only counts its calls.
+    pub fn counting() -> Arc<FaultyHook> {
+        Arc::new(FaultyHook {
+            calls: AtomicUsize::new(0),
+            fail_first: 0,
+        })
+    }
+
     pub fn calls(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
     }

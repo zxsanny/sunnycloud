@@ -7,6 +7,7 @@ use sc_config::{ClientSettings, ConfigError, KeyProblem, Reason};
 use sync_core_proto::RetryPolicy;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct SyncConfig {
     pub server_url: String,
     /// `desktop`, `android` or `ios`.

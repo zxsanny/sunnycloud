@@ -15,8 +15,12 @@ allow-plain-http = []
 # Test-only entry points (extra trust roots for the scripted fake server, the request path). Enabled only by this crate's
 # own dev-dependency below, so no release tree contains it; `tests/release_isolation.rs` checks that.
 test-support = []
+# UniFFI derives and foreign-callback host traits for `mobile_backup` (AZ-3968); off by default, so no other tree
+# contains a UniFFI crate.
+uniffi = ["dep:uniffi", "sync-core-proto/uniffi", "dep:jni"]
 
 [dependencies]
+uniffi = { version = "=0.32.2", default-features = false, optional = true }
 sc_clock = { path = "../shared/clock" }
 sc_config = { path = "../shared/config" }
 sc_error = { path = "../shared/error", default-features = false, features = ["client"] }
@@ -48,3 +52,8 @@ serde = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "registry"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+
+# The Android trust-store initialisation: rustls-platform-verifier 0.7.1 takes `jni` 0.22 types (owner decision
+# 2026-11-13: an exported JNI function the app calls with its Context, AZ-3968).
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.22.4", default-features = false, optional = true }

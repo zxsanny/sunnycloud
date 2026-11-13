@@ -3,7 +3,7 @@
 **Component**: 13_sync_core (crate `sync-core`)
 **Producer task**: E-23/c07 — `_docs/02_tasks/todo/B09-07_http_sync_client_connect.md` (trait, construction, negotiation, transport); contributors: E-23/c06 typed errors and wire table (`B09-06`), E-23/c08 tree operations (`B09-08`), E-23/c09a `hash_file` (`B09-09`), E-23/c09b `upload` (`B09-10`), E-23/c10 `stage_small`/`batch_commit` (`B09-11`), E-23/c11 `download` (`B09-12`), E-23/c12 feed (`B09-13`), E-23/c13 token lifecycle (`B09-14`), E-23/c14 `cancel`, rate limits, `SyncConfig` (`B09-15`); keys assigned at Step 4
 **Consumer tasks**: this batch: E-23/c15, c18a, c18b; other batches: E-24 (14 daemon: device login, uploads, downloads, feed loop, first-sync merge), E-27 (`mobile_backup`: sign-in, refresh, uploads, reinstall rebuild), E-28 through `mobile_backup`; pipelines AZ-3668, AZ-3669, AZ-3670, AZ-3672, AZ-3673, AZ-3674; resolved at Step 4
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft
 **Last Updated**: 2026-11-13
 
@@ -19,7 +19,7 @@ Sources: `components/13_sync_core/description.md` §2, §3, §5, §7, §11; `con
 
 `HttpSyncClient::connect(SyncConfig, Arc<dyn CredentialProvider>) -> Result<(HttpSyncClient, ServerInfo), ConnectError>`
 
-`ConnectError` = `InsecureScheme` \| `Unreachable` \| `UpgradeRequired{message, update_url}` \| `ProtocolMismatch{what}` \| `Unauthorized`.
+`ConnectError` = `InsecureScheme` \| `Unreachable` \| `UpgradeRequired{message, update_url}` \| `ProtocolMismatch{what}` \| `Unauthorized` \| `InvalidConfig{field}` \| `TrustStoreUninitialized` (Android only: `TlsTrustBridge.nativeInit` has not succeeded in this process; checked before any TLS setup, 0 sockets; AZ-3968).
 
 | Step | Rule |
 |---|---|
@@ -149,5 +149,6 @@ A session left open when `NothingToSend` answers a commit that never applied is 
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B09) |
-| 1.2.0 | 2026-11-13 | `upload`: `UploadRequest.local_key`, key reuse rule, error list without `NameConflict`/`EditedSince` (open point 8 closed); open point 9 | AZ-3962 |
 | 1.1.0 | 2026-11-13 | Lost-commit recovery rule per `start_upload` answer (owner: committed-key answer, option a); open point 7 resolved (G-03-3); open point 8; no lane key in `SyncConfig` (G-03-1) | AZ-3949, AZ-3953 |
+| 1.2.0 | 2026-11-13 | `upload`: `UploadRequest.local_key`, key reuse rule, error list without `NameConflict`/`EditedSince` (open point 8 closed); open point 9 | AZ-3962 |
+| 1.3.0 | 2026-11-13 | `ConnectError::TrustStoreUninitialized` (Android init not run) and the existing `InvalidConfig{field}` listed | AZ-3968 |

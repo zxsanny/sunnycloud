@@ -324,8 +324,10 @@ impl PgTreeService {
     }
 }
 
-/// `revisions.blob_id` references `blobs (id, account_id)`, so an unknown blob and another account's blob fail
-/// the same foreign key and give the same entry failure.
+/// The blob ownership check (AZ-3712): `revisions.blob_id` references `blobs (id, account_id)`, so an unknown blob
+/// and another account's blob fail the same foreign key in the entry's savepoint and give the same entry failure.
+/// `BlobCatalog::get_ref` cannot replace it: it reads outside this transaction and answers `None` for an own blob
+/// still `uploading` (no size yet), which every upload commit publishes.
 pub(crate) async fn insert_revision(
     tx: &mut DbTx,
     account: Uuid,

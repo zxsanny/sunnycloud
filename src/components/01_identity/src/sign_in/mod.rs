@@ -5,7 +5,7 @@
 //!
 //! `begin_link` and `complete_link` attach another provider identity to a signed-in account (`link`), and
 //! `list_providers` tells clients which providers are enabled and whether the install still needs its first
-//! account. Setup-token and re-bind redemption are another task. The public methods count failed steps and
+//! account. `register` also redeems the setup token and the re-bind invite of an admin reset. The public methods count failed steps and
 //! invalid tokens per client address (`limits`).
 
 mod limits;

@@ -6,8 +6,9 @@
 //! `register_hooks`, and the mobile code exchange), [`IdentitySessions`]
 //! (`SessionService`: refresh rotation, revocation, list, touch), [`IdentityDeviceGrants`]
 //! (`DeviceGrantService`: the RFC 8628 device grant, the device list and revocation, over a [`GeoLookup`],
-//! production: [`MaxmindGeoLookup`]), [`IdentityMaintenance`] (the `Janitor`) and [`IdentityAccounts`]
-//! (`AccountAdmin` and `AccountGuard`); the other ports of `contracts` are implemented by later tasks. Wrong
+//! production: [`MaxmindGeoLookup`]), [`IdentityMaintenance`] (the `Janitor`), [`IdentityAccounts`]
+//! (`AccountAdmin` and `AccountGuard`) and [`IdentityInvites`] (`InviteService` and `OperatorIdentityOps`: the
+//! setup token, invites and the admin reset, whose tokens sign-in redeems). Wrong
 //! device-approval codes count on the shared `sc_ratelimit::AbuseLimiter`, and the identity audit events go
 //! through `sc_audit::AuditWriter` (`audit_events`).
 //! The schema is `src/migrations/*_create_identity_tables.*.sql`.
@@ -24,11 +25,14 @@ mod device_grants;
 mod error;
 mod geo;
 mod invite_repo;
+mod invites;
 mod janitor_repo;
 mod login_code_repo;
 mod maintenance;
+mod operator_repo;
 mod outbound;
 mod provider;
+mod registration_repo;
 mod scope;
 mod session_cache;
 mod session_repo;
@@ -42,6 +46,7 @@ pub use config::{IdentityConfig, ProviderConfig};
 pub use device_grants::IdentityDeviceGrants;
 pub use error::{HooksAlreadyRegistered, IdentityError};
 pub use geo::{GeoLookup, MaxmindGeoLookup};
+pub use invites::IdentityInvites;
 pub use maintenance::{IdentityMaintenance, Swept};
 pub use provider::{
     AuthorizationRequest, CodeExchange, ProviderClient, ProviderError, ProviderIdentity,

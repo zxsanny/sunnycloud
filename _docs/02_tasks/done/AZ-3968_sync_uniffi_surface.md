@@ -114,7 +114,7 @@ Then the connection verifies against the system trust store; without the call, t
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| Mechanism of the Android verifier initialisation (JNI export or UniFFI call) is open (`uniffi_surface.md` open point 1) | E-23 / E-27 | open | Low |
+| Mechanism of the Android verifier initialisation (JNI export or UniFFI call) is open (`uniffi_surface.md` open point 1) | E-23 / E-27 | resolved 2026-11-13 (owner): a UniFFI call | Low |
 | The vector gate's UniFFI leg needs an entry point that hashes a foreign source without a server; owner of that entry point open (`uniffi_surface.md` open point 2) | E-23 / E-27 | open | Low |
 | AC-6 needs the emulator harness of E-27/c19 for the device run; without it the leg is `NOT-RUN(EMU)` | E-27 | open | Low |
 

@@ -9,6 +9,7 @@ use sc_ids::FileHash;
 /// Whether a node is present or deleted in a feed item.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum ChangeState {
     Live,
     Tombstone,
@@ -16,6 +17,7 @@ pub enum ChangeState {
 
 /// The latest state of one node at `seq`; not an event.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ChangeItem {
     pub node_id: Uuid,
     pub parent_id: Option<Uuid>,
@@ -31,6 +33,7 @@ pub struct ChangeItem {
 
 /// One answer of `GET /api/v1/changes`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ChangePage {
     pub items: Vec<ChangeItem>,
     pub next_cursor: Cursor,
@@ -41,6 +44,7 @@ pub struct ChangePage {
 /// `invalid_cursor`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum ResyncReason {
     EpochChanged,
     BelowPurgeHorizon,

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// The answer of `POST /api/v1/device-grants`; `interval` and `expires_in` are seconds.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct DeviceAuthorization {
     pub device_code: String,
     pub user_code: String,
@@ -15,6 +16,7 @@ pub struct DeviceAuthorization {
 /// The 200 answer of `POST /api/v1/auth/mobile-code-exchanges` and `POST /api/v1/auth/refresh-tokens`;
 /// `expires_in` is seconds. Token values are secrets: `Debug` never prints them.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct SessionTokens {
     pub access_token: String,
     pub refresh_token: String,
@@ -32,6 +34,7 @@ impl fmt::Debug for SessionTokens {
 /// The 200 answer of `POST /api/v1/device-tokens`: the desktop device token, which never expires on its own
 /// and never rotates. `Debug` never prints it.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct DeviceToken {
     pub access_token: String,
     pub token_type: TokenType,
@@ -47,6 +50,7 @@ impl fmt::Debug for DeviceToken {
 
 /// The server answers `"Bearer"` only; any other value is not a device token answer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum TokenType {
     Bearer,
 }
@@ -54,6 +58,7 @@ pub enum TokenType {
 /// The four RFC 8628 §3.5 refusals of a poll, answered as 400 with these words in `code` and `error`
 /// (`api_v1_surface.md`, Devices).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum DeviceRefusal {
     AuthorizationPending,
     SlowDown,
@@ -75,6 +80,7 @@ impl DeviceRefusal {
 
 /// One answer of the device-grant poll: the token, or the outcome of a refusal.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum DevicePoll {
     Token(DeviceToken),
     Pending,

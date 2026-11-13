@@ -27,10 +27,11 @@ use crate::small::{
     self, BatchRunError, BatchSink, Runner, SkippedFile, SmallFile, SourceResolver,
 };
 use crate::upload::{UploadRequest, Uploader};
-use crate::{token_ops, tree_ops};
+use crate::{token_ops, tree_ops, trust_store};
 
 /// Why `connect` gave no client. Messages are fixed strings: nothing from the server reaches `Display`.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Error), uniffi(flat_error))]
 pub enum ConnectError {
     /// `sync.server_url` is `http://` and the build does not have `allow-plain-http`.
     #[error("plain http is not allowed")]
@@ -52,6 +53,10 @@ pub enum ConnectError {
     /// A local setting the client cannot use (a malformed server URL, client family or client version).
     #[error("invalid configuration ({field})")]
     InvalidConfig { field: &'static str },
+    /// Android only: the app has not initialised the system trust store in this process
+    /// (`TlsTrustBridge.nativeInit`), so no TLS connection is attempted.
+    #[error("trust store not initialised")]
+    TrustStoreUninitialized,
 }
 
 /// The typed API hosts code against. Operations are added to this trait by their own tasks (`sync_api.md` § Operations).
@@ -195,6 +200,7 @@ pub trait SyncApi: Send + Sync {
     fn sign_out(&self) -> BoxFuture<'_, Result<(), SyncError>>;
 }
 
+#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct HttpSyncClient {
     path: Arc<RequestPath>,
     limits: Limits,
@@ -315,6 +321,7 @@ impl HttpSyncClient {
                 },
             })?;
         let (header, own) = identity(&config)?;
+        trust_store::ensure_ready()?;
         let transport =
             HttpTransport::new(&config, &url, &header, extra_roots).map_err(|error| {
                 tracing::error!(%error, "http client setup failed");

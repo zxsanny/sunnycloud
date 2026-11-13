@@ -20,6 +20,7 @@ const ACCEPT: &str = "application/octet-stream, application/problem+json";
 
 /// A download whose every block and whole file matched the revision.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Verified {
     pub file_hash: FileHash,
 }

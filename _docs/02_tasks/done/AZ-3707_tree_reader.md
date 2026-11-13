@@ -122,7 +122,7 @@ Then B gets `NotFound`, nothing or `Gone`, equal to the result for random ids, n
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `listing_max_limit` default is not stated (02 §6) | E-13 owner | open | Low |
+| `listing_max_limit` default is not stated (02 §6) | E-13 owner | resolved 2026-11-13 (owner): `listing_max_limit` defaults to 1000 (corrected 2026-11-13: an unset cap let a request ask for any page size) | Low |
 
 ## Contract
 

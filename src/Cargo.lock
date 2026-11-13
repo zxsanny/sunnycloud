@@ -4330,6 +4330,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "jni",
  "rcgen",
  "reqwest",
  "rustls",
@@ -4347,6 +4348,7 @@ dependencies = [
  "tokio-rustls",
  "tracing",
  "tracing-subscriber",
+ "uniffi",
  "uuid",
 ]
 
@@ -4359,6 +4361,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "uniffi",
  "uuid",
 ]
 

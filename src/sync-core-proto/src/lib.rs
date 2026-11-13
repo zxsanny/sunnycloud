@@ -8,6 +8,8 @@ mod auth;
 mod cursor;
 mod digest_serde;
 mod feed;
+#[cfg(feature = "uniffi")]
+mod ffi;
 mod hashing;
 mod keys;
 mod page_check;
@@ -36,6 +38,12 @@ pub use tree::{
     ListingItem, ListingPage, NodeKind, NodeView, PageToken, RevisionRef, RevisionView,
 };
 pub use url::{ServerUrl, UrlError};
+
+#[cfg(feature = "uniffi")]
+pub use ffi::JsonValue;
+
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!("sync_core_proto");
 
 /// Client cap on parallel block uploads; the effective count is [`effective_lanes`].
 pub const MAX_CLIENT_LANES: u32 = 4;

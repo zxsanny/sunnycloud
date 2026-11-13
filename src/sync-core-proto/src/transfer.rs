@@ -7,6 +7,7 @@ use sc_ids::FileHash;
 
 /// Answer of `start_upload` and `get_upload`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct UploadSession {
     pub upload_id: Uuid,
     pub need_blocks: Vec<u32>,
@@ -17,6 +18,7 @@ pub struct UploadSession {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum StartOutcome {
     Session(UploadSession),
     NothingToSend { revision_id: Uuid },
@@ -24,6 +26,7 @@ pub enum StartOutcome {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum CommitOutcome {
     Published { node_id: Uuid, revision_id: Uuid },
     ConflictCopy { node_id: Uuid, copy_node_id: Uuid },
@@ -32,12 +35,14 @@ pub enum CommitOutcome {
 
 /// Answer of `stage_small`: the staged row the server holds for the request. `size` is the byte count it stored.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Staged {
     pub staged_key: Uuid,
     pub size: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BatchEntry {
     pub staged_key: Uuid,
     pub parent: Uuid,
@@ -52,6 +57,7 @@ pub struct BatchEntry {
 /// `commit_id` is a UUIDv7 that equals no member key (see [`crate::check_batch_ids`]); `entries` holds at
 /// most `ServerInfo.batch_max_entries`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BatchCommit {
     pub commit_id: Uuid,
     pub entries: Vec<BatchEntry>,
@@ -59,6 +65,7 @@ pub struct BatchCommit {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum EntryResult {
     Committed {
         node_id: Uuid,
@@ -72,6 +79,7 @@ pub enum EntryResult {
 
 /// One result per submitted entry, in order.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BatchResult {
     pub entries: Vec<EntryResult>,
 }

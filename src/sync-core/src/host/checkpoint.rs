@@ -9,6 +9,7 @@ pub struct StoreError;
 
 /// Where a large upload stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum UploadState {
     /// `block_hashes` holds the blocks hashed so far; `file_hash` and `session_id` are not known yet.
     Hashing,
@@ -20,6 +21,7 @@ pub enum UploadState {
 
 /// Resume data of one large upload. `commit_id` holds the upload's `client_key` (13 §2 and §3 name it differently).
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct UploadCheckpoint {
     pub session_id: Option<Uuid>,
     pub block_hashes: Vec<Hash32>,
@@ -30,6 +32,7 @@ pub struct UploadCheckpoint {
 
 /// A small-file batch that is staged but whose per-entry results the host has not stored yet.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BatchRecord {
     pub commit_id: Uuid,
     pub entries: Vec<BatchEntry>,

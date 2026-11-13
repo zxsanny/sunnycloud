@@ -97,7 +97,7 @@ fn unset_keys_take_the_specified_defaults() {
         TreeConfig {
             tombstone_horizon: Duration::from_secs(90 * DAY),
             listing_default_limit: 1000,
-            listing_max_limit: None,
+            listing_max_limit: 1000,
             cascade_batch_size: 5000,
             purge_batch_size: 5000,
             tree_maintenance_interval: Duration::from_secs(30),
@@ -160,7 +160,7 @@ fn every_key_accepts_an_override() {
         TreeConfig {
             tombstone_horizon: Duration::from_millis(150),
             listing_default_limit: 10,
-            listing_max_limit: Some(50),
+            listing_max_limit: 50,
             cascade_batch_size: 7,
             purge_batch_size: 9,
             tree_maintenance_interval: Duration::from_millis(250),
@@ -197,8 +197,8 @@ fn a_zero_maintenance_interval_is_refused() {
 fn a_maximum_below_the_default_limit_is_refused() {
     assert_refused_then_accepted(
         "listing_max_limit",
-        |config| config.listing_max_limit = Some(999),
-        |config| config.listing_max_limit = Some(1000),
+        |config| config.listing_max_limit = 999,
+        |config| config.listing_max_limit = 1000,
     );
 }
 
@@ -225,7 +225,7 @@ fn a_zero_default_limit_with_a_maximum_names_both_keys() {
     // Arrange
     let mut config = valid();
     config.listing_default_limit = 0;
-    config.listing_max_limit = Some(0);
+    config.listing_max_limit = 0;
 
     // Act
     let problems = config.validate();

@@ -72,6 +72,7 @@ impl PortError for DeviceGrantError {
 impl PortError for InviteError {
     fn into_domain(self, request_id: CorrelationId) -> DomainError {
         match self {
+            Self::NotFound => not_found(),
             Self::Unexpected(source) => fault(source, request_id),
         }
     }

@@ -13,6 +13,7 @@ use uuid::Uuid;
 /// per-operation errors of `sync_api.md`. Wire codes become values of this type in
 /// [`map_problem`](crate::map_problem), and `InvalidCode` in the mobile code exchange's own reading.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Error), uniffi(flat_error))]
 pub enum SyncError {
     #[error("transport failure ({0:?})")]
     Transport(TransportKind),
@@ -115,6 +116,7 @@ fn request_suffix(request_id: &Option<String>) -> String {
 /// the planner call from where it asked: [`as_block_result`](Self::as_block_result) after a block `PUT`,
 /// [`as_commit_result`](Self::as_commit_result) after a commit.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum PlannerInput {
     BlockConflict { retry_after: Option<Duration> },
     HashRejected,

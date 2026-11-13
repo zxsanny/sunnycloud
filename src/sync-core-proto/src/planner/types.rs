@@ -5,6 +5,7 @@ use std::time::Duration;
 /// The executor runs a returned list in order. `Wait` pauses the rest of that list (sends in flight
 /// continue), then the executor calls `next_actions` again after each result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum Action {
     /// Upload block `i` (`PUT` of the block, ack only on 204).
     SendBlock { i: u32 },
@@ -32,6 +33,7 @@ pub enum Action {
 
 /// Outcome of one block `PUT`, as mapped by the executor from the wire.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum BlockResult {
     /// 204: the block is durable on the server.
     Acked,
@@ -48,6 +50,7 @@ pub enum BlockResult {
 
 /// Outcome of the commit call.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum CommitResult {
     /// 409 `need_blocks`: the server lists the blocks it still lacks.
     NeedBlocks { list: Vec<u32> },
@@ -61,6 +64,7 @@ pub enum CommitResult {
 
 /// Retry limits, from `sync.retry_base`, `sync.retry_max` and `sync.max_attempts_per_block`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct RetryPolicy {
     pub base: Duration,
     pub max: Duration,

@@ -182,7 +182,7 @@ mod tests {
         TreeConfig {
             tombstone_horizon: Duration::from_secs(2),
             listing_default_limit: 1000,
-            listing_max_limit: None,
+            listing_max_limit: 1000,
             cascade_batch_size: 20,
             purge_batch_size: 10,
             tree_maintenance_interval: Duration::from_secs(30),

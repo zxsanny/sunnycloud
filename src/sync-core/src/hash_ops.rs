@@ -22,6 +22,7 @@ const BLOCK: u64 = BLOCK_SIZE as u64;
 
 /// The blocks and the whole-file hash of a file that did not change while it was hashed.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct HashedFile {
     pub block_hashes: Vec<Hash32>,
     pub file_hash: FileHash,

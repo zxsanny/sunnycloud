@@ -7,6 +7,7 @@ use crate::feed::ChangePage;
 
 /// The feed-page rule a page broke.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum PageRule {
     /// Items are not ascending by `(seq, node_id)`.
     P1,
@@ -30,6 +31,7 @@ impl fmt::Display for PageRule {
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 #[error("feed page violates {rule}: {detail}")]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct PageViolation {
     pub rule: PageRule,
     pub detail: String,

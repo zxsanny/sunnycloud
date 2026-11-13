@@ -24,7 +24,7 @@ pub fn config(cascade_batch_size: u64, purge_batch_size: u64) -> TreeConfig {
     TreeConfig {
         tombstone_horizon: Duration::from_secs(2),
         listing_default_limit: 1000,
-        listing_max_limit: None,
+        listing_max_limit: 1000,
         cascade_batch_size,
         purge_batch_size,
         tree_maintenance_interval: Duration::from_secs(30),

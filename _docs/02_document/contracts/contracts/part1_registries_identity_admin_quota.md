@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c03 — `_docs/02_tasks/todo/B01-12_contracts_part1.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c04 (part 2), E-00/c05 (part 3); other batches: E-10..E-22, E-30 (implementers and callers)
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft (frozen when the producer task is accepted)
 **Last Updated**: 2026-11-05
 
@@ -74,10 +74,10 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | | `revoke_self` | `&Principal` (device) -> `()` | none |
 | `InviteService` | `create_invite` | `admin_account, note` -> `InviteToken` (plaintext, once) | `Unexpected` |
 | | `list` | `admin_account` -> `Vec<InviteInfo>` | `Unexpected` |
-| | `revoke` | `admin_account, invite_id` -> `()` | `Unexpected` |
+| | `revoke` | `admin_account, invite_id` -> `()` | `NotFound` (unknown, revoked or redeemed alike), `Unexpected` |
 | `OperatorIdentityOps` (system scope) | `ensure_setup_token` | `()` -> `Option<RawToken>` (only while zero accounts) | `Unexpected` |
 | | `create_admin_invite` | `()` -> `InviteToken` | `Unexpected` |
-| | `reset_admin` | `account` -> `InviteToken` (operator invite with `target_account_id`; the admin's sessions are revoked) | `Unexpected` |
+| | `reset_admin` | `account` -> `InviteToken` (operator invite with `target_account_id`; the admin's sessions and device tokens are revoked) | `NotFound` (unknown or deleting account), `NotAnAdmin`, `Unexpected` |
 | `AccountAdmin` | `list_accounts` | `filter, page` -> `Vec<AccountInfo>` | `Unexpected` |
 | | `lock_active_admins` | `tx: &mut DbTx` -> `Vec<Uuid>` | `Unexpected` |
 | | `set_role` | `tx: &mut DbTx, account, Role` -> `()` | `Unexpected` |
@@ -172,3 +172,4 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
 | 1.1.0 | 2026-11-05 | `HealthContributor`, `ReadinessCheck`, `HealthItem`, `ReadinessItem` moved to `sc_observability` and re-exported here; `ApprovalView` gains `grant_id` and `expires_at` (owner decisions 2026-11-05) | decompose Step 4 |
 | 1.2.0 | 2026-11-13 | `SignInService`: the caller's address (`client_ip`) on `begin` (`BeginSignIn`), `complete`, `complete_link` and `exchange_mobile_code`, for the per-IP sign-in and invalid-token limits (AZ-3691) | AZ-3691 |
+| 1.3.0 | 2026-11-13 | `InviteError::NotFound`; `OperatorIdentityError::{NotFound, NotAnAdmin}` (open point 7 applied for invites and `reset_admin`) | AZ-3688 |

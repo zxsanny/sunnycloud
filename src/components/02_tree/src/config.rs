@@ -16,7 +16,7 @@ pub struct TreeConfig {
     pub tombstone_horizon: Duration,
     pub listing_default_limit: u64,
     /// No default exists for this key; `None` means no ceiling beyond the default limit is configured.
-    pub listing_max_limit: Option<u64>,
+    pub listing_max_limit: u64,
     pub cascade_batch_size: u64,
     pub purge_batch_size: u64,
     pub tree_maintenance_interval: Duration,
@@ -54,9 +54,7 @@ impl TreeConfig {
                 problems.push(at_least(key, "1"));
             }
         }
-        if let Some(max) = self.listing_max_limit
-            && max < self.listing_default_limit.max(1)
-        {
+        if self.listing_max_limit < self.listing_default_limit.max(1) {
             let floor = self.listing_default_limit.max(1).to_string();
             problems.push(at_least("listing_max_limit", &floor));
         }

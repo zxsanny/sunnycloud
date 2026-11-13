@@ -123,7 +123,7 @@ settings_table! {
     // Tree and feed (02, 05)
     tombstone_horizon: Dur = dflt("90d", A).range("90d", "365d");
     listing_default_limit: Count = dflt("1000", A);
-    listing_max_limit: Opt<Count> = unset(A);
+    listing_max_limit: Count = dflt("1000", A);
     cascade_batch_size: Count = dflt("5000", A);
     purge_batch_size: Opt<Count> = unset(A);
     tree_maintenance_interval: Opt<Dur> = unset(A);

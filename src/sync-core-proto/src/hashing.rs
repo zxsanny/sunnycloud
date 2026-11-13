@@ -15,6 +15,7 @@ pub fn hash_block(block: &[u8]) -> Result<Hash32, HashError> {
 /// The caller persists it and hands it back to [`ResumableFileHasher::resume`]; reading restarts at
 /// [`ResumeHashState::resume_offset`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ResumeHashState {
     pub blocks_done: u64,
     pub block_hashes: Vec<Hash32>,

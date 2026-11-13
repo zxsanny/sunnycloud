@@ -2,8 +2,8 @@
 
 **Component**: 01_identity
 **Producer task**: AZ-3685 (E-15/c05, invite redemption and account creation)
-**Consumer tasks**: E-11/c03 (quota row), E-12/c06 (account feed), E-13/c13 (root node), E-16/c08 (sharing, no-op), E-22/c03 (registers the list), E-15/c08 (re-bind and setup redemption)
-**Version**: 1.3.0
+**Consumer tasks**: E-11/c03 (quota row), E-12/c06 (account feed), E-13/c13 (root node), E-16/c08 (sharing, no-op), E-22/c03 (registers the list), AZ-3688 (re-bind and setup redemption, implemented)
+**Version**: 1.4.0
 **Status**: frozen (first implementation: AZ-3685)
 **Last Updated**: 2026-11-13
 
@@ -24,7 +24,7 @@ Before the transaction (no database write, no provider I/O after this point: the
 
 Call order inside the one account-creation transaction (system scope):
 
-1. read the open invite by token hash (`kind = 'invite'`, `target_account_id IS NULL`, `redeemed_at IS NULL`, `expires_at > now`, now from the injected clock); none: roll back, `InvitationRequired`;
+1. read the open token by hash (`redeemed_at IS NULL`, `expires_at > now`, any `kind`, now from the injected clock); none: roll back, `InvitationRequired`. If it has `target_account_id`, it is a re-bind (`operator_identity_ops.md`): no account, no hook; steps 2 to 5 do not apply. If it is a setup token (`kind = 'setup'`) and any account exists: roll back, `InvitationRequired`;
 2. insert the `accounts` row (state `active`, role = the invite's `grants_role`, display name = the provider's name claim, else its username, else `User`) and the `identities` row;
 3. call `initialize(tx, account_id)` of every registered hook, in registration order;
 4. redeem the invite with the single conditional update `UPDATE invites SET redeemed_at = now, redeemed_by = account WHERE id = $1 AND redeemed_at IS NULL AND expires_at > now`; 0 rows: roll back, `InvitationRequired`;
@@ -41,9 +41,10 @@ The session (or mobile login code) is written after the commit, in its own trans
 - A hook does no I/O outside that transaction (no network, no blob store) and returns quickly. Known exception, open for the E-12 owner: 05 writes the `.epoch` marker file through `EpochMarker::write` when it creates the first feed of an installation.
 - If any hook returns an error, no row of any hook, no account, no identity and no redemption remains; the invite stays redeemable; `complete` returns `SignInError::Unexpected` (500), logged as `account creation hook failed` with no PII.
 - When redemptions of one invite race, every racer but one finds 0 rows at step 4 (the update waits for the winner's commit and re-reads the row) and rolls back, so the losers' hooks leave no row and they get `InvitationRequired` (AC-75). Two tabs of the same provider identity that race are decided by the unique key of `identities`; the loser gets `InvitationRequired`.
-- `initialize` is not called when no account is created: sign-in of a known identity, a re-bind invite (`target_account_id` set) and the setup token are not redeemed by this path (E-15/c08 owns them; until then they are `InvitationRequired`).
+- `initialize` is not called when no account is created: sign-in of a known identity and a re-bind invite (`target_account_id` set). The setup token creates the first account through steps 2 to 6 with role admin, so it runs the hooks like any invite.
 - Identity never imports a hook implementer; the list comes from the composition root (12).
 - The list is set once. If account creation runs while it was never set, it fails closed: `SignInError::Unexpected`, logged as `account_hooks_not_registered`, nothing written, invite redeemable; an unset list is never treated as empty.
+- A re-bind redemption does not need the hook list; it succeeds while the list is unset.
 - Email is never a lookup key; it is stored on the new identity (`email_verified = true`) only when it was read under the email rule.
 
 ## Non-Goals
@@ -65,7 +66,8 @@ The session (or mobile login code) is written after the commit, in its own trans
 | failing-hook | one hook errors on its first call | no rows at all; invite still redeemable; retry succeeds | `account_creation::a_failing_hook_rolls_every_row_back_and_the_invite_stays_redeemable_for_the_retry` (IT-01-17) |
 | concurrent-loser | 200 iterations of 2 and 16 racers on one invite | one account each; losers' hooks leave no rows | `account_creation_race::concurrent_redemptions_of_one_invite_create_exactly_one_account_and_the_losers_leave_no_row` (IT-01-8, NFT-SEC-48) |
 | email-rule | unverified, relay, unlisted, missing email with allowlist set | `InvitationRequired`; no row; invite redeemable | `account_creation_email::*` (IT-01-6) |
-| rebind | invite with `target_account_id` | no `initialize` call; no new account | IT-01-9 (E-15/c08) |
+| rebind | invite with `target_account_id` | no `initialize` call; no new account | `admin_reset::a_rebind_writes_the_identity_rebound_event_and_calls_no_hook` (IT-01-9) |
+| setup | setup token on an empty install | first account, role admin, hooks run | `setup_token::the_setup_token_creates_one_admin_once_and_nothing_without_or_with_a_wrong_token` (IT-01-7) |
 | unset-list | `register_hooks` never called, valid invite | typed failure; no rows; invite redeemable | `account_creation::account_creation_fails_closed_while_no_hook_list_is_registered` |
 | second-registration | `register_hooks` twice | second call `HooksAlreadyRegistered`; first list stays | `account_creation::a_second_hook_registration_is_refused_and_the_first_list_stays` (IT-12-7) |
 
@@ -75,5 +77,6 @@ The session (or mobile login code) is written after the commit, in its own trans
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B04) |
 | 1.1.0 | 2026-11-11 | Registration entry point named (`register_hooks`, set once, unset fails closed); spike decision | AZ-3681 |
-| 1.3.0 | 2026-11-13 | Step 5: the mandatory `account_created` audit event is the last statement of the transaction (owner decision: security changes fail closed) | AZ-3691 |
 | 1.2.0 | 2026-11-13 | Frozen with the first implementation: precondition step 0 (email rule, owner decisions 2026-11-13), invite read in step 1, system scope, concrete signatures, error mapping, same-identity race, setup/re-bind excluded until E-15/c08 | AZ-3685 |
+| 1.3.0 | 2026-11-13 | Step 5: the mandatory `account_created` audit event is the last statement of the transaction (owner decision: security changes fail closed) | AZ-3691 |
+| 1.4.0 | 2026-11-13 | Setup and re-bind redemption implemented: step 1 reads any open token; re-bind runs no hook and needs no hook list; setup creates the first admin through the same steps | AZ-3688 |

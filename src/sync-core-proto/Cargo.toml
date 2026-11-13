@@ -9,7 +9,12 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# UniFFI derives on the DTOs for `mobile_backup` (AZ-3968); off by default.
+uniffi = ["dep:uniffi"]
+
 [dependencies]
+uniffi = { version = "=0.32.2", default-features = false, optional = true }
 sc_error = { path = "../shared/error", default-features = false, features = ["client"] }
 sc_ids = { path = "../shared/ids_hashing", default-features = false }
 serde = { workspace = true, features = ["std"] }

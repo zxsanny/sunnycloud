@@ -1,6 +1,7 @@
 //! The identity audit events (01 §5, §7, §10) and how each is written.
 //!
-//! Mandatory events (owner decision 2026-11-13: account created, provider linked, sessions revoked) are written
+//! Mandatory events (owner decision 2026-11-13: account created, provider linked, sessions revoked, admin reset,
+//! and the identity re-bound by the reset's invite) are written
 //! with `AuditWriter::record_in` inside the transaction of the change, so a failed write rolls the change back
 //! and the request fails. The other events (sign-in, device approval, refresh reuse, limiter trips) go through
 //! [`record_logged`]: a failed write is logged at ERROR and the request outcome is unchanged. Every builder takes
@@ -54,6 +55,31 @@ pub(crate) fn account_created(
             .with_id("identity_id", identity)
             .with_id("invite_id", invite)
             .with_code("role", role),
+        ..AuditEvent::new(AuditEventKind::SignIn)
+    }
+}
+
+/// The operator reset admin `account` and issued re-bind invite `invite` (mandatory, in the reset transaction).
+/// The operator has no account, so the event has no actor.
+pub(crate) fn admin_reset(account: Uuid, invite: Uuid) -> AuditEvent {
+    AuditEvent {
+        subject: Some(subject(ACCOUNT, account)),
+        detail: AuditDetail::new()
+            .with_code("action", "admin_reset")
+            .with_id("invite_id", invite),
+        ..AuditEvent::new(AuditEventKind::AdminAction)
+    }
+}
+
+/// A re-bind invite redeemed: `identity` replaced the identities of `account` (mandatory, in the redemption
+/// transaction).
+pub(crate) fn identity_rebound(account: Uuid, identity: Uuid, invite: Uuid) -> AuditEvent {
+    AuditEvent {
+        actor_account_id: Some(account),
+        subject: Some(subject(IDENTITY, identity)),
+        detail: AuditDetail::new()
+            .with_code("action", "identity_rebound")
+            .with_id("invite_id", invite),
         ..AuditEvent::new(AuditEventKind::SignIn)
     }
 }
@@ -177,6 +203,8 @@ mod tests {
         // Act
         let events = [
             account_created(a, b, c, "admin"),
+            admin_reset(a, c),
+            identity_rebound(a, b, c),
             provider_linked(&approver, b),
             signed_in(a, b, Some(c)),
             signed_in(a, b, None),

@@ -18,6 +18,7 @@ const FAMILIES: [&str; 3] = ["desktop", "android", "ios"];
 
 /// What the server allows, after the clamps. Server limits win over the local settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Limits {
     /// `min(4, max_lanes)`.
     pub lanes: u32,

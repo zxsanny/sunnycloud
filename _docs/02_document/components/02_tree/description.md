@@ -76,7 +76,7 @@ The account advisory lock is taken by `publish` (single and batch), by `update_n
 | Provides | `AccountLifecycleHook` impl | 01 (initialize), 07 (erase_batch) | root node at account creation; tree rows at deletion |
 | Provides | `BlobOwnerCleanup` impl | 04 | revision rows at GC |
 | Requires | `AccountGuard::ensure_active` | 01 | first statement of `publish`, `create_folder`, `update_node`, `delete_node` (inside their short transactions) |
-| Requires | `BlobCatalog`/`BlobRef` account scope | 04 | `publish` checks that `NewRevision.blob_id` belongs to the account; a foreign or unknown blob gives the existing `BlocklistMismatch` or `NotFound` entry error |
+| Requires | `BlobCatalog`/`BlobRef` account scope | 04 | `publish` checks that `NewRevision.blob_id` belongs to the account through the composite foreign key `revisions (blob_id, account_id) → blobs (id, account_id)` inside the entry's savepoint, not through `BlobCatalog::get_ref` (which answers `None` for an `uploading` blob, the state every large upload commits, and takes no transaction; AZ-3712, 2026-11-13); a foreign or unknown blob gives the existing `BlocklistMismatch` or `NotFound` entry error |
 | Requires | `QuotaLedger` (`adjust_used`, `release_reservation`) | 07a | usage in the commit transaction; 03 reserves, 02 releases inside the commit |
 | Requires | `FeedStamp`, `FeedNotifier`, `FeedHorizon` | 05 | counter, wake, purge horizon |
 | Requires | `GcQueue` (`schedule_in_tx`, `pending_for_account`), `BlobRegistry::reinstate_in_tx` | 04 | removal of replaced and deleted blobs; restore; erase progress |
@@ -122,7 +122,7 @@ Listing must stay an index scan plus PK lookups (CI plan check on DS-02 with the
 **Error handling**: typed `TreeError`, no catch-and-continue; unexpected DB errors go to the central handler.
 
 ## 6. Configuration keys
-`tombstone_horizon` (90d, shared with 05 for the horizon), `listing_default_limit` (1000), `listing_max_limit`, `cascade_batch_size` (5000), `purge_batch_size` (5000), `tree_maintenance_interval` (30 s; each tick drains cascade and purge until nothing is due within a time budget), `conflict_copy_time_zone` (UTC; the only accepted value, other zones are refused at start, owner decision 2026-11-13). `retention` is read by 04 only. Durations tests override with milliseconds.
+`tombstone_horizon` (90d, shared with 05 for the horizon), `listing_default_limit` (1000), `listing_max_limit` (1000, owner decision 2026-11-13), `cascade_batch_size` (5000), `purge_batch_size` (5000), `tree_maintenance_interval` (30 s; each tick drains cascade and purge until nothing is due within a time budget), `conflict_copy_time_zone` (UTC; the only accepted value, other zones are refused at start, owner decision 2026-11-13). `retention` is read by 04 only. Durations tests override with milliseconds.
 
 ## 7. Security notes
 Every query carries `account_id`; foreign ids are 404 (AC-59 matrix). Names: server rejects `/`, NUL, `.`/`..`, control and bidi-control characters, over 255 bytes; accepts everything else (AC-37). RLS is defence in depth; maintenance loops use system scope through helper 07. Restore is operator-only (CLI, system scope).

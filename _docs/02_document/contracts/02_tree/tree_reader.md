@@ -3,7 +3,7 @@
 **Component**: 02_tree
 **Producer task**: E-13/c03 — `_docs/02_tasks/todo/B03-03_tree_reader.md` (contributors: E-13/c12 `B03-12_tree_revision_lookups.md`, E-13/c14 `B03-14_tree_thumb_state_listing.md`); keys assigned at Step 4
 **Consumer tasks**: E-14/c02, E-14/c04, E-14/c08, E-14/c10 (this batch); E-16 (06 sharing), E-17 (07 admin), E-18 (08 media_jobs), E-21 (11 http_api), E-22 (12 operator_cli), E-30 (20 vault_service), resolved at Step 4
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (frozen when the producer task passes review)
 **Last Updated**: 2026-11-04
 
@@ -60,8 +60,10 @@ Signatures: part 2 § 02 tree (`TreeReader`, `LiveUsageSource`). Behaviour per m
 
 ## Open items
 
+- Implemented reads (AZ-3707, 2026-11-13): `get_node`, `list_children`, `find_live_node`, `resolve_live_file`, `root_node` on `PgTreeReader`; `get_revision`, `is_current_or_retained`, `describe_blobs`, `lookup_revisions` and the trait impl come with AZ-3716. `NodeView` has no `thumb_state` field yet; it needs a `contracts` change with AZ-3718. `root_node` answers `NotFound` only for an erased account.
+
 - `describe_blobs` result for the blob of a tombstoned file is not stated (IT-02-17).
-- `listing_max_limit` default is not stated (02 §6).
+- `listing_max_limit` defaults to 1000 (owner decision 2026-11-13): a larger requested page is cut to it.
 - Part 2 open point 6: `NodeView`, `RevisionView`, `ListingPage` fields are derived from `data_model.md`; additions are minor.
 
 ## Change Log
@@ -69,3 +71,4 @@ Signatures: part 2 § 02 tree (`TreeReader`, `LiveUsageSource`). Behaviour per m
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
+| 1.1.0 | 2026-11-13 | Provider `PgTreeReader::new(db, &TreeConfig)` with inherent reads (the `TreeReader` trait impl lands with AZ-3716, which adds the revision reads); `limit = 0` is the default; a cursor that cannot be a stored `name_key` is `InvalidCursor`; listing a folder under a tombstoned ancestor is `NotFound`; `thumb_state` is not on `NodeView` yet (contracts change with AZ-3718) | AZ-3707 |

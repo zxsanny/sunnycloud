@@ -9,6 +9,8 @@ mod config;
 mod download;
 mod error;
 mod feed_ops;
+#[cfg(feature = "uniffi")]
+mod ffi;
 mod hash_ops;
 mod host;
 mod http_transport;
@@ -19,6 +21,7 @@ mod small;
 mod tls;
 mod token_ops;
 mod tree_ops;
+mod trust_store;
 mod upload;
 mod wire_table;
 
@@ -41,3 +44,12 @@ pub use small::{
 };
 pub use upload::UploadRequest;
 pub use wire_table::map_problem;
+
+#[cfg(feature = "uniffi")]
+pub use ffi::{
+    Foreign, ForeignCheckpointStore, ForeignCredentialProvider, ForeignDownloadSink,
+    ForeignFileSource, HostError, SecretString,
+};
+
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!("sync_core");

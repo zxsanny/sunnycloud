@@ -49,6 +49,7 @@ pub struct SmallFile {
 
 /// What the server did with a committed batch.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum BatchOutcome {
     /// One result per entry of the report, in order.
     Committed(BatchResult),
@@ -58,6 +59,7 @@ pub enum BatchOutcome {
 
 /// One finished batch, handed to the host before its record is cleared.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BatchReport {
     pub commit_id: Uuid,
     pub entries: Vec<BatchEntry>,
@@ -78,6 +80,7 @@ pub struct SkippedFile {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Error), uniffi(flat_error))]
 pub enum BatchRunError {
     #[error(transparent)]
     Sync(#[from] SyncError),
