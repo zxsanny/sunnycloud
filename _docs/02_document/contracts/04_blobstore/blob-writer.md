@@ -3,7 +3,7 @@
 **Component**: 04_blobstore
 **Producer task**: E-10/c06 — `_docs/02_tasks/todo/B02-06_blob_writer.md`; the `await_durable` barrier part: E-10/c07 — `B02-07_group_commit_barrier.md` (both renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-14 transfer (start_upload, put_block, stage_small, session reaper), E-18 media_jobs (derived outputs through `write_complete`), E-22 pipelines (large and small upload, media)
-**Version**: 1.1.0
+**Version**: 2.0.0
 **Status**: draft (frozen when E-10/c06 is accepted)
 **Last Updated**: 2026-11-11
 
@@ -16,7 +16,7 @@ The behaviour every caller of `BlobWriter` relies on: when bytes are durable, wh
 | Name | Input -> Output | Errors | Blocking? |
 |------|-----------------|--------|-----------|
 | `plan` | `account_id, plaintext_size` -> `BlobPlan{blob_id, wrapped_key, master_key_id}` | `KeyUnavailable` | sync, pure |
-| `create_file` | `BlobPlan, preallocate: bool` -> `BlobHandle` | `NoSpace`, `FreeSpaceFloor`, `Io` | async |
+| `create_file` | `BlobPlan, plaintext_size, preallocate: bool` -> `BlobHandle` | `NoSpace`, `FreeSpaceFloor`, `OutOfRange`, `Io`, `KeyUnavailable` | async |
 | `open_for_write` | `blob_id, wrapped_key, master_key_id, plaintext_size` -> `BlobHandle` | `BlobMissing`, `KeyUnavailable` | async |
 | `write_block` | `BlobHandle, block_index, plaintext block (hash verified by the caller)` -> `DurableToken` | `NoSpace`, `Io`, `OutOfRange`, `BlockConflict` | async |
 | `await_durable` | `DurableToken` -> `()` | `Io` | async |
@@ -41,6 +41,8 @@ The behaviour every caller of `BlobWriter` relies on: when bytes are durable, wh
 
 - Not covered: `blobs` row writes (`BlobRegistry`, see `blob-registry-gc.md`), quota, upload-session bitmaps and checkpoints (03), hash verification (03).
 - Not covered: reading (`blob-reader.md`).
+
+- The writer keeps no state between `plan` and `create_file`: the caller holds the plan and the size it planned and passes both to `create_file`; a plan that never reaches `create_file` (a refused or cancelled start) leaves nothing to release (AZ-4264).
 
 ## Versioning Rules
 
@@ -67,3 +69,4 @@ The behaviour every caller of `BlobWriter` relies on: when bytes are durable, wh
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B02) |
 | 1.1.0 | 2026-11-11 | Block-rewrite rule: identical bytes accepted, different bytes `BlockConflict`; new `BlobError::BlockConflict` variant for E-10/c06 in `contracts` part 3 | AZ-3721 |
+| 2.0.0 | 2026-11-13 | `create_file` takes the plaintext size; the writer holds no plans (a start refused before `create_file` leaked its plan) | AZ-4264 |

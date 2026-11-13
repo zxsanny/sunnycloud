@@ -129,7 +129,10 @@ async fn each_blob_io_event_is_one_line_with_ids_only_and_transfers_log_nothing_
     // Act: an I/O error on a block write (the blob path is a folder)
     let handle = {
         let plan = rig.writer.plan(rig.account, 3 * MIB as i64).expect("plan");
-        rig.writer.create_file(plan, false).await.expect("create")
+        rig.writer
+            .create_file(plan, 3 * MIB as i64, false)
+            .await
+            .expect("create")
     };
     let path = rig.path(handle.plan.blob_id);
     fs::remove_file(&path).expect("remove the file");
@@ -150,7 +153,10 @@ async fn each_blob_io_event_is_one_line_with_ids_only_and_transfers_log_nothing_
     )
     .expect("writer");
     let plan = hooked.plan(rig.account, 3 * MIB as i64).expect("plan");
-    let synced = hooked.create_file(plan, false).await.expect("create");
+    let synced = hooked
+        .create_file(plan, 3 * MIB as i64, false)
+        .await
+        .expect("create");
     let token = hooked
         .write_block(&synced, 0, Bytes::from(vec![9; 2 * MIB]))
         .await
@@ -172,7 +178,7 @@ async fn each_blob_io_event_is_one_line_with_ids_only_and_transfers_log_nothing_
     let plan = floor_writer.plan(rig.account, 1024).expect("plan");
     let floor_id = plan.blob_id;
     let mark = lines.all().len();
-    let floor = floor_writer.create_file(plan, false).await;
+    let floor = floor_writer.create_file(plan, 1024, false).await;
     let floor_lines = lines.since(mark);
 
     // Act: a GC sweep that cannot compute its lease

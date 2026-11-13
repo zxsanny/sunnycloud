@@ -22,7 +22,7 @@ use sunnycloud_transfer::{PgUploadService, TransferConfig, UploadPorts};
 use sunnycloud_tree::{PgTreeReader, TreeConfig};
 use uuid::Uuid;
 
-use crate::start_ports::{AccountRegistry, FaultyWriter, StateGuard};
+use crate::start_ports::{FaultyWriter, StateGuard};
 use crate::support::{Fixture, account};
 
 pub const MIB: i64 = 1 << 20;
@@ -89,7 +89,7 @@ impl Rig {
                     default_quota_bytes: 10 * GIB,
                 })),
                 writer: writer.clone(),
-                registry: Arc::new(AccountRegistry::new(registry, account)),
+                registry: Arc::new(registry),
             },
             clock.clone(),
         );

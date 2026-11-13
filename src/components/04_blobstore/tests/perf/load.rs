@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use contracts::{
-    BlobCatalog as _, BlobHandle, BlobRef, BlobWriter, RegisterState, WrittenBlob, WrittenOrPlanned,
+    BlobCatalog as _, BlobHandle, BlobRef, BlobRegistry as _, BlobWriter, RegisterState,
+    WrittenBlob, WrittenOrPlanned,
 };
 use sc_db::Scope;
 use sunnycloud_blobstore::{BlobstoreConfig, FileBlobReader, FileBlobWriter};
@@ -129,7 +130,10 @@ pub async fn new_blob(writer: &FileBlobWriter, blocks: usize) -> BlobHandle {
     let plan = writer
         .plan(Uuid::new_v4(), (blocks * BLOCK) as i64)
         .expect("plan");
-    writer.create_file(plan, false).await.expect("create_file")
+    writer
+        .create_file(plan, (blocks * BLOCK) as i64, false)
+        .await
+        .expect("create_file")
 }
 
 /// Writes the blocks `lane, lane + lanes, ...` of `handle`, each acknowledged before the next.

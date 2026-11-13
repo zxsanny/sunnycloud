@@ -215,3 +215,29 @@ async fn a_zero_byte_large_upload_is_refused_without_a_reservation() {
     assert_eq!(footprint(&rig).await, (0, 0, 0, 0));
     rig.finish().await;
 }
+
+/// AZ-4264 AC-3: a refused start drops its plan with nothing to release; the writer keeps no plan between
+/// `plan` and `create_file` (04's `unused_plans_leave_nothing_in_the_writer_and_another_writer_creates_a_kept_plan`).
+#[tokio::test]
+async fn a_hundred_starts_refused_after_planning_leave_nothing_and_the_next_start_opens() {
+    // Arrange
+    let rig = Rig::new().await;
+    let before = footprint(&rig).await;
+
+    // Act
+    let mut refused = 0;
+    for index in 0..100 {
+        let result = rig
+            .start(request(rig.root, "big", 11 * GIB, &format!("k{index}")))
+            .await;
+        refused += usize::from(matches!(result, Err(UploadError::QuotaExceeded)));
+    }
+    let after_refusals = footprint(&rig).await;
+    started(rig.start(request(rig.root, "a.bin", MIB, "next")).await);
+
+    // Assert
+    assert_eq!(refused, 100);
+    assert_eq!(after_refusals, before);
+    assert_eq!(footprint(&rig).await, (MIB, 1, 1, 1));
+    rig.finish().await;
+}

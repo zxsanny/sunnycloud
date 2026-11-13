@@ -68,7 +68,7 @@ async fn joined_methods_part_three(
     registry: &dyn BlobRegistry,
     queue: &dyn GcQueue,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let blob_id = Uuid::nil();
+    let (account, blob_id) = (Uuid::nil(), Uuid::nil());
     let plan = BlobPlan {
         blob_id,
         wrapped_key: Vec::new(),
@@ -77,13 +77,16 @@ async fn joined_methods_part_three(
     registry
         .register_in_tx(
             tx,
+            account,
             WrittenOrPlanned::Planned(plan),
             RegisterState::Uploading,
         )
         .await?;
-    registry.mark_committed_in_tx(tx, blob_id, 1).await?;
-    registry.reinstate_in_tx(tx, blob_id).await?;
-    registry.remove_row_in_tx(tx, blob_id).await?;
+    registry
+        .mark_committed_in_tx(tx, account, blob_id, 1)
+        .await?;
+    registry.reinstate_in_tx(tx, account, blob_id).await?;
+    registry.remove_row_in_tx(tx, account, blob_id).await?;
     queue
         .schedule_in_tx(tx, blob_id, GcReason::Deleted, Due::Now)
         .await?;

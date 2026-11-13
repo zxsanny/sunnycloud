@@ -4,6 +4,8 @@ use sc_clock::Timestamp;
 use sc_ids::{FileHash, Hash32};
 use uuid::Uuid;
 
+use crate::media::ThumbState;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeKind {
     File,
@@ -22,7 +24,9 @@ pub struct NodeRef {
     pub kind: NodeKind,
 }
 
-/// `parent_id` is `None` for the root. The file-only fields are `None` for a folder.
+/// `parent_id` is `None` for the root. The file-only fields are `None` for a folder. `thumb_state` is filled
+/// from `ThumbnailStateSource` for the image and video items of a `TreeReader::list_children` page; it is
+/// `ThumbState::None` everywhere else (other reads, mutations, folders, other media types, no source wired).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeView {
     pub id: Uuid,
@@ -38,6 +42,7 @@ pub struct NodeView {
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     pub seq: i64,
+    pub thumb_state: ThumbState,
 }
 
 /// `blocklist` is filled only by `TreeReader::get_revision`. `client_meta` is JSON text.

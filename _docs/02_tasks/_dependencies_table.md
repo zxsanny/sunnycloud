@@ -380,3 +380,5 @@ Recommended execution order (topological; ties by key). Test-epic refs (E-31) ar
 | AZ-4238 | mobile_code_refusal | 1 | AZ-4236 | AZ-3650 |
 | AZ-4250 | shared_test_support | 2 | — | AZ-3623 |
 | AZ-4264 | blob_registry_port_account | 2 | AZ-3734 | AZ-3627 |
+| AZ-4267 | device_grant_lookup_binding | 2 | AZ-3692 | AZ-3646 |
+| AZ-4268 | token_type_prefixes | 2 | AZ-3692 | AZ-3623 |

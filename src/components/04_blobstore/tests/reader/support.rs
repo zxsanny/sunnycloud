@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use contracts::{
-    BlobCatalog as _, BlobHandle, BlobRef, BlobWriter, ByteRange, PlaintextStream, RegisterState,
-    StreamError, WrittenBlob, WrittenOrPlanned,
+    BlobCatalog as _, BlobHandle, BlobRef, BlobRegistry as _, BlobWriter, ByteRange,
+    PlaintextStream, RegisterState, StreamError, WrittenBlob, WrittenOrPlanned,
 };
 use sc_audit::AuditWriter;
 use sc_config::Secret;
@@ -122,7 +122,7 @@ impl Rig {
         let plan = self.writer.plan(self.account, size as i64).expect("plan");
         let handle = self
             .writer
-            .create_file(plan, false)
+            .create_file(plan, size as i64, false)
             .await
             .expect("create_file");
         self.write_blocks(&handle, data, &shuffled(blocks_of(size), 0x5EED))

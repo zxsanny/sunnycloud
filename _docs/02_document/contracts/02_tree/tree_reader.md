@@ -3,7 +3,7 @@
 **Component**: 02_tree
 **Producer task**: E-13/c03 — `_docs/02_tasks/todo/B03-03_tree_reader.md` (contributors: E-13/c12 `B03-12_tree_revision_lookups.md`, E-13/c14 `B03-14_tree_thumb_state_listing.md`); keys assigned at Step 4
 **Consumer tasks**: E-14/c02, E-14/c04, E-14/c08, E-14/c10 (this batch); E-16 (06 sharing), E-17 (07 admin), E-18 (08 media_jobs), E-21 (11 http_api), E-22 (12 operator_cli), E-30 (20 vault_service), resolved at Step 4
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft (frozen when the producer task passes review)
 **Last Updated**: 2026-11-04
 
@@ -60,7 +60,7 @@ Signatures: part 2 § 02 tree (`TreeReader`, `LiveUsageSource`). Behaviour per m
 
 ## Open items
 
-- Implemented reads (AZ-3707, 2026-11-13): `get_node`, `list_children`, `find_live_node`, `resolve_live_file`, `root_node` on `PgTreeReader`; the revision reads and `impl TreeReader for PgTreeReader` are implemented (AZ-3716). `NodeView` has no `thumb_state` field yet; it needs a `contracts` change with AZ-3718. `root_node` answers `NotFound` only for an erased account.
+- Implemented reads (AZ-3707, 2026-11-13): `get_node`, `list_children`, `find_live_node`, `resolve_live_file`, `root_node` on `PgTreeReader`; the revision reads and `impl TreeReader for PgTreeReader` are implemented (AZ-3716). `NodeView.thumb_state` (AZ-3718): filled only by `list_children` through `PgTreeReader::with_thumbnails(source)`, one `states` call per page after the page's transaction, image and video hashes only, no call when the page has none; a source failure is `Unexpected`; `ThumbState::None` elsewhere and when no source is wired. Not on 11's JSON yet (`api_v1_surface.md` open item 30). `root_node` answers `NotFound` only for an erased account.
 
 - `describe_blobs` (proposed default 2026-11-13, AZ-3716): system scope, one statement for the list; a blob of a file whose node and ancestors are live maps to `[path]` (root-relative, `/`-joined); a blob of a tombstoned file or of a file under a tombstoned folder maps to `[]` (deleted, no path); an id no revision holds (random, derived) is absent.
 - `get_revision` answers any revision row of the account (current or retained) with its blocklist; `is_current_or_retained` is true while the revision row exists. `lookup_revisions` takes at most `MAX_LOOKUP_HASHES` (1000), checked before any query, one statement on `revisions_account_id_content_hash_idx`. `lookup_revisions` and `LiveUsageSource::live_bytes` (on `PgTreeReader`) count a file as live when its own node is not tombstoned, so a file under a tombstoned folder counts until the cascade marks it.
@@ -74,3 +74,4 @@ Signatures: part 2 § 02 tree (`TreeReader`, `LiveUsageSource`). Behaviour per m
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
 | 1.1.0 | 2026-11-13 | Provider `PgTreeReader::new(db, &TreeConfig)` with inherent reads (the `TreeReader` trait impl lands with AZ-3716, which adds the revision reads); `limit = 0` is the default; a cursor that cannot be a stored `name_key` is `InvalidCursor`; listing a folder under a tombstoned ancestor is `NotFound`; `thumb_state` is not on `NodeView` yet (contracts change with AZ-3718) | AZ-3707 |
 | 1.2.0 | 2026-11-13 | Revision reads, `describe_blobs` default, `TreeReader` and `LiveUsageSource` implemented | AZ-3716 |
+| 1.3.0 | 2026-11-13 | `NodeView.thumb_state` filled by `list_children` from `ThumbnailStateSource` | AZ-3718 |

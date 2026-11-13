@@ -1,6 +1,6 @@
 //! AC-5: the pending count is per account and excludes removed blobs.
 
-use contracts::{Due, GcQueue, GcReason};
+use contracts::{BlobRegistry as _, Due, GcQueue, GcReason};
 use sc_db::Scope;
 use uuid::Uuid;
 
@@ -40,7 +40,7 @@ async fn counts_exactly_the_queued_unremoved_blobs_of_the_account() {
     let before = rig.queue.pending_for_account(a).await.expect("count");
     rig.api
         .run(Scope::Account(a), async |tx| {
-            rig.registry.remove_row_in_tx(tx, a_blobs[0]).await
+            rig.registry.remove_row_in_tx(tx, a, a_blobs[0]).await
         })
         .await
         .expect("remove");

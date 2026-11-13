@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use contracts::{
-    BlobCatalog as _, BlobHandle, BlobRef, BlobWriter, Due, GcQueue as _, GcReason, RegisterState,
-    WrittenBlob, WrittenOrPlanned,
+    BlobCatalog as _, BlobHandle, BlobRef, BlobRegistry as _, BlobWriter, Due, GcQueue as _,
+    GcReason, RegisterState, WrittenBlob, WrittenOrPlanned,
 };
 use sc_audit::AuditWriter;
 use sc_clock::{CancellationToken, SystemClock};
@@ -214,7 +214,7 @@ impl Rig {
         let plan = self.writer.plan(self.account, len as i64).expect("plan");
         let handle = self
             .writer
-            .create_file(plan, false)
+            .create_file(plan, len as i64, false)
             .await
             .expect("create_file");
         let data = vec![seed; len];
@@ -237,7 +237,7 @@ impl Rig {
         let plan = self.writer.plan(self.account, len as i64).expect("plan");
         let handle = self
             .writer
-            .create_file(plan, false)
+            .create_file(plan, len as i64, false)
             .await
             .expect("create_file");
         self.write_block(&handle, &vec![7; len], 0).await;

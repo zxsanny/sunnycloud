@@ -158,7 +158,7 @@ impl PgTreeService {
             outcome: PublishOutcome::ConflictCopied { copy_node },
             node_id,
             revision_id: entry.revision.revision_id,
-            delta: 0,
+            counted: None,
             revived: Vec::new(),
         })
     }
@@ -202,7 +202,7 @@ impl PgTreeService {
             },
             node_id,
             revision_id: entry.revision.revision_id,
-            delta: 0,
+            counted: file.counted().copied(),
             revived: ancestors.iter().map(|ancestor| ancestor.id).collect(),
         })
     }

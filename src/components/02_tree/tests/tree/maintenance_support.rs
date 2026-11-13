@@ -9,13 +9,21 @@ use std::time::Duration;
 use contracts::{Due, GcQueue, GcQueueError, GcReason, TreeMaintenance, async_trait};
 use sc_clock::Timestamp;
 use sc_db::{Db, DbTx};
+use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
 use sunnycloud_sync_feed::{FeedConfig, PgFeedHorizon, PgFeedReader};
 use sunnycloud_tree::{PgTreeMaintenance, TreeConfig};
 use uuid::Uuid;
 
 use crate::lifecycle_support::Erase;
-use crate::mutation_support::{Tree, close};
+use crate::mutation_support::{DEFAULT_QUOTA, Tree, close};
 use crate::support::START;
+
+/// The real 07a ledger the cascade releases usage through.
+pub fn ledger() -> Arc<PgQuotaLedger> {
+    Arc::new(PgQuotaLedger::new(QuotaConfig {
+        default_quota_bytes: DEFAULT_QUOTA,
+    }))
+}
 
 /// Tombstones written by the service stand at `START`; this is past a 2 s horizon.
 pub const PURGE_AT: Timestamp = Timestamp::from_unix_micros(START.as_unix_micros() + 3_000_000);
@@ -44,6 +52,7 @@ impl Maint {
         let maintenance = Arc::new(PgTreeMaintenance::new(
             erase.tree.fixture.api.clone(),
             erase.queue.clone(),
+            ledger(),
             Arc::new(PgFeedHorizon),
             &config,
         ));
@@ -60,7 +69,7 @@ impl Maint {
 
     /// Another process's maintenance: its own pool and the given queue.
     pub fn maintenance_on(&self, db: Db, queue: Arc<dyn GcQueue>) -> PgTreeMaintenance {
-        PgTreeMaintenance::new(db, queue, Arc::new(PgFeedHorizon), &self.config)
+        PgTreeMaintenance::new(db, queue, ledger(), Arc::new(PgFeedHorizon), &self.config)
     }
 
     /// Cascade batches of `limit` until one marks nothing; the returns in order (at most 50 calls).
@@ -122,8 +131,8 @@ impl Maint {
         ids
     }
 
-    /// `count` files of `parent`, each with one current revision over its own committed blob; returns
-    /// `(files, blobs)`.
+    /// `count` files of `parent`, each with one current revision of 1 byte over its own committed blob, counted
+    /// in usage as `publish` would; returns `(files, blobs)`.
     pub async fn files_with_blobs(
         &self,
         account: Uuid,
@@ -155,6 +164,12 @@ impl Maint {
         .execute(&mut admin)
         .await
         .expect("point files at their revisions");
+        sqlx::query("UPDATE quota SET used_bytes = used_bytes + $2 WHERE account_id = $1")
+            .bind(account)
+            .bind(i64::try_from(count).expect("a small count"))
+            .execute(&mut admin)
+            .await
+            .expect("count the seeded files in usage");
         close(admin).await;
         (files, blobs)
     }

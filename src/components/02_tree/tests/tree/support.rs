@@ -143,7 +143,8 @@ pub async fn account_with_root(conn: &mut PgConnection, id: Uuid) -> Uuid {
         .expect("insert root")
 }
 
-/// A file node of `parent` with one revision over a fresh blob, the revision current.
+/// A file node of `parent` with one revision of 1 byte over a fresh blob, the revision current, counted in usage
+/// as `publish` would when the account has a quota row.
 pub async fn file_with_revision(
     conn: &mut PgConnection,
     account: Uuid,
@@ -167,9 +168,14 @@ pub async fn file_with_revision(
     sqlx::query("UPDATE nodes SET current_revision_id = $1 WHERE id = $2")
         .bind(revision_id)
         .bind(file)
-        .execute(conn)
+        .execute(&mut *conn)
         .await
         .expect("point the file at its revision");
+    sqlx::query("UPDATE quota SET used_bytes = used_bytes + 1 WHERE account_id = $1")
+        .bind(account)
+        .execute(conn)
+        .await
+        .expect("count the file in usage when the account has a quota row");
     (file, revision_id, blob_id)
 }
 

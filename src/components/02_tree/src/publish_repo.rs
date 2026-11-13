@@ -7,6 +7,8 @@ use sc_db::{DbError, DbTx};
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::node_repo::{CurrentContent, current_content};
+
 /// The node an `Existing` target names, with the content hash of its current revision.
 pub(crate) struct FileRow {
     pub parent_id: Option<Uuid>,
@@ -15,6 +17,14 @@ pub(crate) struct FileRow {
     pub deleted: bool,
     pub current_revision_id: Option<Uuid>,
     pub current_hash: Option<Vec<u8>>,
+    pub current: Option<CurrentContent>,
+}
+
+impl FileRow {
+    /// The current revision while it counts in usage: the file's own node is live.
+    pub fn counted(&self) -> Option<&CurrentContent> {
+        self.current.as_ref().filter(|_| !self.deleted)
+    }
 }
 
 /// A file node about to be inserted with `revision_id` as its current revision: a new file's first revision, or
@@ -30,7 +40,7 @@ pub(crate) struct NewFile<'a> {
 }
 
 const FILE_FOR_UPDATE: &str = "SELECT n.kind, n.deleted_at IS NOT NULL, n.current_revision_id, r.content_hash, \
-    n.parent_id, n.name \
+    n.parent_id, n.name, r.blob_id, r.size \
     FROM nodes n LEFT JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id \
     WHERE n.id = $1 AND n.account_id = $2 FOR UPDATE OF n";
 
@@ -77,6 +87,7 @@ pub(crate) async fn lock_file(
             current_hash: row.try_get(3)?,
             parent_id: row.try_get(4)?,
             name: row.try_get(5)?,
+            current: current_content(&row, 6)?,
         })
     })
     .transpose()

@@ -9,8 +9,9 @@ use common::{Calls, NOW, id, sorted};
 use contracts::{
     ListingPage, LiveFile, LiveFileLookup, LiveUsageError, LiveUsageSource, MaintenanceError,
     NodeKind, NodeOrPath, NodeRef, NodeSelector, NodeState, NodeView, Page, Placement,
-    RestoreError, RestoreOutcome, RevisionMatch, RevisionRef, RevisionView, TreeMaintenance,
-    TreeReader, TreeReaderError, TreeRestore, TreeService, TreeServiceError, async_trait,
+    RestoreError, RestoreOutcome, RevisionMatch, RevisionRef, RevisionView, ThumbState,
+    TreeMaintenance, TreeReader, TreeReaderError, TreeRestore, TreeService, TreeServiceError,
+    async_trait,
 };
 use sc_ids::{FileHash, Hash32};
 use uuid::Uuid;
@@ -40,6 +41,7 @@ fn node(kind: NodeKind) -> NodeView {
         created_at: NOW,
         updated_at: NOW,
         seq: 1,
+        thumb_state: ThumbState::None,
     }
 }
 

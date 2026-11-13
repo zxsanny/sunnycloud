@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use contracts::{NodeKind, NodeState, NodeView, RevisionMatch, RevisionView};
+use contracts::{NodeKind, NodeState, NodeView, RevisionMatch, RevisionView, ThumbState};
 use sc_clock::Timestamp;
 use sc_ids::{FileHash, Hash32};
 use sunnycloud_http_api::{ApiServices, HttpServer};
@@ -61,6 +61,7 @@ pub fn file_node(id: Uuid) -> NodeView {
         created_at: CREATED,
         updated_at: CREATED,
         seq: 9,
+        thumb_state: ThumbState::None,
     }
 }
 
@@ -79,6 +80,7 @@ pub fn folder_node(id: Uuid, parent: Option<Uuid>) -> NodeView {
         created_at: CREATED,
         updated_at: CREATED,
         seq: 3,
+        thumb_state: ThumbState::None,
     }
 }
 

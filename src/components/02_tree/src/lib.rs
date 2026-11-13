@@ -2,9 +2,11 @@
 //! the typed errors with their conversion through `sc_error`, the retry-once rule for a transaction the
 //! database aborts, the folder create, rename, move and delete operations and `TreeCommit::publish` with its
 //! conflict outcomes and the path and device queries (`TreeService`, `TreeCommit` on `PgTreeService`), the node,
-//! listing and revision reads and the live usage sum (`TreeReader`, `LiveUsageSource` on `PgTreeReader`), the
-//! account lifecycle hook with the blob owner cleanup (`PgTreeLifecycle`), and the folder cascade and tombstone
-//! purge (`PgTreeMaintenance`) with their janitors (`TreeJanitor`); the other ports are implemented by later tasks.
+//! listing and revision reads with the thumbnail states of a listing page and the live usage sum (`TreeReader`,
+//! `LiveUsageSource` on `PgTreeReader`), the account lifecycle hook with the blob owner cleanup
+//! (`PgTreeLifecycle`), and the folder cascade and tombstone purge (`PgTreeMaintenance`) with their janitors
+//! (`TreeJanitor`); every change of a file's current revision applies its usage delta and queues the blob it
+//! unreferences in its own transaction; the other ports are implemented by later tasks.
 //! The schema is `src/migrations/*_create_tree_tables.*.sql`.
 
 mod config;
@@ -19,9 +21,11 @@ mod maintenance_repo;
 mod node_repo;
 mod publish;
 mod publish_repo;
+mod publish_usage;
 mod reader;
 mod reader_repo;
 mod reader_revisions;
+mod reader_thumbs;
 mod retry;
 mod revision_repo;
 mod service;

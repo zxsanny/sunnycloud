@@ -35,6 +35,11 @@ Given the crates that depend on `zeroize`
 When their manifests are read
 Then they declare it the same way
 
+**AC-5: Real GC queue in the feed's via-tree tests**
+Given 05's `via_tree` support (a `RecordingGcQueue` double since AZ-3711, because 05 has no shared way to build a `BlobstoreConfig`)
+When the shared helper offers a blobstore test config
+Then the feed tests use the real 04 `GcQueue` (05 gains `sunnycloud-blobstore` as a dev-dependency) and the double is gone
+
 ## Scope
 
 Included: the helper crate (dev-dependency only), the five suites, the manifests.

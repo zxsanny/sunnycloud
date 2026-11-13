@@ -8,6 +8,7 @@ use sc_db::{Db, DbError, DbTx};
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::node_repo::{CurrentContent, current_content};
 use crate::retry::{TxFailure, run_failure};
 
 /// A tombstoned node with no child row, due for the purge.
@@ -23,15 +24,19 @@ const CLAIM_PENDING: &str = "SELECT id, account_id FROM nodes WHERE cascade_pend
 // Children are locked without SKIP LOCKED: a skipped live child would let the flag clear with the child still live.
 // A subfolder gets `cascade_pending` itself, so the next level is marked by a later claim. No `seq` is written.
 // The pick is a materialized CTE, evaluated once: as an `IN (... LIMIT)` subquery the planner may rescan it while the update
-// runs and mark more than the limit.
+// runs and mark more than the limit. One row per marked node, with the blob and size of a file's current revision.
 const MARK_CHILDREN: &str = "WITH picked AS MATERIALIZED ( \
     SELECT id FROM nodes WHERE account_id = $1 AND parent_id = $2 AND deleted_at IS NULL \
-    ORDER BY id LIMIT $4 FOR UPDATE) \
-    UPDATE nodes n SET \
+    ORDER BY id LIMIT $4 FOR UPDATE), \
+    marked AS (UPDATE nodes n SET \
     deleted_at = 'epoch'::timestamptz + $3::bigint * interval '1 microsecond', \
     updated_at = 'epoch'::timestamptz + $3::bigint * interval '1 microsecond', \
     cascade_pending = (n.kind = 'folder') \
-    FROM picked WHERE n.account_id = $1 AND n.id = picked.id";
+    FROM picked WHERE n.account_id = $1 AND n.id = picked.id \
+    RETURNING n.id, n.kind, n.current_revision_id) \
+    SELECT m.id, r.blob_id, r.size FROM marked m \
+    LEFT JOIN revisions r ON r.id = m.current_revision_id AND r.account_id = $1 AND m.kind = 'file' \
+    ORDER BY m.id";
 
 const CLEAR_PENDING: &str = "UPDATE nodes SET cascade_pending = false \
     WHERE account_id = $1 AND id = $2 AND NOT EXISTS ( \
@@ -65,22 +70,23 @@ pub(crate) async fn claim_pending(tx: &mut DbTx) -> Result<Option<(Uuid, Uuid)>,
         .transpose()
 }
 
-/// Tombstones up to `limit` live children of `folder` at `now`; returns how many.
+/// Tombstones up to `limit` live children of `folder` at `now`; one entry per marked child, with the current
+/// revision's blob and size for a file that has one.
 pub(crate) async fn mark_children(
     tx: &mut DbTx,
     account: Uuid,
     folder: Uuid,
     now: Timestamp,
     limit: u64,
-) -> Result<u64, DbError> {
-    let done = sqlx::query(MARK_CHILDREN)
+) -> Result<Vec<Option<CurrentContent>>, DbError> {
+    let rows = sqlx::query(MARK_CHILDREN)
         .bind(account)
         .bind(folder)
         .bind(now.as_unix_micros())
         .bind(bound(limit))
-        .execute(tx.conn())
+        .fetch_all(tx.conn())
         .await?;
-    Ok(done.rows_affected())
+    rows.iter().map(|row| current_content(row, 1)).collect()
 }
 
 /// Clears the folder's flag when no live child is left; `true` when it did.

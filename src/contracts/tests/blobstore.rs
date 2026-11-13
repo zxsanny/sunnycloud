@@ -59,6 +59,7 @@ impl BlobWriter for Double {
     async fn create_file(
         &self,
         _plan: BlobPlan,
+        _plaintext_size: i64,
         _preallocate: bool,
     ) -> Result<BlobHandle, BlobError> {
         self.0.record("create_file");
@@ -142,6 +143,7 @@ impl BlobRegistry for Double {
     async fn register_in_tx(
         &self,
         _tx: &mut DbTx,
+        _account: Uuid,
         _blob: WrittenOrPlanned,
         _state: RegisterState,
     ) -> Result<(), BlobRegistryError> {
@@ -152,6 +154,7 @@ impl BlobRegistry for Double {
     async fn mark_committed_in_tx(
         &self,
         _tx: &mut DbTx,
+        _account: Uuid,
         _blob_id: Uuid,
         _size: i64,
     ) -> Result<(), BlobRegistryError> {
@@ -162,6 +165,7 @@ impl BlobRegistry for Double {
     async fn reinstate_in_tx(
         &self,
         _tx: &mut DbTx,
+        _account: Uuid,
         _blob_id: Uuid,
     ) -> Result<ReinstateOutcome, BlobRegistryError> {
         self.0.record("reinstate_in_tx");
@@ -171,6 +175,7 @@ impl BlobRegistry for Double {
     async fn remove_row_in_tx(
         &self,
         _tx: &mut DbTx,
+        _account: Uuid,
         _blob_id: Uuid,
     ) -> Result<(), BlobRegistryError> {
         self.0.record("remove_row_in_tx");
@@ -313,7 +318,7 @@ async fn blob_writer_double_records_every_method() {
 
     // Act
     let planned = writer.plan(id(), 10).expect("plan");
-    let opened = writer.create_file(planned, true).await.expect("create");
+    let opened = writer.create_file(planned, 10, true).await.expect("create");
     writer
         .open_for_write(id(), &[1], 1, 10)
         .await

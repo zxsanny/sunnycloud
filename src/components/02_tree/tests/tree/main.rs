@@ -2,8 +2,9 @@
 //! folder create, rename, move and delete (AZ-3708); `TreeCommit::publish` (AZ-3709); the account lifecycle hook
 //! and the blob owner cleanup (AZ-3717, AZ-3925 AC-4); the cascade and purge janitors (AZ-3714); the conflict
 //! outcomes of `publish` (AZ-3710); the node and listing reads (AZ-3707); the blob ownership check of `publish`
-//! (AZ-3712); the revision lookups, path and device queries and live usage (AZ-3716); on a real PostgreSQL 18
-//! (`DATABASE_URL`, a superuser URL).
+//! (AZ-3712); the revision lookups, path and device queries and live usage (AZ-3716); the usage deltas and queue
+//! writes of `publish`, delete and the cascade (AZ-3711); the thumbnail states of listing items (AZ-3718); on a
+//! real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
 
 mod config;
 mod conflict_support;
@@ -38,8 +39,12 @@ mod reader_listing;
 mod reader_lookups;
 mod reader_revisions;
 mod reader_support;
+mod reader_thumbs;
 mod retry;
 mod revision_support;
 mod rls;
 mod statements;
 mod support;
+mod usage_concurrency;
+mod usage_deltas;
+mod usage_support;

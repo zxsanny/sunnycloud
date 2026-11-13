@@ -6,8 +6,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use contracts::{
-    Begin, CommitEffect, EffectError, EntryFailure, EntryOutcome, EntryResult, PublishOutcome,
-    PublishResult, PublishedEntry, TreeCommit, async_trait,
+    Begin, BlobRegistry as _, CommitEffect, EffectError, EntryFailure, EntryOutcome, EntryResult,
+    PublishOutcome, PublishResult, PublishedEntry, TreeCommit, async_trait,
 };
 use sc_config::Secret;
 use sc_db::DbTx;
@@ -111,6 +111,7 @@ async fn three_bad_entries_of_five_hundred_fail_alone_and_the_rest_commit_under_
 /// when its fate says so.
 struct BlobEffect {
     registry: Arc<BlobRegistry>,
+    account: Uuid,
     blobs: HashMap<Uuid, Uuid>,
     fates: HashMap<Uuid, EffectError>,
 }
@@ -124,7 +125,7 @@ impl CommitEffect for BlobEffect {
     async fn on_entry(&self, tx: &mut DbTx, entry: &PublishedEntry) -> Result<(), EffectError> {
         let blob = self.blobs[&entry.revision_id];
         self.registry
-            .mark_committed_in_tx(tx, blob, entry.size)
+            .mark_committed_in_tx(tx, self.account, blob, entry.size)
             .await
             .map_err(|_| EffectError::Batch(ErrorCode::Internal))?;
         match self.fates.get(&entry.revision_id) {
@@ -209,6 +210,7 @@ async fn no_committed_revision_names_an_uncommitted_blob_under_random_effect_fai
         let fate = fates.next();
         let effect = Arc::new(BlobEffect {
             registry: registry.clone(),
+            account: tree.account,
             blobs: HashMap::from([(entry.revision.revision_id, *blob)]),
             fates: fate
                 .into_iter()

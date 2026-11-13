@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use contracts::{Due, GcQueue, GcReason, ReinstateOutcome};
+use contracts::{BlobRegistry as _, Due, GcQueue, GcReason, ReinstateOutcome};
 use sc_db::{RunError, Scope};
 use sunnycloud_blobstore::blob_path;
 use uuid::Uuid;
@@ -23,7 +23,7 @@ async fn queue(rig: &Rig, a: Uuid, blob: Uuid) {
 async fn reinstate(rig: &Rig, a: Uuid, blob: Uuid) -> ReinstateOutcome {
     rig.api
         .run(Scope::Account(a), async |tx| {
-            rig.registry.reinstate_in_tx(tx, blob).await
+            rig.registry.reinstate_in_tx(tx, a, blob).await
         })
         .await
         .expect("reinstate")
@@ -62,7 +62,7 @@ async fn a_blob_whose_rows_were_removed_is_beyond_retention_with_or_without_its_
         queue(&rig, a, blob).await;
         rig.api
             .run(Scope::Account(a), async |tx| {
-                rig.registry.remove_row_in_tx(tx, blob).await
+                rig.registry.remove_row_in_tx(tx, a, blob).await
             })
             .await
             .expect("remove");
@@ -120,7 +120,7 @@ async fn a_rolled_back_reinstate_keeps_the_queue_row_and_the_pending_state() {
     let result = rig
         .api
         .run(Scope::Account(a), async |tx| {
-            let outcome = rig.registry.reinstate_in_tx(tx, blob).await?;
+            let outcome = rig.registry.reinstate_in_tx(tx, a, blob).await?;
             assert_eq!(outcome, ReinstateOutcome::Reinstated);
             Err::<(), _>(Stop::Rollback)
         })
@@ -177,7 +177,7 @@ async fn an_unfinished_upload_is_not_restorable() {
     let result = rig
         .api
         .run(Scope::Account(a), async |tx| {
-            rig.registry.reinstate_in_tx(tx, blob).await
+            rig.registry.reinstate_in_tx(tx, a, blob).await
         })
         .await;
 
@@ -201,7 +201,7 @@ async fn a_file_check_failure_other_than_absence_is_an_error_and_touches_no_row(
     let result = rig
         .api
         .run(Scope::Account(a), async |tx| {
-            rig.registry.reinstate_in_tx(tx, blob).await
+            rig.registry.reinstate_in_tx(tx, a, blob).await
         })
         .await;
 
@@ -226,8 +226,8 @@ async fn remove_row_deletes_the_blob_and_its_queue_row_and_accepts_an_absent_row
     // Act
     rig.api
         .run(Scope::Account(a), async |tx| {
-            rig.registry.remove_row_in_tx(tx, blob).await?;
-            rig.registry.remove_row_in_tx(tx, blob).await
+            rig.registry.remove_row_in_tx(tx, a, blob).await?;
+            rig.registry.remove_row_in_tx(tx, a, blob).await
         })
         .await
         .expect("remove twice");

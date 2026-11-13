@@ -112,6 +112,21 @@ impl Rig {
         FileBlobWriter::new(&config, keyring, SyncBarrier::new(Duration::ZERO)).expect("writer")
     }
 
+    /// Another writer on the same volume and the same loaded keyring: it shares no state with `writer`.
+    pub fn second_writer(&self) -> FileBlobWriter {
+        let config = config(
+            &self.volume,
+            &self.scratch.0.join("master.key"),
+            &Settings::default(),
+        );
+        FileBlobWriter::new(
+            &config,
+            Arc::clone(&self.keyring),
+            SyncBarrier::new(Duration::ZERO),
+        )
+        .expect("writer")
+    }
+
     pub fn path(&self, blob_id: Uuid) -> PathBuf {
         blob_path(&self.volume, blob_id)
     }
@@ -264,7 +279,7 @@ pub async fn created(rig: &Rig, size: usize, preallocate: bool) -> (BlobHandle, 
     let plan = rig.writer.plan(Uuid::new_v4(), size as i64).expect("plan");
     let handle = rig
         .writer
-        .create_file(plan, preallocate)
+        .create_file(plan, size as i64, preallocate)
         .await
         .expect("create_file");
     (handle, Arc::new(data(seed_of(size), size)))

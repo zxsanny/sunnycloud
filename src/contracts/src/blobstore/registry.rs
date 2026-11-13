@@ -39,14 +39,20 @@ pub enum BlobRegistryError {
 ///
 /// ```compile_fail,E0061
 /// async fn without_a_transaction(registry: &dyn contracts::BlobRegistry) {
-///     let _ = registry.remove_row_in_tx(uuid::Uuid::nil()).await;
+///     let _ = registry
+///         .remove_row_in_tx(uuid::Uuid::nil(), uuid::Uuid::nil())
+///         .await;
 /// }
 /// ```
+///
+/// Every method names the account that owns the row, and every statement is filtered by it: a blob id of another
+/// account behaves like an absent row. A caller in system scope (the GC sweeper) passes the row's own account.
 #[async_trait]
 pub trait BlobRegistry: Send + Sync {
     async fn register_in_tx(
         &self,
         tx: &mut DbTx,
+        account: Uuid,
         blob: WrittenOrPlanned,
         state: RegisterState,
     ) -> Result<(), BlobRegistryError>;
@@ -54,6 +60,7 @@ pub trait BlobRegistry: Send + Sync {
     async fn mark_committed_in_tx(
         &self,
         tx: &mut DbTx,
+        account: Uuid,
         blob_id: Uuid,
         size: i64,
     ) -> Result<(), BlobRegistryError>;
@@ -63,12 +70,17 @@ pub trait BlobRegistry: Send + Sync {
     async fn reinstate_in_tx(
         &self,
         tx: &mut DbTx,
+        account: Uuid,
         blob_id: Uuid,
     ) -> Result<ReinstateOutcome, BlobRegistryError>;
 
     /// Deletes the `blobs` and `blob_gc` rows.
-    async fn remove_row_in_tx(&self, tx: &mut DbTx, blob_id: Uuid)
-    -> Result<(), BlobRegistryError>;
+    async fn remove_row_in_tx(
+        &self,
+        tx: &mut DbTx,
+        account: Uuid,
+        blob_id: Uuid,
+    ) -> Result<(), BlobRegistryError>;
 }
 
 #[derive(Debug, Error)]

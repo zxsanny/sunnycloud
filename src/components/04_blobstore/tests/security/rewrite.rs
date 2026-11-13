@@ -38,7 +38,7 @@ fn writer_with(rig: &Rig, preallocate: bool) -> FileBlobWriter {
 async fn created(rig: &Rig, writer: &FileBlobWriter, preallocate: bool) -> BlobHandle {
     let plan = writer.plan(rig.account, SIZE as i64).expect("plan");
     writer
-        .create_file(plan, preallocate)
+        .create_file(plan, SIZE as i64, preallocate)
         .await
         .expect("create_file")
 }

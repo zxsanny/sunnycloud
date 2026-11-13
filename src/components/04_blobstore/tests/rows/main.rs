@@ -3,6 +3,7 @@
 
 mod catalog;
 mod pending;
+mod port;
 mod registry;
 mod reinstate;
 mod schedule;

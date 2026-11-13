@@ -9,11 +9,17 @@ use bytes::Bytes;
 /// Every blob byte is written through this port. It never holds a database transaction across file I/O.
 #[async_trait]
 pub trait BlobWriter: Send + Sync {
-    /// Pure: picks a new v4 blob id and wraps a fresh data key; no file and no row exist afterwards.
+    /// Pure: picks a new v4 blob id and wraps a fresh data key; no file and no row exist afterwards, and the
+    /// writer keeps nothing of the plan, so a plan that never reaches `create_file` needs no release.
     fn plan(&self, account: Uuid, plaintext_size: i64) -> Result<BlobPlan, BlobError>;
 
-    async fn create_file(&self, plan: BlobPlan, preallocate: bool)
-    -> Result<BlobHandle, BlobError>;
+    /// `plaintext_size` is the size the plan was made for; the caller keeps it with the plan.
+    async fn create_file(
+        &self,
+        plan: BlobPlan,
+        plaintext_size: i64,
+        preallocate: bool,
+    ) -> Result<BlobHandle, BlobError>;
 
     async fn open_for_write(
         &self,

@@ -64,7 +64,11 @@ async fn identical_plaintext_gives_different_ciphertext_and_wrapped_key() {
             .writer
             .plan(Uuid::new_v4(), source.len() as i64)
             .expect("plan");
-        let handle = rig.writer.create_file(plan, true).await.expect("create");
+        let handle = rig
+            .writer
+            .create_file(plan, source.len() as i64, true)
+            .await
+            .expect("create");
 
         // Act
         write_shuffled(&rig.writer, &handle, &source).await;

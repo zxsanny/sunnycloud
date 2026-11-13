@@ -6,8 +6,9 @@
 use std::sync::Arc;
 
 use contracts::{
-    AccountGuard, AccountGuardError, FeedNotifier, FeedStamp, FeedStampError, NodeKind, NodeState,
-    NodeView, QuotaLedger, Seq, TouchedNodes, TreeServiceError,
+    AccountGuard, AccountGuardError, Due, FeedNotifier, FeedStamp, FeedStampError, GcQueue,
+    GcQueueError, GcReason, NodeKind, NodeState, NodeView, QuotaLedger, QuotaLedgerError, Seq,
+    ThumbState, TouchedNodes, TreeServiceError,
 };
 use sc_clock::Clock;
 use sc_db::{Db, DbError, DbTx, Scope};
@@ -15,7 +16,7 @@ use sc_ids::new_id;
 use sc_names::{ValidName, name_key, validate_name};
 use uuid::Uuid;
 
-use crate::node_repo::{self, NewFolder, NodeChange, NodeRow};
+use crate::node_repo::{self, CurrentContent, NewFolder, NodeChange, NodeRow};
 use crate::retry::run_retrying_each;
 
 /// The unique index that keeps names unique per folder by `name_key`; it is the arbiter of a name conflict.
@@ -27,6 +28,7 @@ pub struct PgTreeService {
     pub(crate) db: Db,
     pub(crate) guard: Arc<dyn AccountGuard>,
     pub(crate) quota: Arc<dyn QuotaLedger>,
+    pub(crate) gc: Arc<dyn GcQueue>,
     pub(crate) stamp: Arc<dyn FeedStamp>,
     pub(crate) notifier: Arc<dyn FeedNotifier>,
     pub(crate) clock: Arc<dyn Clock>,
@@ -37,6 +39,7 @@ impl PgTreeService {
         db: Db,
         guard: Arc<dyn AccountGuard>,
         quota: Arc<dyn QuotaLedger>,
+        gc: Arc<dyn GcQueue>,
         stamp: Arc<dyn FeedStamp>,
         notifier: Arc<dyn FeedNotifier>,
         clock: Arc<dyn Clock>,
@@ -45,6 +48,7 @@ impl PgTreeService {
             db,
             guard,
             quota,
+            gc,
             stamp,
             notifier,
             clock,
@@ -95,6 +99,7 @@ impl PgTreeService {
                     created_at: now,
                     updated_at: now,
                     seq,
+                    thumb_state: ThumbState::None,
                 })
             }
         })
@@ -182,8 +187,9 @@ impl PgTreeService {
     }
 
     /// Idempotent: a tombstoned node succeeds with no change and no stamp. A file whose current revision is not
-    /// `base_revision` is refused with that revision. A folder gets one tombstone and `cascade_pending`; its
-    /// descendants are marked later by the cascade.
+    /// `base_revision` is refused with that revision. A file's current size leaves usage and its blob is queued
+    /// `deleted` after retention, in the transaction of its tombstone. A folder gets one tombstone and
+    /// `cascade_pending`; its descendants are marked, and their usage released, later by the cascade.
     pub async fn delete_node(
         &self,
         account: Uuid,
@@ -207,6 +213,9 @@ impl PgTreeService {
                 node_repo::tombstone(tx, account, node_id, self.clock.now_utc())
                     .await
                     .map_err(unexpected)?;
+                if let Some(current) = node.current.filter(|_| node.kind == NodeKind::File) {
+                    self.release_file(tx, account, current).await?;
+                }
                 self.stamp(tx, account, node_id).await.map(Some)
             }
         })
@@ -215,6 +224,28 @@ impl PgTreeService {
             self.notifier.notify(account, seq);
         }
         Ok(())
+    }
+
+    /// A deleted file's current size leaves usage and its blob is queued `deleted` (AZ-3711).
+    async fn release_file(
+        &self,
+        tx: &mut DbTx,
+        account: Uuid,
+        current: CurrentContent,
+    ) -> Result<(), TreeServiceError> {
+        if current.size != 0 {
+            self.quota
+                .adjust_used(tx, account, -current.size)
+                .await
+                .map_err(|error| match error {
+                    QuotaLedgerError::Unexpected(fault) => TreeServiceError::Unexpected(fault),
+                    other => TreeServiceError::Unexpected(Box::new(other)),
+                })?;
+        }
+        self.gc
+            .schedule_in_tx(tx, current.blob_id, GcReason::Deleted, Due::AfterRetention)
+            .await
+            .map_err(|GcQueueError::Unexpected(fault)| TreeServiceError::Unexpected(fault))
     }
 
     async fn ensure_active(&self, tx: &mut DbTx, account: Uuid) -> Result<(), TreeServiceError> {

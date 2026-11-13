@@ -3,9 +3,11 @@
 //! delete is visible on the next call. A node is gone when it or any folder above it is tombstoned: the parent
 //! chain is walked on every lookup (bounded by the tree depth), so nothing waits for the background cascade.
 
+use std::sync::Arc;
+
 use contracts::{
     ListingPage, LiveFile, LiveFileLookup, NodeKind, NodeRef, NodeSelector, NodeState, NodeView,
-    TreeReaderError,
+    ThumbnailStateSource, TreeReaderError,
 };
 use sc_db::{Db, DbError, DbTx, RunError, Scope};
 use sc_names::{MAX_NAME_BYTES, name_key, validate_name};
@@ -24,6 +26,8 @@ pub struct PgTreeReader {
     pub(crate) db: Db,
     default_limit: u64,
     max_limit: u64,
+    /// Set by `with_thumbnails` (`crate::reader_thumbs`); without it every listing item is `ThumbState::None`.
+    pub(crate) thumbnails: Option<Arc<dyn ThumbnailStateSource>>,
 }
 
 impl PgTreeReader {
@@ -32,6 +36,7 @@ impl PgTreeReader {
             db,
             default_limit: config.listing_default_limit,
             max_limit: config.listing_max_limit,
+            thumbnails: None,
         }
     }
 
@@ -60,6 +65,7 @@ impl PgTreeReader {
 
     /// Live children in `name_key` order after the cursor. A limit of 0 asks for `listing_default_limit`; a limit
     /// above `listing_max_limit` is clamped to it (default 1000, owner decision 2026-11-13). A deleted folder is `NotFound`.
+    /// The page's image and video items carry their thumbnail state, read after the page's transaction.
     pub async fn list_children(
         &self,
         account: Uuid,
@@ -72,32 +78,35 @@ impl PgTreeReader {
         }
         let size = page_size(self.default_limit, self.max_limit, limit);
         let fetch = i64::try_from(size.saturating_add(1)).unwrap_or(i64::MAX);
-        self.read(account, async |tx| {
-            let folder = node_repo::view(tx, account, folder_id)
-                .await
-                .map_err(unexpected)?
-                .filter(|view| view.state == NodeState::Live)
-                .ok_or(TreeReaderError::NotFound)?;
-            if gone_above(tx, account, folder.parent_id).await? {
-                return Err(TreeReaderError::NotFound);
-            }
-            if folder.kind != NodeKind::Folder {
-                return Err(TreeReaderError::NotAFolder);
-            }
-            let mut rows = reader_repo::page(tx, account, folder_id, after_name_key, fetch)
-                .await
-                .map_err(unexpected)?;
-            let more = u64::try_from(rows.len()).is_ok_and(|fetched| fetched > size);
-            if more {
-                rows.pop();
-            }
-            let next = rows.last().filter(|_| more).map(|row| row.name_key.clone());
-            Ok(ListingPage {
-                items: rows.into_iter().map(|row| row.view).collect(),
-                next,
+        let mut page = self
+            .read(account, async |tx| {
+                let folder = node_repo::view(tx, account, folder_id)
+                    .await
+                    .map_err(unexpected)?
+                    .filter(|view| view.state == NodeState::Live)
+                    .ok_or(TreeReaderError::NotFound)?;
+                if gone_above(tx, account, folder.parent_id).await? {
+                    return Err(TreeReaderError::NotFound);
+                }
+                if folder.kind != NodeKind::Folder {
+                    return Err(TreeReaderError::NotAFolder);
+                }
+                let mut rows = reader_repo::page(tx, account, folder_id, after_name_key, fetch)
+                    .await
+                    .map_err(unexpected)?;
+                let more = u64::try_from(rows.len()).is_ok_and(|fetched| fetched > size);
+                if more {
+                    rows.pop();
+                }
+                let next = rows.last().filter(|_| more).map(|row| row.name_key.clone());
+                Ok(ListingPage {
+                    items: rows.into_iter().map(|row| row.view).collect(),
+                    next,
+                })
             })
-        })
-        .await
+            .await?;
+        self.fill_thumb_states(account, &mut page.items).await?;
+        Ok(page)
     }
 
     /// The live child of a live folder whose `name_key` is the fold of `name`; an invalid name matches nothing.

@@ -1,5 +1,6 @@
 //! `TreeMaintenance`: the folder cascade and the tombstone purge. Each call is one short system-scope
-//! transaction bounded by `limit`, retried once when the database aborts it for a deadlock (with a concurrent
+//! transaction bounded by `limit`, in which the cascade also releases the usage of the files it marks and queues
+//! their blobs (AZ-3711), retried once when the database aborts it for a deadlock (with a concurrent
 //! `publish`, the GC sweeper or the erase hook). No loop state exists beyond `cascade_pending` and `deleted_at`,
 //! so a run that dies anywhere is resumed by the next call's query.
 
@@ -8,8 +9,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use contracts::{
-    Due, FeedHorizon, FeedHorizonError, GcQueue, GcQueueError, GcReason, MaintenanceError, Seq,
-    TreeMaintenance, async_trait,
+    Due, FeedHorizon, FeedHorizonError, GcQueue, GcQueueError, GcReason, MaintenanceError,
+    QuotaLedger, QuotaLedgerError, Seq, TreeMaintenance, async_trait,
 };
 use sc_clock::Timestamp;
 use sc_db::{Db, DbError, DbTx};
@@ -20,11 +21,12 @@ use crate::lifecycle_repo;
 use crate::maintenance_repo::{self, Leaf};
 use crate::retry::retry_aborted;
 
-/// Separate from `PgTreeService` because it needs the GC queue and the feed horizon and none of the request
-/// path's ports; 12 wraps it in the two `TreeJanitor`s.
+/// Separate from `PgTreeService` because it needs the feed horizon and none of the request path's other ports;
+/// 12 wraps it in the two `TreeJanitor`s.
 pub struct PgTreeMaintenance {
     db: Db,
     queue: Arc<dyn GcQueue>,
+    quota: Arc<dyn QuotaLedger>,
     horizon: Arc<dyn FeedHorizon>,
     tombstone_horizon: Duration,
 }
@@ -33,12 +35,14 @@ impl PgTreeMaintenance {
     pub fn new(
         db: Db,
         queue: Arc<dyn GcQueue>,
+        quota: Arc<dyn QuotaLedger>,
         horizon: Arc<dyn FeedHorizon>,
         config: &TreeConfig,
     ) -> Self {
         PgTreeMaintenance {
             db,
             queue,
+            quota,
             horizon,
             tombstone_horizon: config.tombstone_horizon,
         }
@@ -47,6 +51,8 @@ impl PgTreeMaintenance {
     /// Pending folders one after another, each marked up to what is left of `limit`. A folder whose children are
     /// all marked loses its flag in the same transaction; the subfolders just marked are claimed next.
     /// `limit` also bounds the folders claimed, so a run of empty pending folders cannot grow the transaction.
+    /// Each marked file's blob is queued `deleted` as it is marked; the sizes are summed per account and leave
+    /// usage in one `adjust_used` per account at the end, so the quota row is touched once per transaction.
     async fn cascade_in(
         &self,
         tx: &mut DbTx,
@@ -55,6 +61,7 @@ impl PgTreeMaintenance {
     ) -> Result<u64, MaintenanceError> {
         let mut budget = u64::from(limit);
         let (mut marked, mut claims) = (0, 0);
+        let mut freed: BTreeMap<Uuid, i64> = BTreeMap::new();
         while budget > 0 && claims < limit {
             let Some((folder, account)) = maintenance_repo::claim_pending(tx)
                 .await
@@ -63,9 +70,20 @@ impl PgTreeMaintenance {
                 break;
             };
             claims += 1;
-            let done = maintenance_repo::mark_children(tx, account, folder, now, budget)
+            let children = maintenance_repo::mark_children(tx, account, folder, now, budget)
                 .await
                 .map_err(unexpected)?;
+            let done = children.len() as u64;
+            for file in children.into_iter().flatten() {
+                self.queue
+                    .schedule_in_tx(tx, file.blob_id, GcReason::Deleted, Due::AfterRetention)
+                    .await
+                    .map_err(|GcQueueError::Unexpected(fault)| {
+                        MaintenanceError::Unexpected(fault)
+                    })?;
+                let sum = freed.entry(account).or_insert(0);
+                *sum = sum.saturating_add(file.size);
+            }
             marked += done;
             budget = budget.saturating_sub(done);
             let cleared = maintenance_repo::clear_pending(tx, account, folder)
@@ -73,6 +91,17 @@ impl PgTreeMaintenance {
                 .map_err(unexpected)?;
             if !cleared {
                 break;
+            }
+        }
+        for (account, bytes) in freed {
+            if bytes != 0 {
+                self.quota
+                    .adjust_used(tx, account, -bytes)
+                    .await
+                    .map_err(|error| match error {
+                        QuotaLedgerError::Unexpected(fault) => MaintenanceError::Unexpected(fault),
+                        other => MaintenanceError::Unexpected(Box::new(other)),
+                    })?;
             }
         }
         Ok(marked)

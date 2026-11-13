@@ -3,7 +3,7 @@
 **Component**: 04_blobstore
 **Producer task**: E-10/c09 — `_docs/02_tasks/todo/B02-09_blob_registry_gc_queue.md` (`BlobRegistry`, `BlobCatalog`, `GcQueue`); E-10/c10 — `B02-10_gc_sweeper.md` (`GcSweeper` and its calls into `BlobOwnerCleanup`) (both renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-13 tree (GC scheduling in publish, delete, cascade and purge; reinstate in restore; ownership check by the composite foreign key on `revisions`, not through `BlobCatalog` (AZ-3712, 2026-11-13); implements `BlobOwnerCleanup` in E-13/c13), E-14 transfer (register rows, `get_ref` for downloads, row removal by the session reaper), E-18 media_jobs (derived rows, `Due::Now` scheduling, implements `BlobOwnerCleanup` in E-18/c10), E-17 / E-13 erase hooks (`pending_for_account`), E-22 (`admin gc-run`, scheduler)
-**Version**: 1.0.0
+**Version**: 2.0.0
 **Status**: draft (frozen when E-10/c10 is accepted)
 **Last Updated**: 2026-11-04
 
@@ -15,10 +15,10 @@ The row lifecycle of a blob (`uploading` -> `committed` -> `gc_pending` -> remov
 
 | Name | Input -> Output | Errors | Blocking? |
 |------|-----------------|--------|-----------|
-| `BlobRegistry::register_in_tx` | `tx, WrittenBlob or BlobPlan, state uploading or committed` -> `()` | typed | async, caller's tx |
-| `BlobRegistry::mark_committed_in_tx` | `tx, blob_id, size` -> `()` | typed | async, caller's tx |
-| `BlobRegistry::reinstate_in_tx` | `tx, blob_id` -> `Reinstated \| BeyondRetention \| FileMissing` | typed | async, caller's tx |
-| `BlobRegistry::remove_row_in_tx` | `tx, blob_id` -> `()` | typed | async, caller's tx |
+| `BlobRegistry::register_in_tx` | `tx, account_id, WrittenBlob or BlobPlan, state uploading or committed` -> `()` | typed | async, caller's tx |
+| `BlobRegistry::mark_committed_in_tx` | `tx, account_id, blob_id, size` -> `()` | typed | async, caller's tx |
+| `BlobRegistry::reinstate_in_tx` | `tx, account_id, blob_id` -> `Reinstated \| BeyondRetention \| FileMissing` | typed | async, caller's tx |
+| `BlobRegistry::remove_row_in_tx` | `tx, account_id, blob_id` -> `()` | typed | async, caller's tx |
 | `BlobCatalog::get_ref` | `account_id, blob_id` -> `Option<BlobRef{blob_id, size, wrapped_key, master_key_id}>` | none | async |
 | `GcQueue::schedule_in_tx` | `tx, blob_id, reason, Due::AfterRetention \| Due::Now` -> `()` | typed | async, caller's tx |
 | `GcQueue::pending_for_account` | `account` -> `u64` | typed | async |
@@ -35,13 +35,15 @@ The row lifecycle of a blob (`uploading` -> `committed` -> `gc_pending` -> remov
 - `pending_for_account` counts that account's queued blobs that are not yet removed, and nothing of other accounts.
 - `reinstate_in_tx` checks the file before its database statements: within retention it returns `Reinstated` (queue row removed, state back to `committed`); a row already removed after retention gives `BeyondRetention`; a row whose file is absent gives `FileMissing`.
 - The sweeper never removes a blob before its `due_at`. It claims due rows in a short transaction by moving `due_at` forward by `gc_claim_lease`, so rows stay claimable if the process dies. It unlinks files outside any transaction. A file that is already missing is logged (WARN) and its rows are still removed.
-- After the unlink, one short transaction calls `remove_owner_rows(tx, blob_id)` of **every** registered `BlobOwnerCleanup`, then `remove_row_in_tx`. A cycle repeats batches of `gc_batch` until nothing is due or `gc_cycle_budget` is spent.
+- After the unlink, one short transaction calls `remove_owner_rows(tx, blob_id)` of **every** registered `BlobOwnerCleanup`, then `remove_row_in_tx(tx, account_id, blob_id)` (the account of the row the sweeper locked). A cycle repeats batches of `gc_batch` until nothing is due or `gc_cycle_budget` is spent.
 - **Obligations of a `BlobOwnerCleanup` implementer (E-13, E-18)**: delete its row that references the blob whatever that row's state (02: the revision row, the FK clears `nodes.current_revision_id`; 08: the `derived` row); work only inside the given transaction (no own transaction, no file I/O, no call to another port); treat "no row" as success, because many blobs have no owner row (upload sessions, staged files, a derived blob already gone).
 
 ## Non-Goals
 
 - Not covered: which blobs to schedule and when (02, 03, 08 decide); quota changes (07a); the orphan sweep (internal to 04).
 - Not covered: the field list of `CycleStats` in `contracts` (open in part 1); `GcStats` is reported through it once that is fixed.
+
+- Every registry method names the account that owns the row and every statement is filtered by it, in tenant and in system scope: a blob id named with another account behaves like an absent row (`mark_committed_in_tx` fails, `reinstate_in_tx` gives `BeyondRetention`, `remove_row_in_tx` removes nothing) (AZ-4264).
 
 ## Versioning Rules
 
@@ -66,3 +68,4 @@ The row lifecycle of a blob (`uploading` -> `committed` -> `gc_pending` -> remov
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B02) |
+| 2.0.0 | 2026-11-13 | `BlobRegistry` methods take the account and every statement is filtered by it (a blob named with another account behaves like an absent row); 04 implements the port as a trait; the sweeper passes the account of the row it locked | AZ-4264 |

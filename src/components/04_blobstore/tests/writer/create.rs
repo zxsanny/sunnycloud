@@ -25,7 +25,7 @@ async fn a_file_that_would_leave_less_than_the_reserve_is_free_space_floor_and_l
     let blob_id = plan.blob_id;
 
     // Act
-    let result = rig.writer.create_file(plan, true).await;
+    let result = rig.writer.create_file(plan, 60 * MIB as i64, true).await;
 
     // Assert
     assert!(
@@ -44,7 +44,7 @@ async fn a_file_larger_than_the_volume_is_no_space_and_leaves_no_file() {
     let plan = rig.writer.plan(Uuid::new_v4(), 1_i64 << 47).expect("plan");
 
     // Act
-    let result = rig.writer.create_file(plan, false).await;
+    let result = rig.writer.create_file(plan, 1_i64 << 47, false).await;
 
     // Assert
     assert!(matches!(result, Err(BlobError::NoSpace)), "{result:?}");
@@ -134,18 +134,43 @@ async fn the_directory_entry_is_synced_exactly_once_per_created_file() {
 }
 
 #[tokio::test]
-async fn create_file_for_a_plan_this_writer_never_made_is_io_and_creates_nothing() {
+async fn unused_plans_leave_nothing_in_the_writer_and_another_writer_creates_a_kept_plan() {
+    // Arrange
+    let rig = Rig::new().await;
+    for _ in 0..100 {
+        rig.writer
+            .plan(Uuid::new_v4(), MIB as i64)
+            .expect("unused plan");
+    }
+    let kept = rig.writer.plan(Uuid::new_v4(), MIB as i64).expect("plan");
+    let blob_id = kept.blob_id;
+    let other = rig.second_writer();
+
+    // Act
+    let handle = other
+        .create_file(kept, MIB as i64, false)
+        .await
+        .expect("create_file needs only the caller's plan and size");
+
+    // Assert
+    assert_eq!(handle.plan.blob_id, blob_id);
+    assert_eq!(handle.plaintext_size, MIB as i64);
+    assert_eq!(rig.blob_files(), vec![rig.path(blob_id)]);
+    drop(other);
+    rig.finish().await;
+}
+
+#[tokio::test]
+async fn create_file_with_a_size_past_the_chunk_counter_is_out_of_range_and_creates_nothing() {
     // Arrange
     let rig = Rig::new().await;
     let plan = rig.writer.plan(Uuid::new_v4(), 1).expect("plan");
-    let other = rig.unloaded_writer();
 
     // Act
-    let result = other.create_file(plan, false).await;
+    let result = rig.writer.create_file(plan, i64::MAX, false).await;
 
     // Assert
-    assert!(matches!(result, Err(BlobError::Io(_))), "{result:?}");
+    assert!(matches!(result, Err(BlobError::OutOfRange)), "{result:?}");
     assert!(rig.blob_files().is_empty());
-    drop(other);
     rig.finish().await;
 }

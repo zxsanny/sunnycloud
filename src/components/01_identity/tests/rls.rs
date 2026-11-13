@@ -1,6 +1,7 @@
-//! AC-3: the runtime role `sunnycloud` sees only the scoped account's rows in the four account-scoped tables,
-//! no rows without a scope, and cannot run DDL. Rows are written as the schema owner; every read is made as
-//! `sunnycloud`.
+//! AC-3 and ST-01-2 (AC-59, NFT-SEC-46; AZ-3692 AC-2): the runtime role `sunnycloud` sees only the scoped
+//! account's rows in the four account-scoped tables, no rows without a scope, and can neither run DDL (`CREATE
+//! TABLE`, `ALTER TABLE`) nor switch to the schema owner. Rows are written as the schema owner; every read is made
+//! as `sunnycloud`.
 
 mod support;
 
@@ -102,21 +103,51 @@ async fn create_table_as_the_api_role_is_permission_denied() {
     let accounts = two_accounts().await;
 
     // Act
-    let result = accounts
+    let result = refused(&accounts, "CREATE TABLE intruder (id int)").await;
+
+    // Assert
+    assert!(is_permission_denied(&result), "{result:?}");
+    accounts.harness.finish().await;
+}
+
+/// Runs `statement` as the API role scoped to B; the error it fails with.
+async fn refused(accounts: &Accounts, statement: &'static str) -> Result<(), RunError<DbError>> {
+    accounts
         .harness
         .api
         .run(Scope::Account(accounts.b), async |tx| {
-            sqlx::raw_sql("CREATE TABLE intruder (id int)")
-                .execute(tx.conn())
-                .await?;
+            sqlx::raw_sql(statement).execute(tx.conn()).await?;
             Ok::<_, DbError>(())
         })
-        .await;
+        .await
+}
+
+fn is_permission_denied(result: &Result<(), RunError<DbError>>) -> bool {
+    matches!(result, Err(RunError::Closure(DbError::Other(text))) if text.starts_with("SQLSTATE 42501"))
+}
+
+#[tokio::test]
+async fn alter_table_as_the_api_role_is_permission_denied() {
+    // Arrange
+    let accounts = two_accounts().await;
+
+    // Act
+    let result = refused(&accounts, "ALTER TABLE sessions ADD COLUMN intruder int").await;
 
     // Assert
-    assert!(
-        matches!(&result, Err(RunError::Closure(DbError::Other(text))) if text.starts_with("SQLSTATE 42501")),
-        "{result:?}"
-    );
+    assert!(is_permission_denied(&result), "{result:?}");
+    accounts.harness.finish().await;
+}
+
+#[tokio::test]
+async fn set_role_to_the_schema_owner_as_the_api_role_is_permission_denied() {
+    // Arrange
+    let accounts = two_accounts().await;
+
+    // Act
+    let result = refused(&accounts, "SET ROLE sunnycloud_migrator").await;
+
+    // Assert
+    assert!(is_permission_denied(&result), "{result:?}");
     accounts.harness.finish().await;
 }

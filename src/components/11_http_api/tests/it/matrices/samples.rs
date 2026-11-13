@@ -35,6 +35,7 @@ fn node() -> NodeView {
         created_at: WHEN,
         updated_at: WHEN,
         seq: 1,
+        thumb_state: ThumbState::None,
     }
 }
 

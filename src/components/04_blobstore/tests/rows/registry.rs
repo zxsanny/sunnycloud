@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use contracts::{RegisterState, WrittenBlob, WrittenOrPlanned};
+use contracts::{BlobRegistry as _, RegisterState, WrittenBlob, WrittenOrPlanned};
 use sc_db::{RunError, Scope};
 use sunnycloud_blobstore::{BlobRegistry, BlobstoreConfig};
 use uuid::Uuid;
@@ -27,7 +27,7 @@ async fn register_then_mark_committed_commits_a_committed_row() {
                     RegisterState::Uploading,
                 )
                 .await?;
-            rig.registry.mark_committed_in_tx(tx, id, 42).await?;
+            rig.registry.mark_committed_in_tx(tx, a, id, 42).await?;
             Ok::<_, Stop>(())
         })
         .await
@@ -57,7 +57,7 @@ async fn caller_rollback_leaves_no_row() {
                     RegisterState::Uploading,
                 )
                 .await?;
-            rig.registry.mark_committed_in_tx(tx, id, 42).await?;
+            rig.registry.mark_committed_in_tx(tx, a, id, 42).await?;
             Err::<(), _>(Stop::Rollback)
         })
         .await;
@@ -144,14 +144,16 @@ async fn mark_committed_fails_for_an_absent_or_already_committed_row() {
         .api
         .run(Scope::Account(a), async |tx| {
             rig.registry
-                .mark_committed_in_tx(tx, Uuid::new_v4(), 1)
+                .mark_committed_in_tx(tx, a, Uuid::new_v4(), 1)
                 .await
         })
         .await;
     let again = rig
         .api
         .run(Scope::Account(a), async |tx| {
-            rig.registry.mark_committed_in_tx(tx, committed, 99).await
+            rig.registry
+                .mark_committed_in_tx(tx, a, committed, 99)
+                .await
         })
         .await;
 

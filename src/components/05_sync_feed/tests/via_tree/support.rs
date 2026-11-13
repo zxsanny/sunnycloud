@@ -1,6 +1,6 @@
 //! The "via 02" rig: one database cloned from the migrated template, an account with its root folder, feed row
 //! and quota row, `PgTreeService` wired as 02's own tests wire it (real 05 stamp and notifier, real 07a ledger,
-//! the boundary-backed `AccountGuard`), and the real feed (`PgFeedReader`, `PgChangeFeed`) on the same pool.
+//! the boundary-backed `AccountGuard`, and a recording `GcQueue`: this crate has no 04 dev-dependency), and the real feed (`PgFeedReader`, `PgChangeFeed`) on the same pool.
 //! Fixtures and probes run as the schema owner or the superuser.
 
 use std::cell::Cell;
@@ -9,9 +9,9 @@ use std::time::{Duration, Instant};
 
 use contracts::{
     AccountGuard, AccountGuardError, ChangeFeed, ChangeFeedError, ChangePage, CommitActor, Cursor,
-    EntryResult, FeedNotifier, NewRevision, Principal, PrincipalKind, PrincipalRevalidator,
-    PublishEntry, PublishResult, RevalidatorError, Role, Seq, Target, TreeCommit, TreeCommitError,
-    async_trait,
+    Due, EntryResult, FeedNotifier, GcQueue, GcQueueError, GcReason, NewRevision, Principal,
+    PrincipalKind, PrincipalRevalidator, PublishEntry, PublishResult, RevalidatorError, Role, Seq,
+    Target, TreeCommit, TreeCommitError, async_trait,
 };
 use sc_clock::{CancellationToken, Clock};
 use sc_db::DbTx;
@@ -33,6 +33,39 @@ use crate::statements;
 pub const EPOCH: i64 = 1;
 const DEFAULT_QUOTA: i64 = 1 << 40;
 const SIZE: i64 = 100;
+
+/// The `GcQueue` port at its boundary: the feed tests never read the queue, so it only records the blobs the
+/// tree hands it (the real 04 queue is wired in 02's and 08's tests).
+#[derive(Default)]
+pub struct RecordingGcQueue {
+    scheduled: Mutex<Vec<Uuid>>,
+}
+
+#[async_trait]
+impl GcQueue for RecordingGcQueue {
+    async fn schedule_in_tx(
+        &self,
+        _tx: &mut DbTx,
+        blob_id: Uuid,
+        _reason: GcReason,
+        _due: Due,
+    ) -> Result<(), GcQueueError> {
+        self.scheduled
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(blob_id);
+        Ok(())
+    }
+
+    async fn pending_for_account(&self, _account: Uuid) -> Result<u64, GcQueueError> {
+        let scheduled = self
+            .scheduled
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len();
+        Ok(u64::try_from(scheduled).unwrap_or(u64::MAX))
+    }
+}
 
 tokio::task_local! {
     /// The `seq` the notifier was woken with inside the current task; each publish helper scopes it.
@@ -133,6 +166,7 @@ impl Rig {
             Arc::new(PgQuotaLedger::new(QuotaConfig {
                 default_quota_bytes: DEFAULT_QUOTA,
             })),
+            Arc::new(RecordingGcQueue::default()),
             Arc::new(PgFeedStamp),
             Arc::new(ProbeNotifier {
                 inner: notifier.clone(),

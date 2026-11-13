@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use contracts::{
-    BlobCatalog as _, BlobRef, BlobWriter, RegisterState, WrittenBlob, WrittenOrPlanned,
+    BlobCatalog as _, BlobRef, BlobRegistry as _, BlobWriter, RegisterState, WrittenBlob,
+    WrittenOrPlanned,
 };
 use sc_db::Scope;
 use sunnycloud_blobstore::{
@@ -72,7 +73,7 @@ impl Rotated {
         let plan = self.writer.plan(rig.account, len as i64).expect("plan");
         let handle = self
             .writer
-            .create_file(plan, false)
+            .create_file(plan, len as i64, false)
             .await
             .expect("create_file");
         let token = self

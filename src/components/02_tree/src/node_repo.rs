@@ -1,7 +1,7 @@
 //! Statements of the folder, rename, move and delete operations. Every statement names `account_id`, so a foreign
 //! id behaves like a random one (row-level security is the second line).
 
-use contracts::{NodeKind, NodeState, NodeView};
+use contracts::{NodeKind, NodeState, NodeView, ThumbState};
 use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx};
 use sc_ids::FileHash;
@@ -15,6 +15,14 @@ pub(crate) struct NodeRow {
     pub kind: NodeKind,
     pub deleted: bool,
     pub current_revision_id: Option<Uuid>,
+    pub current: Option<CurrentContent>,
+}
+
+/// The blob and size of a file's current revision: what the file counts in usage while its own node is live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CurrentContent {
+    pub blob_id: Uuid,
+    pub size: i64,
 }
 
 /// A folder about to be inserted; `name_key` comes from `sc_names::name_key`.
@@ -37,11 +45,15 @@ pub(crate) struct NodeChange<'a> {
     pub now: Timestamp,
 }
 
-const NODE_FOR_UPDATE: &str = "SELECT parent_id, kind, deleted_at IS NOT NULL, current_revision_id \
-    FROM nodes WHERE id = $1 AND account_id = $2 FOR UPDATE";
+const NODE_FOR_UPDATE: &str = "SELECT n.parent_id, n.kind, n.deleted_at IS NOT NULL, \
+    n.current_revision_id, r.blob_id, r.size \
+    FROM nodes n LEFT JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id \
+    WHERE n.id = $1 AND n.account_id = $2 FOR UPDATE OF n";
 
-const NODE_FOR_SHARE: &str = "SELECT parent_id, kind, deleted_at IS NOT NULL, current_revision_id \
-    FROM nodes WHERE id = $1 AND account_id = $2 FOR SHARE";
+const NODE_FOR_SHARE: &str = "SELECT n.parent_id, n.kind, n.deleted_at IS NOT NULL, \
+    n.current_revision_id, r.blob_id, r.size \
+    FROM nodes n LEFT JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id \
+    WHERE n.id = $1 AND n.account_id = $2 FOR SHARE OF n";
 
 const INSERT_FOLDER: &str = "INSERT INTO nodes (id, account_id, parent_id, kind, name, name_key, \
     name_key_version, created_at, updated_at) VALUES ($1, $2, $3, 'folder', $4, $5, $6, \
@@ -111,9 +123,22 @@ async fn lock(
             kind: kind(&row, 1)?,
             deleted: row.try_get(2)?,
             current_revision_id: row.try_get(3)?,
+            current: current_content(&row, 4)?,
         })
     })
     .transpose()
+}
+
+/// The `(blob_id, size)` columns at `index` of a left join to the current revision.
+pub(crate) fn current_content(
+    row: &PgRow,
+    index: usize,
+) -> Result<Option<CurrentContent>, DbError> {
+    let blob_id: Option<Uuid> = row.try_get(index)?;
+    let size: Option<i64> = row.try_get(index + 1)?;
+    Ok(blob_id
+        .zip(size)
+        .map(|(blob_id, size)| CurrentContent { blob_id, size }))
 }
 
 pub(crate) async fn insert_folder(tx: &mut DbTx, folder: &NewFolder<'_>) -> Result<(), DbError> {
@@ -209,6 +234,7 @@ pub(crate) fn node_view(id: Uuid, row: &PgRow) -> Result<NodeView, DbError> {
         created_at: Timestamp::from_unix_micros(row.try_get(9)?),
         updated_at: Timestamp::from_unix_micros(row.try_get(10)?),
         seq: row.try_get(11)?,
+        thumb_state: ThumbState::None,
     })
 }
 

@@ -148,7 +148,7 @@ impl PgUploadService {
                 }
             }
         };
-        if let Err(error) = self.writer.create_file(plan, true).await {
+        if let Err(error) = self.writer.create_file(plan, size, true).await {
             self.compensate(account, started.upload_id, blob_id, size)
                 .await;
             return Err(self.refused(account, blob_error(error)));
@@ -251,6 +251,7 @@ impl PgUploadService {
                 self.registry
                     .register_in_tx(
                         tx,
+                        account,
                         WrittenOrPlanned::Planned(plan.clone()),
                         RegisterState::Uploading,
                     )
@@ -275,7 +276,7 @@ impl PgUploadService {
                 if session_repo::delete_open(tx, account, upload_id).await? == 0 {
                     return Ok(());
                 }
-                self.registry.remove_row_in_tx(tx, blob_id).await?;
+                self.registry.remove_row_in_tx(tx, account, blob_id).await?;
                 self.quota.release_reservation(tx, account, size).await?;
                 Ok(())
             })

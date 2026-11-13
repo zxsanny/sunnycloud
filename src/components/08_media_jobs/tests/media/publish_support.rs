@@ -1,5 +1,5 @@
 //! The real 02 `TreeCommit::publish` (`PgTreeService`) over the media test database, wired as 02's own publish
-//! tests wire it: the real 07a ledger, 05 feed stamp and notifier, and an `AccountGuard` read at its boundary (the
+//! tests wire it: the real 07a ledger, 04 `GcQueue`, 05 feed stamp and notifier, and an `AccountGuard` read at its boundary (the
 //! identity guard is not a dependency of this crate). Minimal copies of 02's `mutation_support.rs` and
 //! `publish_support.rs`; the tree crate is not edited.
 
@@ -14,13 +14,14 @@ use sc_db::DbTx;
 use sc_error::ErrorCode;
 use sc_ids::{FileHash, Hash32};
 use sqlx::Connection;
+use sunnycloud_blobstore::{BlobstoreConfig, GcQueue};
 use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
 use sunnycloud_sync_feed::{InProcessNotifier, PgFeedStamp};
 use sunnycloud_tree::PgTreeService;
 use uuid::Uuid;
 
 use crate::queue_support::Queue;
-use crate::support::blob;
+use crate::support::{blob, load_settings};
 
 /// Large enough that the ledger never refuses in these tests.
 const DEFAULT_QUOTA: i64 = 1 << 40;
@@ -98,15 +99,19 @@ pub async fn tree_service(q: &Queue) -> (Arc<PgTreeService>, Uuid) {
         .await
         .expect("insert quota row");
     conn.close().await.expect("close owner connection");
+    let clock = sc_testdb::clock_at_start();
+    let blobstore = BlobstoreConfig::from_settings(&load_settings(&[]).expect("settings"));
+    let queue = GcQueue::new(&blobstore, q.fixture.api.clone(), clock.clone()).expect("gc queue");
     let service = PgTreeService::new(
         q.fixture.api.clone(),
         Arc::new(StateGuard),
         Arc::new(PgQuotaLedger::new(QuotaConfig {
             default_quota_bytes: DEFAULT_QUOTA,
         })),
+        Arc::new(queue),
         Arc::new(PgFeedStamp),
         InProcessNotifier::new(),
-        sc_testdb::clock_at_start(),
+        clock,
     );
     (Arc::new(service), root)
 }

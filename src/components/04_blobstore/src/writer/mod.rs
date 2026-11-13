@@ -1,7 +1,8 @@
 //! The `BlobWriter` port: planning without I/O, file creation under the free-space floor, encrypted block
 //! writes acknowledged through the group-commit barrier, whole-object writes, and discard.
 //!
-//! The writer keeps no open files. A block write reopens the file, reads its nonce prefix and unwraps the data key
+//! The writer keeps no open files and no plans: the caller holds the plan and its size until `create_file`, so a
+//! plan that never gets there leaves nothing behind. A block write reopens the file, reads its nonce prefix and unwraps the data key
 //! from the handle's wrapped key, so a handle works after a restart and from another request.
 
 mod block;
@@ -10,12 +11,11 @@ mod volume;
 
 pub(crate) use volume::{free_floor, volume_space};
 
-use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 use std::path::PathBuf;
+use std::sync::Arc;
 #[cfg(feature = "sync-hook")]
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
 
 use bytes::Bytes;
 use contracts::{
@@ -45,9 +45,6 @@ pub struct FileBlobWriter {
     /// Caps the blocking jobs of the writer at `blob_io_threads`; the runtime's blocking pool is shared with
     /// the rest of the process and has no per-component limit.
     io: Arc<Semaphore>,
-    /// The declared size of each blob between `plan` and `create_file`: the port's `create_file` takes the plan
-    /// only, and the file length, the reserved space and the handle all depend on the size.
-    planned: Mutex<HashMap<Uuid, i64>>,
     /// Makes the check-then-write of one block index atomic within this writer; the process holds one writer.
     blocks: Arc<BlockLocks>,
     /// Counts the block writes in flight for the scrub's pause; absent in a process that has no scrub gauge.
@@ -85,7 +82,6 @@ impl FileBlobWriter {
             keyring,
             barrier,
             io: Arc::new(Semaphore::new(threads.clamp(1, Semaphore::MAX_PERMITS))),
-            planned: Mutex::new(HashMap::new()),
             blocks: Arc::new(BlockLocks::new()),
             activity: None,
             #[cfg(feature = "sync-hook")]
@@ -187,17 +183,6 @@ impl FileBlobWriter {
         Ok(blob)
     }
 
-    fn planned_size(&self, blob_id: Uuid) -> Result<i64, BlobError> {
-        self.planned
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(&blob_id)
-            .copied()
-            .ok_or_else(|| {
-                blob_error_from_io(io::Error::from(ErrorKind::InvalidInput), blob_ids(blob_id))
-            })
-    }
-
     async fn remove_file(&self, blob_id: Uuid) {
         if let Err(error) = tokio::fs::remove_file(blob_path(&self.root, blob_id)).await
             && error.kind() != ErrorKind::NotFound
@@ -219,28 +204,20 @@ impl BlobWriter for FileBlobWriter {
     fn plan(&self, _account: Uuid, plaintext_size: i64) -> Result<BlobPlan, BlobError> {
         layout_of(plaintext_size)?;
         let (plan, _key) = self.new_plan()?;
-        self.planned
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(plan.blob_id, plaintext_size);
         Ok(plan)
     }
 
     async fn create_file(
         &self,
         plan: BlobPlan,
+        plaintext_size: i64,
         preallocate: bool,
     ) -> Result<BlobHandle, BlobError> {
-        let plaintext_size = self.planned_size(plan.blob_id)?;
         let key =
             self.keyring
                 .unwrap_data_key(plan.blob_id, &plan.wrapped_key, plan.master_key_id)?;
         self.create_blob(&plan, key, plaintext_size, preallocate)
             .await?;
-        self.planned
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&plan.blob_id);
         Ok(BlobHandle {
             plan,
             plaintext_size,

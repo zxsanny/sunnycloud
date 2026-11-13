@@ -121,7 +121,7 @@ async fn an_open_download_and_a_block_write_in_flight_each_count_in_the_gauge() 
     .expect("writer")
     .with_activity(rig.gauge.clone());
     let plan = writer.plan(rig.account, 1024).expect("plan");
-    let handle = writer.create_file(plan, false).await.expect("create");
+    let handle = writer.create_file(plan, 1024, false).await.expect("create");
     let token = writer
         .write_block(&handle, 0, Bytes::from(vec![1; 1024]))
         .await

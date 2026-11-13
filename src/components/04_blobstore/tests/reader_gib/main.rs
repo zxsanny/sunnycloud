@@ -53,7 +53,11 @@ async fn a_one_gib_blob_streams_to_the_generator_hash_within_32_mib_of_peak_grow
     // Arrange
     let rig = Rig::new().await;
     let plan = rig.writer.plan(rig.account, GIB as i64).expect("plan");
-    let handle = rig.writer.create_file(plan, false).await.expect("create");
+    let handle = rig
+        .writer
+        .create_file(plan, GIB as i64, false)
+        .await
+        .expect("create");
     let mut manifest = blake3::Hasher::new();
     for index in 0..GIB / BLOCK {
         let block = generated(index);

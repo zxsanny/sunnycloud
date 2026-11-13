@@ -1,16 +1,15 @@
 //! The port doubles of the `start_upload` tests, each at its boundary: a writer decorator that delegates to the
-//! real 04 writer and can make file creation fail, the registry port over the real 04 registry, and the account
-//! guard reading the account state.
+//! real 04 writer and can make file creation fail, and the account guard reading the account state. The registry
+//! is the real 04 one, through the port.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
 use contracts::{
-    AccountGuard, AccountGuardError, BlobError, BlobHandle, BlobPlan, BlobRegistryError,
-    BlobWriter, ByteStream, DurableToken, RegisterState, ReinstateOutcome, WrittenBlob,
-    WrittenOrPlanned, async_trait,
+    AccountGuard, AccountGuardError, BlobError, BlobHandle, BlobPlan, BlobWriter, ByteStream,
+    DurableToken, WrittenBlob, async_trait,
 };
 use sc_db::DbTx;
-use sunnycloud_blobstore::{BlobRegistry, FileBlobWriter};
+use sunnycloud_blobstore::FileBlobWriter;
 use uuid::Uuid;
 
 /// How the next `create_file` calls end.
@@ -49,11 +48,16 @@ impl BlobWriter for FaultyWriter {
     async fn create_file(
         &self,
         plan: BlobPlan,
+        plaintext_size: i64,
         preallocate: bool,
     ) -> Result<BlobHandle, BlobError> {
         let fault = *self.fault.lock().unwrap_or_else(PoisonError::into_inner);
         match fault {
-            CreateFault::None => self.inner.create_file(plan, preallocate).await,
+            CreateFault::None => {
+                self.inner
+                    .create_file(plan, plaintext_size, preallocate)
+                    .await
+            }
             CreateFault::Io => Err(BlobError::Io(Box::new(std::io::Error::other("injected")))),
             CreateFault::FreeSpaceFloor => Err(BlobError::FreeSpaceFloor),
         }
@@ -95,58 +99,6 @@ impl BlobWriter for FaultyWriter {
 
     async fn discard(&self, blob_id: Uuid) -> Result<(), BlobError> {
         self.inner.discard(blob_id).await
-    }
-}
-
-/// The `BlobRegistry` port over the real 04 registry for one account. The port's `register_in_tx` carries no
-/// account while 04's takes one, so the adapter supplies the rig's account; every statement is 04's own.
-pub struct AccountRegistry {
-    inner: BlobRegistry,
-    account: Uuid,
-}
-
-impl AccountRegistry {
-    pub fn new(inner: BlobRegistry, account: Uuid) -> Self {
-        AccountRegistry { inner, account }
-    }
-}
-
-#[async_trait]
-impl contracts::BlobRegistry for AccountRegistry {
-    async fn register_in_tx(
-        &self,
-        tx: &mut DbTx,
-        blob: WrittenOrPlanned,
-        state: RegisterState,
-    ) -> Result<(), BlobRegistryError> {
-        self.inner
-            .register_in_tx(tx, self.account, blob, state)
-            .await
-    }
-
-    async fn mark_committed_in_tx(
-        &self,
-        tx: &mut DbTx,
-        blob_id: Uuid,
-        size: i64,
-    ) -> Result<(), BlobRegistryError> {
-        self.inner.mark_committed_in_tx(tx, blob_id, size).await
-    }
-
-    async fn reinstate_in_tx(
-        &self,
-        tx: &mut DbTx,
-        blob_id: Uuid,
-    ) -> Result<ReinstateOutcome, BlobRegistryError> {
-        self.inner.reinstate_in_tx(tx, blob_id).await
-    }
-
-    async fn remove_row_in_tx(
-        &self,
-        tx: &mut DbTx,
-        blob_id: Uuid,
-    ) -> Result<(), BlobRegistryError> {
-        self.inner.remove_row_in_tx(tx, blob_id).await
     }
 }
 

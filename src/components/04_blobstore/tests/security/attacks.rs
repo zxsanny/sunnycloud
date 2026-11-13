@@ -158,7 +158,7 @@ async fn a_file_rolled_back_to_an_earlier_copy_is_corrupt_past_the_rolled_back_p
         .expect("plan");
     let handle = rig
         .writer
-        .create_file(plan, false)
+        .create_file(plan, source.len() as i64, false)
         .await
         .expect("create_file");
     let mut snapshot = Vec::new();

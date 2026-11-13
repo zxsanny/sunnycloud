@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use contracts::{BlobOwnerCleanup, Fault};
+use contracts::{BlobOwnerCleanup, BlobRegistry as _, Fault};
 use sc_db::{Db, DbError, DbTx, RunError};
 use uuid::Uuid;
 
@@ -23,8 +23,9 @@ const CLAIM: &str = "WITH due AS ( \
      RETURNING blob_gc.blob_id";
 
 /// Locks the blob rows (blocking: a reinstate in flight finishes first) and tells whether the queue row still
-/// carries this sweeper's lease. A re-queued blob has a different `due_at`.
-const LOCK: &str = "SELECT b.id, b.state, \
+/// carries this sweeper's lease. A re-queued blob has a different `due_at`. The owner account is what the
+/// registry's row removal is filtered by.
+const LOCK: &str = "SELECT b.id, b.account_id, b.state, \
          (SELECT g.due_at = 'epoch'::timestamptz + $2::bigint * interval '1 microsecond' \
           FROM blob_gc g WHERE g.blob_id = b.id) \
      FROM blobs b WHERE b.id = ANY($1) ORDER BY b.id FOR UPDATE OF b";
@@ -90,6 +91,7 @@ async fn remove_one(
     tx: &mut DbTx,
     cleanups: &[Arc<dyn BlobOwnerCleanup>],
     registry: &BlobRegistry,
+    account: Uuid,
     blob_id: Uuid,
 ) -> Result<(), RowError> {
     for cleanup in cleanups {
@@ -99,7 +101,7 @@ async fn remove_one(
             .map_err(|error| RowError(Box::new(error)))?;
     }
     registry
-        .remove_row_in_tx(tx, blob_id)
+        .remove_row_in_tx(tx, account, blob_id)
         .await
         .map_err(|error| RowError(Box::new(error)))
 }
@@ -114,7 +116,7 @@ pub(super) async fn settle(
     registry: &BlobRegistry,
 ) -> Result<Vec<(Uuid, Verdict)>, RunError<DbError>> {
     db.run_system("blob_gc_settle", async |tx| {
-        let locked: Vec<(Uuid, String, Option<bool>)> = sqlx::query_as(LOCK)
+        let locked: Vec<(Uuid, Uuid, String, Option<bool>)> = sqlx::query_as(LOCK)
             .bind(ids)
             .bind(lease_until_micros)
             .fetch_all(tx.conn())
@@ -124,11 +126,11 @@ pub(super) async fn settle(
         for &id in ids {
             let verdict = match locked.iter().find(|(locked_id, ..)| *locked_id == id) {
                 None => Verdict::Gone,
-                Some((_, state, leased)) if state != "gc_pending" || *leased != Some(true) => {
+                Some((_, _, state, leased)) if state != "gc_pending" || *leased != Some(true) => {
                     Verdict::Kept
                 }
-                Some(_) => match tx
-                    .savepoint(async |tx| remove_one(tx, cleanups, registry, id).await)
+                Some(&(_, account, ..)) => match tx
+                    .savepoint(async |tx| remove_one(tx, cleanups, registry, account, id).await)
                     .await
                 {
                     Ok(()) => Verdict::Removed,

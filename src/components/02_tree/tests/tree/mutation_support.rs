@@ -1,5 +1,5 @@
 //! An account with its root folder, feed row and quota row, and `PgTreeService` wired to the real 05 stamp and
-//! notifier and the real 07a ledger on the same database. Probes run as the superuser, so they see every row
+//! notifier, the real 07a ledger and the real 04 `GcQueue` on the same database. Probes run as the superuser, so they see every row
 //! whatever the scope.
 
 use std::cell::Cell;
@@ -9,6 +9,7 @@ use contracts::{AccountGuard, AccountGuardError, FeedNotifier, Seq, async_trait}
 use sc_clock::Clock;
 use sc_db::DbTx;
 use sqlx::PgConnection;
+use sunnycloud_blobstore::GcQueue;
 use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
 use sunnycloud_sync_feed::{InProcessNotifier, PgFeedStamp};
 use sunnycloud_tree::PgTreeService;
@@ -18,7 +19,7 @@ use crate::statements;
 use crate::support::{Fixture, account_with_root, node};
 
 /// The installation default limit of the ledger in these tests: large enough never to refuse.
-const DEFAULT_QUOTA: i64 = 1 << 40;
+pub const DEFAULT_QUOTA: i64 = 1 << 40;
 
 tokio::task_local! {
     /// The `seq` the notifier was woken with inside the current task, when a test scopes it.
@@ -82,6 +83,8 @@ impl AccountGuard for StateGuard {
 pub struct Tree {
     pub fixture: Fixture,
     pub service: Arc<PgTreeService>,
+    /// The queue `service` writes (blob root unused by the queue; retention 7 days).
+    pub queue: Arc<GcQueue>,
     pub guard: Arc<StateGuard>,
     pub notifier: Arc<InProcessNotifier>,
     pub account: Uuid,
@@ -102,12 +105,17 @@ impl Tree {
         close(owner).await;
         let guard = Arc::new(StateGuard::default());
         let notifier = InProcessNotifier::new();
+        let blobstore = crate::lifecycle_support::config(&std::env::temp_dir());
+        let queue = Arc::new(
+            GcQueue::new(&blobstore, fixture.api.clone(), clock.clone()).expect("gc queue"),
+        );
         let service = Arc::new(PgTreeService::new(
             fixture.api.clone(),
             guard.clone(),
             Arc::new(PgQuotaLedger::new(QuotaConfig {
                 default_quota_bytes: DEFAULT_QUOTA,
             })),
+            queue.clone(),
             Arc::new(PgFeedStamp),
             Arc::new(ProbeNotifier(notifier.clone())),
             clock,
@@ -115,6 +123,7 @@ impl Tree {
         Tree {
             fixture,
             service,
+            queue,
             guard,
             notifier,
             account,
@@ -176,9 +185,12 @@ impl Tree {
 
     pub async fn finish(self) {
         let Tree {
-            fixture, service, ..
+            fixture,
+            service,
+            queue,
+            ..
         } = self;
-        drop(service);
+        drop((service, queue));
         fixture.finish().await;
     }
 }

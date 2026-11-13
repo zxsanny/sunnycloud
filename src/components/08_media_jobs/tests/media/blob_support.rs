@@ -8,7 +8,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use contracts::{BlobReader, BlobRef, BlobWriter, ByteStream, RegisterState, WrittenOrPlanned};
+use contracts::{
+    BlobReader, BlobRef, BlobRegistry as _, BlobWriter, ByteStream, RegisterState, WrittenOrPlanned,
+};
 use futures_util::StreamExt;
 use sc_audit::AuditWriter;
 use sc_config::Secret;

@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use contracts::{Due, GcQueue, GcReason, ReinstateOutcome};
+use contracts::{BlobRegistry as _, Due, GcQueue, GcReason, ReinstateOutcome};
 use sc_db::{DbError, RunError, Scope};
 use sunnycloud_blobstore::GcHookPoint;
 use tokio::sync::oneshot;
@@ -20,7 +20,11 @@ async fn reinstate(scene: &Scene, blob: Uuid) -> ReinstateOutcome {
         .rig
         .api
         .run(Scope::Account(scene.account), async |tx| {
-            scene.rig.registry.reinstate_in_tx(tx, blob).await
+            scene
+                .rig
+                .registry
+                .reinstate_in_tx(tx, scene.account, blob)
+                .await
         })
         .await
         .expect("reinstate")
@@ -109,7 +113,11 @@ async fn a_reinstate_that_straddles_the_file_step_is_waited_for_and_wins() {
                 .rig
                 .api
                 .run(Scope::Account(scene.account), async |tx| {
-                    let outcome = scene.rig.registry.reinstate_in_tx(tx, blob).await;
+                    let outcome = scene
+                        .rig
+                        .registry
+                        .reinstate_in_tx(tx, scene.account, blob)
+                        .await;
                     restored_tx.send(()).expect("announce");
                     commit_rx.await.expect("commit signal");
                     outcome
@@ -218,7 +226,11 @@ async fn the_claim_leaves_a_row_that_a_reinstate_holds_and_does_not_wait_for_it(
                 .rig
                 .api
                 .run(Scope::Account(scene.account), async |tx| {
-                    let outcome = scene.rig.registry.reinstate_in_tx(tx, blob).await;
+                    let outcome = scene
+                        .rig
+                        .registry
+                        .reinstate_in_tx(tx, scene.account, blob)
+                        .await;
                     held_tx.send(()).expect("announce");
                     done_rx.await.expect("done signal");
                     outcome.map(|_| ()).map_err(|_| DbError::Unavailable)

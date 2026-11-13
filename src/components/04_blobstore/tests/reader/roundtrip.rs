@@ -42,7 +42,11 @@ async fn a_blob_continued_after_a_dropped_handle_reads_back_to_the_source() {
     let size = 8 * MIB + 5;
     let source = data(0xA8, size);
     let plan = rig.writer.plan(rig.account, size as i64).expect("plan");
-    let handle = rig.writer.create_file(plan, false).await.expect("create");
+    let handle = rig
+        .writer
+        .create_file(plan, size as i64, false)
+        .await
+        .expect("create");
     let order = shuffled(blocks_of(size), 0xBEEF);
     let (before, after) = order.split_at(2);
     rig.write_blocks(&handle, &source, before).await;

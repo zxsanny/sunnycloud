@@ -1,6 +1,7 @@
 //! `TreeCommit::publish`: one transaction in the order of the tree-commit contract. `AccountGuard::ensure_active`
 //! first, the account advisory lock, every effect's `on_begin`, each entry in its own savepoint (node and revision
-//! writes, the usage delta, the reservation release, every effect's `on_entry`), every effect's `on_batch`, and
+//! writes, the usage delta, the reservation release and the replaced blob's queue write
+//! (`crate::publish_usage`), every effect's `on_entry`), every effect's `on_batch`, and
 //! `FeedStamp::stamp` over the union of touched nodes as the last statement; COMMIT, then `FeedNotifier::notify`.
 //! With nothing touched there is no stamp and no notify. The conflict outcomes (`ConflictCopied`, `CreatedAsCopy`,
 //! `Revived`) are in `crate::conflict`.
@@ -10,8 +11,8 @@ use std::sync::Arc;
 use contracts::{
     AccountGuardError, Begin, CommitActor, CommitEffect, EffectError, EntryFailure, EntryOutcome,
     EntryResult, FeedStampError, NodeKind, PublishEntry, PublishOutcome, PublishResult,
-    PublishedEntry, QuotaLedgerError, Seq, StoredResponse, Target, TouchedNodes, TreeCommit,
-    TreeCommitError, async_trait,
+    PublishedEntry, Seq, StoredResponse, Target, TouchedNodes, TreeCommit, TreeCommitError,
+    async_trait,
 };
 use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx, Scope};
@@ -22,8 +23,9 @@ use uuid::Uuid;
 
 use crate::conflict::{Naming, insert_as_copy};
 use crate::conflict_repo;
-use crate::node_repo;
+use crate::node_repo::{self, CurrentContent};
 use crate::publish_repo::{self, NewFile};
+use crate::publish_usage::usage;
 use crate::retry::run_retrying_each;
 use crate::service::PgTreeService;
 
@@ -44,13 +46,14 @@ impl From<DbError> for EntryError {
     }
 }
 
-/// A published entry before the effects see it: its outcome, node, revision, usage delta, and the ancestors a
-/// revival brought back (touched besides the outcome's own nodes).
+/// A published entry before the effects see it: its outcome, node, revision, the revision of the file that
+/// counted in usage before it (`crate::publish_usage`), and the ancestors a revival brought back (touched besides
+/// the outcome's own nodes).
 pub(crate) struct Written {
     pub outcome: PublishOutcome,
     pub node_id: Uuid,
     pub revision_id: Uuid,
-    pub delta: i64,
+    pub counted: Option<CurrentContent>,
     pub revived: Vec<Uuid>,
 }
 
@@ -174,18 +177,12 @@ impl PgTreeService {
                 base_revision,
             } => self.add_revision(tx, at, *node_id, *base_revision).await?,
         };
-        if written.delta != 0 {
-            self.quota
-                .adjust_used(tx, account, written.delta)
-                .await
-                .map_err(quota_error)?;
-        }
-        if entry.revision.reserved_bytes != 0 {
-            self.quota
-                .release_reservation(tx, account, entry.revision.reserved_bytes)
-                .await
-                .map_err(quota_error)?;
-        }
+        let usage = usage(
+            &written.outcome,
+            entry.revision.size,
+            written.counted.as_ref(),
+        );
+        self.apply_usage(tx, account, entry, &usage).await?;
         let published = PublishedEntry {
             node_id: written.node_id,
             revision_id: written.revision_id,
@@ -264,14 +261,14 @@ impl PgTreeService {
             outcome,
             node_id: file.id,
             revision_id: entry.revision.revision_id,
-            delta: entry.revision.size,
+            counted: None,
             revived: Vec::new(),
         })
     }
 
     /// `Revived` when the file or a folder above it is tombstoned (edit beats delete, whatever the base), else
     /// `NoChange` (same content as the current revision, whatever the base), `Replaced` (no base), `Updated` (base
-    /// is the current revision) or `ConflictCopied` (stale base). The usage deltas of these are AZ-3711's.
+    /// is the current revision) or `ConflictCopied` (stale base).
     async fn add_revision(
         &self,
         tx: &mut DbTx,
@@ -298,7 +295,7 @@ impl PgTreeService {
                 outcome: PublishOutcome::NoChange { existing_revision },
                 node_id,
                 revision_id: existing_revision,
-                delta: 0,
+                counted: None,
                 revived: Vec::new(),
             });
         }
@@ -318,7 +315,7 @@ impl PgTreeService {
             outcome,
             node_id,
             revision_id: entry.revision.revision_id,
-            delta: 0,
+            counted: file.counted().copied(),
             revived: Vec::new(),
         })
     }
@@ -384,13 +381,6 @@ fn call_error(error: EffectError) -> TreeCommitError {
         | EffectError::Batch(ErrorCode::CommitIdReused) => TreeCommitError::CommitIdReused,
         EffectError::Entry(code) | EffectError::Batch(code) => TreeCommitError::EffectFailed(code),
     }
-}
-
-fn quota_error(error: QuotaLedgerError) -> EntryError {
-    EntryError::Call(match error {
-        QuotaLedgerError::Unexpected(fault) => TreeCommitError::Unexpected(fault),
-        other => TreeCommitError::Unexpected(Box::new(other)),
-    })
 }
 
 #[cfg(test)]

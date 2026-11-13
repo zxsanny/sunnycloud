@@ -29,7 +29,11 @@ async fn stored_gib(rig: &Rig, mib: u64) -> BlobRef {
         .writer
         .plan(rig.account, (blocks * BLOCK) as i64)
         .expect("plan");
-    let handle = rig.writer.create_file(plan, false).await.expect("create");
+    let handle = rig
+        .writer
+        .create_file(plan, (blocks * BLOCK) as i64, false)
+        .await
+        .expect("create");
     for index in 0..blocks {
         let token = rig
             .writer

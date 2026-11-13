@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use contracts::{
-    BlobCatalog as _, BlobError, BlobHandle, BlobRef, BlobWriter, PlaintextStream, RegisterState,
-    StreamError, WrittenBlob, WrittenOrPlanned,
+    BlobCatalog as _, BlobError, BlobHandle, BlobRef, BlobRegistry as _, BlobWriter,
+    PlaintextStream, RegisterState, StreamError, WrittenBlob, WrittenOrPlanned,
 };
 use sc_db::Scope;
 use sc_testdb::{MIGRATOR, START};
@@ -72,7 +72,10 @@ pub fn block_of(data: &[u8], index: usize) -> Bytes {
 pub async fn store_with(rig: &Rig, writer: &FileBlobWriter, account: Uuid, data: &[u8]) -> BlobRef {
     let size = data.len() as i64;
     let plan = writer.plan(account, size).expect("plan");
-    let handle = writer.create_file(plan, false).await.expect("create_file");
+    let handle = writer
+        .create_file(plan, size, false)
+        .await
+        .expect("create_file");
     for index in 0..data.len().div_ceil(BLOCK).max(1) {
         let token = writer
             .write_block(&handle, index as u32, block_of(data, index))
