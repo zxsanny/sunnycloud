@@ -1,10 +1,11 @@
 //! `VaultService`: create, read and replace the opaque vault header. The header is never parsed; its ETag is the
 //! SHA-256 of the stored bytes, computed by the database over the stored column (`crate::vault_repo`).
 //!
-//! The root is checked through 02's `TreeReader` with one `list_children` call of limit 1: an unknown, foreign or
-//! tombstoned node (also under a tombstoned ancestor) and a file are `NotFound`; a folder with a live child is
-//! `VaultExists`, so a vault starts on an empty folder. One vault per account and one vault per root are kept by
-//! the unique keys of `vaults`.
+//! The root is checked through 02's `TreeReader`: the account's own root folder is `NotFound` (owner decision
+//! 2026-11-13: every file the account creates would sit in the vault), then one `list_children` call of limit 1
+//! makes an unknown, foreign or tombstoned node (also under a tombstoned ancestor) and a file `NotFound` and a folder
+//! with a live child `VaultExists`, so a vault starts on an empty folder. One vault per account and one vault per
+//! root are kept by the unique keys of `vaults`.
 
 use std::sync::Arc;
 
@@ -55,8 +56,14 @@ impl PgVaultService {
         }
     }
 
-    /// A live, empty folder of `account`.
+    /// A live, empty folder of `account` other than its own root folder.
     async fn check_root(&self, account: Uuid, root_node_id: Uuid) -> Result<(), VaultError> {
+        match self.tree.root_node(account).await {
+            Ok(root) if root.id == root_node_id => return Err(VaultError::NotFound),
+            Ok(_) => {}
+            Err(TreeReaderError::NotFound) => return Err(VaultError::NotFound),
+            Err(other) => return Err(unexpected(other)),
+        }
         match self
             .tree
             .list_children(account, root_node_id, None, 1)

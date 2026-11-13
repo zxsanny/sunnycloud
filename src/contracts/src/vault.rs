@@ -30,7 +30,7 @@ pub enum VaultError {
     VaultExists,
     #[error("header too large")]
     HeaderTooLarge,
-    /// Unknown, foreign or tombstoned.
+    /// Unknown, foreign or tombstoned; for `create_vault` also a root that is a file or the account's own root folder.
     #[error("not found")]
     NotFound,
     /// `if_match` differs from the stored header's tag; the stored header is unchanged.

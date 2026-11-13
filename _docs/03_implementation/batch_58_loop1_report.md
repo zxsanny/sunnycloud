@@ -10,6 +10,7 @@ Three parallel workers (component test suites + `sc_testdb`; `20_vault_service`;
 
 1. A vault is removed with its root folder when 02 purges the tombstoned root after the retention window (migration `20261113120000_cascade_vault_on_root_purge`, `ON DELETE CASCADE`); the account can then create a new vault.
 2. Batch 58 as proposed: a file as vault root answers `NotFound`; `get_header` also returns the root node id; the WASM module exports a commit-id maker that takes the time from the browser (as built it also takes the 10 random bytes from the caller, so the module stays pure and the vectors check the id).
+3. After the batch: the account's own root folder is refused as a vault root even when empty (`NotFound`, checked through `TreeReader::root_node`; test `the_account_root_folder_is_not_found_even_when_empty_and_stores_nothing`). A 0-byte header stays accepted.
 
 ## Task Results
 
@@ -39,14 +40,14 @@ Warnings (recorded):
 - The vault root's emptiness is checked by a port read before the insert, not in the insert's transaction: a child created in that instant can sit in a new vault (20 cannot read `nodes`; AZ-3927's `vault_id` copy is the place to close it).
 - `report_unlock_failure` answers `Unexpected` until E-30/c04; its route must not be mounted before then.
 - The ETag is PostgreSQL's `sha256` over the stored column (lower-case hex), not an `sc_ids` helper: `sc_ids` hashes only text tokens, and the conditional `UPDATE` must compare inside the database. 11 adds and strips the quotes.
-- The account's own root folder is accepted as a vault root when it has no live children, and a 0-byte header is accepted (owner question below).
+- A 0-byte header is accepted (the account's own root folder is refused since owner decision 3).
 - `check-wasm-vectors.sh` is not in a CI job yet (E-31); its test is not in `run-script-tests.sh` (needs cargo, wasm-pack and node).
 
 ## Discovered during implementation
 
 | # | Item | Spec ref | Handling | clear / unclear |
 |---|------|----------|----------|-----------------|
-| 1 | The account root as vault root and a 0-byte header are accepted | AZ-3923 | Owner question | unclear |
+| 1 | The account root as vault root and a 0-byte header were accepted | AZ-3923 | Owner decision 3: root refused, 0-byte header kept | clear |
 | 2 | wasm-bindgen 0.2.130 cannot export a constant: `BLOCK_SIZE` is `block_size()` | AZ-3969 | Contract updated | clear |
 | 3 | `client_key_for_mobile` exported so the key cases are compared | AZ-3969 | Contract updated | clear |
 | 4 | A `contracts` edge from `sc_testdb` breaks the helper layering even as a test edge | AZ-4250 | `sunnycloud-testkit` | clear |

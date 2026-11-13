@@ -1,6 +1,6 @@
 //! Vault root and vaults per account (AZ-3923) through the real 02 `TreeReader`: AC-3 (the root must be a live,
-//! empty folder of the caller) and AC-7 (one vault per account, owner decision 2026-11-11). Every refusal leaves
-//! the account without a vault row.
+//! empty folder of the caller other than the account's own root, owner decision 2026-11-13) and AC-7 (one vault
+//! per account, owner decision 2026-11-11). Every refusal leaves the account without a vault row.
 
 use contracts::{VaultError, VaultService};
 use uuid::Uuid;
@@ -111,6 +111,22 @@ async fn a_folder_with_a_live_child_is_vault_exists_and_one_with_only_deleted_ch
     );
     let created = on_emptied.expect("create on a folder without live children");
     assert_eq!(env.stored(created.vault_id).await, Some(b"H0".to_vec()));
+    env.finish().await;
+}
+
+#[tokio::test]
+async fn the_account_root_folder_is_not_found_even_when_empty_and_stores_nothing() {
+    // Arrange
+    let mut env = Env::new().await;
+    let a = Uuid::new_v4();
+    let root = account_with_root(&mut env.probe, a).await;
+
+    // Act
+    let outcome = env.service.create_vault(a, b"H0", root).await;
+
+    // Assert
+    assert!(matches!(outcome, Err(VaultError::NotFound)), "{outcome:?}");
+    assert_eq!(env.vaults_of(a).await, 0);
     env.finish().await;
 }
 

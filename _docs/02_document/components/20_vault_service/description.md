@@ -33,7 +33,7 @@ Vault file commits go through the normal 03/02 commit path with the wrapped key 
 
 | Operation | Input | Output | Errors |
 |---|---|---|---|
-| `create_vault` | account, `header: bytes`, root node | `VaultId`, `ETag` | `VaultExists` (one vault per account, decided 2026-11-11; also refused when the root folder is not empty or already a vault root), `HeaderTooLarge`, `NotFound` (unknown, foreign or tombstoned root, or a root that is a file) |
+| `create_vault` | account, `header: bytes`, root node | `VaultId`, `ETag` | `VaultExists` (one vault per account, decided 2026-11-11; also refused when the root folder is not empty or already a vault root), `HeaderTooLarge`, `NotFound` (unknown, foreign or tombstoned root, a root that is a file, or the account's own root folder: refused even when empty, owner decision 2026-11-13, since every file the account creates would sit in the vault) |
 | `get_header` | account, vault id | `header: bytes`, `ETag` | `NotFound` |
 | `replace_header` | account, vault id, `header: bytes`, `if_match: ETag` | new `ETag` | `NotFound`, `HeaderTooLarge`, `PreconditionFailed` (the stored header changed since the client read it) |
 | `report_unlock_failure` | account, vault id | `()` | none (best-effort; writes audit `vault_failure`, ids only) |
