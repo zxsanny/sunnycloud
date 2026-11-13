@@ -57,6 +57,7 @@ async fn upload_sessions_has_the_columns_of_the_data_model() {
             column("created_at", "timestamp with time zone", "NO"),
             column("last_checkpoint_at", "timestamp with time zone", "NO"),
             column("expires_at", "timestamp with time zone", "NO"),
+            column("committed_revision_id", "uuid", "YES"),
         ]
     );
     drop(conn);

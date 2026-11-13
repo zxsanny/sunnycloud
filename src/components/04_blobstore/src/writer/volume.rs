@@ -14,10 +14,26 @@ use uuid::Uuid;
 use crate::header::Header;
 use crate::path::blob_path;
 
-/// Bytes a non-privileged writer can still allocate on the volume that holds `root`.
-pub(crate) fn available_bytes(root: &Path) -> io::Result<u64> {
+/// The volume that holds `root`: bytes a non-privileged writer can still allocate, and its total size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct VolumeSpace {
+    pub available: u64,
+    pub total: u64,
+}
+
+pub(crate) fn volume_space(root: &Path) -> io::Result<VolumeSpace> {
     let stat = statvfs(root).map_err(io::Error::from)?;
-    Ok(stat.f_bavail.saturating_mul(stat.f_frsize))
+    Ok(VolumeSpace {
+        available: stat.f_bavail.saturating_mul(stat.f_frsize),
+        total: stat.f_blocks.saturating_mul(stat.f_frsize),
+    })
+}
+
+/// The free-space floor: the smaller of `cap` (`blob_free_reserve`) and `percent` of the volume's `total` size
+/// (`blob_free_reserve_percent`; owner decision 2026-11-13), so a small volume is not refused at its first file.
+pub(crate) fn free_floor(cap: u64, percent: u64, total: u64) -> u64 {
+    let share = u128::from(total) * u128::from(percent.min(100)) / 100;
+    cap.min(u64::try_from(share).unwrap_or(u64::MAX))
 }
 
 /// With a floor configured, a file that fits but would leave less than `reserve` free is `FreeSpaceFloor`; a
@@ -96,4 +112,29 @@ fn create_folders(root: &Path, folder: &Path) -> io::Result<()> {
 
 fn sync_folder(folder: &Path) -> io::Result<()> {
     File::open(folder)?.sync_all()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const GIB: u64 = 1 << 30;
+
+    #[test]
+    fn the_floor_is_the_smaller_of_the_cap_and_the_share_of_the_volume() {
+        // Arrange
+        let cases = [
+            (10 * GIB, 5, 100 * GIB),
+            (10 * GIB, 5, 1000 * GIB),
+            (10 * GIB, 0, 1000 * GIB),
+            (10 * GIB, 100, 4 * GIB),
+            (u64::MAX, 100, u64::MAX),
+        ];
+
+        // Act
+        let floors = cases.map(|(cap, percent, total)| free_floor(cap, percent, total));
+
+        // Assert
+        assert_eq!(floors, [5 * GIB, 10 * GIB, 0, 4 * GIB, u64::MAX]);
+    }
 }

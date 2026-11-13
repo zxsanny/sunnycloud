@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use contracts::{
-    BlobRef, DerivedError, Disposition, Download, DownloadError, ThumbState, ThumbnailStateError,
+    DerivedBlob, DerivedError, Disposition, Download, DownloadError, ThumbState,
+    ThumbnailStateError,
 };
 use sc_ids::FileHash;
 use serde_json::json;
@@ -27,9 +28,10 @@ fn cors_headers(reply: &crate::worker::support::Reply) -> Vec<String> {
 async fn a_ready_thumbnail_streams_through_03_with_the_content_headers_and_no_cors() {
     // Arrange
     let stack = Stack::start().await;
-    stack
-        .script
-        .push(OPEN_DERIVED, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED,
+        Ok::<DerivedBlob, DerivedError>(derived("image/webp")),
+    );
     stack
         .script
         .push(OPEN_BLOB, served(full("image/webp", KIB)));
@@ -63,13 +65,36 @@ async fn a_ready_thumbnail_streams_through_03_with_the_content_headers_and_no_co
 }
 
 #[tokio::test]
+async fn the_type_stored_with_the_derived_blob_is_the_type_handed_to_03() {
+    // Arrange
+    let stack = Stack::start().await;
+    stack.script.push(
+        OPEN_DERIVED,
+        Ok::<DerivedBlob, DerivedError>(derived("image/jpeg")),
+    );
+    stack
+        .script
+        .push(OPEN_BLOB, served(full("image/jpeg", KIB)));
+
+    // Act
+    let reply = stack.as_member("GET", &thumbnail_path(""), "").await;
+
+    // Assert
+    assert_eq!(reply.status, 200);
+    let to_03 = stack.log(OPEN_BLOB);
+    assert!(to_03[0].contains("Some(\"image/jpeg\")"), "{to_03:?}");
+    stack.stop().await;
+}
+
+#[tokio::test]
 async fn the_size_picks_the_kind_and_a_device_token_may_read_it_too() {
     // Arrange
     let stack = Stack::start().await;
     for _ in 0..2 {
-        stack
-            .script
-            .push(OPEN_DERIVED, Ok::<BlobRef, DerivedError>(blob()));
+        stack.script.push(
+            OPEN_DERIVED,
+            Ok::<DerivedBlob, DerivedError>(derived("image/webp")),
+        );
         stack.script.push(OPEN_BLOB, served(full("image/webp", 8)));
     }
 
@@ -106,11 +131,11 @@ async fn a_thumbnail_that_is_not_ready_or_will_never_exist_answers_its_own_404_c
     let stack = Stack::start().await;
     stack.script.push(
         OPEN_DERIVED,
-        Err::<BlobRef, DerivedError>(DerivedError::NotReady),
+        Err::<DerivedBlob, DerivedError>(DerivedError::NotReady),
     );
     stack.script.push(
         OPEN_DERIVED,
-        Err::<BlobRef, DerivedError>(DerivedError::NotFound),
+        Err::<DerivedBlob, DerivedError>(DerivedError::NotFound),
     );
 
     // Act
@@ -131,13 +156,14 @@ async fn a_thumbnail_that_is_not_ready_or_will_never_exist_answers_its_own_404_c
 async fn a_transcode_is_ranged_mp4_from_03_and_a_missing_one_is_the_derived_404() {
     // Arrange
     let stack = Stack::start().await;
-    stack
-        .script
-        .push(OPEN_DERIVED, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED,
+        Ok::<DerivedBlob, DerivedError>(derived("video/mp4")),
+    );
     stack.script.push(OPEN_BLOB, served(partial(10, 19, 100)));
     stack.script.push(
         OPEN_DERIVED,
-        Err::<BlobRef, DerivedError>(DerivedError::NotFound),
+        Err::<DerivedBlob, DerivedError>(DerivedError::NotFound),
     );
     let path = format!("/api/v1/nodes/{NODE}/transcode");
 
@@ -185,9 +211,10 @@ async fn a_transcode_is_ranged_mp4_from_03_and_a_missing_one_is_the_derived_404(
 async fn a_hostile_derived_type_is_an_attachment_and_a_node_that_is_not_a_uuid_is_400() {
     // Arrange
     let stack = Stack::start().await;
-    stack
-        .script
-        .push(OPEN_DERIVED, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED,
+        Ok::<DerivedBlob, DerivedError>(derived("image/webp")),
+    );
     stack.script.push(
         OPEN_BLOB,
         served(Download {
@@ -222,9 +249,10 @@ async fn a_hostile_derived_type_is_an_attachment_and_a_node_that_is_not_a_uuid_i
 async fn a_media_route_needs_a_credential_and_03s_not_found_is_the_uniform_404() {
     // Arrange
     let stack = Stack::start().await;
-    stack
-        .script
-        .push(OPEN_DERIVED, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED,
+        Ok::<DerivedBlob, DerivedError>(derived("image/webp")),
+    );
     stack.script.push(
         OPEN_BLOB,
         Err::<Download, DownloadError>(DownloadError::NotFound),
@@ -259,9 +287,10 @@ async fn only_the_bytes_of_a_public_share_may_answer_a_wildcard_origin_and_never
             contracts::PublicShareError::NotFound,
         ),
     );
-    stack
-        .script
-        .push(OPEN_DERIVED, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED,
+        Ok::<DerivedBlob, DerivedError>(derived("image/webp")),
+    );
     stack.script.push(OPEN_BLOB, served(full("image/webp", 64)));
     let foreign = [("origin", "https://elsewhere.example")];
 

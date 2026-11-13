@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use contracts::{
-    AuthorizationRedirect, BeginSignIn, BrowserBinding, CallbackParams, ClientKind, Credential,
-    DeviceAuthorization, DeviceToken, InviteToken, SessionTokens, SignInOutcome,
+    AuthorizationRedirect, BeginSignIn, BrowserBinding, CallbackParams, ClientKind, CreatedShare,
+    Credential, DeviceAuthorization, DeviceToken, InviteToken, SessionTokens, SignInOutcome,
 };
 use sc_ids::{RawToken, TokenKind};
 
@@ -18,6 +18,7 @@ const SETUP: &str = "setup-secret-FFFF6666";
 const MOBILE_CODE: &str = "mobile-code-secret-GGGG7777";
 const BINDING: &str = "binding-secret-HHHH8888";
 const CALLBACK: &str = "callback-secret-IIII9999";
+const SHARE: &str = "share-secret-JJJJ0000";
 
 fn token(kind: TokenKind, value: &str) -> RawToken {
     RawToken::from_presented(kind, value.to_owned())
@@ -106,4 +107,22 @@ fn credentials_and_sign_in_values_print_a_placeholder() {
     assert_hidden(&format!("{redirect:?}"), &[BINDING]);
     assert_hidden(&format!("{params:?}"), &[CALLBACK]);
     assert_hidden(&format!("{begin:?}"), &[INVITE, SETUP]);
+}
+
+#[test]
+fn a_created_share_hides_its_token_and_the_url_path_that_carries_it() {
+    // Arrange
+    let share = CreatedShare {
+        id: uuid::Uuid::nil(),
+        token: token(TokenKind::Share, SHARE),
+        url_path: format!("/s/{SHARE}"),
+        expires_at: sc_clock::Timestamp::from_unix_micros(0),
+        has_password: false,
+    };
+
+    // Act
+    let printed = format!("{share:?} {share:#?}");
+
+    // Assert
+    assert_hidden(&printed, &[SHARE]);
 }

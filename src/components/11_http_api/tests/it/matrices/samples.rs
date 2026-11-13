@@ -11,7 +11,7 @@ use sc_ids::{RawToken, TokenKind};
 use uuid::Uuid;
 
 use crate::harness::Script;
-use crate::sharing::support::{allowed, blob, full, grant, shared_file};
+use crate::sharing::support::{allowed, derived, full, grant, shared_file};
 
 const WHEN: Timestamp = Timestamp::from_unix_micros(1_793_956_272_123_456);
 const NODE: Uuid = Uuid::from_u128(0xD1);
@@ -243,7 +243,10 @@ fn prepare_files(script: &Script, owner: &str) -> bool {
             download(script, "DownloadService::open_revision_content");
         }
         "DerivedOpener::open_derived" => {
-            script.push("DerivedOpener::open_derived", Ok::<_, DerivedError>(blob()));
+            script.push(
+                "DerivedOpener::open_derived",
+                Ok::<_, DerivedError>(derived("image/webp")),
+            );
             download(script, "DownloadService::open_blob_content");
         }
         "ThumbnailStateSource::states" => script.push(
@@ -293,7 +296,7 @@ fn prepare_shares(script: &Script, owner: &str) -> bool {
             script.push("PublicShareService::authorize_derived", shared_file());
             script.push(
                 "DerivedOpener::open_derived_for",
-                Ok::<_, DerivedError>(blob()),
+                Ok::<_, DerivedError>(derived("image/webp")),
             );
             download(script, "DownloadService::open_blob_content");
         }

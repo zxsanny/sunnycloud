@@ -133,3 +133,8 @@ Then k and the revision it created stay findable by `start_upload` until `upload
 
 This task produces/implements the contract at `_docs/02_document/contracts/03_transfer/commit_service.md`.
 Consumers MUST read that file — not this task spec — to discover the interface.
+
+## Implementation notes (from AZ-3734, 2026-11-13)
+
+Committed-key record (owner decision, migration `20261113100000`): in `BlobCommitEffect::on_entry`, lock the row `WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL FOR UPDATE`, settle `reserved_bytes` as before, mark the blob committed, and for a large session do not delete the row: `UPDATE upload_sessions SET committed_revision_id = <new revision id>, reserved_bytes = 0, expires_at = <commit time> + upload_session_ttl WHERE id = $1 AND account_id = $2`. Staged rows are still deleted at commit. The reaper deletes rows with `expires_at <= now`; for a committed row it touches neither the blob nor the reservation, for an open row it releases `reserved_bytes`, removes the blob row and discards the file after COMMIT. The `upload_sessions_active` gauge goes down on commit, abort and reap. A purged revision deletes its committed record (`ON DELETE CASCADE`).
+

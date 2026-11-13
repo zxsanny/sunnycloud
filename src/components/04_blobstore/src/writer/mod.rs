@@ -8,7 +8,7 @@ mod block;
 mod complete;
 mod volume;
 
-pub(crate) use volume::available_bytes;
+pub(crate) use volume::{free_floor, volume_space};
 
 use std::collections::HashMap;
 use std::io::{self, ErrorKind};
@@ -38,6 +38,7 @@ use block::{BlockLocks, OpenBlob, blob_ids, check_block, format_failure, layout_
 pub struct FileBlobWriter {
     root: PathBuf,
     reserve: u64,
+    reserve_percent: u64,
     preallocate: bool,
     keyring: Arc<MasterKeyring>,
     barrier: SyncBarrier,
@@ -79,6 +80,7 @@ impl FileBlobWriter {
         Ok(FileBlobWriter {
             root: PathBuf::from(root),
             reserve: config.blob_free_reserve,
+            reserve_percent: config.blob_free_reserve_percent,
             preallocate: config.blob_preallocate,
             keyring,
             barrier,
@@ -151,16 +153,17 @@ impl FileBlobWriter {
     ) -> Result<OpenBlob, BlobError> {
         let layout = layout_of(size)?;
         let root = self.root.clone();
-        let reserve = self.reserve;
+        let (reserve, reserve_percent) = (self.reserve, self.reserve_percent);
         let preallocate = preallocate && self.preallocate;
         let blob_id = plan.blob_id;
         let blob = self
             .blocking(move || {
                 let ids = blob_ids(blob_id);
                 let needed = layout.file_len();
-                let available = volume::available_bytes(&root)
-                    .map_err(|error| blob_error_from_io(error, ids))?;
-                volume::admit(available, needed, reserve)?;
+                let space =
+                    volume::volume_space(&root).map_err(|error| blob_error_from_io(error, ids))?;
+                let floor = volume::free_floor(reserve, reserve_percent, space.total);
+                volume::admit(space.available, needed, floor)?;
                 let header = Header::generate().map_err(|error| format_failure(error, ids))?;
                 let file = volume::create_blob_file(&root, blob_id, &header, needed, preallocate)
                     .map_err(|error| blob_error_from_io(error, ids))?;

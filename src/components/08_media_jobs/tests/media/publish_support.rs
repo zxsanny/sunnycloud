@@ -125,6 +125,18 @@ pub async fn new_photo(
     name: &str,
     content_hash: FileHash,
 ) -> PublishEntry {
+    new_file(q, parent, name, content_hash, Some("image/jpeg"), false).await
+}
+
+/// A new file of `media_type` under `parent` over a fresh committed blob of the account.
+pub async fn new_file(
+    q: &Queue,
+    parent: Uuid,
+    name: &str,
+    content_hash: FileHash,
+    media_type: Option<&str>,
+    vault: bool,
+) -> PublishEntry {
     let blob_id = Uuid::new_v4();
     let mut conn = q.fixture.owner_conn().await;
     blob(&mut conn, blob_id, q.account).await;
@@ -140,12 +152,12 @@ pub async fn new_photo(
             size: 100,
             content_hash,
             blocklist: vec![Hash32::from_bytes([3; 32])],
-            media_type: Some("image/jpeg".to_owned()),
+            media_type: media_type.map(str::to_owned),
             client_mtime: None,
             client_meta: None,
             reserved_bytes: 0,
             import_hint: false,
         },
-        vault: false,
+        vault,
     }
 }

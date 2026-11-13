@@ -1,6 +1,7 @@
 //! Statements of the reads (`PgTreeReader`): the root, a live child by `name_key`, a node with its current
-//! revision, and one listing page. Every statement names `account_id`, so a foreign id behaves like a random one
-//! (row-level security is the second line). None of them reads `blocklist`.
+//! revision and one listing page; and the child by `name_key` that ends a path (`TreeService::resolve_path`).
+//! Every statement names `account_id`, so a foreign id behaves like a random one (row-level security is the second
+//! line). None of them reads `blocklist`.
 
 use contracts::{NodeKind, NodeView, RevisionView};
 use sc_clock::Timestamp;
@@ -28,6 +29,11 @@ const ROOT: &str = "SELECT id FROM nodes WHERE account_id = $1 AND parent_id IS 
 
 const LIVE_CHILD: &str = "SELECT id, kind FROM nodes \
     WHERE account_id = $1 AND parent_id = $2 AND name_key = $3 AND deleted_at IS NULL";
+
+// The live child first; otherwise the most recently tombstoned one, since several tombstones can share a name.
+const CHILD_BY_KEY: &str = "SELECT id, deleted_at IS NOT NULL FROM nodes \
+    WHERE account_id = $1 AND parent_id = $2 AND name_key = $3 \
+    ORDER BY deleted_at DESC NULLS FIRST, id DESC LIMIT 1";
 
 const LIVE_FILE: &str = "SELECT n.parent_id, n.kind, n.deleted_at IS NOT NULL, r.id, r.size, r.content_hash, \
     r.media_type, (extract(epoch FROM r.client_mtime) * 1000000)::bigint, r.client_meta::text, \
@@ -70,6 +76,23 @@ pub(crate) async fn live_child(
         .fetch_optional(tx.conn())
         .await?;
     row.map(|row| Ok((row.try_get(0)?, kind(&row, 1)?)))
+        .transpose()
+}
+
+/// The child of `parent` holding `name_key`, live or else the latest tombstone: `(id, deleted)`.
+pub(crate) async fn child_by_key(
+    tx: &mut DbTx,
+    account: Uuid,
+    parent: Uuid,
+    name_key: &str,
+) -> Result<Option<(Uuid, bool)>, DbError> {
+    let row = sqlx::query(CHILD_BY_KEY)
+        .bind(account)
+        .bind(parent)
+        .bind(name_key)
+        .fetch_optional(tx.conn())
+        .await?;
+    row.map(|row| Ok((row.try_get(0)?, row.try_get(1)?)))
         .transpose()
 }
 

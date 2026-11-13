@@ -21,7 +21,7 @@ use crate::content::{content_response, download_options, starts_download};
 use crate::json_body::{self, malformed};
 use crate::middleware::ClientIp;
 use crate::problem::ApiProblem;
-use crate::registry::media::wire::{media_type, thumbnail_kind};
+use crate::registry::media::wire::thumbnail_kind;
 use crate::registry::request::{
     Answer, BODY_LIMIT, Services, missing_layer, query_value, refused, request_id,
 };
@@ -171,17 +171,17 @@ pub(super) async fn thumbnail(
         .authorize_derived(&visitor.token, visitor.grant.as_ref(), visitor.client_ip)
         .await
         .map_err(refused(visitor.request_id))?;
-    let blob = services
+    let derived = services
         .derived
-        .open_derived_for(&shared.file, kind)
+        .open_derived_for(shared.account_id, &shared.file, kind)
         .await
         .map_err(refused(visitor.request_id))?;
     let opened = services
         .downloads
         .open_blob_content(
             shared.account_id,
-            blob,
-            Some(media_type(kind).to_owned()),
+            derived.blob,
+            Some(derived.media_type),
             download_options(&headers),
         )
         .await;

@@ -16,13 +16,13 @@ use sc_names::{ValidName, name_key, validate_name};
 use uuid::Uuid;
 
 use crate::node_repo::{self, NewFolder, NodeChange, NodeRow};
-use crate::retry::run_retrying;
+use crate::retry::run_retrying_each;
 
 /// The unique index that keeps names unique per folder by `name_key`; it is the arbiter of a name conflict.
 const NAME_INDEX: &str = "nodes_parent_name_key";
 
-/// The tree mutations of `TreeService` and the `TreeCommit` port. `TreeService` itself is implemented once the
-/// path and device queries exist.
+/// The tree mutations of `TreeService` and the `TreeCommit` port. The `TreeService` port, with the path and device
+/// queries, is in `crate::service_queries`.
 pub struct PgTreeService {
     pub(crate) db: Db,
     pub(crate) guard: Arc<dyn AccountGuard>,
@@ -59,41 +59,44 @@ impl PgTreeService {
     ) -> Result<NodeView, TreeServiceError> {
         let name = valid(name)?;
         let key = name_key(&name);
-        let view = run_retrying(&self.db, Scope::Account(account), async |tx| {
-            self.ensure_active(tx, account).await?;
-            let parent = node_repo::lock_for_share(tx, account, parent_id)
-                .await
-                .map_err(unexpected)?;
-            usable_parent(parent)?;
-            let now = self.clock.now_utc();
-            let id = new_id(self.clock.as_ref());
-            let folder = NewFolder {
-                id,
-                account,
-                parent_id,
-                name: name.as_str(),
-                name_key: key.as_str(),
-                now,
-            };
-            node_repo::insert_folder(tx, &folder)
-                .await
-                .map_err(name_conflict)?;
-            let seq = self.stamp(tx, account, id).await?;
-            Ok(NodeView {
-                id,
-                parent_id: Some(parent_id),
-                kind: NodeKind::Folder,
-                name: name.as_str().to_owned(),
-                state: NodeState::Live,
-                current_revision_id: None,
-                size: None,
-                content_hash: None,
-                media_type: None,
-                client_mtime: None,
-                created_at: now,
-                updated_at: now,
-                seq,
-            })
+        let (name, key) = (&name, &key);
+        let view = run_retrying_each(&self.db, Scope::Account(account), || {
+            async move |tx: &mut DbTx| {
+                self.ensure_active(tx, account).await?;
+                let parent = node_repo::lock_for_share(tx, account, parent_id)
+                    .await
+                    .map_err(unexpected)?;
+                usable_parent(parent)?;
+                let now = self.clock.now_utc();
+                let id = new_id(self.clock.as_ref());
+                let folder = NewFolder {
+                    id,
+                    account,
+                    parent_id,
+                    name: name.as_str(),
+                    name_key: key.as_str(),
+                    now,
+                };
+                node_repo::insert_folder(tx, &folder)
+                    .await
+                    .map_err(name_conflict)?;
+                let seq = self.stamp(tx, account, id).await?;
+                Ok(NodeView {
+                    id,
+                    parent_id: Some(parent_id),
+                    kind: NodeKind::Folder,
+                    name: name.as_str().to_owned(),
+                    state: NodeState::Live,
+                    current_revision_id: None,
+                    size: None,
+                    content_hash: None,
+                    media_type: None,
+                    client_mtime: None,
+                    created_at: now,
+                    updated_at: now,
+                    seq,
+                })
+            }
         })
         .await?;
         self.notifier.notify(account, view.seq);
@@ -112,61 +115,64 @@ impl PgTreeService {
     ) -> Result<NodeView, TreeServiceError> {
         let new_name = new_name.map(valid).transpose()?;
         let new_key = new_name.as_ref().map(name_key);
-        let (view, stamped) = run_retrying(&self.db, Scope::Account(account), async |tx| {
-            self.ensure_active(tx, account).await?;
-            if new_parent.is_none() {
-                let current = node_repo::view(tx, account, node_id)
+        let (new_name, new_key) = (&new_name, &new_key);
+        let (view, stamped) = run_retrying_each(&self.db, Scope::Account(account), || {
+            async move |tx: &mut DbTx| {
+                self.ensure_active(tx, account).await?;
+                if new_parent.is_none() {
+                    let current = node_repo::view(tx, account, node_id)
+                        .await
+                        .map_err(unexpected)?
+                        .filter(|view| view.state == NodeState::Live)
+                        .ok_or(TreeServiceError::NotFound)?;
+                    if current.parent_id.is_none() {
+                        return Err(TreeServiceError::IsRoot);
+                    }
+                    if new_name
+                        .as_ref()
+                        .is_none_or(|name| name.as_str() == current.name)
+                    {
+                        return Ok((current, false));
+                    }
+                }
+                if new_parent.is_some() {
+                    tx.advisory_lock_account(account)
+                        .await
+                        .map_err(unexpected)?;
+                }
+                let node = node_repo::lock_for_update(tx, account, node_id)
                     .await
                     .map_err(unexpected)?
-                    .filter(|view| view.state == NodeState::Live)
+                    .filter(|node| !node.deleted)
                     .ok_or(TreeServiceError::NotFound)?;
-                if current.parent_id.is_none() {
+                let Some(current_parent) = node.parent_id else {
                     return Err(TreeServiceError::IsRoot);
-                }
-                if new_name
-                    .as_ref()
-                    .is_none_or(|name| name.as_str() == current.name)
-                {
-                    return Ok((current, false));
-                }
-            }
-            if new_parent.is_some() {
-                tx.advisory_lock_account(account)
+                };
+                let parent_id = match new_parent {
+                    Some(target) => {
+                        check_move(tx, account, node_id, target).await?;
+                        target
+                    }
+                    None => current_parent,
+                };
+                let change = NodeChange {
+                    id: node_id,
+                    account,
+                    parent_id,
+                    name: new_name.as_ref().map(ValidName::as_str),
+                    name_key: new_key.as_ref().map(|key| key.as_str()),
+                    now: self.clock.now_utc(),
+                };
+                node_repo::update(tx, &change)
                     .await
-                    .map_err(unexpected)?;
+                    .map_err(name_conflict)?;
+                let mut view = node_repo::view(tx, account, node_id)
+                    .await
+                    .map_err(unexpected)?
+                    .ok_or_else(|| unexpected(DbError::Other("updated node not found".into())))?;
+                view.seq = self.stamp(tx, account, node_id).await?;
+                Ok((view, true))
             }
-            let node = node_repo::lock_for_update(tx, account, node_id)
-                .await
-                .map_err(unexpected)?
-                .filter(|node| !node.deleted)
-                .ok_or(TreeServiceError::NotFound)?;
-            let Some(current_parent) = node.parent_id else {
-                return Err(TreeServiceError::IsRoot);
-            };
-            let parent_id = match new_parent {
-                Some(target) => {
-                    check_move(tx, account, node_id, target).await?;
-                    target
-                }
-                None => current_parent,
-            };
-            let change = NodeChange {
-                id: node_id,
-                account,
-                parent_id,
-                name: new_name.as_ref().map(ValidName::as_str),
-                name_key: new_key.as_ref().map(|key| key.as_str()),
-                now: self.clock.now_utc(),
-            };
-            node_repo::update(tx, &change)
-                .await
-                .map_err(name_conflict)?;
-            let mut view = node_repo::view(tx, account, node_id)
-                .await
-                .map_err(unexpected)?
-                .ok_or_else(|| unexpected(DbError::Other("updated node not found".into())))?;
-            view.seq = self.stamp(tx, account, node_id).await?;
-            Ok((view, true))
         })
         .await?;
         if stamped {
@@ -184,23 +190,25 @@ impl PgTreeService {
         node_id: Uuid,
         base_revision: Option<Uuid>,
     ) -> Result<(), TreeServiceError> {
-        let stamped = run_retrying(&self.db, Scope::Account(account), async |tx| {
-            self.ensure_active(tx, account).await?;
-            let node = node_repo::lock_for_update(tx, account, node_id)
-                .await
-                .map_err(unexpected)?
-                .ok_or(TreeServiceError::NotFound)?;
-            if node.parent_id.is_none() {
-                return Err(TreeServiceError::IsRoot);
+        let stamped = run_retrying_each(&self.db, Scope::Account(account), || {
+            async move |tx: &mut DbTx| {
+                self.ensure_active(tx, account).await?;
+                let node = node_repo::lock_for_update(tx, account, node_id)
+                    .await
+                    .map_err(unexpected)?
+                    .ok_or(TreeServiceError::NotFound)?;
+                if node.parent_id.is_none() {
+                    return Err(TreeServiceError::IsRoot);
+                }
+                if node.deleted {
+                    return Ok(None);
+                }
+                check_base(&node, base_revision)?;
+                node_repo::tombstone(tx, account, node_id, self.clock.now_utc())
+                    .await
+                    .map_err(unexpected)?;
+                self.stamp(tx, account, node_id).await.map(Some)
             }
-            if node.deleted {
-                return Ok(None);
-            }
-            check_base(&node, base_revision)?;
-            node_repo::tombstone(tx, account, node_id, self.clock.now_utc())
-                .await
-                .map_err(unexpected)?;
-            self.stamp(tx, account, node_id).await.map(Some)
         })
         .await?;
         if let Some(seq) = stamped {

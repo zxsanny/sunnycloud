@@ -11,17 +11,29 @@ workspace = true
 
 [dependencies]
 contracts = { path = "../../contracts" }
+sc_audit = { path = "../../shared/audit" }
+sc_clock = { path = "../../shared/clock" }
 sc_config = { path = "../../shared/config" }
+sc_db = { path = "../../shared/db" }
+sc_error = { path = "../../shared/error" }
+sc_ids = { path = "../../shared/ids_hashing" }
+# Link passwords: Argon2id PHC strings (06 description §5); the salt comes from getrandom, so argon2's own
+# getrandom feature stays off. Same pin as vault-core.
+argon2 = { version = "=0.6.0", default-features = false, features = ["alloc", "password-hash", "zeroize"] }
+getrandom = { workspace = true }
+async-trait = "0.1"
+# The repository modules run their statements on the transaction's connection; same features as sc_db.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+thiserror = { workspace = true }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+uuid = { workspace = true }
 
 [dev-dependencies]
-# The component's connection pool and the manual clock of the harness.
-sc_clock = { path = "../../shared/clock" }
-sc_db = { path = "../../shared/db" }
+# The real tree reader (02) the link create resolves its file through (component dev-dependency, ADR-015).
+sunnycloud-tree = { path = "../02_tree" }
 # The AbuseLimiter the later suites build per test.
 sc_ratelimit = { path = "../../shared/ratelimit" }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
-# The tests read and write the tables with plain statements on the transaction's connection.
-sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 uuid = { workspace = true, features = ["v4"] }

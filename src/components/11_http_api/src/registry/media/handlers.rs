@@ -55,7 +55,7 @@ pub(super) async fn transcode(
 }
 
 /// 08 opens the derived blob of the caller's own node (`NotReady` and `NotFound` are its 404 codes), then 03
-/// streams it. The caller's account scopes both, so another account's node is the same answer as a missing one.
+/// streams it with the media type stored with it. The caller's account scopes both, so another account's node is the same answer as a missing one.
 async fn derived(
     services: &Services,
     user: &User,
@@ -65,7 +65,7 @@ async fn derived(
     headers: &HeaderMap,
 ) -> Answer {
     let node = uuid_param(params, NODE_PARAM, user.request_id)?;
-    let blob = services
+    let derived = services
         .derived
         .open_derived(user.account, node, kind)
         .await
@@ -74,8 +74,8 @@ async fn derived(
         .downloads
         .open_blob_content(
             user.account,
-            blob,
-            Some(wire::media_type(kind).to_owned()),
+            derived.blob,
+            Some(derived.media_type),
             download_options(headers),
         )
         .await;

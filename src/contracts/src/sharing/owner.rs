@@ -8,14 +8,26 @@ use uuid::Uuid;
 
 use crate::common::Fault;
 
-/// `token` is the plaintext link secret and exists only here; its `Debug` prints a placeholder.
-#[derive(Debug)]
+/// `token` is the plaintext link secret and exists only here. `url_path` carries the token too, so `Debug` prints
+/// neither: both show a placeholder.
 pub struct CreatedShare {
     pub id: Uuid,
     pub token: RawToken,
     pub url_path: String,
     pub expires_at: Timestamp,
     pub has_password: bool,
+}
+
+impl std::fmt::Debug for CreatedShare {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CreatedShare")
+            .field("id", &self.id)
+            .field("token", &self.token)
+            .field("url_path", &"<redacted>")
+            .field("expires_at", &self.expires_at)
+            .field("has_password", &self.has_password)
+            .finish()
+    }
 }
 
 /// A link as listed to its owner. It never carries the token.

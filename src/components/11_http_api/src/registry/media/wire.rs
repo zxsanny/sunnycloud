@@ -11,15 +11,6 @@ use crate::registry::SchemaRef;
 /// The most hashes one request may ask about (08 section 5).
 pub(super) const MAX_HASHES: usize = 1000;
 
-/// The type 08 produces for each kind (08 section 7: WebP stills, MP4 transcodes). `BlobRef` carries no type
-/// and `DerivedOpener` returns none, so 11 names it for 03.
-pub(in crate::registry) const fn media_type(kind: DerivedKind) -> &'static str {
-    match kind {
-        DerivedKind::Thumb | DerivedKind::Preview => "image/webp",
-        DerivedKind::Transcode => "video/mp4",
-    }
-}
-
 /// `size=small|preview`; absent is `small`, anything else is `None`.
 pub(in crate::registry) fn thumbnail_kind(size: Option<&str>) -> Option<DerivedKind> {
     match size {
@@ -155,8 +146,6 @@ mod tests {
                 None
             ]
         );
-        assert_eq!(media_type(DerivedKind::Preview), "image/webp");
-        assert_eq!(media_type(DerivedKind::Transcode), "video/mp4");
     }
 
     #[test]

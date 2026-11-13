@@ -185,9 +185,9 @@ stub_port!(ThumbnailStateStub: ThumbnailStateSource, ThumbnailStateError, {
 
 stub_port!(DerivedStub: DerivedOpener, DerivedError, {
     async fn open_derived(&self, account: Uuid, node_id: Uuid, kind: DerivedKind)
-        -> Result<BlobRef, DerivedError>;
-    async fn open_derived_for(&self, file: &LiveFile, kind: DerivedKind)
-        -> Result<BlobRef, DerivedError>;
+        -> Result<DerivedBlob, DerivedError>;
+    async fn open_derived_for(&self, account: Uuid, file: &LiveFile, kind: DerivedKind)
+        -> Result<DerivedBlob, DerivedError>;
 });
 
 stub_port!(WorkerJobsStub: WorkerJobs, WorkerJobError, {

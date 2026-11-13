@@ -10,12 +10,12 @@ use std::task::{Context, Poll};
 use bytes::Bytes;
 use common::{Calls, fault, id, sorted};
 use contracts::{
-    AcceptOutcome, BlobRef, ByteStream, ClaimedJob, DerivedError, DerivedKind, DerivedOpener,
-    FailDisposition, FailResult, JobCount, JobKind, JobStatus, Lane, LeaseExtended, LiveFile,
-    MediaAdmin, MediaAdminError, MediaStats, NodeKind, OutputMeta, RequeueFilter, SkipOutcome,
-    StreamError, ThumbState, ThumbnailStateError, ThumbnailStateSource, WorkerAuthError,
-    WorkerAuthenticator, WorkerIdentity, WorkerInput, WorkerJobError, WorkerJobs, WorkerStatus,
-    async_trait,
+    AcceptOutcome, BlobRef, ByteStream, ClaimedJob, DerivedBlob, DerivedError, DerivedKind,
+    DerivedOpener, FailDisposition, FailResult, JobCount, JobKind, JobStatus, Lane, LeaseExtended,
+    LiveFile, MediaAdmin, MediaAdminError, MediaStats, NodeKind, OutputMeta, RequeueFilter,
+    SkipOutcome, StreamError, ThumbState, ThumbnailStateError, ThumbnailStateSource,
+    WorkerAuthError, WorkerAuthenticator, WorkerIdentity, WorkerInput, WorkerJobError, WorkerJobs,
+    WorkerStatus, async_trait,
 };
 use futures_core::Stream;
 use sc_ids::FileHash;
@@ -47,6 +47,13 @@ fn blob() -> BlobRef {
     }
 }
 
+fn derived_blob() -> DerivedBlob {
+    DerivedBlob {
+        blob: blob(),
+        media_type: "image/webp".to_owned(),
+    }
+}
+
 fn meta() -> OutputMeta {
     OutputMeta {
         media_type: "image/webp".to_owned(),
@@ -75,10 +82,10 @@ impl DerivedOpener for Double {
         _account: Uuid,
         _node_id: Uuid,
         kind: DerivedKind,
-    ) -> Result<BlobRef, DerivedError> {
+    ) -> Result<DerivedBlob, DerivedError> {
         self.0.record("open_derived");
         match kind {
-            DerivedKind::Thumb => Ok(blob()),
+            DerivedKind::Thumb => Ok(derived_blob()),
             DerivedKind::Preview => Err(DerivedError::NotReady),
             DerivedKind::Transcode => Err(DerivedError::NotFound),
         }
@@ -86,11 +93,12 @@ impl DerivedOpener for Double {
 
     async fn open_derived_for(
         &self,
+        _account: Uuid,
         _file: &LiveFile,
         _kind: DerivedKind,
-    ) -> Result<BlobRef, DerivedError> {
+    ) -> Result<DerivedBlob, DerivedError> {
         self.0.record("open_derived_for");
-        Ok(blob())
+        Ok(derived_blob())
     }
 }
 
@@ -253,7 +261,9 @@ async fn derived_opener_double_separates_not_ready_from_not_found() {
     let transcode = opener
         .open_derived(id(), id(), DerivedKind::Transcode)
         .await;
-    let shared = opener.open_derived_for(&file, DerivedKind::Thumb).await;
+    let shared = opener
+        .open_derived_for(id(), &file, DerivedKind::Thumb)
+        .await;
 
     // Assert
     assert!(thumb.is_ok());

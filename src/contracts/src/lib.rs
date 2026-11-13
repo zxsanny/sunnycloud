@@ -63,11 +63,11 @@ pub use feed::{
 };
 pub use identity::*;
 pub use media::{
-    AcceptOutcome, ClaimedJob, DerivedError, DerivedKind, DerivedOpener, FailDisposition,
-    FailResult, JobCount, JobKind, JobStatus, Lane, LeaseExtended, MediaAdmin, MediaAdminError,
-    MediaStats, OutputMeta, RequeueFilter, SkipOutcome, ThumbState, ThumbnailStateError,
-    ThumbnailStateSource, WorkerAuthError, WorkerAuthenticator, WorkerIdentity, WorkerInput,
-    WorkerJobError, WorkerJobs, WorkerStatus,
+    AcceptOutcome, ClaimedJob, DerivedBlob, DerivedError, DerivedKind, DerivedOpener,
+    FailDisposition, FailResult, JobCount, JobKind, JobStatus, Lane, LeaseExtended, MediaAdmin,
+    MediaAdminError, MediaStats, OutputMeta, RequeueFilter, SkipOutcome, ThumbState,
+    ThumbnailStateError, ThumbnailStateSource, WorkerAuthError, WorkerAuthenticator,
+    WorkerIdentity, WorkerInput, WorkerJobError, WorkerJobs, WorkerStatus,
 };
 pub use quota::{
     Drift, QuotaAdmin, QuotaAdminError, QuotaLedger, QuotaLedgerError, QuotaView, Reserved,

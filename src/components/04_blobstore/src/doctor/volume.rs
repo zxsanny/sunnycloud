@@ -6,12 +6,15 @@ use sc_observability::log_error;
 use super::{finding, ok};
 use crate::config::BlobstoreConfig;
 use crate::volume_facts::{self, Filesystem};
+use crate::writer::free_floor;
 
-/// The blob volume: reachable and writable, on XFS or ext4, with free space at or above `blob_free_reserve`.
+/// The blob volume: reachable and writable, on XFS or ext4, with free space at or above the floor (the smaller of
+/// `blob_free_reserve` and its share of the volume).
 /// Needs no database, so it runs in a pre-flight.
 pub struct VolumeCheck {
     root: Option<PathBuf>,
     reserve: u64,
+    reserve_percent: u64,
 }
 
 impl VolumeCheck {
@@ -23,6 +26,7 @@ impl VolumeCheck {
                 .filter(|root| !root.is_empty())
                 .map(PathBuf::from),
             reserve: config.blob_free_reserve,
+            reserve_percent: config.blob_free_reserve_percent,
         }
     }
 }
@@ -84,19 +88,20 @@ impl DoctorCheck for VolumeCheck {
                 "move the blob volume to XFS (the documented default) or ext4",
             ),
         };
-        let space = if facts.free_bytes < self.reserve {
+        let floor = free_floor(self.reserve, self.reserve_percent, facts.total_bytes);
+        let space = if facts.free_bytes < floor {
             finding(
                 FindingLevel::Fail,
                 format!(
                     "free space {} bytes is under the floor of {} bytes",
-                    facts.free_bytes, self.reserve
+                    facts.free_bytes, floor
                 ),
                 "free space on the blob volume or enlarge it",
             )
         } else {
             ok(format!(
                 "free space {} bytes is at or above the floor of {} bytes",
-                facts.free_bytes, self.reserve
+                facts.free_bytes, floor
             ))
         };
         vec![writable, filesystem, space]

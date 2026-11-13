@@ -26,7 +26,7 @@ Effects supplied by 03:
 |---|---|---|
 | `ReceiptEffect` (batch only) | `on_begin` | Look up `commit_receipts(account, commit_id)` under the lock `publish` holds: same `request_hash` gives `Replay(stored response)`; different gives `Batch(CommitIdReused)` |
 | `ReceiptEffect` | `on_batch` | Insert `(account, commit_id, request_hash, response)` with every entry outcome |
-| `BlobCommitEffect` | `on_entry` | Lock the entry's session or staged row (`FOR UPDATE`); zero rows gives `Entry(UploadNotFound)`; otherwise mark the blob committed and delete the row |
+| `BlobCommitEffect` | `on_entry` | Lock the entry's session or staged row (`FOR UPDATE`); zero rows gives `Entry(UploadNotFound)`; otherwise mark the blob committed; a staged row is deleted, a large upload's session row is kept as the committed-key record (`committed_revision_id` = the new revision, `reserved_bytes = 0`, `expires_at = now + upload_session_ttl`; owner decision 2026-11-13) |
 
 Outcome mapping to `Committed{node_id, revision_id, conflict_copy?}` (decided 2026-11-11, AZ-3731, G-03-3). `conflict_copy` is a node id. A client that gets a `conflict_copy` reads the folder again: either the older content sits beside its file, or its own file carries a conflict-copy name:
 

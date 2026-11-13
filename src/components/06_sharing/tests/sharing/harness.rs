@@ -1,28 +1,35 @@
 //! Component test harness on a real PostgreSQL 18: a clone of the migrated template of `sc_testdb`. The component
 //! connects as `sunnycloud`; fixtures and probes run as `sunnycloud_migrator`. Time comes from a `ManualClock`,
-//! the grant key is a fixed test key, and every test gets an `AbuseLimiter` of its own.
+//! the grant key is a fixed test key, and every test gets an `AbuseLimiter` of its own. The owner service reads
+//! the real tree (02's `PgTreeReader`) and writes through the real `AuditWriter`; link passwords use a small
+//! Argon2id cost set through the configuration key, never a lowered default.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use sc_audit::AuditWriter;
 use sc_clock::{Clock, ManualClock};
 use sc_config::Environment;
 use sc_db::Db;
 use sc_ratelimit::{AbuseLimiter, LimitId, LimitSpec, LimitTable, Subject, Verdict};
 pub use sc_testdb::{API, MIGRATOR, START, TestDb};
 use sqlx::PgConnection;
-use sunnycloud_sharing::ShareConfig;
+use sunnycloud_sharing::{PgShareService, ShareConfig};
+use sunnycloud_tree::{PgTreeReader, TreeConfig};
 use uuid::Uuid;
 
 use crate::settings::{KeyFile, TEST_GRANT_KEY, load_with_key};
 
 /// Millisecond values, never the production ones; the `test` environment does not bind the duration floors.
-const SHORT_DURATIONS: [(&str, &str); 4] = [
+const SHORT_DURATIONS: [(&str, &str); 5] = [
     ("SUNNYCLOUD_SHARE_LOOKUP_CACHE", "200ms"),
     ("SUNNYCLOUD_SHARE_GRANT_TTL", "500ms"),
     ("SUNNYCLOUD_SHARE_WRONG_PASSWORD_WINDOW", "500ms"),
     ("SUNNYCLOUD_SHARE_DEFAULT_TTL", "2s"),
+    ("SUNNYCLOUD_SHARE_ARGON2_PARAMS", "64,1,1"),
 ];
+/// The PHC prefix of a password hashed with the harness cost above.
+pub const TEST_PHC_PREFIX: &str = "$argon2id$v=19$m=64,t=1,p=1$";
 const INVALID_TOKEN_WINDOW: Duration = Duration::from_secs(60);
 
 pub struct Harness {
@@ -30,6 +37,7 @@ pub struct Harness {
     pub api: Db,
     pub clock: Arc<ManualClock>,
     pub config: ShareConfig,
+    pub tree_config: TreeConfig,
     pub limiter: AbuseLimiter,
 }
 
@@ -46,14 +54,29 @@ impl Harness {
         let settings =
             loaded.unwrap_or_else(|error| panic!("the harness settings do not load: {error}"));
         let config = ShareConfig::from_settings(&settings);
+        let tree_config = TreeConfig::from_settings(&settings);
         let limiter = limiter(&config, clock.clone());
         Harness {
             db,
             api,
             clock,
             config,
+            tree_config,
             limiter,
         }
+    }
+
+    /// The owner service with the harness section.
+    pub fn shares(&self) -> PgShareService {
+        self.shares_with(&self.config)
+    }
+
+    /// The owner service with `config`, over the real tree reader and audit writer on the API role.
+    pub fn shares_with(&self, config: &ShareConfig) -> PgShareService {
+        let tree = Arc::new(PgTreeReader::new(self.api.clone(), &self.tree_config));
+        let audit = AuditWriter::new(self.api.clone(), self.clock.clone());
+        PgShareService::new(self.api.clone(), self.clock.clone(), tree, audit, config)
+            .expect("the harness sharing section is valid")
     }
 
     /// Fixtures and probes run as the schema owner.

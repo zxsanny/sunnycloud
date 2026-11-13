@@ -17,7 +17,10 @@ pub struct BlobstoreConfig {
     /// `off`, `report` or `delete`; any other text is refused by [`BlobstoreConfig::validate`].
     pub orphan_mode: String,
     pub orphan_sweep_interval: Duration,
+    /// The free-space floor is the smaller of this and `blob_free_reserve_percent` of the volume (owner decision
+    /// 2026-11-13).
     pub blob_free_reserve: u64,
+    pub blob_free_reserve_percent: u64,
     pub gc_interval: Duration,
     pub gc_batch: u64,
     pub gc_claim_lease: Duration,
@@ -45,6 +48,7 @@ impl BlobstoreConfig {
             orphan_mode: settings.orphan_mode.clone(),
             orphan_sweep_interval: settings.orphan_sweep_interval.get(),
             blob_free_reserve: settings.blob_free_reserve.bytes(),
+            blob_free_reserve_percent: settings.blob_free_reserve_percent,
             gc_interval: settings.gc_interval.get(),
             gc_batch: settings.gc_batch,
             gc_claim_lease: settings.gc_claim_lease.get(),

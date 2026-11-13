@@ -2182,8 +2182,11 @@ dependencies = [
 name = "media-api"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "contracts",
+ "futures-util",
  "media-shared",
+ "sc_audit",
  "sc_clock",
  "sc_config",
  "sc_db",
@@ -2192,6 +2195,7 @@ dependencies = [
  "sc_observability",
  "sc_testdb",
  "sqlx",
+ "sunnycloud-blobstore",
  "sunnycloud-quota",
  "sunnycloud-sync-feed",
  "sunnycloud-tree",
@@ -4190,14 +4194,23 @@ dependencies = [
 name = "sunnycloud-sharing"
 version = "0.1.0"
 dependencies = [
+ "argon2",
+ "async-trait",
  "contracts",
+ "getrandom 0.4.3",
+ "sc_audit",
  "sc_clock",
  "sc_config",
  "sc_db",
+ "sc_error",
+ "sc_ids",
  "sc_ratelimit",
  "sc_testdb",
  "sqlx",
+ "sunnycloud-tree",
+ "thiserror 2.0.21",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -4225,13 +4238,21 @@ dependencies = [
 name = "sunnycloud-transfer"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "contracts",
+ "sc_audit",
+ "sc_clock",
  "sc_config",
  "sc_db",
  "sc_error",
  "sc_ids",
+ "sc_names",
+ "sc_observability",
  "sc_testdb",
  "sqlx",
+ "sunnycloud-blobstore",
+ "sunnycloud-quota",
+ "sunnycloud-tree",
  "thiserror 2.0.21",
  "tokio",
  "uuid",

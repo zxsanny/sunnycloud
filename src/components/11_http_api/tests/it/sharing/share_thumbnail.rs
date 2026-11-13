@@ -1,4 +1,4 @@
-use contracts::{BlobRef, DerivedError, DownloadError, PublicShareError, ShareDerived};
+use contracts::{DerivedBlob, DerivedError, DownloadError, PublicShareError, ShareDerived};
 
 use super::support::*;
 use crate::content::support::KIB;
@@ -21,9 +21,10 @@ async fn a_share_thumbnail_asks_06_then_08_then_03_once_each_and_never_asks_08_t
     // Arrange
     let stack = Stack::start().await;
     stack.script.push(AUTHORIZE_DERIVED, shared_file());
-    stack
-        .script
-        .push(OPEN_DERIVED_FOR, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED_FOR,
+        Ok::<DerivedBlob, DerivedError>(derived("image/webp")),
+    );
     stack
         .script
         .push(OPEN_BLOB, served(full("image/webp", KIB)));
@@ -49,13 +50,14 @@ async fn a_share_thumbnail_asks_06_then_08_then_03_once_each_and_never_asks_08_t
 }
 
 #[tokio::test]
-async fn the_file_of_06_reaches_08_and_the_blob_of_08_reaches_03_with_the_account_of_the_link() {
+async fn the_file_and_account_of_06_reach_08_and_the_blob_and_stored_type_of_08_reach_03() {
     // Arrange
     let stack = Stack::start().await;
     stack.script.push(AUTHORIZE_DERIVED, shared_file());
-    stack
-        .script
-        .push(OPEN_DERIVED_FOR, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED_FOR,
+        Ok::<DerivedBlob, DerivedError>(derived("image/jpeg")),
+    );
     stack
         .script
         .push(OPEN_BLOB, served(full("image/webp", KIB)));
@@ -68,6 +70,11 @@ async fn the_file_of_06_reaches_08_and_the_blob_of_08_reaches_03_with_the_accoun
     let to_08 = stack.log(OPEN_DERIVED_FOR);
     assert!(to_08[0].contains(&file), "{}", to_08[0]);
     assert!(to_08[0].contains("Thumb"), "{}", to_08[0]);
+    assert!(
+        to_08[0].contains(&format!("({SHARE_ACCOUNT}, ")),
+        "{}",
+        to_08[0]
+    );
     let to_03 = stack.log(OPEN_BLOB);
     assert!(
         to_03[0].contains(&format!("{SHARE_ACCOUNT}")),
@@ -75,7 +82,7 @@ async fn the_file_of_06_reaches_08_and_the_blob_of_08_reaches_03_with_the_accoun
         to_03[0]
     );
     assert!(to_03[0].contains(&format!("{:?}", blob())), "{}", to_03[0]);
-    assert!(to_03[0].contains("image/webp"), "{}", to_03[0]);
+    assert!(to_03[0].contains("Some(\"image/jpeg\")"), "{}", to_03[0]);
     stack.stop().await;
 }
 
@@ -84,9 +91,10 @@ async fn size_picks_the_derived_kind_and_an_unknown_size_is_refused_before_any_p
     // Arrange
     let stack = Stack::start().await;
     stack.script.push(AUTHORIZE_DERIVED, shared_file());
-    stack
-        .script
-        .push(OPEN_DERIVED_FOR, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED_FOR,
+        Ok::<DerivedBlob, DerivedError>(derived("image/webp")),
+    );
     stack
         .script
         .push(OPEN_BLOB, served(full("image/webp", KIB)));
@@ -113,9 +121,10 @@ async fn a_head_answers_the_headers_of_the_same_calls_with_no_body() {
     // Arrange
     let stack = Stack::start().await;
     stack.script.push(AUTHORIZE_DERIVED, shared_file());
-    stack
-        .script
-        .push(OPEN_DERIVED_FOR, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED_FOR,
+        Ok::<DerivedBlob, DerivedError>(derived("image/webp")),
+    );
     stack
         .script
         .push(OPEN_BLOB, served(full("image/webp", KIB)));
@@ -135,9 +144,10 @@ async fn the_thumbnail_carries_no_cross_origin_header() {
     // Arrange
     let stack = Stack::start().await;
     stack.script.push(AUTHORIZE_DERIVED, shared_file());
-    stack
-        .script
-        .push(OPEN_DERIVED_FOR, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED_FOR,
+        Ok::<DerivedBlob, DerivedError>(derived("image/webp")),
+    );
     stack
         .script
         .push(OPEN_BLOB, served(full("image/webp", KIB)));
@@ -172,7 +182,7 @@ async fn a_missing_link_a_locked_link_and_a_missing_thumbnail_answer_their_own_e
     stack.script.push(AUTHORIZE_DERIVED, shared_file());
     stack.script.push(
         OPEN_DERIVED_FOR,
-        Err::<BlobRef, DerivedError>(DerivedError::NotReady),
+        Err::<DerivedBlob, DerivedError>(DerivedError::NotReady),
     );
 
     // Act
@@ -202,9 +212,10 @@ async fn a_failed_03_answer_is_the_content_error_not_a_clean_empty_thumbnail() {
     // Arrange
     let stack = Stack::start().await;
     stack.script.push(AUTHORIZE_DERIVED, shared_file());
-    stack
-        .script
-        .push(OPEN_DERIVED_FOR, Ok::<BlobRef, DerivedError>(blob()));
+    stack.script.push(
+        OPEN_DERIVED_FOR,
+        Ok::<DerivedBlob, DerivedError>(derived("image/webp")),
+    );
     stack.script.push(
         OPEN_BLOB,
         Err::<contracts::Download, DownloadError>(DownloadError::ContentUnavailable),

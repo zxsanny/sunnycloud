@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use argon2::Params;
 use sc_config::{ConfigError, ConfigSources, KeyProblem, Reason, Secret, Settings, TABLE};
 
 pub const GRANT_KEY_KEY: &str = "share_grant_key";
 pub const GRANT_KEY_MIN_BYTES: usize = 32;
+pub const ARGON2_PARAMS_KEY: &str = "share_argon2_params";
 
 /// The sharing section of the key table, typed. Defaults and the production duration ranges come from
 /// `sc_config`. The grant key stays a `Secret`: it prints as `***` and never enters a problem.
@@ -19,7 +21,8 @@ pub struct ShareConfig {
     pub invalid_token_limit: u64,
     /// No default in the key table: absent means the password path sets its own bound.
     pub password_max_concurrency: Option<u64>,
-    /// No default in the key table (`m,t,p`): the password path parses it.
+    /// No default in the key table (`m,t,p`); unset means argon2's `Params::DEFAULT` (19456 KiB, 2 passes,
+    /// 1 lane). Read through [`ShareConfig::password_params`].
     pub argon2_params: Option<String>,
     pub grant_key: Secret<String>,
 }
@@ -74,8 +77,27 @@ impl ShareConfig {
                 "no ceiling",
             ));
         }
+        problems.extend(self.password_params().err());
         problems.extend(self.grant_key_problem());
         problems
+    }
+
+    /// The Argon2id cost of link passwords: `share_argon2_params` as `m,t,p` (memory in KiB, passes, lanes), or
+    /// argon2's `Params::DEFAULT` when unset. A value that is not three integers, or that argon2 refuses (memory
+    /// below 8 KiB per lane, zero passes or lanes), is a problem naming the key; the value is not repeated.
+    pub fn password_params(&self) -> Result<Params, KeyProblem> {
+        let Some(text) = self.argon2_params.as_deref() else {
+            return Ok(Params::DEFAULT);
+        };
+        let parts: Vec<Option<u32>> = text
+            .split(',')
+            .map(|part| part.trim().parse().ok())
+            .collect();
+        let wrong_type = || KeyProblem::new(ARGON2_PARAMS_KEY, Reason::WrongType);
+        match parts.as_slice() {
+            [Some(m), Some(t), Some(p)] => Params::new(*m, *t, *p, None).map_err(|_| wrong_type()),
+            _ => Err(wrong_type()),
+        }
     }
 
     /// A key that the loader refused (no value, empty file, file that cannot be read) is a problem naming

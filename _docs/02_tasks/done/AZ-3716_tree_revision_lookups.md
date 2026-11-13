@@ -109,5 +109,5 @@ Then it equals the sum of the sizes of the current revisions of live files
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| IT-02-17 includes a tombstoned file's blob in `describe_blobs` but states no expected result (path, empty, or marked deleted) | E-13 owner | open | Low |
-| Whether `resolve_path` resolves a path whose last node is tombstoned (needed by restore of a deleted file, E-13/c11) is not stated | E-13 owner | open | Medium |
+| IT-02-17 includes a tombstoned file's blob in `describe_blobs` but states no expected result (path, empty, or marked deleted) | E-13 owner | proposed default 2026-11-13: the tombstoned file's blob is included, marked deleted, with no path | Low |
+| Whether `resolve_path` resolves a path whose last node is tombstoned (needed by restore of a deleted file, E-13/c11) is not stated | E-13 owner | resolved 2026-11-13 (owner): `resolve_path` also finds a node whose last part is tombstoned and returns it with its deleted state; ordinary callers treat that as not found, restore uses it | Medium |

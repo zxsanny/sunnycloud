@@ -3,7 +3,7 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c04 — `_docs/02_tasks/todo/B03-20_transfer_start_upload.md` (contributors: E-14/c05 `put_block`, E-14/c06 `get_upload`/`abort_upload`, E-14/c07 `stage_small`, E-14/c11 `ReservationSource`; rule from spike E-14/c02); keys assigned at Step 4
 **Consumer tasks**: E-14/c13, E-14/c16 (this batch); E-21/c13 (11 handlers), E-22 (doctor, `recompute` caller), E-17 (07 `recompute` caller), E-23/E-26/E-27 through the HTTP API, resolved at Step 4
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft (the `NothingToSend` rule is recorded; frozen when the producer task passes review)
 **Last Updated**: 2026-11-13
 
@@ -37,7 +37,7 @@ Applies only when `StartUpload.content_hash` is present; without it `start_uploa
 | No node at the name | `Started` |
 | `base_revision` given | The node is the one that owns `base_revision` (by id, AC-70), not the one at the name. If it is live and its current revision has the same hash: `NothingToSend{revision}` = that current revision; otherwise `Started`. A `base_revision` that is unknown, foreign or whose node is gone is `Started`, never an error |
 
-Committed key (owner decision 2026-11-13, AZ-3949, option a): before the cases above, a `client_key` whose session committed within `upload_session_ttl` answers `NothingToSend{revision}` = the revision that commit created, whatever the name holds now (taken at commit, replaced, moved or deleted since). A lost commit response therefore never yields a second server file within the TTL. How the committed key is kept (the session row kept in a committed state with its revision id until the reaper removes it, or another bounded record) is the producer's choice (E-14/c02, c03); it holds no reservation.
+Committed key (owner decision 2026-11-13, AZ-3949, option a): before the cases above, a `client_key` whose session committed within `upload_session_ttl` answers `NothingToSend{revision}` = the revision that commit created, whatever the name holds now (taken at commit, replaced, moved or deleted since). A lost commit response therefore never yields a second server file within the TTL. The committed key is the session row kept after the commit with `upload_sessions.committed_revision_id` set (owner decision 2026-11-13, migration `20261113100000`) until `expires_at`; it holds no reservation and does not count toward the open-session cap.
 
 The rule matches only the node at the given parent and name (or the base node): there is no commit-by-hash across nodes. Reads: `find_live_node`, then `resolve_live_file` for the current revision id, then `get_revision` for its hash, all by indexed keys and before the session transaction; if E-13 later lets `NodeRef` or `LiveFile` carry the hash, the last read goes away. The staged path needs none of this: its receipts heal a lost response (E-14/c09).
 
@@ -74,9 +74,11 @@ Constants and limits: block size 2 MiB (protocol constant); `lane_limit` = `max_
 
 ## Open items
 
-- `AccountNotActive` at start, put and stage needs the `AccountGuard` port, which 03's Ports table does not list; `put_block` opens no transaction.
-- Error names for `declared_size = 0` on the large path and for a staged body above 2 MiB.
-- `data_model.md` §6.3 counts open sessions as rows with `block_count > 1`, missing large sessions of at most 2 MiB.
+- Resolved 2026-11-13 (owner): 03 takes `Arc<dyn AccountGuard>` (`PgUploadService::new(db, config, UploadPorts{guard, tree, quota, writer, registry}, clock)`); `put_block` still opens no transaction.
+- `declared_size <= 0` on the large path (owner 2026-11-13: a zero-byte file never takes it) and a `client_key` outside 1..=256 bytes have no `UploadError` variant: 03 answers `Unexpected`; 11 must refuse both at its boundary as `invalid_request`. The staged body above 2 MiB still has no name.
+- Session cap (owner 2026-11-13: every open large-path session counts): counted as open rows with `block_count > 1 OR received = '\x00'`; a staged row and a 1-block large session whose block has arrived cannot be told apart without a row-kind column, so the latter is not counted until it commits. Committed rows never count.
+- Free-space floor: 04 checks it in `create_file`, after the start transaction; a refusal is compensated, so nothing stays reserved (the "floor before the transaction" order would need a 04 probe port). Floor = the smaller of `blob_free_reserve` and a share of the volume (owner 2026-11-13).
+- The `BlobRegistry` port lacks the account and 04 does not implement it as a trait (AZ-4264).
 - G-03-1 resolved 2026-11-11 (AZ-3731): AC-3 is 16 MiB, `max_lanes` and the checkpoint defaults stay.
 
 ## Change Log
@@ -86,3 +88,4 @@ Constants and limits: block size 2 MiB (protocol constant); `lane_limit` = `max_
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
 | 1.1.0 | 2026-11-11 | `NothingToSend` rule per case recorded (matched by `name_key`; folder, tombstone, other hash and no node start a session) | AZ-3732 |
 | 1.2.0 | 2026-11-13 | Committed key answers `NothingToSend` with its revision until `upload_session_ttl` (owner, lost-commit recovery) | AZ-3949 |
+| 1.3.0 | 2026-11-13 | `start_upload` implemented: `AccountGuard`, session-cap counting, floor after the transaction (compensated), committed-key record as `committed_revision_id` (an expired one is deleted by the next start with that key) | AZ-3734 |

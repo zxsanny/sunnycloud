@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use sc_config::{ConfigError, Environment, KeyProblem, Reason, Secret};
-use sunnycloud_sharing::{GRANT_KEY_MIN_BYTES, ShareConfig};
+use sunnycloud_sharing::{ARGON2_PARAMS_KEY, GRANT_KEY_MIN_BYTES, ShareConfig};
 
 use crate::settings::{KeyFile, TEST_GRANT_KEY, load_settings, load_with_key};
 
@@ -318,4 +318,67 @@ fn a_default_lifetime_above_the_maximum_is_refused_and_equal_is_accepted() {
         vec![out_of_range("share_default_ttl", "1ms", "share_max_ttl")]
     );
     assert_eq!(equal, Vec::new());
+}
+
+#[test]
+fn unset_argon2_params_give_the_argon2_default_cost() {
+    // Arrange
+    let config = valid();
+
+    // Act
+    let params = config.password_params().expect("default cost");
+
+    // Assert
+    assert_eq!(
+        (params.m_cost(), params.t_cost(), params.p_cost()),
+        (19_456, 2, 1)
+    );
+}
+
+#[test]
+fn set_argon2_params_are_read_as_memory_passes_and_lanes() {
+    // Arrange
+    let config = config_from(&[("SUNNYCLOUD_SHARE_ARGON2_PARAMS", "65536, 3, 1")]);
+
+    // Act
+    let params = config.password_params().expect("set cost");
+
+    // Assert
+    assert_eq!(
+        (params.m_cost(), params.t_cost(), params.p_cost()),
+        (65_536, 3, 1)
+    );
+    assert_eq!(config.validate(), Vec::new());
+}
+
+#[test]
+fn unusable_argon2_params_are_refused_naming_the_key() {
+    // Arrange
+    let values = [
+        "19456,2",
+        "a,b,c",
+        "19456,2,1,4",
+        "4,2,1",
+        "19456,0,1",
+        "19456,2,0",
+    ];
+
+    // Act
+    let problems: Vec<Vec<KeyProblem>> = values
+        .iter()
+        .map(|value| {
+            let mut config = valid();
+            config.argon2_params = Some((*value).to_owned());
+            config.validate()
+        })
+        .collect();
+
+    // Assert
+    for (value, found) in values.iter().zip(problems) {
+        assert_eq!(
+            found,
+            vec![KeyProblem::new(ARGON2_PARAMS_KEY, Reason::WrongType)],
+            "{value}"
+        );
+    }
 }

@@ -98,7 +98,7 @@ Adds `Access-Control-Allow-Origin: *` to the 200, 206 and 304 answers of `GET` a
 
 2. The 416 carries no `ETag` or `Cache-Control: private`: `DownloadError::RangeNotSatisfiable` carries only `total_size`. AC-3 of AZ-3812 says every answer has `ETag`; adding the tag to the error is a further contracts change if the owner wants it.
 
-3. The type of a derived blob (thumbnail, transcode) is not known to 11: `BlobRef` and `DerivedOpener` carry none, so 11 names `image/webp` or `video/mp4` per derived kind (`api_v1_surface.md` open point 26).
+3. Closed 2026-11-13 (AZ-3844, parent-approved contract change): the type comes from the `derived` row through `DerivedBlob.media_type`.
 
 4. `ByteRange` cannot hold a suffix or open-ended range (`api_v1_surface.md` open point 25).
 

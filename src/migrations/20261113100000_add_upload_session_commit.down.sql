@@ -1,0 +1,2 @@
+ALTER TABLE upload_sessions DROP CONSTRAINT upload_sessions_committed_revision_fkey;
+ALTER TABLE upload_sessions DROP COLUMN committed_revision_id;

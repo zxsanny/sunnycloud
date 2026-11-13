@@ -367,7 +367,7 @@ impl DerivedOpener for Gate<RecordingDerived> {
         account: Uuid,
         node_id: Uuid,
         kind: DerivedKind,
-    ) -> Result<BlobRef, DerivedError> {
+    ) -> Result<DerivedBlob, DerivedError> {
         if !self.admit("DerivedOpener::open_derived", account, &[node_id]) {
             return Err(DerivedError::NotFound);
         }
@@ -376,10 +376,11 @@ impl DerivedOpener for Gate<RecordingDerived> {
 
     async fn open_derived_for(
         &self,
+        account: Uuid,
         file: &LiveFile,
         kind: DerivedKind,
-    ) -> Result<BlobRef, DerivedError> {
-        self.inner.open_derived_for(file, kind).await
+    ) -> Result<DerivedBlob, DerivedError> {
+        self.inner.open_derived_for(account, file, kind).await
     }
 }
 

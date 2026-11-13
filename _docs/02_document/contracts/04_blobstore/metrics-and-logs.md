@@ -20,7 +20,7 @@ The blob I/O series and the log events of 04. Names, types and the logging level
 | `block_fsync_duration_seconds` | histogram | none | `SyncBarrier::with_metrics` | one group flush (the `fdatasync` of the group's files), failed flushes included; the coalesce wait is not counted |
 | `blob_read_duration_seconds` | histogram | `kind` = `range` (`open` with a byte range) or `stream` (`open` of the whole blob) | `FileBlobReader::with_metrics` | one successful `open`: from the call to the return of the stream, i.e. until the first chunk of the range is read and authenticated. Not the time the consumer takes to drain the stream. A failed `open` and `read_head` add nothing |
 | `blob_free_bytes` | gauge | none | `BlobHealth::with_metrics` | set by each `probe` to the probe's `free_bytes` |
-| `blob_free_floor_bytes` | gauge | none | `BlobHealth::with_metrics` | set by each `probe` to `blob_free_reserve` |
+| `blob_free_floor_bytes` | gauge | none | `BlobHealth::with_metrics` | set by each `probe` to the free-space floor (the smaller of `blob_free_reserve` and `blob_free_reserve_percent` of the volume) |
 
 - The gauges change only when `probe` runs; the caller that exposes `/metrics` (E-21/c16) must probe on a schedule or before a scrape.
 - Durations are read from the injected clock's monotonic time; the histogram buckets are the registry's one set.

@@ -125,10 +125,10 @@ Then it returns `AccountNotActive` and reserves nothing
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| 03's Ports table and `module-layout.md` do not list `AccountGuard`, yet `AccountNotActive` is required at start, put and stage; a `contracts`/ports change is needed (Layout Rule 6) | E-14 owner, E-00 | open | Medium |
-| `data_model.md` §6.3 counts open sessions as rows with `block_count > 1`, so a large-path session of at most 2 MiB is not counted against the cap | E-14 owner | open | Low |
-| `declared_size = 0` on the large path (ST-03-2) has no named error | E-14 owner | open | Low |
-| Free-space floor default is not fixed (G-R9; E-31/c04) | Owner | open | Low |
+| 03's Ports table and `module-layout.md` do not list `AccountGuard`, yet `AccountNotActive` is required at start, put and stage; a `contracts`/ports change is needed (Layout Rule 6) | E-14 owner, E-00 | resolved 2026-11-13 (owner): 03 takes `Arc<dyn AccountGuard>` like 02 (additive) | Medium |
+| `data_model.md` §6.3 counts open sessions as rows with `block_count > 1`, so a large-path session of at most 2 MiB is not counted against the cap | E-14 owner | resolved 2026-11-13 (owner): every open large-path session counts toward the cap | Low |
+| `declared_size = 0` on the large path (ST-03-2) has no named error | E-14 owner | resolved 2026-11-13 (owner): a zero-byte file never takes the large path; the large path refuses it with the existing validation error | Low |
+| Free-space floor default is not fixed (G-R9; E-31/c04) | Owner | resolved 2026-11-13 (owner): the floor is the smaller of 10 GiB and 5% of the data volume (04 `blob_free_reserve` 10 GiB cap plus a 5% share) | Low |
 
 ## Contract
 

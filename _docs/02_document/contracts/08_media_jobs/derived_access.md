@@ -3,7 +3,7 @@
 **Component**: 08_media_jobs
 **Producer task**: E-18/c09 — `_docs/02_tasks/todo/B05-20_thumbnail_states_derived_opener.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-13/c14 (listing enrichment), E-13/c16 (integration pass), E-21/c14 (thumbnail, transcode and thumbnail-states handlers; share thumbnail); in batch E-18/c12, E-18/c13; pipeline AZ-3661
-**Version**: 1.0.2
+**Version**: 1.1.0
 **Status**: draft (open point 1 waits for E-18/c01)
 **Last Updated**: 2026-11-04
 
@@ -68,8 +68,8 @@ The share-link thumbnail: 06 `authorize_derived` checks the token and returns `S
 ## Open points
 
 1. G-08-3: closed 2026-11-07 (owner decision): foreign and unknown ids are omitted from the answer; a body over 1,000 ids is 422 `batch_too_large` (same family as the commit batch cap; 400 `invalid_request` was the rejected alternative).
-2. The route takes node ids; `states` takes hashes; the node-to-hash step (11 through `TreeReader`) is not stated.
-3. `BlobRef` carries no media type; the derived row's type must reach 03 (contracts part 3 open point 6).
+2. Closed 2026-11-13 (AZ-3844, parent-approved contract change): 11 takes content hashes (`api_v1_surface.md` open point 6); node ids on the wire would need a bulk `TreeReader` node-id-to-hash method (02, `contracts` change).
+3. Closed 2026-11-13 (AZ-3844, parent-approved contract change): `open_derived(account, node_id, kind)` and `open_derived_for(account, &LiveFile, kind)` return `DerivedBlob{blob, media_type}`, the type read from the `derived` row; `open_derived_for` takes the owning account (`ShareDerived.account_id`) because the `derived` lookup is account-keyed. `ThumbnailStates` = `derived_pkey` index-only scan plus `jobs_key` bitmap index scan, checked at 100,000 rows per table.
 
 ## Change Log
 
@@ -78,3 +78,4 @@ The share-link thumbnail: 06 `authorize_derived` checks the token and returns `S
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
 | 1.0.1 | 2026-11-07 | Closed open point 1: foreign and unknown ids omitted; over 1,000 ids 422 `batch_too_large` | AZ-3826 |
 | 1.0.2 | 2026-11-11 | The share-link thumbnail: 06 returns `ShareDerived{account_id, file}` (`contracts` part 3 1.1.0); 11 registers the route | owner-approved change |
+| 1.1.0 | 2026-11-13 | `DerivedBlob{blob, media_type}`; `open_derived_for` takes the owning account; open points 2 and 3 closed | AZ-3844 |

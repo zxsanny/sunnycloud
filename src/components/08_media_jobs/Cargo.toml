@@ -29,6 +29,12 @@ uuid = { workspace = true }
 # the tree-commit contract (component dev-dependencies, ADR-015).
 sunnycloud-tree = { path = "../02_tree" }
 sunnycloud-quota = { path = "../07a_quota" }
+# The real 04 blob catalog and reader for the derived opener (AZ-3844).
+sunnycloud-blobstore = { path = "../04_blobstore" }
+# Writing and reading back a real derived blob through 04 (keyring audit writer, `Bytes` blocks, the read stream).
+sc_audit = { path = "../../shared/audit" }
+bytes = { workspace = true }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 sunnycloud-sync-feed = { path = "../05_sync_feed" }
 # The statement-count test reads sqlx's statement events.
 tracing = { version = "0.1", default-features = false, features = ["std"] }

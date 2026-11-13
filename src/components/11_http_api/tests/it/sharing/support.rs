@@ -2,8 +2,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use contracts::{
-    AccessGrant, BlobRef, ByteRange, Disposition, Download, DownloadError, DownloadStatus,
-    LiveFile, NodeKind, PublicShareError, ShareContent, ShareDerived,
+    AccessGrant, BlobRef, ByteRange, DerivedBlob, Disposition, Download, DownloadError,
+    DownloadStatus, LiveFile, NodeKind, PublicShareError, ShareContent, ShareDerived,
 };
 use sc_clock::{Clock, SystemClock};
 use sc_observability::Metrics;
@@ -213,6 +213,14 @@ pub fn blob() -> BlobRef {
         size: 2048,
         wrapped_key: vec![1, 2, 3],
         master_key_id: 1,
+    }
+}
+
+/// The derived blob 08 answers, with the media type stored with it.
+pub fn derived(media_type: &str) -> DerivedBlob {
+    DerivedBlob {
+        blob: blob(),
+        media_type: media_type.to_owned(),
     }
 }
 

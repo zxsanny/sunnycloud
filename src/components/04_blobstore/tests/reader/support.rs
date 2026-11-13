@@ -243,6 +243,7 @@ pub fn config(volume: &Path, key_file: &Path, read_ahead: u64) -> BlobstoreConfi
         orphan_mode: "report".to_owned(),
         orphan_sweep_interval: Duration::from_secs(3600),
         blob_free_reserve: 0,
+        blob_free_reserve_percent: 100,
         gc_interval: Duration::from_secs(60),
         gc_batch: 100,
         gc_claim_lease: Duration::from_secs(60),

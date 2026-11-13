@@ -7,7 +7,7 @@ use std::path::Path;
 use rustix::fs::{Access, access, statfs};
 use rustix::io::Errno;
 
-use crate::writer::available_bytes;
+use crate::writer::volume_space;
 
 /// `statfs` magic numbers of `<linux/magic.h>`; ext2, ext3 and ext4 share one.
 const XFS_MAGIC: u64 = 0x5846_5342;
@@ -25,6 +25,8 @@ pub(crate) struct VolumeFacts {
     pub writable: bool,
     /// Bytes an unprivileged writer can still allocate, as the writer's own floor check sees them.
     pub free_bytes: u64,
+    /// The volume's total size, for the floor's share of it.
+    pub total_bytes: u64,
     pub filesystem: Filesystem,
 }
 
@@ -36,9 +38,11 @@ pub(crate) fn inspect(root: &Path) -> io::Result<VolumeFacts> {
         Err(Errno::ACCESS | Errno::ROFS | Errno::PERM) => false,
         Err(error) => return Err(io::Error::from(error)),
     };
+    let space = volume_space(root)?;
     Ok(VolumeFacts {
         writable,
-        free_bytes: available_bytes(root)?,
+        free_bytes: space.available,
+        total_bytes: space.total,
         filesystem: filesystem(u64::try_from(stat.f_type).unwrap_or(0)),
     })
 }

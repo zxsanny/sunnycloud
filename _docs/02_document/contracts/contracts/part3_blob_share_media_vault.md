@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c05 — `_docs/02_tasks/todo/B01-14_contracts_part3.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: other batches: E-10, E-13, E-14, E-16, E-18, E-21, E-22, E-30
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: draft (frozen when the producer task is accepted; `VaultService` stays a v1.2 proposal, 20 §1)
 **Last Updated**: 2026-11-11
 
@@ -139,3 +139,4 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
 | 1.1.0 | 2026-11-11 | `PublicShareService::authorize_derived` returns `ShareDerived{account_id, file}` instead of a bare `LiveFile`, so 11 can pass the owning account to 03 for the derived blob; owner-approved; 06 does not implement it yet, the callers are 11 (registered share thumbnail route) and the test doubles | owner-approved change |
+| 1.2.0 | 2026-11-13 | `DerivedBlob{blob, media_type}` returned by `DerivedOpener`; `open_derived_for` takes `account` (parent-approved, AZ-3844); `CreatedShare` `Debug` hides `url_path` | AZ-3844, AZ-3697 |

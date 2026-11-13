@@ -177,7 +177,8 @@ settings_table! {
     orphan_sweep_age: Dur = dflt("48h", A).range("1m", "30d");
     orphan_mode: Text = dflt("delete", A);
     orphan_sweep_interval: Dur = dflt("24h", A);
-    blob_free_reserve: Size = dflt("20GiB", A);
+    blob_free_reserve: Size = dflt("10GiB", A);
+    blob_free_reserve_percent: Count = dflt("5", A).range("0", "100");
     gc_interval: Dur = dflt("5m", A);
     gc_batch: Count = dflt("100", A);
     gc_claim_lease: Dur = dflt("10m", A);

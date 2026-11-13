@@ -145,7 +145,8 @@ fn the_section_takes_the_table_defaults() {
         ]
     );
     assert_eq!(config.orphan_mode, "delete");
-    assert_eq!(config.blob_free_reserve, 20 * 1024 * 1024 * 1024);
+    assert_eq!(config.blob_free_reserve, 10 * 1024 * 1024 * 1024);
+    assert_eq!(config.blob_free_reserve_percent, 5);
     assert_eq!(config.scrub_max_rate, 50 * 1024 * 1024);
     assert_eq!(
         (

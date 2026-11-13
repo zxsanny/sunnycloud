@@ -18,10 +18,10 @@ use crate::{conflict_repo, node_repo, reader_repo};
 const MAX_KEY_BYTES: usize = 1024;
 
 /// Separate from `PgTreeService` because it reads the listing limits of `TreeConfig` and needs none of the
-/// mutation ports. The `TreeReader` trait is implemented on it once the revision reads of AZ-3716 exist; until
-/// then these are its inherent methods.
+/// mutation ports. `TreeReader` and `LiveUsageSource` are implemented in `crate::reader_revisions`, which adds the
+/// revision reads; the node reads stay inherent here too.
 pub struct PgTreeReader {
-    db: Db,
+    pub(crate) db: Db,
     default_limit: u64,
     max_limit: u64,
 }
@@ -174,7 +174,7 @@ impl PgTreeReader {
         .await
     }
 
-    async fn read<T>(
+    pub(crate) async fn read<T>(
         &self,
         account: Uuid,
         f: impl AsyncFnOnce(&mut DbTx) -> Result<T, TreeReaderError>,
@@ -228,7 +228,7 @@ fn is_name_key(cursor: &str) -> bool {
     cursor.len() <= MAX_KEY_BYTES && !cursor.chars().any(|c| c == '/' || c.is_control())
 }
 
-fn unexpected(error: DbError) -> TreeReaderError {
+pub(crate) fn unexpected(error: DbError) -> TreeReaderError {
     TreeReaderError::Unexpected(Box::new(error))
 }
 

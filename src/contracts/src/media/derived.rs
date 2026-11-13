@@ -49,7 +49,15 @@ pub enum DerivedError {
     Unexpected(#[source] Fault),
 }
 
-/// Never falls back to the original bytes. 11 streams the returned `BlobRef` through 03.
+/// A derived blob with the media type stored with it; a `BlobRef` carries none. 11 passes both to 03's
+/// `DownloadService::open_blob_content`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivedBlob {
+    pub blob: BlobRef,
+    pub media_type: String,
+}
+
+/// Never falls back to the original bytes. 11 streams the returned blob through 03.
 #[async_trait]
 pub trait DerivedOpener: Send + Sync {
     async fn open_derived(
@@ -57,12 +65,14 @@ pub trait DerivedOpener: Send + Sync {
         account: Uuid,
         node_id: Uuid,
         kind: DerivedKind,
-    ) -> Result<BlobRef, DerivedError>;
+    ) -> Result<DerivedBlob, DerivedError>;
 
-    /// As `open_derived` without the node lookup; used after 06 authorised a share token.
+    /// As `open_derived` without the node lookup; used after 06 authorised a share token. `account` owns `file`
+    /// (`ShareDerived::account_id`).
     async fn open_derived_for(
         &self,
+        account: Uuid,
         file: &LiveFile,
         kind: DerivedKind,
-    ) -> Result<BlobRef, DerivedError>;
+    ) -> Result<DerivedBlob, DerivedError>;
 }

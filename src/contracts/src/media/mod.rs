@@ -7,7 +7,7 @@ mod model;
 mod worker;
 
 pub use derived::{
-    DerivedError, DerivedOpener, ThumbState, ThumbnailStateError, ThumbnailStateSource,
+    DerivedBlob, DerivedError, DerivedOpener, ThumbState, ThumbnailStateError, ThumbnailStateSource,
 };
 pub use model::{
     ClaimedJob, DerivedKind, FailDisposition, FailResult, JobKind, Lane, LeaseExtended, OutputMeta,
