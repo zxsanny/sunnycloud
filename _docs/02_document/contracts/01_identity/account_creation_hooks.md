@@ -3,7 +3,7 @@
 **Component**: 01_identity
 **Producer task**: AZ-3685 (E-15/c05, invite redemption and account creation)
 **Consumer tasks**: E-11/c03 (quota row), E-12/c06 (account feed), E-13/c13 (root node), E-16/c08 (sharing, no-op), E-22/c03 (registers the list), E-15/c08 (re-bind and setup redemption)
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: frozen (first implementation: AZ-3685)
 **Last Updated**: 2026-11-13
 
@@ -28,7 +28,8 @@ Call order inside the one account-creation transaction (system scope):
 2. insert the `accounts` row (state `active`, role = the invite's `grants_role`, display name = the provider's name claim, else its username, else `User`) and the `identities` row;
 3. call `initialize(tx, account_id)` of every registered hook, in registration order;
 4. redeem the invite with the single conditional update `UPDATE invites SET redeemed_at = now, redeemed_by = account WHERE id = $1 AND redeemed_at IS NULL AND expires_at > now`; 0 rows: roll back, `InvitationRequired`;
-5. commit. Any error in 1 to 4 rolls back the whole transaction.
+5. write the mandatory `account_created` audit event through `sc_audit` on the same transaction, ids and the granted role only;
+6. commit. Any error in 1 to 5 rolls back the whole transaction, a failed audit write included, and the invite stays redeemable.
 
 The session (or mobile login code) is written after the commit, in its own transaction, as for any known identity.
 
@@ -74,4 +75,5 @@ The session (or mobile login code) is written after the commit, in its own trans
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B04) |
 | 1.1.0 | 2026-11-11 | Registration entry point named (`register_hooks`, set once, unset fails closed); spike decision | AZ-3681 |
+| 1.3.0 | 2026-11-13 | Step 5: the mandatory `account_created` audit event is the last statement of the transaction (owner decision: security changes fail closed) | AZ-3691 |
 | 1.2.0 | 2026-11-13 | Frozen with the first implementation: precondition step 0 (email rule, owner decisions 2026-11-13), invite read in step 1, system scope, concrete signatures, error mapping, same-identity race, setup/re-bind excluded until E-15/c08 | AZ-3685 |

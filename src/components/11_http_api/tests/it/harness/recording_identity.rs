@@ -72,6 +72,7 @@ impl SignInService for RecordingSignIn {
         callback_params: CallbackParams,
         browser_binding: &BrowserBinding,
         host: &str,
+        _client_ip: std::net::IpAddr,
     ) -> Result<SignInOutcome, SignInError> {
         let params: Vec<String> = callback_params
             .0
@@ -105,6 +106,7 @@ impl SignInService for RecordingSignIn {
         _callback_params: CallbackParams,
         _browser_binding: &BrowserBinding,
         _host: &str,
+        _client_ip: std::net::IpAddr,
     ) -> Result<Linked, SignInError> {
         self.0.record(format!(
             "SignInService::complete_link {} {provider}",
@@ -117,6 +119,7 @@ impl SignInService for RecordingSignIn {
         &self,
         code: &RawToken,
         code_verifier: &str,
+        _client_ip: std::net::IpAddr,
     ) -> Result<SessionTokens, SignInError> {
         self.0.record(format!(
             "SignInService::exchange_mobile_code {} {code_verifier}",

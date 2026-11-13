@@ -14,8 +14,10 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use contracts::{AccountLifecycleHook, Decision, LifecycleError, PrincipalKind};
+use sc_audit::{AuditError, AuditWriter};
 
 use crate::account_repo::{self, ListedAccount, NewIdentity};
+use crate::audit_events;
 use crate::device_grant_repo::{
     self, Approver, DecideOutcome, NewDeviceToken, NewGrant, PendingGrant, PollStep,
 };
@@ -311,18 +313,35 @@ pub(crate) enum CreateError {
     InviteNotRedeemable,
     #[error("an account lifecycle hook failed")]
     Hook(#[source] LifecycleError),
+    /// The mandatory `account_created` event was not written; nothing was created.
+    #[error("the account-created audit event was not written")]
+    Audit(#[source] AuditError),
+    /// The invite carries a role outside the `invites_grants_role` CHECK; a damaged database.
+    #[error("unexpected invite role")]
+    UnexpectedRole,
     #[error(transparent)]
     Db(#[from] DbError),
 }
 
+/// The audit code of an invite's `grants_role`.
+fn role_code(role: &str) -> Option<&'static str> {
+    match role {
+        "user" => Some("user"),
+        "admin" => Some("admin"),
+        _ => None,
+    }
+}
+
 /// Creates the account in one transaction: the `accounts` and `identities` rows, `initialize` of every hook in
-/// registration order, then the conditional redemption. Any failure rolls all of it back, so the invite stays
-/// redeemable. System scope: the invite is resolved before any account exists, and the feed hook reads the
-/// installation epoch from the other accounts' rows.
+/// registration order, the conditional redemption, then the mandatory `account_created` audit event as the last
+/// statement. Any failure rolls all of it back, so the invite stays redeemable. System scope: the invite is
+/// resolved before any account exists, and the feed hook reads the installation epoch from the other accounts'
+/// rows.
 pub(crate) async fn create_account(
     db: &Db,
     registration: &NewRegistration<'_>,
     hooks: &[Arc<dyn AccountLifecycleHook>],
+    audit: &AuditWriter,
 ) -> Result<(), RunError<CreateError>> {
     let (account, now) = (registration.account_id, registration.now);
     db.run_system("account_create", async |tx| {
@@ -343,11 +362,21 @@ pub(crate) async fn create_account(
                 .await
                 .map_err(CreateError::Hook)?;
         }
-        if invite_repo::redeem(tx, invite.id, account, now).await? {
-            Ok(())
-        } else {
-            Err(CreateError::InviteNotRedeemable)
+        if !invite_repo::redeem(tx, invite.id, account, now).await? {
+            return Err(CreateError::InviteNotRedeemable);
         }
+        let role = role_code(&invite.grants_role).ok_or(CreateError::UnexpectedRole)?;
+        let event =
+            audit_events::account_created(account, registration.identity.id, invite.id, role);
+        audit.record_in(tx, event).await.map_err(CreateError::Audit)
+    })
+    .await
+}
+
+/// Whether any account exists. Read before any caller is known: system scope.
+pub(crate) async fn any_account(db: &Db) -> Result<bool, RunError<DbError>> {
+    db.run_system("provider_list", async |tx| {
+        account_repo::any_account(tx).await
     })
     .await
 }

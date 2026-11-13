@@ -6,9 +6,9 @@ use std::time::Duration;
 use bytes::Bytes;
 use sc_clock::{Clock, SystemClock};
 use sync_core_proto::{
-    BatchCommit, BatchResult, ChangePage, Cursor, DeviceAuthorization, DevicePoll, FileHash,
-    Hash32, ListingPage, NodeView, PageToken, ResumeHashState, RevisionRef, RevisionView,
-    ServerInfo, ServerUrl, SessionTokens, Staged, UrlError,
+    BatchCommit, BatchResult, ChangePage, CommitOutcome, Cursor, DeviceAuthorization, DevicePoll,
+    FileHash, Hash32, ListingPage, NodeView, PageToken, ResumeHashState, RetryPolicy, RevisionRef,
+    RevisionView, ServerInfo, ServerUrl, SessionTokens, Staged, UrlError,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -21,11 +21,12 @@ use crate::hash_ops::{HashCheckpoint, HashedFile, Hashing};
 use crate::host::{CheckpointStore, CredentialProvider, DownloadSink, FileSource, ProgressSink};
 use crate::http_transport::HttpTransport;
 use crate::negotiate::{Limits, identity, negotiate};
-use crate::request::{BoxFuture, RequestPath};
+use crate::request::{BoxFuture, RequestPath, jitter};
 use crate::server_info::fetch_server_info;
 use crate::small::{
     self, BatchRunError, BatchSink, Runner, SkippedFile, SmallFile, SourceResolver,
 };
+use crate::upload::{UploadRequest, Uploader};
 use crate::{token_ops, tree_ops};
 
 /// Why `connect` gave no client. Messages are fixed strings: nothing from the server reaches `Display`.
@@ -201,6 +202,7 @@ pub struct HttpSyncClient {
     hashing: Hashing,
     feed: Feed,
     batch_max_bytes_in_flight: u64,
+    policy: RetryPolicy,
 }
 
 impl HttpSyncClient {
@@ -231,6 +233,35 @@ impl HttpSyncClient {
 
     pub fn limits(&self) -> Limits {
         self.limits
+    }
+
+    /// Uploads a hashed file by blocks: `start_upload` with the stored `client_key` (see
+    /// [`UploadRequest::client_key`]), each needed block `PUT` with its BLAKE3 on at most
+    /// `min(4, ServerInfo.max_lanes, UploadSession.lane_limit)` lanes, done only on 204, then one commit. The
+    /// checkpoint is saved before the first block and cleared after an outcome; a resume re-reads the session
+    /// and sends only `need_blocks`. Before the commit the source's identity is checked again; after
+    /// `blocklist_mismatch` the file is hashed again and the session restarted with the same key. A lost commit
+    /// answer is recovered by one `start_upload` with the identical request (`sync_api.md` § Lost-commit
+    /// recovery). `progress` counts the bytes of acknowledged blocks.
+    /// Outcomes: `Published`, `ConflictCopy` (the name is the server's; never retried under another name),
+    /// `NothingToSend` (0 block bytes). Errors: `QuotaExceeded`, `SizeTooLarge`, `SessionCapReached`,
+    /// `FreeSpaceFloor`, `InvalidName`, `ParentNotFound`, `ParentGone`, `NotAFolder`, `BlocklistMismatch`
+    /// (restarts used up), `SourceChanged`, `Io` (the source); a block given up after
+    /// `sync.max_attempts_per_block` sends reports its last failure. The checkpoint is kept on every error.
+    pub async fn upload(
+        &self,
+        request: UploadRequest,
+        checkpoints: Arc<dyn CheckpointStore>,
+        progress: Arc<dyn ProgressSink>,
+    ) -> Result<CommitOutcome, SyncError> {
+        let uploader = Uploader {
+            path: &self.path,
+            hashing: &self.hashing,
+            lanes: self.limits.lanes,
+            policy: self.policy,
+            jitter,
+        };
+        uploader.upload(request, checkpoints, progress).await
     }
 
     /// Uploads files of at most `SMALL_FILE_MAX` through the staged path in batches. Each batch record is saved
@@ -307,6 +338,7 @@ impl HttpSyncClient {
                 feed,
                 clock,
                 batch_max_bytes_in_flight: config.batch_max_bytes_in_flight,
+                policy: config.retry_policy(),
             },
             info,
         ))

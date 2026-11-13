@@ -10,6 +10,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# The shared abuse limiter and the audit writer (AZ-3691).
+sc_audit = { path = "../../shared/audit" }
+sc_ratelimit = { path = "../../shared/ratelimit" }
 contracts = { path = "../../contracts" }
 sc_clock = { path = "../../shared/clock" }
 sc_config = { path = "../../shared/config" }

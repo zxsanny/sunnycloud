@@ -12,7 +12,12 @@ use uuid::Uuid;
 use super::Harness;
 
 pub fn sessions(harness: &Harness) -> IdentitySessions {
-    IdentitySessions::new(harness.api.clone(), harness.clock.clone(), &harness.config)
+    IdentitySessions::new(
+        harness.api.clone(),
+        harness.clock.clone(),
+        &harness.config,
+        harness.audit(),
+    )
 }
 
 pub fn shared_sessions(harness: &Harness) -> Arc<IdentitySessions> {

@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use contracts::{Decision, DeviceGrantService, DeviceToken, Principal, PrincipalKind};
 use sc_ids::{RawToken, TokenKind, UserCode};
+use sc_ratelimit::{AbuseLimiter, LimitSpec, LimitTable};
 use sqlx::PgConnection;
 use sunnycloud_identity::{GeoLookup, IdentityDeviceGrants};
 use uuid::Uuid;
@@ -40,13 +41,36 @@ pub fn geo(pairs: &[(&str, &str)]) -> Arc<FixedGeo> {
     ))
 }
 
+/// The two limits AC-20 gives no number for are not exercised by these tests: a roomy spec.
+const UNUSED_LIMIT: LimitSpec = LimitSpec::new(1_000, Duration::from_secs(60));
+
+/// A limiter of the AC-20 numbers (hour windows; the manual clock does not refill it unless a test ticks it).
+pub fn limiter(harness: &Harness) -> Arc<AbuseLimiter> {
+    limiter_with(harness, LimitTable::new(UNUSED_LIMIT, UNUSED_LIMIT))
+}
+
+pub fn limiter_with(harness: &Harness, table: LimitTable) -> Arc<AbuseLimiter> {
+    Arc::new(AbuseLimiter::new(harness.clock.clone(), table).expect("limit table"))
+}
+
 pub fn grants(harness: &mut Harness, geo: Arc<dyn GeoLookup>) -> IdentityDeviceGrants {
+    let limiter = limiter(harness);
+    grants_with(harness, geo, limiter)
+}
+
+pub fn grants_with(
+    harness: &mut Harness,
+    geo: Arc<dyn GeoLookup>,
+    limiter: Arc<AbuseLimiter>,
+) -> IdentityDeviceGrants {
     harness.config.device_poll_interval = POLL_INTERVAL;
     IdentityDeviceGrants::new(
         harness.api.clone(),
         harness.clock.clone(),
         geo,
         &harness.config,
+        limiter,
+        harness.audit(),
     )
 }
 

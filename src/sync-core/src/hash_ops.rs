@@ -163,7 +163,7 @@ async fn hand_over(checkpoint: &HashCheckpoint, hashes: &[Hash32]) -> Result<(),
     Ok(())
 }
 
-async fn identity_of(source: &Arc<dyn FileSource>) -> Result<FileIdentity, SyncError> {
+pub(crate) async fn identity_of(source: &Arc<dyn FileSource>) -> Result<FileIdentity, SyncError> {
     let source = Arc::clone(source);
     blocking_io(move || source.identity()).await
 }

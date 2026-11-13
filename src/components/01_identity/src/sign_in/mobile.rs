@@ -43,7 +43,7 @@ impl IdentitySignIn {
 
     /// Exchanges a login code for a session in one transaction. A reused, expired, unknown or wrongly proven
     /// code, and a code of an account that is no longer active, all give `InvalidCode`.
-    pub async fn exchange_mobile_code(
+    pub(super) async fn exchange_step(
         &self,
         code: &RawToken,
         code_verifier: &str,

@@ -52,7 +52,13 @@ async fn complete(
 ) -> Result<SignInOutcome, SignInError> {
     world
         .service
-        .complete(provider, params(callback), binding, host)
+        .complete(
+            provider,
+            params(callback),
+            binding,
+            host,
+            support::sign_in::CLIENT_IP,
+        )
         .await
 }
 

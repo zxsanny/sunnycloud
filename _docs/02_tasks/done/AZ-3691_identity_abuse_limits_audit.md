@@ -62,9 +62,9 @@ When the audit log and logs are read
 Then there is one `sign_in`, one `device_approved`, one `session_revoked` and one `refresh_reuse` event, plus one WARN log for the reuse; no token, code, state or email appears in any event detail or log line
 
 **AC-6: A failing audit writer does not change a non-mandatory outcome**
-Given an `AuditWriter` decorator that fails every write
-When a session is revoked and a device is approved
-Then both calls return their normal result and an ERROR is logged for each failed write
+Given audit writes that fail (the API role loses INSERT on `audit_log`; `AuditWriter` is a concrete type, so no decorator)
+When a device is approved, a sign-in completes and a session is revoked
+Then the approval and the sign-in return their normal result with an ERROR logged for each failed write, and the revocation fails closed (`Unexpected`, nothing revoked), because "sessions revoked" is a mandatory event (owner decision 2026-11-13). A refresh-token reuse revocation stays best-effort: an audit failure never undoes a security revocation
 
 ## Non-Functional Requirements
 
@@ -86,7 +86,7 @@ Then both calls return their normal result and an ERROR is logged for each faile
 | AC-3 | One IP | IT-01-13 sign-in counter | 11th `RateLimited`; other IP ok; reset | NFT-SEC-04 |
 | AC-4 | Trips of AC-1, AC-3 | Audit read | One event per trip | |
 | AC-5 | Four events | IT-01-10 audit part; log capture | One of each; ids only | NFT-SEC-38, ST-01-5 |
-| AC-6 | Failing writer | Revoke, approve | Normal results; ERROR logged | |
+| AC-6 | Failing writer | Approve, sign in, revoke | Approve and sign-in normal with ERROR logged; revoke fails closed | |
 
 ## Constraints
 
@@ -103,6 +103,6 @@ Then both calls return their normal result and an ERROR is logged for each faile
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| 01 lists an "invalid tokens" counter for identity but gives no number (AC-20's 100 per minute per IP is for share tokens); this task counts only the dimensions with numbers until the owner sets one | E-15 owner | open | Medium |
-| Which sign-in audit events are "mandatory" (fail the request closed when the audit write fails) is not stated in 01 §5 | E-15 owner | open | Medium |
-| AC-20 calls the sign-in limit "failed sign-in steps"; the exact set of failures that count (for example `InvitationRequired`) is not listed | E-15 owner | open | Low |
+| 01 lists an "invalid tokens" counter for identity but gives no number (AC-20's 100 per minute per IP is for share tokens); this task counts only the dimensions with numbers until the owner sets one | E-15 owner | resolved 2026-11-13 (owner): invalid tokens at sign-in use AC-20's number, 100 per minute per IP | Medium |
+| Which sign-in audit events are "mandatory" (fail the request closed when the audit write fails) is not stated in 01 §5 | E-15 owner | resolved 2026-11-13 (owner): account created, role granted, provider linked or unlinked, sessions revoked and admin reset are mandatory (fail closed); sign-in success and failure records are best-effort (logged on a failed write) | Medium |
+| AC-20 calls the sign-in limit "failed sign-in steps"; the exact set of failures that count (for example `InvitationRequired`) is not listed | E-15 owner | resolved 2026-11-13 (owner): every sign-in completion that ends without a session counts (provider errors, bad or expired state, `InvitationRequired`), and every wrong device-approval code | Low |

@@ -49,7 +49,8 @@ pub(super) async fn begin(
     let body = json_body::read(body, BODY_LIMIT, request_id).await?;
     let host = host(&headers, &uri)
         .ok_or_else(|| ApiProblem::validation("host", "missing", request_id))?;
-    let request = wire::login_request(&body, host).ok_or_else(|| malformed(request_id))?;
+    let request =
+        wire::login_request(&body, host, caller.client_ip).ok_or_else(|| malformed(request_id))?;
     let redirect = services
         .sign_in
         .begin(request)
@@ -118,7 +119,13 @@ pub(super) async fn callback(
     );
     let outcome = services
         .sign_in
-        .complete(provider, CallbackParams(pairs), &binding, &host)
+        .complete(
+            provider,
+            CallbackParams(pairs),
+            &binding,
+            &host,
+            caller.client_ip,
+        )
         .await;
     match outcome {
         Ok(SignInOutcome::Session { tokens, return_to }) => {
@@ -168,7 +175,7 @@ pub(super) async fn exchange(
     let (code, verifier) = wire::code_exchange(&body).ok_or_else(|| malformed(request_id))?;
     let tokens = services
         .sign_in
-        .exchange_mobile_code(&code, &verifier)
+        .exchange_mobile_code(&code, &verifier, caller.client_ip)
         .await
         .map_err(|error| match error {
             // Single use, PKCE mismatch and expiry look alike to the caller; `sc_error` has no row for the case.

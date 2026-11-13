@@ -9,7 +9,7 @@ use std::sync::Arc;
 use contracts::{SignInError, SignInOutcome};
 use sunnycloud_identity::IdentitySignIn;
 use support::registration::{Rig, Rows, authorized};
-use support::sign_in::{GITHUB, HOST};
+use support::sign_in::{CLIENT_IP, GITHUB, HOST};
 use tokio::sync::Barrier;
 use tokio::task::JoinSet;
 
@@ -37,7 +37,9 @@ async fn race(rig: &Rig, service: &Arc<IdentitySignIn>, iteration: u64, racers: 
         let (service, barrier) = (Arc::clone(service), Arc::clone(&barrier));
         calls.spawn(async move {
             barrier.wait().await;
-            service.complete(GITHUB, callback, &binding, HOST).await
+            service
+                .complete(GITHUB, callback, &binding, HOST, CLIENT_IP)
+                .await
         });
     }
     let mut tally = Tally {

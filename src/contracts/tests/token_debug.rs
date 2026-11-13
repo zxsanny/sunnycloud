@@ -97,6 +97,7 @@ fn credentials_and_sign_in_values_print_a_placeholder() {
         setup_token: Some(token(TokenKind::Setup, SETUP)),
         code_challenge: None,
         host: "cloud.example".to_owned(),
+        client_ip: std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
     };
 
     assert_hidden(&format!("{session:?}"), &[ACCESS]);

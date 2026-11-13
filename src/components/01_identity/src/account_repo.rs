@@ -15,6 +15,11 @@ const INSERT_IDENTITY: &str = "INSERT INTO identities \
 /// The unique key an identity insert hits when the same provider identity was registered concurrently.
 pub(crate) const IDENTITY_KEY: &str = "identities_provider_provider_user_id_key";
 
+const OWNS_IDENTITY: &str = "SELECT EXISTS (SELECT 1 FROM identities \
+    WHERE account_id = $1 AND provider = $2 AND provider_user_id = $3)";
+
+const ANY_ACCOUNT: &str = "SELECT EXISTS (SELECT 1 FROM accounts)";
+
 const TOUCH_IDENTITY: &str = "UPDATE identities \
     SET last_login_at = 'epoch'::timestamptz + $2::bigint * interval '1 microsecond' WHERE id = $1";
 
@@ -110,6 +115,26 @@ pub(crate) async fn insert_identity(
         .await
         .map(drop)?;
     Ok(())
+}
+
+/// Whether `account` already has the identity `(provider, provider_user_id)`.
+pub(crate) async fn owns_identity(
+    tx: &mut DbTx,
+    account: Uuid,
+    provider: &str,
+    provider_user_id: &str,
+) -> Result<bool, DbError> {
+    Ok(sqlx::query_scalar(OWNS_IDENTITY)
+        .bind(account)
+        .bind(provider)
+        .bind(provider_user_id)
+        .fetch_one(tx.conn())
+        .await?)
+}
+
+/// Whether any account exists (in any state); the setup state of the provider list.
+pub(crate) async fn any_account(tx: &mut DbTx) -> Result<bool, DbError> {
+    Ok(sqlx::query_scalar(ANY_ACCOUNT).fetch_one(tx.conn()).await?)
 }
 
 pub(crate) async fn touch_identity(

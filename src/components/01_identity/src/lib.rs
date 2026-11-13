@@ -7,11 +7,15 @@
 //! (`SessionService`: refresh rotation, revocation, list, touch), [`IdentityDeviceGrants`]
 //! (`DeviceGrantService`: the RFC 8628 device grant, the device list and revocation, over a [`GeoLookup`],
 //! production: [`MaxmindGeoLookup`]), [`IdentityMaintenance`] (the `Janitor`) and [`IdentityAccounts`]
-//! (`AccountAdmin` and `AccountGuard`); the other ports of `contracts` are implemented by later tasks.
+//! (`AccountAdmin` and `AccountGuard`); the other ports of `contracts` are implemented by later tasks. Wrong
+//! device-approval codes count on the shared `sc_ratelimit::AbuseLimiter`, and the identity audit events go
+//! through `sc_audit::AuditWriter` (`audit_events`).
 //! The schema is `src/migrations/*_create_identity_tables.*.sql`.
 
+mod abuse;
 mod account_repo;
 mod accounts;
+mod audit_events;
 mod auth_repo;
 mod authenticator;
 mod config;

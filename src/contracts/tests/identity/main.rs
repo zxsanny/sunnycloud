@@ -25,8 +25,11 @@ fn start() -> BeginSignIn {
         setup_token: None,
         code_challenge: None,
         host: "cloud.example".to_owned(),
+        client_ip: LOOPBACK,
     }
 }
+
+const LOOPBACK: std::net::IpAddr = std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
 
 fn params() -> CallbackParams {
     CallbackParams(vec![("code".to_owned(), "abc".to_owned())])
@@ -65,19 +68,26 @@ async fn sign_in_double_records_each_method_across_two_threads() {
 
     let a = tokio::spawn(async move {
         port.begin(start()).await.expect("begin");
-        port.complete("github", params(), &binding, "cloud.example")
+        port.complete("github", params(), &binding, "cloud.example", LOOPBACK)
             .await
             .expect("complete");
         port.begin_link(&principal(), "github")
             .await
             .expect("begin_link");
-        port.complete_link(&principal(), "github", params(), &binding, "cloud.example")
-            .await
-            .expect("complete_link");
+        port.complete_link(
+            &principal(),
+            "github",
+            params(),
+            &binding,
+            "cloud.example",
+            LOOPBACK,
+        )
+        .await
+        .expect("complete_link");
     });
     let b = tokio::spawn(async move {
         other
-            .exchange_mobile_code(&token(TokenKind::MobileLoginCode), "verifier")
+            .exchange_mobile_code(&token(TokenKind::MobileLoginCode), "verifier", LOOPBACK)
             .await
             .expect("exchange_mobile_code");
         other.list_providers().await.expect("list_providers");

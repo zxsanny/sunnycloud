@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::error::SyncError;
 use crate::host::{BatchRecord, FileSource, StoreError};
 
-pub(crate) use member::blocking;
+pub(crate) use member::{blocking, joined};
 pub(crate) use run::Runner;
 pub(crate) use wire::{batch_commit, stage_small};
 

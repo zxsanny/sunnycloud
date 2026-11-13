@@ -64,7 +64,7 @@ impl IdentitySignIn {
             },
             now,
         };
-        match auth_repo::create_account(&self.db, &registration, hooks).await {
+        match auth_repo::create_account(&self.db, &registration, hooks, &self.audit).await {
             Ok(()) => Ok(KnownIdentity {
                 identity_id,
                 account_id,

@@ -179,39 +179,39 @@ pub(crate) async fn rotate(tx: &mut DbTx, id: Uuid, rotation: &Rotation) -> Resu
     Ok(())
 }
 
-/// Revokes one live session of `account`; a foreign, unknown or already revoked id changes no row.
+/// Revokes one live session of `account`; a foreign, unknown or already revoked id changes no row. Returns
+/// the number of rows revoked.
 pub(crate) async fn revoke(
     tx: &mut DbTx,
     account: Uuid,
     id: Uuid,
     at: Timestamp,
     reason: &str,
-) -> Result<(), DbError> {
-    sqlx::query(REVOKE_ONE)
+) -> Result<u64, DbError> {
+    Ok(sqlx::query(REVOKE_ONE)
         .bind(id)
         .bind(account)
         .bind(at.as_unix_micros())
         .bind(reason)
         .execute(tx.conn())
-        .await
-        .map(drop)?;
-    Ok(())
+        .await?
+        .rows_affected())
 }
 
+/// Revokes every live session of `account`; returns the number of rows revoked.
 pub(crate) async fn revoke_all(
     tx: &mut DbTx,
     account: Uuid,
     at: Timestamp,
     reason: &str,
-) -> Result<(), DbError> {
-    sqlx::query(REVOKE_ALL)
+) -> Result<u64, DbError> {
+    Ok(sqlx::query(REVOKE_ALL)
         .bind(account)
         .bind(at.as_unix_micros())
         .bind(reason)
         .execute(tx.conn())
-        .await
-        .map(drop)?;
-    Ok(())
+        .await?
+        .rows_affected())
 }
 
 /// Every session row of `account`, newest first; a session never seen again reports its creation as last seen.

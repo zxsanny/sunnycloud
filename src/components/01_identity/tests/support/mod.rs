@@ -9,10 +9,12 @@
 #![allow(dead_code, unused_imports)]
 
 pub mod accounts;
+pub mod audit;
 pub mod auth;
 pub mod device;
 pub mod fixtures;
 pub mod geoip;
+pub mod logs;
 pub mod provider;
 pub mod registration;
 mod secrets;
@@ -22,6 +24,7 @@ pub mod statements;
 
 use std::sync::Arc;
 
+use sc_audit::AuditWriter;
 use sc_clock::{Clock, ManualClock};
 use sc_config::{ApiSettings, ConfigSources, load};
 use sc_db::Db;
@@ -92,6 +95,11 @@ impl Harness {
             clock: sc_testdb::clock_at_start(),
             config,
         }
+    }
+
+    /// The audit writer of the component, on its pool and clock.
+    pub fn audit(&self) -> AuditWriter {
+        AuditWriter::new(self.api.clone(), self.clock.clone())
     }
 
     pub fn now_micros(&self) -> i64 {

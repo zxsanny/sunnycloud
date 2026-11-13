@@ -24,7 +24,13 @@ async fn sign_in(
     });
     world
         .service
-        .complete(provider, params(callback), &binding, support::sign_in::HOST)
+        .complete(
+            provider,
+            params(callback),
+            &binding,
+            support::sign_in::HOST,
+            support::sign_in::CLIENT_IP,
+        )
         .await
 }
 
@@ -172,7 +178,13 @@ async fn a_completed_sign_in_leaves_no_plaintext_token_state_or_code_in_the_data
     // Act
     let outcome = world
         .service
-        .complete(OIDC, params(callback), &binding, support::sign_in::HOST)
+        .complete(
+            OIDC,
+            params(callback),
+            &binding,
+            support::sign_in::HOST,
+            support::sign_in::CLIENT_IP,
+        )
         .await
         .expect("sign-in");
 

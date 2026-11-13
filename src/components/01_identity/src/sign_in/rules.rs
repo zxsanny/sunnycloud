@@ -5,6 +5,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use reqwest::Url;
 use sc_ids::{TokenHash, sha256_token};
 use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 /// A path the browser may be sent to after sign-in: one leading slash, no second slash or backslash right
 /// after it (`//host` and `/\host` are network-path references), no control character anywhere (a CR or LF
@@ -21,6 +22,12 @@ pub(crate) fn is_relative_return_path(path: &str) -> bool {
 /// that is not stored.
 pub(crate) fn state_hash(state: &str, browser_binding: &str) -> TokenHash {
     sha256_token(format!("{state}{browser_binding}"))
+}
+
+/// `SHA-256(state || browser_binding || "|link|" || account)`: a link state is found only with the matching
+/// binding and by a session of the account that began it, and never by a sign-in callback.
+pub(crate) fn link_state_hash(state: &str, browser_binding: &str, account: Uuid) -> TokenHash {
+    sha256_token(format!("{state}{browser_binding}|link|{account}"))
 }
 
 /// The PKCE `S256` challenge of `verifier` (RFC 7636 section 4.2): `BASE64URL(SHA-256(verifier))`.

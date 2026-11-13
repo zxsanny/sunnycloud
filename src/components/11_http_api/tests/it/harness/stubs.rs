@@ -45,14 +45,15 @@ stub_port!(PrincipalRevalidatorStub: PrincipalRevalidator, RevalidatorError, {
 stub_port!(SignInStub: SignInService, SignInError, {
     async fn begin(&self, request: BeginSignIn) -> Result<AuthorizationRedirect, SignInError>;
     async fn complete(&self, provider: &str, callback_params: CallbackParams,
-        browser_binding: &BrowserBinding, host: &str) -> Result<SignInOutcome, SignInError>;
+        browser_binding: &BrowserBinding, host: &str, client_ip: IpAddr)
+        -> Result<SignInOutcome, SignInError>;
     async fn begin_link(&self, principal: &Principal, provider: &str)
         -> Result<AuthorizationRedirect, SignInError>;
     async fn complete_link(&self, principal: &Principal, provider: &str,
-        callback_params: CallbackParams, browser_binding: &BrowserBinding, host: &str)
-        -> Result<Linked, SignInError>;
-    async fn exchange_mobile_code(&self, code: &RawToken, code_verifier: &str)
-        -> Result<SessionTokens, SignInError>;
+        callback_params: CallbackParams, browser_binding: &BrowserBinding, host: &str,
+        client_ip: IpAddr) -> Result<Linked, SignInError>;
+    async fn exchange_mobile_code(&self, code: &RawToken, code_verifier: &str,
+        client_ip: IpAddr) -> Result<SessionTokens, SignInError>;
     async fn list_providers(&self) -> Result<ProviderList, SignInError>;
 });
 

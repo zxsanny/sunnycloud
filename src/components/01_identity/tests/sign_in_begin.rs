@@ -199,7 +199,13 @@ async fn service_construction_fails_for_an_http_public_url_without_the_developme
     harness.config.allow_plain_http_dev = false;
 
     // Act
-    let result = IdentitySignIn::new(harness.api.clone(), harness.clock.clone(), &harness.config);
+    let result = IdentitySignIn::new(
+        harness.api.clone(),
+        harness.clock.clone(),
+        &harness.config,
+        harness.audit(),
+        support::sign_in::roomy_limiter(&harness),
+    );
 
     // Assert
     assert!(matches!(result, Err(IdentityError::Config(_))));

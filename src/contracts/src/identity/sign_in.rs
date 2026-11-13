@@ -1,4 +1,5 @@
 use std::fmt;
+use std::net::IpAddr;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -36,6 +37,8 @@ pub struct BeginSignIn {
     pub setup_token: Option<RawToken>,
     pub code_challenge: Option<String>,
     pub host: String,
+    /// The caller's address, for the per-IP sign-in limits (AC-20).
+    pub client_ip: IpAddr,
 }
 
 #[derive(Debug)]
@@ -103,6 +106,7 @@ pub trait SignInService: Send + Sync {
         callback_params: CallbackParams,
         browser_binding: &BrowserBinding,
         host: &str,
+        client_ip: IpAddr,
     ) -> Result<SignInOutcome, SignInError>;
 
     async fn begin_link(
@@ -118,12 +122,14 @@ pub trait SignInService: Send + Sync {
         callback_params: CallbackParams,
         browser_binding: &BrowserBinding,
         host: &str,
+        client_ip: IpAddr,
     ) -> Result<Linked, SignInError>;
 
     async fn exchange_mobile_code(
         &self,
         code: &RawToken,
         code_verifier: &str,
+        client_ip: IpAddr,
     ) -> Result<SessionTokens, SignInError>;
 
     async fn list_providers(&self) -> Result<ProviderList, SignInError>;

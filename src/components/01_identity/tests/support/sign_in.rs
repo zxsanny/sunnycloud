@@ -1,9 +1,14 @@
 //! The sign-in service on the harness, with the in-process provider as both configured providers (`github`
 //! and `oidc`), and row counts to show that a failed callback creates nothing.
 
+use std::net::{IpAddr, Ipv4Addr};
+use std::sync::Arc;
+use std::time::Duration;
+
 use contracts::{BeginSignIn, BrowserBinding, CallbackParams, ClientKind, SignInOutcome};
 use sc_config::Secret;
 use sc_ids::RawToken;
+use sc_ratelimit::{AbuseLimiter, LimitSpec, LimitTable};
 use sqlx::{Connection, PgConnection};
 use sunnycloud_identity::{IdentityConfig, IdentitySignIn, ProviderConfig};
 use uuid::Uuid;
@@ -12,6 +17,23 @@ use super::provider::FakeProvider;
 use super::{Harness, START, fixtures};
 
 pub const HOST: &str = "sunnycloud.test";
+/// The address every sign-in of these tests comes from.
+pub const CLIENT_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10));
+
+/// Limits no ordinary test reaches; the limit tests build their own table.
+const ROOMY: LimitSpec = LimitSpec::new(10_000, Duration::from_secs(60));
+
+pub fn roomy_table() -> LimitTable {
+    LimitTable::new(ROOMY, ROOMY).with_spec(sc_ratelimit::LimitId::SigninIp, ROOMY)
+}
+
+pub fn roomy_limiter(harness: &Harness) -> Arc<AbuseLimiter> {
+    limiter(harness, roomy_table())
+}
+
+pub fn limiter(harness: &Harness, table: LimitTable) -> Arc<AbuseLimiter> {
+    Arc::new(AbuseLimiter::new(harness.clock.clone(), table).expect("limit table"))
+}
 pub const GITHUB: &str = "github";
 pub const OIDC: &str = "oidc";
 
@@ -40,6 +62,11 @@ pub async fn world() -> World {
 }
 
 pub async fn world_with(change: impl FnOnce(&mut IdentityConfig)) -> World {
+    world_limited(change, roomy_table()).await
+}
+
+/// The world with the sign-in limits of `table`.
+pub async fn world_limited(change: impl FnOnce(&mut IdentityConfig), table: LimitTable) -> World {
     let mut harness = Harness::new().await;
     let idp = FakeProvider::start(START.as_unix_micros() / 1_000_000).await;
     let provider = |key: &str, client_id: &str| ProviderConfig {
@@ -52,8 +79,14 @@ pub async fn world_with(change: impl FnOnce(&mut IdentityConfig)) -> World {
     harness.config.providers = vec![provider(GITHUB, "gh-client"), provider(OIDC, "oidc-client")];
     harness.config.allow_plain_http_dev = true;
     change(&mut harness.config);
-    let service = IdentitySignIn::new(harness.api.clone(), harness.clock.clone(), &harness.config)
-        .expect("sign-in service");
+    let service = IdentitySignIn::new(
+        harness.api.clone(),
+        harness.clock.clone(),
+        &harness.config,
+        harness.audit(),
+        limiter(&harness, table),
+    )
+    .expect("sign-in service");
     let conn = harness.fixture_conn().await;
     World {
         harness,
@@ -110,7 +143,13 @@ impl World {
         let callback = self.idp.authorize(&redirect.url, subject);
         let outcome = self
             .service
-            .complete(OIDC, params(callback), &redirect.browser_binding, HOST)
+            .complete(
+                OIDC,
+                params(callback),
+                &redirect.browser_binding,
+                HOST,
+                CLIENT_IP,
+            )
             .await
             .expect("complete");
         match outcome {
@@ -142,6 +181,7 @@ pub fn begin_request(provider: &str, return_to: &str) -> BeginSignIn {
         setup_token: None,
         code_challenge: None,
         host: HOST.to_owned(),
+        client_ip: CLIENT_IP,
     }
 }
 

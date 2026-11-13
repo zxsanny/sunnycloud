@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use contracts::{Authenticator, SignInError};
 use support::auth::{FAR_FUTURE, authenticator, session};
 use support::provider::{Behaviour, FakeProvider};
-use support::sign_in::{GITHUB, HOST, OIDC, World, params, world_with};
+use support::sign_in::{CLIENT_IP, GITHUB, HOST, OIDC, World, params, world_with};
 use support::{START, fixtures};
 use uuid::Uuid;
 
@@ -42,7 +42,7 @@ async fn stalled_provider_leaves_nothing_behind(provider: &str, subject: &str) {
     let started = Instant::now();
     let result = world
         .service
-        .complete(provider, params(callback), &binding, HOST)
+        .complete(provider, params(callback), &binding, HOST, CLIENT_IP)
         .await;
     let elapsed = started.elapsed();
 
@@ -125,7 +125,7 @@ async fn attempt(
     let started = Instant::now();
     let result = world
         .service
-        .complete(provider, params(callback), &binding, HOST)
+        .complete(provider, params(callback), &binding, HOST, CLIENT_IP)
         .await;
     (result.map(drop), started.elapsed())
 }

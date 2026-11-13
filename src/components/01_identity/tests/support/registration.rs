@@ -21,7 +21,7 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 use super::provider::Grant;
-use super::sign_in::{HOST, World, begin_request, params, world_with};
+use super::sign_in::{CLIENT_IP, HOST, World, begin_request, params, roomy_limiter, world_with};
 use super::{Harness, START, load_settings};
 
 /// An invite token of the fixtures; its stored hash is `sha256` of this text, as `begin` stores it.
@@ -85,6 +85,8 @@ impl Rig {
             self.world.harness.api.clone(),
             self.world.harness.clock.clone(),
             &self.world.harness.config,
+            self.world.harness.audit(),
+            roomy_limiter(&self.world.harness),
         )
         .expect("sign-in service")
     }
@@ -228,7 +230,7 @@ pub async fn sign_in(
     let (callback, binding) = authorized(world, provider, subject, invite, change).await;
     world
         .service
-        .complete(provider, callback, &binding, HOST)
+        .complete(provider, callback, &binding, HOST, CLIENT_IP)
         .await
 }
 

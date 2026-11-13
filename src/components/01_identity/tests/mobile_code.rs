@@ -35,7 +35,10 @@ async fn exchange(
     code: &RawToken,
     verifier: &str,
 ) -> Result<SessionTokens, SignInError> {
-    world.service.exchange_mobile_code(code, verifier).await
+    world
+        .service
+        .exchange_mobile_code(code, verifier, support::sign_in::CLIENT_IP)
+        .await
 }
 
 /// `(sessions, device tokens, login codes)`.
@@ -69,6 +72,7 @@ async fn mobile_callback_returns_a_code_and_stores_only_its_hash_with_the_challe
             params(callback),
             &redirect.browser_binding,
             support::sign_in::HOST,
+            support::sign_in::CLIENT_IP,
         )
         .await
         .expect("complete");
@@ -321,6 +325,8 @@ async fn parallel_exchanges_of_one_code_mint_exactly_one_session() {
             world.harness.api.clone(),
             world.harness.clock.clone(),
             &world.harness.config,
+            world.harness.audit(),
+            support::sign_in::roomy_limiter(&world.harness),
         )
         .expect("service"),
     );
@@ -332,7 +338,9 @@ async fn parallel_exchanges_of_one_code_mint_exactly_one_session() {
         let (service, code, gate) = (Arc::clone(&service), Arc::clone(&code), Arc::clone(&gate));
         tasks.spawn(async move {
             gate.wait().await;
-            service.exchange_mobile_code(&code, VERIFIER).await
+            service
+                .exchange_mobile_code(&code, VERIFIER, support::sign_in::CLIENT_IP)
+                .await
         });
     }
     let mut results = Vec::new();

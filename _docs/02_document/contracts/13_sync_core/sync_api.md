@@ -3,7 +3,7 @@
 **Component**: 13_sync_core (crate `sync-core`)
 **Producer task**: E-23/c07 — `_docs/02_tasks/todo/B09-07_http_sync_client_connect.md` (trait, construction, negotiation, transport); contributors: E-23/c06 typed errors and wire table (`B09-06`), E-23/c08 tree operations (`B09-08`), E-23/c09a `hash_file` (`B09-09`), E-23/c09b `upload` (`B09-10`), E-23/c10 `stage_small`/`batch_commit` (`B09-11`), E-23/c11 `download` (`B09-12`), E-23/c12 feed (`B09-13`), E-23/c13 token lifecycle (`B09-14`), E-23/c14 `cancel`, rate limits, `SyncConfig` (`B09-15`); keys assigned at Step 4
 **Consumer tasks**: this batch: E-23/c15, c18a, c18b; other batches: E-24 (14 daemon: device login, uploads, downloads, feed loop, first-sync merge), E-27 (`mobile_backup`: sign-in, refresh, uploads, reinstall rebuild), E-28 through `mobile_backup`; pipelines AZ-3668, AZ-3669, AZ-3670, AZ-3672, AZ-3673, AZ-3674; resolved at Step 4
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: draft
 **Last Updated**: 2026-11-13
 
@@ -47,7 +47,7 @@ No lane key: the upload lane count is negotiated only, `min(4, ServerInfo.max_la
 | `get_revision(id)`, `root_node()` | `GET /api/v1/revisions/{id}`, `GET /api/v1/nodes/root` | `RevisionView`; `NodeView` | `NotFound` | c08 |
 | `list_children(node, page)` | `GET /api/v1/nodes/{id}/children` | `ListingPage` (files carry `content_hash`) | `NotFound`, `NotAFolder` | c08 |
 | `create_folder`, `move_node`, `delete_node` | `POST /api/v1/nodes`, `PATCH /api/v1/nodes/{id}`, `DELETE /api/v1/nodes/{id}?base_revision=` | `NodeView` / `()` | `NameConflict`, `InvalidName`, `Cycle`, `ParentNotFound`, `ParentGone`, `NotAFolder`, `EditedSince{current}` (delete of a file only); `move_node` sends no base revision | c08 |
-| `upload(request, checkpoints, progress)` | `POST /api/v1/uploads`, `GET /api/v1/uploads/{id}`, `PUT /api/v1/uploads/{id}/blocks/{index}` (`X-Blake3`, 204), `POST /api/v1/commits` | `CommitOutcome` | `QuotaExceeded`, `SizeTooLarge`, `SessionCapReached`, `FreeSpaceFloor`, `InvalidName`, `NameConflict`, `EditedSince{current}`, `ParentNotFound`, `ParentGone`, `BlocklistMismatch`, `SourceChanged` | c09b |
+| `upload(request, checkpoints, progress)` | `POST /api/v1/uploads`, `GET /api/v1/uploads/{id}`, `PUT /api/v1/uploads/{id}/blocks/{index}` (`X-Blake3`, 204), `POST /api/v1/commits` | `CommitOutcome` | `QuotaExceeded`, `SizeTooLarge`, `SessionCapReached`, `FreeSpaceFloor`, `InvalidName`, `NotAFolder`, `ParentNotFound`, `ParentGone`, `BlocklistMismatch`, `SourceChanged`, `Io` | c09b |
 | `stage_small(staged_key, bytes, hash)` | `PUT /api/v1/staged-uploads/{staged_key}` (`X-Blake3`) | `Staged{staged_key, size}` | `QuotaExceeded`, `StagedCapReached`, `FreeSpaceFloor` | c10 |
 | `batch_commit(BatchCommit)` | `POST /api/v1/commits:batch` | `BatchResult` (stored response on a repeated id) | `BatchTooLarge`, `CommitIdReused` | c10 |
 | `download(revision, sink, resume_from)` | `GET /api/v1/revisions/{id}/content` with `Range` | `Verified{file_hash}` | `HashMismatch{block}`, `NotFound`, `BlobUnavailable`, `Io` | c11 |
@@ -141,11 +141,13 @@ A session left open when `NothingToSend` answers a commit that never applied is 
 5. Handling of 500 and 503 outside block PUTs (retry with backoff, or surfaced) is not stated; IT-13-15 covers block PUTs only.
 6. Gate S1 may require a second HTTP/2 connection (13 risk 1); the decision is E-23/c02's and would add a config key.
 7. Resolved 2026-11-11 (G-03-3, `contracts/03_transfer/commit_service.md` 1.1.0): `Committed` without `conflict_copy` is `Published`; with one it is `ConflictCopy{node, copy}`, where `copy == node` means the file itself carries the conflict-copy name; commit never answers `EditedSince` or `name_conflict`. Lost-commit recovery: § Lost-commit recovery (AZ-3949, 2026-11-13).
-8. The `upload` error list still names `NameConflict` and `EditedSince{current}`, which commit never answers; removing them is a breaking change of this contract, left to E-23/c09b (AZ-3962).
+8. Resolved 2026-11-13 (AZ-3962): the `upload` error list drops `NameConflict` and `EditedSince` (commit never answers them; the variants stay for tree operations) and adds `NotAFolder` and `Io`.
+9. `upload` and `upload_small` are inherent methods of `HttpSyncClient`, not `SyncApi` trait methods (moving them needs every `SyncApi` test double to implement them); `HashedFile` carries no source identity, so the before-commit check compares with the identity read when `upload` starts, plus the per-block hash check; a checkpoint-store failure is logged and the upload continues (no `SyncError::Store`); `CommitOutcome::ConflictCopy` has no revision field, so the host cannot read the new revision id from it (AZ-3962, 2026-11-13).
 
 ## Change Log
 
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B09) |
+| 1.2.0 | 2026-11-13 | `upload`: `UploadRequest.local_key`, key reuse rule, error list without `NameConflict`/`EditedSince` (open point 8 closed); open point 9 | AZ-3962 |
 | 1.1.0 | 2026-11-13 | Lost-commit recovery rule per `start_upload` answer (owner: committed-key answer, option a); open point 7 resolved (G-03-3); open point 8; no lane key in `SyncConfig` (G-03-1) | AZ-3949, AZ-3953 |

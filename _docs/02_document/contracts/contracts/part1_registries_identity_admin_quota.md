@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c03 — `_docs/02_tasks/todo/B01-12_contracts_part1.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c04 (part 2), E-00/c05 (part 3); other batches: E-10..E-22, E-30 (implementers and callers)
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: draft (frozen when the producer task is accepted)
 **Last Updated**: 2026-11-05
 
@@ -54,11 +54,11 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | | `require` (`sync`) | `&Principal, Scope` -> `()` | `Forbidden` |
 | `PrincipalRevalidator` | `revalidate` | `&Principal` -> `bool` | none |
 | `AccountGuard` | `ensure_active` | `tx: &mut DbTx, account` -> `()` | `AccountNotActive` |
-| `SignInService` | `begin` | `BeginSignIn{provider, return_to, client_kind, invite_token?, setup_token?, code_challenge?, host}` -> `AuthorizationRedirect{url, browser_binding}` | `UnknownProvider`, `InvalidReturnPath`, `HostMismatch`, `RateLimited{retry_after}` |
-| | `complete` | `provider, callback_params, browser_binding, host` -> `SignInOutcome` | `UntrustedState`, `TrustedFailure{code}`, `InvitationRequired`, `ProviderUnavailable`, `RateLimited{retry_after}` |
+| `SignInService` | `begin` | `BeginSignIn{provider, return_to, client_kind, invite_token?, setup_token?, code_challenge?, host, client_ip}` -> `AuthorizationRedirect{url, browser_binding}` | `UnknownProvider`, `InvalidReturnPath`, `HostMismatch`, `RateLimited{retry_after}` |
+| | `complete` | `provider, callback_params, browser_binding, host, client_ip` -> `SignInOutcome` | `UntrustedState`, `TrustedFailure{code}`, `InvitationRequired`, `ProviderUnavailable`, `RateLimited{retry_after}` |
 | | `begin_link` | `&Principal, provider` -> `AuthorizationRedirect` | as `begin` |
-| | `complete_link` | `&Principal, provider, callback_params, browser_binding, host` -> `Linked` | as `complete`, plus `IdentityTaken` |
-| | `exchange_mobile_code` | `code, code_verifier` -> `SessionTokens` | `InvalidCode` |
+| | `complete_link` | `&Principal, provider, callback_params, browser_binding, host, client_ip` -> `Linked` | as `complete`, plus `IdentityTaken` |
+| | `exchange_mobile_code` | `code, code_verifier, client_ip` -> `SessionTokens` | `InvalidCode`, `RateLimited` |
 | | `list_providers` | `()` -> `ProviderList{providers: Vec<ProviderInfo>, setup_required}` | none |
 | `SessionService` | `refresh` | `refresh_token` -> `SessionTokens` | `ReuseDetected`, `Unauthenticated` |
 | | `revoke` | `account, session_id, reason` -> `()` | `Unexpected` |
@@ -171,3 +171,4 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
 | 1.1.0 | 2026-11-05 | `HealthContributor`, `ReadinessCheck`, `HealthItem`, `ReadinessItem` moved to `sc_observability` and re-exported here; `ApprovalView` gains `grant_id` and `expires_at` (owner decisions 2026-11-05) | decompose Step 4 |
+| 1.2.0 | 2026-11-13 | `SignInService`: the caller's address (`client_ip`) on `begin` (`BeginSignIn`), `complete`, `complete_link` and `exchange_mobile_code`, for the per-IP sign-in and invalid-token limits (AZ-3691) | AZ-3691 |

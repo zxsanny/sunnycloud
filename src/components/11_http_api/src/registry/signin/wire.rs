@@ -1,6 +1,8 @@
 //! The JSON of the sign-in routes. 01 fixes the ports, not the bodies; the names follow the OAuth words the
 //! clients already know (`access_token`, `refresh_token`, `expires_in`) and the port's own fields.
 
+use std::net::IpAddr;
+
 use contracts::{AuthorizationRedirect, BeginSignIn, ClientKind, ProviderList, SessionTokens};
 use sc_ids::{RawToken, TokenKind};
 use serde_json::{Value, json};
@@ -23,8 +25,9 @@ fn client_kind(value: &Value) -> Option<ClientKind> {
     }
 }
 
-/// `{provider, return_to, client_kind, invite_token?, setup_token?, code_challenge?}` with the request's `host`.
-pub(super) fn login_request(body: &Value, host: String) -> Option<BeginSignIn> {
+/// `{provider, return_to, client_kind, invite_token?, setup_token?, code_challenge?}` with the request's `host`
+/// and the caller's address.
+pub(super) fn login_request(body: &Value, host: String, client_ip: IpAddr) -> Option<BeginSignIn> {
     let members = json_body::object(
         body,
         &[
@@ -44,6 +47,7 @@ pub(super) fn login_request(body: &Value, host: String) -> Option<BeginSignIn> {
         setup_token: optional(members, "setup_token", token_of(TokenKind::Setup))?,
         code_challenge: optional(members, "code_challenge", text)?,
         host,
+        client_ip,
     })
 }
 

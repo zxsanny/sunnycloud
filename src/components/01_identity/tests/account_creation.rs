@@ -119,7 +119,13 @@ async fn without_an_invite_with_an_unknown_one_or_an_expired_one_the_result_is_i
     results.push(
         rig.world
             .service
-            .complete(OIDC, callback, &binding, support::sign_in::HOST)
+            .complete(
+                OIDC,
+                callback,
+                &binding,
+                support::sign_in::HOST,
+                support::sign_in::CLIENT_IP,
+            )
             .await,
     );
 

@@ -60,10 +60,3 @@ impl TreeError {
         }
     }
 }
-
-/// The source of the unexpected failure `publish` returns for an outcome a later task adds (AZ-3710: a stale base
-/// becomes `ConflictCopied`, a taken name `CreatedAsCopy`, a tombstoned file `Revived`): the whole call rolls back
-/// instead of answering with a different outcome.
-#[derive(Debug, Error)]
-#[error("publish outcome {0} is not implemented")]
-pub struct OutcomePending(pub &'static str);

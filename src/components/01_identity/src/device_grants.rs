@@ -6,11 +6,15 @@ use contracts::{
     ApprovalView, Decision, DeviceAuthorization, DeviceGrantError, DeviceGrantService, DeviceInfo,
     DeviceToken, Principal, PrincipalKind, Scope, async_trait,
 };
+use sc_audit::AuditWriter;
 use sc_clock::{Clock, Timestamp};
 use sc_db::{DbError, RunError, Scope as DbScope};
 use sc_ids::{RawToken, TokenKind, UserCode, new_id, new_token, new_user_code, sha256_token};
+use sc_ratelimit::AbuseLimiter;
 use uuid::Uuid;
 
+use crate::abuse::{AbuseCounter, approval_dimensions};
+use crate::audit_events::{self, record_logged};
 use crate::auth_repo;
 use crate::config::IdentityConfig;
 use crate::device_grant_repo::{
@@ -28,26 +32,34 @@ const USER_CODE_DRAWS: usize = 5;
 ///
 /// A poll is one short system-scope transaction: the conditional update that moves the grant from `approved`
 /// to `consumed` and the insert of the device token commit together, so a code exchanges once and never after
-/// its expiry.
+/// its expiry. Wrong user codes count on the shared `AbuseLimiter`; an approval is audited (not mandatory: a
+/// failed audit write is logged and the approval stands).
 pub struct IdentityDeviceGrants {
     db: sc_db::Db,
     clock: Arc<dyn Clock>,
     geo: Arc<dyn GeoLookup>,
+    limits: AbuseCounter,
+    audit: AuditWriter,
     code_ttl: Duration,
     poll_interval: Duration,
 }
 
 impl IdentityDeviceGrants {
+    /// `limiter` is the one instance of the server, built by the composition root.
     pub fn new(
         db: sc_db::Db,
         clock: Arc<dyn Clock>,
         geo: Arc<dyn GeoLookup>,
         config: &IdentityConfig,
+        limiter: Arc<AbuseLimiter>,
+        audit: AuditWriter,
     ) -> Self {
         IdentityDeviceGrants {
             db,
             clock,
             geo,
+            limits: AbuseCounter::new(limiter, audit.clone()),
+            audit,
             code_ttl: config.device_code_ttl,
             poll_interval: config.device_poll_interval,
         }
@@ -166,11 +178,20 @@ impl DeviceGrantService for IdentityDeviceGrants {
     ) -> Result<ApprovalView, DeviceGrantError> {
         require_session(principal)?;
         let approver_ip = approver_ip.to_canonical();
+        let dimensions = approval_dimensions(principal, approver_ip);
+        if let Some(retry_after) = self.limits.retry_after(&dimensions) {
+            return Err(DeviceGrantError::RateLimited { retry_after });
+        }
         let now = self.clock.now_utc();
-        let grant = auth_repo::pending_grant_by_user_code(&self.db, user_code.as_str(), now)
+        let Some(grant) = auth_repo::pending_grant_by_user_code(&self.db, user_code.as_str(), now)
             .await
             .map_err(unexpected)?
-            .ok_or(DeviceGrantError::UnknownCode)?;
+        else {
+            self.limits
+                .record(&dimensions, Some(principal), approver_ip)
+                .await;
+            return Err(DeviceGrantError::UnknownCode);
+        };
         let requester_ip: IpAddr = grant.requester_ip.parse().map_err(|_| {
             unexpected(IdentityError::UnexpectedColumnValue {
                 column: "device_grants.requester_ip",
@@ -210,7 +231,16 @@ impl DeviceGrantService for IdentityDeviceGrants {
         .await
         .map_err(unexpected)?;
         match outcome {
-            DecideOutcome::Applied => Ok(()),
+            DecideOutcome::Applied => {
+                if decision == Decision::Approve {
+                    record_logged(
+                        &self.audit,
+                        audit_events::device_approved(principal, grant_id),
+                    )
+                    .await;
+                }
+                Ok(())
+            }
             DecideOutcome::Expired => Err(DeviceGrantError::Expired),
             DecideOutcome::AlreadyDecided => Err(DeviceGrantError::AlreadyDecided),
             DecideOutcome::Unknown => Err(DeviceGrantError::UnknownCode),

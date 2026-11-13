@@ -19,6 +19,7 @@ mod small;
 mod tls;
 mod token_ops;
 mod tree_ops;
+mod upload;
 mod wire_table;
 
 pub use client::{ConnectError, HttpSyncClient, SyncApi};
@@ -38,4 +39,5 @@ pub use small::{
     BatchOutcome, BatchReport, BatchRunError, BatchSink, SMALL_FILE_MAX, SkippedFile, SmallFile,
     SourceResolver, new_batch, takes_staged_path,
 };
+pub use upload::UploadRequest;
 pub use wire_table::map_problem;

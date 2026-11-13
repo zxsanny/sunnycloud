@@ -147,6 +147,18 @@ impl RequestPath {
         self.run(op, request, Auth::Anonymous, Some(refusal)).await
     }
 
+    /// `send` that also gives the status of the error answer (`None` when no answer arrived): the block `PUT`
+    /// retries a 5xx through the upload planner and stops on any other refusal.
+    pub(crate) async fn send_keeping_status(
+        &self,
+        op: &'static str,
+        request: Request,
+    ) -> Result<WireResponse, (Mapped, Option<u16>)> {
+        self.attempts(op, request, Auth::Session, None)
+            .await
+            .map_err(|failure| (failure.mapped, failure.status))
+    }
+
     async fn run(
         &self,
         op: &'static str,
@@ -154,12 +166,24 @@ impl RequestPath {
         auth: Auth,
         refusal: Option<Refusal>,
     ) -> Result<WireResponse, Mapped> {
+        self.attempts(op, request, auth, refusal)
+            .await
+            .map_err(|failure| failure.mapped)
+    }
+
+    async fn attempts(
+        &self,
+        op: &'static str,
+        request: Request,
+        auth: Auth,
+        refusal: Option<Refusal>,
+    ) -> Result<WireResponse, Failure> {
         let max_attempts = request.max_attempts.max(1);
         let mut attempt = 0;
         let mut rotated = false;
         loop {
             attempt += 1;
-            self.check_for(auth).map_err(Mapped::Error)?;
+            self.check_for(auth).map_err(Failure::error)?;
             // Read before the credential: a rotation that finishes in between only makes the next step a no-op.
             let generation = self.generation.load(Ordering::Acquire);
             let failure = match self.send_once(&request, auth, refusal).await {
@@ -169,7 +193,7 @@ impl RequestPath {
             if let Mapped::Error(error) = &failure.mapped {
                 self.note_failure(op, attempt, &failure, error);
                 if auth == Auth::Session && *error == SyncError::Unauthorized && !rotated {
-                    self.renew(generation).await.map_err(Mapped::Error)?;
+                    self.renew(generation).await.map_err(Failure::error)?;
                     rotated = true;
                     attempt -= 1;
                     continue;
@@ -184,11 +208,13 @@ impl RequestPath {
                         delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
                         "retrying request"
                     );
-                    self.sleep(delay, failure.mapped).await?;
+                    self.sleep(delay, failure.mapped)
+                        .await
+                        .map_err(Failure::unanswered)?;
                     continue;
                 }
             }
-            return Err(failure.mapped);
+            return Err(failure);
         }
     }
 
@@ -311,8 +337,12 @@ struct Failure {
 
 impl Failure {
     fn error(error: SyncError) -> Self {
+        Self::unanswered(Mapped::Error(error))
+    }
+
+    fn unanswered(mapped: Mapped) -> Self {
         Self {
-            mapped: Mapped::Error(error),
+            mapped,
             status: None,
             request_id: None,
         }

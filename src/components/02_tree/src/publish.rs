@@ -2,7 +2,8 @@
 //! first, the account advisory lock, every effect's `on_begin`, each entry in its own savepoint (node and revision
 //! writes, the usage delta, the reservation release, every effect's `on_entry`), every effect's `on_batch`, and
 //! `FeedStamp::stamp` over the union of touched nodes as the last statement; COMMIT, then `FeedNotifier::notify`.
-//! With nothing touched there is no stamp and no notify.
+//! With nothing touched there is no stamp and no notify. The conflict outcomes (`ConflictCopied`, `CreatedAsCopy`,
+//! `Revived`) are in `crate::conflict`.
 
 use std::sync::Arc;
 
@@ -19,14 +20,12 @@ use sc_ids::new_id;
 use sc_names::{name_key, validate_name};
 use uuid::Uuid;
 
-use crate::error::OutcomePending;
+use crate::conflict::{Naming, insert_as_copy};
+use crate::conflict_repo;
 use crate::node_repo;
 use crate::publish_repo::{self, NewFile};
 use crate::retry::run_retrying_each;
 use crate::service::PgTreeService;
-
-/// The unique index that keeps names unique per folder; on commit a hit on it is a taken name.
-const NAME_INDEX: &str = "nodes_parent_name_key";
 
 enum Done {
     Replayed(StoredResponse),
@@ -34,7 +33,7 @@ enum Done {
 }
 
 /// The end of one entry: a typed failure rolls back its savepoint only; `Call` ends the whole call.
-enum EntryError {
+pub(crate) enum EntryError {
     Failed(EntryFailure),
     Call(TreeCommitError),
 }
@@ -45,12 +44,23 @@ impl From<DbError> for EntryError {
     }
 }
 
-/// A published entry before the effects see it: its outcome, node, revision and usage delta.
-struct Written {
-    outcome: PublishOutcome,
-    node_id: Uuid,
-    revision_id: Uuid,
-    delta: i64,
+/// A published entry before the effects see it: its outcome, node, revision, usage delta, and the ancestors a
+/// revival brought back (touched besides the outcome's own nodes).
+pub(crate) struct Written {
+    pub outcome: PublishOutcome,
+    pub node_id: Uuid,
+    pub revision_id: Uuid,
+    pub delta: i64,
+    pub revived: Vec<Uuid>,
+}
+
+/// What every step of one entry needs: the account, the entry, the inputs of conflict-copy names and the commit
+/// time of the rows.
+pub(crate) struct Committing<'a> {
+    pub account: Uuid,
+    pub entry: &'a PublishEntry,
+    pub naming: &'a Naming<'a>,
+    pub now: Timestamp,
 }
 
 #[async_trait]
@@ -63,9 +73,9 @@ impl TreeCommit for PgTreeService {
         now: Timestamp,
     ) -> Result<PublishResult, TreeCommitError> {
         let account = actor.account_id;
-        let (entries, effects) = (entries.as_slice(), effects.as_slice());
+        let (actor, entries, effects) = (&actor, entries.as_slice(), effects.as_slice());
         let done = run_retrying_each(&self.db, Scope::Account(account), || {
-            async move |tx: &mut DbTx| self.publish_in(tx, account, entries, effects, now).await
+            async move |tx: &mut DbTx| self.publish_in(tx, actor, entries, effects, now).await
         })
         .await?;
         match done {
@@ -84,11 +94,12 @@ impl PgTreeService {
     async fn publish_in(
         &self,
         tx: &mut DbTx,
-        account: Uuid,
+        actor: &CommitActor,
         entries: &[PublishEntry],
         effects: &[Arc<dyn CommitEffect>],
         now: Timestamp,
     ) -> Result<Done, TreeCommitError> {
+        let account = actor.account_id;
         self.guard
             .ensure_active(tx, account)
             .await
@@ -104,13 +115,27 @@ impl PgTreeService {
                 return Ok(Done::Replayed(response));
             }
         }
+        let naming = Naming {
+            at: self.clock.now_utc(),
+            device_label: &actor.device_label,
+        };
         let mut outcomes = Vec::with_capacity(entries.len());
+        let mut revived = Vec::new();
         for (index, entry) in entries.iter().enumerate() {
+            let at = Committing {
+                account,
+                entry,
+                naming: &naming,
+                now,
+            };
             let result = match tx
-                .savepoint(async |tx| self.publish_entry(tx, account, entry, effects, now).await)
+                .savepoint(async |tx| self.publish_entry(tx, &at, effects).await)
                 .await
             {
-                Ok(result) => result,
+                Ok((result, ancestors)) => {
+                    revived.extend(ancestors);
+                    result
+                }
                 Err(EntryError::Failed(failure)) => EntryResult::Failed(failure),
                 Err(EntryError::Call(error)) => return Err(error),
             };
@@ -119,7 +144,7 @@ impl PgTreeService {
         for effect in effects {
             effect.on_batch(tx, &outcomes).await.map_err(call_error)?;
         }
-        let seq = match touched_union(&outcomes) {
+        let seq = match touched_union(&outcomes, &revived) {
             Some(touched) => Some(self.stamp.stamp(tx, account, touched).await.map_err(
                 |error| match error {
                     FeedStampError::Unexpected(fault) => TreeCommitError::Unexpected(fault),
@@ -134,26 +159,20 @@ impl PgTreeService {
         Ok(Done::Published(results, seq))
     }
 
+    /// The entry's result and the ancestors it revived.
     async fn publish_entry(
         &self,
         tx: &mut DbTx,
-        account: Uuid,
-        entry: &PublishEntry,
+        at: &Committing<'_>,
         effects: &[Arc<dyn CommitEffect>],
-        now: Timestamp,
-    ) -> Result<EntryResult, EntryError> {
+    ) -> Result<(EntryResult, Vec<Uuid>), EntryError> {
+        let (account, entry) = (at.account, at.entry);
         let written = match &entry.target {
-            Target::New { parent_id, name } => {
-                self.create_file(tx, account, *parent_id, name, entry, now)
-                    .await?
-            }
+            Target::New { parent_id, name } => self.create_file(tx, at, *parent_id, name).await?,
             Target::Existing {
                 node_id,
                 base_revision,
-            } => {
-                self.add_revision(tx, account, *node_id, *base_revision, entry, now)
-                    .await?
-            }
+            } => self.add_revision(tx, at, *node_id, *base_revision).await?,
         };
         if written.delta != 0 {
             self.quota
@@ -187,25 +206,32 @@ impl PgTreeService {
                     batch @ EffectError::Batch(_) => EntryError::Call(call_error(batch)),
                 })?;
         }
-        Ok(EntryResult::Published {
+        // 03 reads `conflict_copy` as the node holding the older content, or the committed node itself when that
+        // node got a conflict-copy name (`commit_service.md`, G-03-3).
+        let conflict_copy = match written.outcome {
+            PublishOutcome::ConflictCopied { copy_node } => Some(copy_node),
+            PublishOutcome::CreatedAsCopy { node } => Some(node),
+            _ => None,
+        };
+        let result = EntryResult::Published {
             outcome: written.outcome,
             node_id: written.node_id,
             revision_id: written.revision_id,
-            conflict_copy: None,
-        })
+            conflict_copy,
+        };
+        Ok((result, written.revived))
     }
 
-    /// `Created`. The parent row is locked `FOR SHARE`, so nothing is added under a folder whose tombstone
-    /// committed first.
+    /// `Created`, or `CreatedAsCopy` under a conflict-copy name when the name is taken: never a name conflict.
+    /// The parent row is locked `FOR SHARE`, so nothing is added under a folder whose tombstone committed first.
     async fn create_file(
         &self,
         tx: &mut DbTx,
-        account: Uuid,
+        at: &Committing<'_>,
         parent_id: Uuid,
         name: &str,
-        entry: &PublishEntry,
-        now: Timestamp,
     ) -> Result<Written, EntryError> {
+        let (account, entry, now) = (at.account, at.entry, at.now);
         let name = validate_name(name)
             .map_err(|reason| EntryError::Failed(EntryFailure::NameInvalid(reason.to_string())))?;
         let failure = match node_repo::lock_for_share(tx, account, parent_id).await? {
@@ -227,41 +253,43 @@ impl PgTreeService {
             revision_id: entry.revision.revision_id,
             now,
         };
-        publish_repo::insert_file(tx, &file)
-            .await
-            .map_err(|error| match error {
-                DbError::UniqueViolation {
-                    constraint: Some(ref constraint),
-                } if constraint == NAME_INDEX => pending("CreatedAsCopy"),
-                other => EntryError::from(other),
-            })?;
+        let outcome = if publish_repo::insert_file(tx, &file).await? {
+            PublishOutcome::Created
+        } else {
+            insert_as_copy(tx, &file, at.naming).await?;
+            PublishOutcome::CreatedAsCopy { node: file.id }
+        };
         insert_revision(tx, account, file.id, entry, now).await?;
         Ok(Written {
-            outcome: PublishOutcome::Created,
+            outcome,
             node_id: file.id,
             revision_id: entry.revision.revision_id,
             delta: entry.revision.size,
+            revived: Vec::new(),
         })
     }
 
-    /// `Updated` (base is the current revision), `Replaced` (no base) or `NoChange` (same content as the current
-    /// revision, whatever the base). The usage delta of an update is AZ-3711's; a stale base and a tombstoned file
-    /// are AZ-3710's outcomes.
+    /// `Revived` when the file or a folder above it is tombstoned (edit beats delete, whatever the base), else
+    /// `NoChange` (same content as the current revision, whatever the base), `Replaced` (no base), `Updated` (base
+    /// is the current revision) or `ConflictCopied` (stale base). The usage deltas of these are AZ-3711's.
     async fn add_revision(
         &self,
         tx: &mut DbTx,
-        account: Uuid,
+        at: &Committing<'_>,
         node_id: Uuid,
         base_revision: Option<Uuid>,
-        entry: &PublishEntry,
-        now: Timestamp,
     ) -> Result<Written, EntryError> {
+        let (account, entry, now) = (at.account, at.entry, at.now);
         let file = publish_repo::lock_file(tx, account, node_id)
             .await?
             .filter(|file| file.kind == NodeKind::File)
             .ok_or(EntryError::Failed(EntryFailure::NotFound))?;
-        if file.deleted {
-            return Err(pending("Revived"));
+        let ancestors = match file.parent_id {
+            Some(parent) => conflict_repo::tombstoned_ancestors(tx, account, parent).await?,
+            None => Vec::new(),
+        };
+        if file.deleted || !ancestors.is_empty() {
+            return self.revive(tx, at, node_id, &file, ancestors).await;
         }
         let same_content =
             file.current_hash.as_deref() == Some(entry.revision.content_hash.as_bytes().as_slice());
@@ -271,12 +299,18 @@ impl PgTreeService {
                 node_id,
                 revision_id: existing_revision,
                 delta: 0,
+                revived: Vec::new(),
             });
         }
-        let outcome = match base_revision {
-            None => PublishOutcome::Replaced,
-            Some(base) if Some(base) == file.current_revision_id => PublishOutcome::Updated,
-            Some(_) => return Err(pending("ConflictCopied")),
+        // A live file always has a current revision; without one there is nothing a stale base could supersede.
+        let outcome = match (base_revision, file.current_revision_id) {
+            (Some(base), Some(current)) if base == current => PublishOutcome::Updated,
+            (Some(_), Some(superseded)) => {
+                return self
+                    .keep_superseded(tx, at, node_id, &file, superseded)
+                    .await;
+            }
+            (None, _) | (Some(_), None) => PublishOutcome::Replaced,
         };
         insert_revision(tx, account, node_id, entry, now).await?;
         publish_repo::set_current(tx, account, node_id, entry.revision.revision_id, now).await?;
@@ -285,13 +319,14 @@ impl PgTreeService {
             node_id,
             revision_id: entry.revision.revision_id,
             delta: 0,
+            revived: Vec::new(),
         })
     }
 }
 
 /// `revisions.blob_id` references `blobs (id, account_id)`, so an unknown blob and another account's blob fail
 /// the same foreign key and give the same entry failure.
-async fn insert_revision(
+pub(crate) async fn insert_revision(
     tx: &mut DbTx,
     account: Uuid,
     node: Uuid,
@@ -306,8 +341,9 @@ async fn insert_revision(
         })
 }
 
-/// The nodes the call changed, each once, in entry order; `None` when nothing was touched (no stamp).
-fn touched_union(outcomes: &[EntryOutcome]) -> Option<TouchedNodes> {
+/// The nodes the call changed, each once, in entry order, then the revived ancestors; `None` when nothing was
+/// touched (no stamp).
+fn touched_union(outcomes: &[EntryOutcome], revived: &[Uuid]) -> Option<TouchedNodes> {
     let mut touched: Vec<Uuid> = Vec::new();
     for outcome in outcomes {
         let EntryResult::Published {
@@ -331,6 +367,11 @@ fn touched_union(outcomes: &[EntryOutcome]) -> Option<TouchedNodes> {
             }
         }
     }
+    for node in revived {
+        if !touched.contains(node) {
+            touched.push(*node);
+        }
+    }
     (!touched.is_empty()).then_some(TouchedNodes(touched))
 }
 
@@ -348,12 +389,6 @@ fn quota_error(error: QuotaLedgerError) -> EntryError {
         QuotaLedgerError::Unexpected(fault) => TreeCommitError::Unexpected(fault),
         other => TreeCommitError::Unexpected(Box::new(other)),
     })
-}
-
-fn pending(outcome: &'static str) -> EntryError {
-    EntryError::Call(TreeCommitError::Unexpected(Box::new(OutcomePending(
-        outcome,
-    ))))
 }
 
 #[cfg(test)]
@@ -388,7 +423,7 @@ mod tests {
         ];
 
         // Act
-        let touched = touched_union(&outcomes);
+        let touched = touched_union(&outcomes, &[]);
 
         // Assert
         assert_eq!(touched, Some(TouchedNodes(vec![a, b, copy])));
@@ -412,10 +447,23 @@ mod tests {
         ];
 
         // Act
-        let touched = touched_union(&outcomes);
+        let touched = touched_union(&outcomes, &[]);
 
         // Assert
         assert_eq!(touched, None);
+    }
+
+    #[test]
+    fn revived_ancestors_join_the_union_once_after_the_entries() {
+        // Arrange
+        let (file, folder, upper) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let outcomes = [published(PublishOutcome::Revived, file)];
+
+        // Act
+        let touched = touched_union(&outcomes, &[upper, folder, upper]);
+
+        // Assert
+        assert_eq!(touched, Some(TouchedNodes(vec![file, upper, folder])));
     }
 
     #[test]

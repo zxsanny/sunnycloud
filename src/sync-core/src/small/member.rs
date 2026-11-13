@@ -25,7 +25,7 @@ pub(crate) async fn blocking<T: Send + 'static>(
     joined(tokio::task::spawn_blocking(work).await)
 }
 
-pub(super) fn joined<T>(result: Result<T, JoinError>) -> Result<T, SyncError> {
+pub(crate) fn joined<T>(result: Result<T, JoinError>) -> Result<T, SyncError> {
     match result {
         Ok(value) => Ok(value),
         Err(error) => match error.try_into_panic() {

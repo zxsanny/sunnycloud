@@ -6,6 +6,7 @@ use std::cell::Cell;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use contracts::{AccountGuard, AccountGuardError, FeedNotifier, Seq, async_trait};
+use sc_clock::Clock;
 use sc_db::DbTx;
 use sqlx::PgConnection;
 use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
@@ -89,6 +90,11 @@ pub struct Tree {
 
 impl Tree {
     pub async fn new() -> Tree {
+        Tree::with_clock(sc_testdb::clock_at_start()).await
+    }
+
+    /// The tree on a clock of the test's choice (conflict-copy names read it).
+    pub async fn with_clock(clock: Arc<dyn Clock>) -> Tree {
         let fixture = Fixture::new().await;
         let account = Uuid::new_v4();
         let mut owner = fixture.owner_conn().await;
@@ -104,7 +110,7 @@ impl Tree {
             })),
             Arc::new(PgFeedStamp),
             Arc::new(ProbeNotifier(notifier.clone())),
-            sc_testdb::clock_at_start(),
+            clock,
         ));
         Tree {
             fixture,

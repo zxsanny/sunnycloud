@@ -100,5 +100,5 @@ Then the revived f gets a conflict-copy name and the new `f` is untouched
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| Reviving an ancestor before the cascade has marked its descendants clears `cascade_pending`, so unmarked siblings (g in AC-4) come back live; 02 §2 and `data_model.md` §5.1 only say marked descendants stay deleted | E-13 owner / Owner | open | Medium |
+| Reviving an ancestor before the cascade has marked its descendants clears `cascade_pending`, so unmarked siblings (g in AC-4) come back live; 02 §2 and `data_model.md` §5.1 only say marked descendants stay deleted | E-13 owner / Owner | resolved 2026-11-13 (owner): reviving an ancestor clears its `cascade_pending`, so descendants the cascade has not marked yet come back live; marked ones stay deleted. Recorded in `data_model.md` §5.1 | Medium |
 | `sync_conflict_copies_total` (observability.md, Sync table) has no owning task in E-13; this task creates the copies | E-09 / E-13 owner | open | Low |

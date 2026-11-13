@@ -4,11 +4,13 @@ use std::time::Duration;
 use contracts::{
     Principal, RevokeReason, SessionError, SessionInfo, SessionService, SessionTokens, async_trait,
 };
+use sc_audit::AuditWriter;
 use sc_clock::{Clock, Timestamp};
 use sc_db::{Db, DbError, Scope};
 use sc_ids::{RawToken, TokenHash, TokenKind, ct_eq, new_token, sha256_token};
 use uuid::Uuid;
 
+use crate::audit_events::{self, TxError, record_logged};
 use crate::auth_repo;
 use crate::config::IdentityConfig;
 use crate::error::IdentityError;
@@ -22,9 +24,13 @@ const ACTIVE: &str = "active";
 /// A refresh finds the session by the presented hash in system scope, then takes that session's row lock in
 /// its account's scope and decides under the lock; no other session is locked and nothing but the database
 /// is awaited while the lock is held.
+///
+/// A revocation writes its mandatory `session_revoked` event in its own transaction (a failed write fails the
+/// call and nothing is revoked); a refresh reuse is logged at WARN and audited after the revocation commits.
 pub struct IdentitySessions {
     db: Db,
     clock: Arc<dyn Clock>,
+    audit: AuditWriter,
     access_token_ttl: Duration,
     refresh_token_ttl: Duration,
     refresh_reuse_grace: Duration,
@@ -32,10 +38,11 @@ pub struct IdentitySessions {
 }
 
 impl IdentitySessions {
-    pub fn new(db: Db, clock: Arc<dyn Clock>, config: &IdentityConfig) -> Self {
+    pub fn new(db: Db, clock: Arc<dyn Clock>, config: &IdentityConfig, audit: AuditWriter) -> Self {
         IdentitySessions {
             db,
             clock,
+            audit,
             access_token_ttl: config.access_token_ttl,
             refresh_token_ttl: config.refresh_token_ttl,
             refresh_reuse_grace: config.refresh_reuse_grace,
@@ -202,7 +209,21 @@ impl SessionService for IdentitySessions {
                     expires_in: Duration::from_micros(remaining),
                 })
             }
-            Outcome::Reuse => Err(SessionError::ReuseDetected),
+            Outcome::Reuse => {
+                // Best effort on purpose, after the commit: a failed audit write must never undo the
+                // security revocation of the reused session.
+                tracing::warn!(
+                    account_id = %owner.account_id,
+                    session_id = %owner.session_id,
+                    "refresh token reuse: session revoked"
+                );
+                record_logged(
+                    &self.audit,
+                    audit_events::refresh_reuse(owner.account_id, owner.session_id),
+                )
+                .await;
+                Err(SessionError::ReuseDetected)
+            }
             Outcome::Reject => Err(SessionError::Unauthenticated),
         }
     }
@@ -213,20 +234,30 @@ impl SessionService for IdentitySessions {
         session_id: Uuid,
         reason: RevokeReason,
     ) -> Result<(), SessionError> {
-        let now = self.clock.now_utc();
+        let (now, reason) = (self.clock.now_utc(), reason_text(reason));
+        let audit = &self.audit;
         self.db
             .run(Scope::Account(account), async |tx| {
-                session_repo::revoke(tx, account, session_id, now, reason_text(reason)).await
+                if session_repo::revoke(tx, account, session_id, now, reason).await? > 0 {
+                    let event = audit_events::session_revoked(account, Some(session_id), reason);
+                    audit.record_in(tx, event).await?;
+                }
+                Ok::<_, TxError>(())
             })
             .await
             .map_err(unexpected)
     }
 
     async fn revoke_all(&self, account: Uuid, reason: RevokeReason) -> Result<(), SessionError> {
-        let now = self.clock.now_utc();
+        let (now, reason) = (self.clock.now_utc(), reason_text(reason));
+        let audit = &self.audit;
         self.db
             .run(Scope::Account(account), async |tx| {
-                session_repo::revoke_all(tx, account, now, reason_text(reason)).await
+                if session_repo::revoke_all(tx, account, now, reason).await? > 0 {
+                    let event = audit_events::session_revoked(account, None, reason);
+                    audit.record_in(tx, event).await?;
+                }
+                Ok::<_, TxError>(())
             })
             .await
             .map_err(unexpected)

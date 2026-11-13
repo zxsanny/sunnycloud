@@ -81,6 +81,7 @@ impl SignInService for Double {
         _callback_params: CallbackParams,
         _browser_binding: &BrowserBinding,
         _host: &str,
+        _client_ip: std::net::IpAddr,
     ) -> Result<SignInOutcome, SignInError> {
         self.0.record("complete");
         Ok(SignInOutcome::Session {
@@ -105,6 +106,7 @@ impl SignInService for Double {
         _callback_params: CallbackParams,
         _browser_binding: &BrowserBinding,
         _host: &str,
+        _client_ip: std::net::IpAddr,
     ) -> Result<Linked, SignInError> {
         self.0.record("complete_link");
         Ok(Linked)
@@ -114,6 +116,7 @@ impl SignInService for Double {
         &self,
         _code: &RawToken,
         _code_verifier: &str,
+        _client_ip: std::net::IpAddr,
     ) -> Result<SessionTokens, SignInError> {
         self.0.record("exchange_mobile_code");
         Ok(tokens())
