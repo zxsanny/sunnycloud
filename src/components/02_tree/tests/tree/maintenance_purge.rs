@@ -8,7 +8,7 @@ use contracts::{ChangeFeedError, Cursor, GcQueue, ResyncReason, TreeMaintenance}
 use uuid::Uuid;
 
 use crate::maintenance_support::{DyingQueue, Maint, PURGE_AT, config};
-use crate::statements::StatementLog;
+use sc_testdb::statements::StatementLog;
 
 /// 100 files with a revision each, deleted one by one through the service; returns their blobs.
 async fn hundred_tombstones(maint: &Maint) -> Vec<Uuid> {

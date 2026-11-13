@@ -111,7 +111,7 @@ async fn table_has_the_six_columns_the_unique_keys_and_the_composite_foreign_key
         foreign_keys,
         [
             "FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT",
-            "FOREIGN KEY (root_node_id, account_id) REFERENCES nodes(id, account_id)",
+            "FOREIGN KEY (root_node_id, account_id) REFERENCES nodes(id, account_id) ON DELETE CASCADE",
         ]
     );
     conn.close().await.expect("close fixture connection");
@@ -182,8 +182,9 @@ async fn a_second_vault_for_the_same_account_is_refused() {
     harness.finish().await;
 }
 
+/// Owner decision 2026-11-13 (`*_cascade_vault_on_root_purge`): purging the root folder removes the vault.
 #[tokio::test]
-async fn the_root_folder_of_a_vault_cannot_be_deleted_while_the_vault_exists() {
+async fn deleting_the_root_folder_of_a_vault_removes_the_vault() {
     // Arrange
     let harness = Harness::new().await;
     let mut conn = harness.fixture_conn().await;
@@ -198,8 +199,13 @@ async fn the_root_folder_of_a_vault_cannot_be_deleted_while_the_vault_exists() {
         .await;
 
     // Assert
-    let error = deleted.expect_err("root of a vault");
-    assert_eq!(sqlstate(&error), FOREIGN_KEY_VIOLATION);
+    assert_eq!(deleted.expect("delete root").rows_affected(), 1);
+    let left: i64 = sqlx::query_scalar("SELECT count(*) FROM vaults WHERE account_id = $1")
+        .bind(owner)
+        .fetch_one(&mut conn)
+        .await
+        .expect("count vaults");
+    assert_eq!(left, 0);
     conn.close().await.expect("close fixture connection");
     harness.finish().await;
 }

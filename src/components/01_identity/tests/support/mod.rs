@@ -22,7 +22,6 @@ pub mod registration;
 mod secrets;
 pub mod sessions;
 pub mod sign_in;
-pub mod statements;
 
 use std::sync::Arc;
 

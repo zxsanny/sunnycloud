@@ -43,7 +43,6 @@ mod reader_thumbs;
 mod retry;
 mod revision_support;
 mod rls;
-mod statements;
 mod support;
 mod usage_concurrency;
 mod usage_deltas;

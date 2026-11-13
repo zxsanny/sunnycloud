@@ -28,10 +28,13 @@ uuid = { workspace = true }
 # dev-dependencies, ADR-015).
 sunnycloud-tree = { path = "../02_tree" }
 sunnycloud-quota = { path = "../07a_quota" }
+# The real 04 `GcQueue` in the via-tree tests (AZ-4250 AC-5).
+sunnycloud-blobstore = { path = "../04_blobstore" }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
-# The ERROR test installs the capturing subscriber of sc_observability on its thread; the statement test
-# reads sqlx's statement events.
+# The boundary-backed `AccountGuard` double (AZ-4250).
+sunnycloud-testkit = { path = "../testkit" }
+# The ERROR tests install the capturing subscriber of sc_observability on their thread.
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 uuid = { workspace = true, features = ["v4"] }

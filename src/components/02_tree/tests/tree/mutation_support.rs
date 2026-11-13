@@ -3,11 +3,10 @@
 //! whatever the scope.
 
 use std::cell::Cell;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 
-use contracts::{AccountGuard, AccountGuardError, FeedNotifier, Seq, async_trait};
+use contracts::{FeedNotifier, Seq};
 use sc_clock::Clock;
-use sc_db::DbTx;
 use sqlx::PgConnection;
 use sunnycloud_blobstore::GcQueue;
 use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
@@ -15,8 +14,9 @@ use sunnycloud_sync_feed::{InProcessNotifier, PgFeedStamp};
 use sunnycloud_tree::PgTreeService;
 use uuid::Uuid;
 
-use crate::statements;
 use crate::support::{Fixture, account_with_root, node};
+use sc_testdb::statements;
+use sunnycloud_testkit::StateGuard;
 
 /// The installation default limit of the ledger in these tests: large enough never to refuse.
 pub const DEFAULT_QUOTA: i64 = 1 << 40;
@@ -34,49 +34,6 @@ impl FeedNotifier for ProbeNotifier {
         statements::mark("notify");
         let _outside_a_scope = NOTIFIED.try_with(|cell| cell.set(Some(seq)));
         self.0.notify(account, seq);
-    }
-}
-
-/// The `AccountGuard` port backed at its boundary (the real guard is wired by E-13/c16): it reads the account
-/// state `FOR SHARE` as the identity guard does, and records whether the transaction had written or locked
-/// anything before it ran.
-#[derive(Default)]
-pub struct StateGuard {
-    first_statement: Mutex<Vec<bool>>,
-}
-
-impl StateGuard {
-    /// One entry per call: `true` when no row had been written or locked in the transaction before the guard.
-    pub fn calls(&self) -> Vec<bool> {
-        self.first_statement
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-}
-
-#[async_trait]
-impl AccountGuard for StateGuard {
-    async fn ensure_active(&self, tx: &mut DbTx, account: Uuid) -> Result<(), AccountGuardError> {
-        let unexpected = |error: sqlx::Error| AccountGuardError::Unexpected(Box::new(error));
-        let clean: bool = sqlx::query_scalar("SELECT pg_current_xact_id_if_assigned() IS NULL")
-            .fetch_one(tx.conn())
-            .await
-            .map_err(unexpected)?;
-        self.first_statement
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(clean);
-        let state: Option<String> =
-            sqlx::query_scalar("SELECT state FROM accounts WHERE id = $1 FOR SHARE")
-                .bind(account)
-                .fetch_optional(tx.conn())
-                .await
-                .map_err(unexpected)?;
-        match state.as_deref() {
-            Some("active") => Ok(()),
-            _ => Err(AccountGuardError::AccountNotActive),
-        }
     }
 }
 

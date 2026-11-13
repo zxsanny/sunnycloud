@@ -7,8 +7,8 @@ use crate::vault_repo;
 /// The vault's part of the account lifecycle. A vault is opt-in, so account creation adds nothing; erase
 /// removes the account's `vaults` rows.
 ///
-/// `vaults.root_node_id` references `nodes` with no delete rule, so 12 registers this hook before 02's
-/// (decision 2026-11-05): 02 can purge the root folder only after this hook reports `remaining = 0`.
+/// 12 registers this hook before 02's (decision 2026-11-05). Since `*_cascade_vault_on_root_purge` (owner,
+/// 2026-11-13) 02's purge of the root folder would also remove the vault row, but the erase does not rely on it.
 #[derive(Debug, Clone)]
 pub struct PgVaultLifecycle {
     db: Db,

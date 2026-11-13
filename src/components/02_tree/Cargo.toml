@@ -27,6 +27,8 @@ uuid = { workspace = true, features = ["v4"] }
 [dev-dependencies]
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
+# The boundary-backed `AccountGuard` double (AZ-4250).
+sunnycloud-testkit = { path = "../testkit" }
 # The real feed stamp, notifier and page reader (05) that the mutations and `publish` call last.
 sunnycloud-sync-feed = { path = "../05_sync_feed" }
 # The real quota ledger (07a) of `publish` and the real `BlobRegistry::mark_committed_in_tx` (04) of the blob

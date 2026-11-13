@@ -18,6 +18,8 @@ sc_db = { path = "../db" }
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 tokio = { workspace = true, features = ["sync", "time"] }
 uuid = { workspace = true, features = ["v4"] }
+# The shared statement capture reads sqlx's statement events (AZ-4250).
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }

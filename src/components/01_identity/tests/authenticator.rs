@@ -6,10 +6,10 @@ mod support;
 use std::time::Duration;
 
 use contracts::{Authenticator, AuthenticatorError, Credential, Principal, PrincipalKind, Role};
+use sc_testdb::statements::StatementLog;
 use sqlx::{Connection, PgConnection};
 use support::auth::{FAR_FUTURE, authenticator, authenticator_with_ttl, device, session};
 use support::fixtures;
-use support::statements::StatementLog;
 use support::{Harness, START};
 use uuid::Uuid;
 

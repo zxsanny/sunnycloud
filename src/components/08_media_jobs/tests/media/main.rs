@@ -32,7 +32,6 @@ mod queue_maint;
 mod queue_plan;
 mod queue_support;
 mod rls;
-mod statements;
 mod support;
 mod system_scope_repo;
 mod thumb_states;

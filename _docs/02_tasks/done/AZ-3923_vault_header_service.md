@@ -81,6 +81,11 @@ Given the E-30/c01 decision
 When A creates a second vault on another live folder
 Then with "one per account" the call returns `VaultExists` and nothing is stored; with "many" it succeeds
 
+**AC-8: Purging a tombstoned vault root removes the vault**
+Given a vault whose root folder was deleted through 02 and whose tombstone is past the retention window
+When 02's tombstone purge runs
+Then the purge succeeds, the root and the vault row are gone, and the account can create a new vault
+
 ## Non-Functional Requirements
 
 **Performance**
@@ -131,6 +136,6 @@ Then with "one per account" the call returns `VaultExists` and nothing is stored
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| The error variant for a file as root and for a second vault on the same root is not defined (port lists only `VaultExists` "if decided", `HeaderTooLarge`, `NotFound`); IT-20-7 says "4xx per the 11 mapping" | E-30 / E-00 contract owner | open | Medium |
-| `get_header` in `contracts` part 3 returns `(header, ETag)` but the GET route also returns the root node id (20 §4); part 3 needs the field when frozen | E-00 contract owner / E-30 | open | Low |
-| A tombstoned vault root (deleted through 02 `delete_node`) makes the 90-day tombstone purge (AZ-3714) fail on `vaults_root_node_id_account_id_fkey` on every run, blocking that batch. Before the first vault is created, either 02 refuses deleting a vault root (via the planned `nodes.vault_id`) or the purge skips nodes referenced by `vaults`. Found 2026-11-13 (batch 52) | E-30 / E-13 | open | High |
+| The error variant for a file as root and for a second vault on the same root is not defined (port lists only `VaultExists` "if decided", `HeaderTooLarge`, `NotFound`); IT-20-7 says "4xx per the 11 mapping" | E-30 / E-00 contract owner | decided 2026-11-13 (owner): a file root answers `NotFound`; a second vault (same or other root) or a non-empty root answers `VaultExists` | Medium |
+| `get_header` in `contracts` part 3 returns `(header, ETag)` but the GET route also returns the root node id (20 §4); part 3 needs the field when frozen | E-00 contract owner / E-30 | decided 2026-11-13: `VaultHeader.root_node_id` added (part 3 1.3.0) | Low |
+| A tombstoned vault root (deleted through 02 `delete_node`) makes the 90-day tombstone purge (AZ-3714) fail on `vaults_root_node_id_account_id_fkey` on every run, blocking that batch. Before the first vault is created, either 02 refuses deleting a vault root (via the planned `nodes.vault_id`) or the purge skips nodes referenced by `vaults`. Found 2026-11-13 (batch 52) | E-30 / E-13 | decided 2026-11-13 (owner): the vault is removed with its purged root (migration `20261113120000_cascade_vault_on_root_purge`, `ON DELETE CASCADE`); AC-8 | High |

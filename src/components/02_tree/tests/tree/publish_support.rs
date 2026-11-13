@@ -15,7 +15,7 @@ use tokio::sync::Notify;
 use uuid::Uuid;
 
 use crate::mutation_support::Tree;
-use crate::statements;
+use sc_testdb::statements;
 
 pub const SIZE: i64 = 100;
 

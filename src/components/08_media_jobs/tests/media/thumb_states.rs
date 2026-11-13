@@ -13,8 +13,8 @@ use uuid::Uuid;
 
 use crate::derived_support::{bulk_derived, bulk_jobs, replica};
 use crate::queue_support::hash;
-use crate::statements::StatementLog;
 use crate::support::{Fixture, account, account_with_revision};
+use sc_testdb::statements::StatementLog;
 
 fn source(fixture: &Fixture) -> ThumbnailStates {
     ThumbnailStates::new(

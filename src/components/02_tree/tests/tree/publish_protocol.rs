@@ -16,7 +16,7 @@ use crate::mutation_support::{Tree, close};
 use crate::publish_support::{
     Call, OnBatch, OnBegin, TestEffect, actor, effects, existing, new_file,
 };
-use crate::statements::StatementLog;
+use sc_testdb::statements::StatementLog;
 
 const TRY_ACCOUNT_LOCK: &str =
     "SELECT pg_try_advisory_xact_lock(hashtextextended('sunnycloud.account:' || $1::text, 0))";

@@ -7,8 +7,8 @@ use sqlx::{Connection, PgConnection};
 use sunnycloud_sync_feed::{EmptyTouchedNodes, PgFeedStamp, touched_nodes};
 use uuid::Uuid;
 
-use crate::statements::StatementLog;
 use crate::support::{Fixture, account, account_with_feed, insert_folders, root_node};
+use sc_testdb::statements::StatementLog;
 
 const NODES: i32 = 600;
 const BATCH: usize = 500;

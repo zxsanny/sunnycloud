@@ -1,0 +1,20 @@
+[package]
+name = "sunnycloud-testkit"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Test support for the component suites that needs the `contracts` ports (AZ-4250). It lives under
+# `components/` so `crate_graph` allows it only as a dev-dependency of another component, and `sc_testdb` stays
+# below `contracts`.
+[dependencies]
+contracts = { path = "../../contracts" }
+sc_db = { path = "../../shared/db" }
+# Same features as sc_db.
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
+uuid = { workspace = true }

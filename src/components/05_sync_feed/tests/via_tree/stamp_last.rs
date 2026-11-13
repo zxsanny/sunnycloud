@@ -15,8 +15,8 @@ use sc_clock::ManualClock;
 use sc_testdb::START;
 use sunnycloud_sync_feed::READ_PAGE_SQL;
 
-use crate::statements::StatementLog;
 use crate::support::{Rig, cursor, new_file, published, settle};
+use sc_testdb::statements::StatementLog;
 
 const WAIT: Duration = Duration::from_secs(30);
 const STAMP: &str = "UPDATE account_feeds";

@@ -20,6 +20,8 @@ pub struct CreatedVault {
 pub struct VaultHeader {
     pub header: Vec<u8>,
     pub etag: ETag,
+    /// The vault's root folder, returned by the GET route next to the header.
+    pub root_node_id: Uuid,
 }
 
 #[derive(Debug, Error)]

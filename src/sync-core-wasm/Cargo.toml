@@ -13,4 +13,8 @@ crate-type = ["cdylib", "rlib"]
 workspace = true
 
 [dependencies]
+# The rules the browser Worker runs come from the one Rust implementation (AZ-3969).
+sync-core-proto = { path = "../sync-core-proto" }
+# The pure UUIDv7 commit-id builder (time and random bytes from the caller).
+uuid = { workspace = true }
 wasm-bindgen = { workspace = true }

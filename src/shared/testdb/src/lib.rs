@@ -9,8 +9,12 @@
 //! `sc_db`'s own lib tests cannot use this crate (it depends on `sc_db`); `src/shared/db/src/tests/support.rs`
 //! mirrors the constants kept here: the role password `sc_db_test_password` and the setup advisory lock
 //! `0x5cdb_0001`. Keep them equal, so every suite can run in parallel against one server.
+//!
+//! Also shared by the component suites: the sqlx statement capture ([`statements`]). The `AccountGuard` double
+//! needs the `contracts` ports, so it lives in `sunnycloud-testkit` and this crate stays below `contracts`.
 
 mod cluster;
+pub mod statements;
 
 use std::sync::Arc;
 use std::time::Duration;

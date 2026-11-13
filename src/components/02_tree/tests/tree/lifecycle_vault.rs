@@ -1,12 +1,11 @@
 //! AZ-3925 AC-4: the account purge in hook order 20 then 02 (owner decision 2026-11-05) for an account with a
 //! vault whose root is a tree folder. Every hook reaches `remaining = 0` and no batch fails on the
-//! `vaults.root_node_id` key; the tree hook run before the vault's is refused by that key, which is why the order
-//! holds.
+//! `vaults.root_node_id` key. Since the root key cascades (owner decision 2026-11-13), the tree hook run before
+//! the vault's also succeeds and removes the vault with its root; the registered order stays 20 then 02.
 
 use std::sync::Arc;
 
-use contracts::{AccountLifecycleHook, LifecycleError};
-use sc_db::DbError;
+use contracts::AccountLifecycleHook;
 use sunnycloud_vault_service::PgVaultLifecycle;
 use uuid::Uuid;
 
@@ -98,39 +97,26 @@ async fn the_vault_hook_then_the_tree_hook_erase_everything_without_a_key_failur
 }
 
 #[tokio::test]
-async fn the_tree_hook_before_the_vault_hook_is_refused_by_the_vault_root_key() {
+async fn the_tree_hook_before_the_vault_hook_removes_the_vault_with_its_root() {
     // Arrange
     let erase = Erase::new().await;
-    let (vault_root, _) = account_with_a_vault(&erase).await;
+    let (_, blobs) = account_with_a_vault(&erase).await;
     erase.mark_deleting().await;
+    let hooks = [("02 tree", as_hook(&erase.hook))];
 
     // Act
-    let result = erase.hook.erase_batch(erase.tree.account, LIMIT).await;
+    let walk = purge(&erase, &hooks).await;
 
     // Assert
-    match result {
-        Err(LifecycleError::Unexpected(fault)) => assert!(
-            matches!(
-                fault.downcast_ref::<DbError>(),
-                Some(DbError::ForeignKeyViolation)
-            ),
-            "{fault:?}"
-        ),
-        Ok(progress) => panic!("expected the key to refuse the batch, got {progress:?}"),
+    let (_, outcome) = &walk[0];
+    let reported = outcome
+        .as_ref()
+        .unwrap_or_else(|error| panic!("02 tree: {error}"));
+    assert_eq!(reported.last(), Some(&0));
+    for table in ["vaults", "nodes", "revisions", "blobs", "blob_gc"] {
+        assert_eq!(erase.of_account(table).await, 0, "{table}");
     }
-    assert_eq!(
-        erase.of_account("revisions").await,
-        2,
-        "the batch rolled back"
-    );
-    assert_eq!(
-        erase
-            .tree
-            .count(&format!(
-                "SELECT count(*) FROM nodes WHERE id = '{vault_root}'"
-            ))
-            .await,
-        1
-    );
+    assert!(blobs.iter().all(|&id| !erase.has_file(id)));
+    drop(hooks);
     erase.finish().await;
 }

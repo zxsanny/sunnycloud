@@ -1,6 +1,7 @@
 //! The "via 02" rig: one database cloned from the migrated template, an account with its root folder, feed row
 //! and quota row, `PgTreeService` wired as 02's own tests wire it (real 05 stamp and notifier, real 07a ledger,
-//! the boundary-backed `AccountGuard`, and a recording `GcQueue`: this crate has no 04 dev-dependency), and the real feed (`PgFeedReader`, `PgChangeFeed`) on the same pool.
+//! the boundary-backed `sunnycloud_testkit::StateGuard` and the real 04 `GcQueue`), and the real feed (`PgFeedReader`,
+//! `PgChangeFeed`) on the same pool.
 //! Fixtures and probes run as the schema owner or the superuser.
 
 use std::cell::Cell;
@@ -8,64 +9,32 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use contracts::{
-    AccountGuard, AccountGuardError, ChangeFeed, ChangeFeedError, ChangePage, CommitActor, Cursor,
-    Due, EntryResult, FeedNotifier, GcQueue, GcQueueError, GcReason, NewRevision, Principal,
-    PrincipalKind, PrincipalRevalidator, PublishEntry, PublishResult, RevalidatorError, Role, Seq,
-    Target, TreeCommit, TreeCommitError, async_trait,
+    ChangeFeed, ChangeFeedError, ChangePage, CommitActor, Cursor, EntryResult, FeedNotifier,
+    NewRevision, Principal, PrincipalKind, PrincipalRevalidator, PublishEntry, PublishResult,
+    RevalidatorError, Role, Seq, Target, TreeCommit, TreeCommitError, async_trait,
 };
 use sc_clock::{CancellationToken, Clock};
-use sc_db::DbTx;
+use sc_config::Secret;
 use sc_ids::{FileHash, Hash32};
 use sc_observability::{BuildInfo, Counter, Metrics, NoLabels};
-use sc_testdb::{MIGRATOR, START, TestDb};
+use sc_testdb::{MIGRATOR, START, TestDb, statements};
 use sqlx::{Connection, PgConnection};
+use sunnycloud_blobstore::{BlobstoreConfig, GcQueue};
 use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
 use sunnycloud_sync_feed::{
     FeedConfig, InProcessNotifier, PgChangeFeed, PgFeedReader, PgFeedStamp,
 };
+use sunnycloud_testkit::StateGuard;
 use sunnycloud_tree::PgTreeService;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::park_clock::ParkClock;
-use crate::statements;
 
 pub const EPOCH: i64 = 1;
 const DEFAULT_QUOTA: i64 = 1 << 40;
 const SIZE: i64 = 100;
-
-/// The `GcQueue` port at its boundary: the feed tests never read the queue, so it only records the blobs the
-/// tree hands it (the real 04 queue is wired in 02's and 08's tests).
-#[derive(Default)]
-pub struct RecordingGcQueue {
-    scheduled: Mutex<Vec<Uuid>>,
-}
-
-#[async_trait]
-impl GcQueue for RecordingGcQueue {
-    async fn schedule_in_tx(
-        &self,
-        _tx: &mut DbTx,
-        blob_id: Uuid,
-        _reason: GcReason,
-        _due: Due,
-    ) -> Result<(), GcQueueError> {
-        self.scheduled
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(blob_id);
-        Ok(())
-    }
-
-    async fn pending_for_account(&self, _account: Uuid) -> Result<u64, GcQueueError> {
-        let scheduled = self
-            .scheduled
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .len();
-        Ok(u64::try_from(scheduled).unwrap_or(u64::MAX))
-    }
-}
+const DAY: Duration = Duration::from_secs(86_400);
 
 tokio::task_local! {
     /// The `seq` the notifier was woken with inside the current task; each publish helper scopes it.
@@ -107,23 +76,31 @@ impl FeedNotifier for ProbeNotifier {
     }
 }
 
-/// The `AccountGuard` port backed at its boundary, as in 02's tests (the real guard is wired by E-13/c16): it
-/// reads the account state `FOR SHARE` as the identity guard does.
-struct StateGuard;
-
-#[async_trait]
-impl AccountGuard for StateGuard {
-    async fn ensure_active(&self, tx: &mut DbTx, account: Uuid) -> Result<(), AccountGuardError> {
-        let state: Option<String> =
-            sqlx::query_scalar("SELECT state FROM accounts WHERE id = $1 FOR SHARE")
-                .bind(account)
-                .fetch_optional(tx.conn())
-                .await
-                .map_err(|error| AccountGuardError::Unexpected(Box::new(error)))?;
-        match state.as_deref() {
-            Some("active") => Ok(()),
-            _ => Err(AccountGuardError::AccountNotActive),
-        }
+/// The blobstore settings the `GcQueue` reads (retention 7 days); the feed tests write no blob files.
+fn blobstore_config() -> BlobstoreConfig {
+    BlobstoreConfig {
+        blob_root: None,
+        retention: 7 * DAY,
+        orphan_sweep_age: DAY,
+        orphan_mode: "report".to_owned(),
+        orphan_sweep_interval: Duration::from_secs(3600),
+        blob_free_reserve: 0,
+        blob_free_reserve_percent: 100,
+        gc_interval: Duration::from_secs(60),
+        gc_batch: 100,
+        gc_claim_lease: Duration::from_secs(60),
+        gc_cycle_budget: Duration::from_secs(60),
+        scrub_interval: Duration::from_secs(3600),
+        scrub_cycle_budget: Duration::from_secs(60),
+        scrub_max_rate: 1 << 20,
+        scrub_pause_active_streams: 1,
+        blob_sync_coalesce_delay: Duration::ZERO,
+        blob_preallocate: false,
+        blob_read_ahead_chunks: 1,
+        blob_io_threads: None,
+        master_key_file: Secret::new("unused".to_owned()),
+        master_key_ring: None,
+        master_key_current: None,
     }
 }
 
@@ -160,19 +137,22 @@ impl Rig {
         owner.close().await.expect("close owner connection");
         let notifier = InProcessNotifier::new();
         let sent = Arc::default();
+        let start_clock = sc_testdb::clock_at_start();
+        let queue =
+            GcQueue::new(&blobstore_config(), api.clone(), start_clock.clone()).expect("gc queue");
         let service = Arc::new(PgTreeService::new(
             api.clone(),
-            Arc::new(StateGuard),
+            Arc::new(StateGuard::default()),
             Arc::new(PgQuotaLedger::new(QuotaConfig {
                 default_quota_bytes: DEFAULT_QUOTA,
             })),
-            Arc::new(RecordingGcQueue::default()),
+            Arc::new(queue),
             Arc::new(PgFeedStamp),
             Arc::new(ProbeNotifier {
                 inner: notifier.clone(),
                 sent: Arc::clone(&sent),
             }),
-            sc_testdb::clock_at_start(),
+            start_clock,
         ));
         let config = feed_config(page_limit);
         let clock = ParkClock::over(clock);

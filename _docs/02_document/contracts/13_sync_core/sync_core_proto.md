@@ -116,7 +116,7 @@ Sources: `components/13_sync_core/description.md` §1, §2, §3, §7; `module-la
 1. `longpoll_max_wait` unit on the wire (seconds or milliseconds) is not specified (`server_info.md` open point 1).
 2. The planner has no action for a block that exhausted `max_attempts_per_block` (IT-13-1 only says "the planner stops retrying it"); the terminal action and the error the executor returns are decided by E-23/c05.
 3. `ServerUrl` rules beyond "https with a host" (user info, query, fragment, path handling) are not specified; E-23/c04 decides and records them here.
-4. A pure UUIDv7 constructor from (time, random bytes) does not exist in `sc_ids` (`new_id` takes a `Clock`); the WASM "commit ID" export needs one or the Worker generates keys itself (`wasm_exports.md` open point 1).
+4. Closed 2026-11-13: the WASM adapter builds the UUIDv7 from the caller's time and random bytes (`wasm_exports.md` `new_commit_id`).
 5. `UploadSession.lane_limit` versus `ServerInfo.max_lanes`: which one bounds a session when they differ is not stated; this contract takes the lower of the two.
 
 ## Change Log

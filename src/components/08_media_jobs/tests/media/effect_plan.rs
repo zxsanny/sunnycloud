@@ -7,7 +7,7 @@ use sqlx::{AssertSqlSafe, Connection};
 
 use crate::effect_support::{Content, JPEG, Job, MP4, configured, current, entry, jobs, run};
 use crate::queue_support::Queue;
-use crate::statements::StatementLog;
+use sc_testdb::statements::StatementLog;
 
 #[tokio::test]
 async fn each_type_gets_the_jobs_of_the_matrix_in_its_own_transaction() {

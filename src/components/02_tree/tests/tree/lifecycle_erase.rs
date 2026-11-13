@@ -5,8 +5,8 @@ use contracts::AccountLifecycleHook;
 use uuid::Uuid;
 
 use crate::lifecycle_support::{Erase, NODES, REVISIONS};
-use crate::statements::StatementLog;
 use crate::support::START;
+use sc_testdb::statements::StatementLog;
 
 const LIMIT: u32 = 50;
 /// More batches than 1,000 nodes and 600 revisions need at 50 rows each; a run past it is a stuck erase.

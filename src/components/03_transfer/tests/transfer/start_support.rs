@@ -18,11 +18,12 @@ use sunnycloud_blobstore::{
     BlobRegistry, BlobstoreConfig, FileBlobReader, FileBlobWriter, MasterKeyring, SyncBarrier,
 };
 use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
+use sunnycloud_testkit::StateGuard;
 use sunnycloud_transfer::{PgUploadService, TransferConfig, UploadPorts};
 use sunnycloud_tree::{PgTreeReader, TreeConfig};
 use uuid::Uuid;
 
-use crate::start_ports::{FaultyWriter, StateGuard};
+use crate::start_ports::FaultyWriter;
 use crate::support::{Fixture, account};
 
 pub const MIB: i64 = 1 << 20;
@@ -97,7 +98,7 @@ impl Rig {
             fixture.api.clone(),
             config,
             UploadPorts {
-                guard: Arc::new(StateGuard),
+                guard: Arc::new(StateGuard::default()),
                 tree: Arc::new(tree),
                 quota: Arc::new(PgQuotaLedger::new(QuotaConfig {
                     default_quota_bytes: 10 * GIB,

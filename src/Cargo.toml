@@ -24,6 +24,7 @@ members = [
     "components/08_media_jobs",
     "components/11_http_api",
     "components/20_vault_service",
+    "components/testkit",
     "server",
     "worker",
     "decoder",
@@ -45,6 +46,8 @@ license = "AGPL-3.0-only"
 publish = false
 
 [workspace.dependencies]
+# One declaration for every crate that wipes secrets (AZ-4250 AC-4); `alloc` wipes heap buffers.
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 axum = "=0.8.9"
 hyper = "1.12"
 tokio = "1.54.1"

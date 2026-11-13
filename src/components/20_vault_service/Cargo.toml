@@ -11,15 +11,28 @@ workspace = true
 
 [dependencies]
 contracts = { path = "../../contracts" }
+# Header timestamps (AZ-3923).
+sc_clock = { path = "../../shared/clock" }
 sc_config = { path = "../../shared/config" }
 # The erase hook runs its statements in short scoped transactions on the transaction's connection.
 sc_db = { path = "../../shared/db" }
+# The header ETag is the shared SHA-256 helper over the stored bytes (AZ-3923).
+sc_ids = { path = "../../shared/ids_hashing" }
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
+# The real 02 reader, folder creation, delete and tombstone purge, with the 07a ledger and 04 GC queue the tree
+# needs (component dev-dependencies, ADR-015; AZ-3923 AC-3 and AC-8).
+sunnycloud-tree = { path = "../02_tree" }
+sunnycloud-quota = { path = "../07a_quota" }
+sunnycloud-blobstore = { path = "../04_blobstore" }
+# The 05 feed ports 02's delete and purge need (`PgFeedStamp`, `InProcessNotifier`, `PgFeedHorizon`; AZ-3923 AC-8).
+sunnycloud-sync-feed = { path = "../05_sync_feed" }
 # The per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
+# The boundary-backed `AccountGuard` double (AZ-4250).
+sunnycloud-testkit = { path = "../testkit" }
 # The tests read and write the tables with plain statements on the transaction's connection.
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

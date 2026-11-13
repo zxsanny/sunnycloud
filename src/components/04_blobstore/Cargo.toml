@@ -35,7 +35,7 @@ tokio = { workspace = true, features = ["fs", "rt", "sync", "time"] }
 sc_observability = { path = "../../shared/observability" }
 uuid = { workspace = true, features = ["v4"] }
 # Data keys and master keys are wiped on drop; `alloc` wipes the read buffers and unwrapped plaintexts.
-zeroize = { version = "1.8", default-features = false, features = ["alloc"] }
+zeroize = { workspace = true }
 
 [features]
 # Test-only fault hook around the group sync (block, fail, count). Enabled only by this crate's own dev-dependency

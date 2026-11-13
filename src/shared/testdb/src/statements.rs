@@ -1,6 +1,7 @@
-//! Captures the statements sqlx logs on the test thread, so a test can state which statements a call ran.
-//! `#[tokio::test]` runs a test on one thread, and one process-wide subscriber serves every test of the binary
-//! (a per-thread default races with the callsite interest cache when tests run in parallel).
+//! Captures the statements sqlx logs on the test thread, so a test can state which statements a call ran, in order
+//! with the marks the test adds ([`mark`]). `#[tokio::test]` runs a test on one thread, and one process-wide
+//! subscriber serves every test of the binary (a per-thread default races with the callsite interest cache when
+//! tests run in parallel); so a test binary installs this or another global subscriber, not both.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
@@ -13,6 +14,9 @@ use tracing::{Event, Metadata, Subscriber};
 type Store = Arc<Mutex<HashMap<ThreadId, Vec<String>>>>;
 
 static STORE: OnceLock<Store> = OnceLock::new();
+
+/// The transaction statements of sqlx and `sc_db` (`BEGIN`, `COMMIT`, `ROLLBACK`, savepoints), by first word.
+const TRANSACTION_CONTROL: [&str; 5] = ["BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE"];
 
 pub struct StatementLog {
     thread: ThreadId,
@@ -40,7 +44,7 @@ impl StatementLog {
         log
     }
 
-    /// The statements logged since the last call, in order.
+    /// The statements and marks logged since the last call, in order.
     pub fn take(&self) -> Vec<String> {
         self.store
             .lock()
@@ -49,25 +53,61 @@ impl StatementLog {
             .unwrap_or_default()
     }
 
-    /// Like [`StatementLog::take`], trimmed, without the scope and transaction statements of `sc_db`
-    /// (sqlx logs `BEGIN` and `COMMIT` with an empty text).
+    /// Like [`StatementLog::take`], trimmed, without the scope and transaction statements of `sc_db`.
     pub fn take_data_statements(&self) -> Vec<String> {
         self.take()
             .into_iter()
             .map(|sql| sql.trim().to_owned())
-            .filter(|sql| !sql.is_empty() && !sql.contains("set_config("))
+            .filter(|sql| {
+                !sql.is_empty() && !sql.contains("set_config(") && !is_transaction_control(sql)
+            })
             .collect()
     }
 }
 
-struct Statement(Option<String>);
+fn is_transaction_control(sql: &str) -> bool {
+    sql.split_whitespace()
+        .next()
+        .is_some_and(|word| TRANSACTION_CONTROL.contains(&word.to_ascii_uppercase().as_str()))
+}
+
+/// Appends `text` to the current thread's log when a log is installed; a no-op otherwise.
+pub fn mark(text: &str) {
+    if let Some(store) = STORE.get() {
+        store
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(std::thread::current().id())
+            .or_default()
+            .push(text.to_owned());
+    }
+}
+
+/// sqlx leaves `db.statement` empty for a statement whose `summary` already holds its whole text (`BEGIN`,
+/// `SAVEPOINT ...`, `COMMIT`); the summary stands in for it then.
+#[derive(Default)]
+struct Statement {
+    text: Option<String>,
+    summary: Option<String>,
+}
+
+impl Statement {
+    fn sql(self) -> Option<String> {
+        match self.text {
+            Some(text) if !text.trim().is_empty() => Some(text),
+            text => self.summary.or(text),
+        }
+    }
+}
 
 impl Visit for Statement {
     fn record_debug(&mut self, _: &Field, _: &dyn std::fmt::Debug) {}
 
     fn record_str(&mut self, field: &Field, value: &str) {
-        if field.name() == "db.statement" {
-            self.0 = Some(value.to_owned());
+        match field.name() {
+            "db.statement" => self.text = Some(value.to_owned()),
+            "summary" => self.summary = Some(value.to_owned()),
+            _ => {}
         }
     }
 }
@@ -86,9 +126,9 @@ impl Subscriber for Global {
     fn record_follows_from(&self, _: &Id, _: &Id) {}
 
     fn event(&self, event: &Event<'_>) {
-        let mut statement = Statement(None);
+        let mut statement = Statement::default();
         event.record(&mut statement);
-        if let Some(sql) = statement.0 {
+        if let Some(sql) = statement.sql() {
             self.0
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)

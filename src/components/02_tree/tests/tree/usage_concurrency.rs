@@ -14,12 +14,13 @@ use sc_db::{Db, DbConfig, DbRole, DbTx, Scope};
 use sc_error::ErrorCode;
 use sunnycloud_quota::PgQuotaLedger;
 use sunnycloud_sync_feed::{InProcessNotifier, PgFeedHorizon, PgFeedStamp};
+use sunnycloud_testkit::StateGuard;
 use sunnycloud_tree::{PgTreeMaintenance, PgTreeService};
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 use crate::maintenance_support::{config, ledger};
-use crate::mutation_support::{StateGuard, Tree};
+use crate::mutation_support::Tree;
 use crate::publish_support::{TestEffect, actor, effects};
 use crate::support::START;
 use crate::usage_support::{KIB, MIB, edit_sized, new_sized, published};

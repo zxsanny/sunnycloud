@@ -1,16 +1,14 @@
 //! The port doubles of the `start_upload` and `put_block` tests, each at its boundary: a writer decorator that
 //! delegates to the real 04 writer, can make file creation fail, counts block writes and can hold or fail the
-//! group fdatasync wait; and the account guard reading the account state. The registry
-//! is the real 04 one, through the port.
+//! group fdatasync wait. The registry is the real 04 one, through the port; the account guard is
+//! `sunnycloud_testkit::StateGuard`.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use contracts::{
-    AccountGuard, AccountGuardError, BlobError, BlobHandle, BlobPlan, BlobWriter, ByteStream,
-    DurableToken, WrittenBlob, async_trait,
+    BlobError, BlobHandle, BlobPlan, BlobWriter, ByteStream, DurableToken, WrittenBlob, async_trait,
 };
-use sc_db::DbTx;
 use sunnycloud_blobstore::FileBlobWriter;
 use tokio::sync::{Notify, Semaphore};
 use uuid::Uuid;
@@ -160,24 +158,5 @@ impl BlobWriter for FaultyWriter {
 
     async fn discard(&self, blob_id: Uuid) -> Result<(), BlobError> {
         self.inner.discard(blob_id).await
-    }
-}
-
-/// The `AccountGuard` port backed at its boundary: the account state read `FOR SHARE`, as the identity guard does.
-pub struct StateGuard;
-
-#[async_trait]
-impl AccountGuard for StateGuard {
-    async fn ensure_active(&self, tx: &mut DbTx, account: Uuid) -> Result<(), AccountGuardError> {
-        let state: Option<String> =
-            sqlx::query_scalar("SELECT state FROM accounts WHERE id = $1 FOR SHARE")
-                .bind(account)
-                .fetch_optional(tx.conn())
-                .await
-                .map_err(|error| AccountGuardError::Unexpected(Box::new(error)))?;
-        match state.as_deref() {
-            Some("active") => Ok(()),
-            _ => Err(AccountGuardError::AccountNotActive),
-        }
     }
 }

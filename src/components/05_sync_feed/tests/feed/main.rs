@@ -31,6 +31,5 @@ mod security_revoked;
 mod security_scoping;
 mod stamp;
 mod stamp_concurrency;
-mod statements;
 mod support;
 mod system_scope_repo;

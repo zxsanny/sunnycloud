@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>sync-core-wasm vectors</title>
+<script type="module">
+  // The module is loaded only in the Worker, never on the main thread (wasm_exports.md).
+  const worker = new Worker("/js/browser-worker.mjs", { type: "module" });
+  worker.onmessage = (event) => { window.vectorResult = event.data; };
+  worker.onerror = (event) => { window.vectorResult = { error: `worker error: ${event.message}` }; };
+</script>

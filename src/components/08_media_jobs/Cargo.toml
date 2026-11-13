@@ -36,9 +36,9 @@ sc_audit = { path = "../../shared/audit" }
 bytes = { workspace = true }
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 sunnycloud-sync-feed = { path = "../05_sync_feed" }
-# The statement-count test reads sqlx's statement events.
-tracing = { version = "0.1", default-features = false, features = ["std"] }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
+# The boundary-backed `AccountGuard` double (AZ-4250).
+sunnycloud-testkit = { path = "../testkit" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 uuid = { workspace = true, features = ["v4"] }

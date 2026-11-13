@@ -43,24 +43,62 @@ pub async fn account(conn: &mut PgConnection, id: Uuid) {
     .expect("insert account");
 }
 
+/// An account with its root folder; returns the root id.
+pub async fn account_with_root(conn: &mut PgConnection, id: Uuid) -> Uuid {
+    account(conn, id).await;
+    let root = Uuid::new_v4();
+    insert_node(conn, id, root, None, "folder", "").await;
+    root
+}
+
+/// A live node of `kind` (`folder` or `file`, a file without a revision) under `parent`; returns its id.
+pub async fn node(
+    conn: &mut PgConnection,
+    account: Uuid,
+    parent: Uuid,
+    kind: &str,
+    name: &str,
+) -> Uuid {
+    let id = Uuid::new_v4();
+    insert_node(conn, account, id, Some(parent), kind, name).await;
+    id
+}
+
+async fn insert_node(
+    conn: &mut PgConnection,
+    account: Uuid,
+    id: Uuid,
+    parent: Option<Uuid>,
+    kind: &str,
+    name: &str,
+) {
+    sqlx::query(
+        "INSERT INTO nodes (id, account_id, parent_id, kind, name, name_key, name_key_version, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $5, 1, 'epoch'::timestamptz, 'epoch'::timestamptz)",
+    )
+    .bind(id)
+    .bind(account)
+    .bind(parent)
+    .bind(kind)
+    .bind(name)
+    .execute(conn)
+    .await
+    .expect("insert node");
+}
+
+/// Marks `node` deleted, as a tombstone left by 02's delete.
+pub async fn tombstone(conn: &mut PgConnection, node: Uuid) {
+    sqlx::query("UPDATE nodes SET deleted_at = 'epoch'::timestamptz WHERE id = $1")
+        .bind(node)
+        .execute(conn)
+        .await
+        .expect("tombstone node");
+}
+
 /// An account with its root folder and one empty folder under it; returns the folder id.
 pub async fn account_with_folder(conn: &mut PgConnection, id: Uuid) -> Uuid {
-    account(conn, id).await;
-    let (root, folder) = (Uuid::new_v4(), Uuid::new_v4());
-    for (node, parent, name) in [(root, None, ""), (folder, Some(root), "vault")] {
-        sqlx::query(
-            "INSERT INTO nodes (id, account_id, parent_id, kind, name, name_key, name_key_version, created_at, updated_at) \
-             VALUES ($1, $2, $3, 'folder', $4, $4, 1, 'epoch'::timestamptz, 'epoch'::timestamptz)",
-        )
-        .bind(node)
-        .bind(id)
-        .bind(parent)
-        .bind(name)
-        .execute(&mut *conn)
-        .await
-        .expect("insert node");
-    }
-    folder
+    let root = account_with_root(conn, id).await;
+    node(conn, id, root, "folder", "vault").await
 }
 
 /// A vault of `account` rooted at `root`; returns the vault id.

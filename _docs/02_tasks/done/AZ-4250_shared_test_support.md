@@ -5,7 +5,7 @@
 **Description**: One sqlx statement capture and one boundary-backed `AccountGuard` test double, shared by the component test suites that copy them today.
 **Complexity**: 2 points
 **Dependencies**: none
-**Component**: shared test helpers (`sc_testdb` or a sibling test-support crate)
+**Component**: shared test helpers: the statement capture in `sc_testdb`; the `AccountGuard` double in `sunnycloud-testkit` (`src/components/testkit`), because a `contracts` edge from `sc_testdb` breaks the rule that helpers never reach `contracts`, even through test dependencies (batch 58)
 **Tracker**: AZ-4250
 **Epic**: AZ-3623 (E-01)
 
@@ -21,7 +21,7 @@ When they count or order statements
 Then they use one capture from a shared test helper crate, and their own copies are deleted
 
 **AC-2: One guard double**
-Given the 02, 05 and 08 suites
+Given the 02, 03, 05 and 08 suites (03's `start_ports.rs` copy added in batch 55)
 When they wire `PgTreeService`
 Then they use one `AccountGuard` test double from the same helper crate
 

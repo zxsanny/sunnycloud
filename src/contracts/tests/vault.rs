@@ -38,6 +38,7 @@ impl VaultService for Double {
         Ok(VaultHeader {
             header: vec![1, 2, 3],
             etag: etag("v1"),
+            root_node_id: id(),
         })
     }
 

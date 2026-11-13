@@ -8,8 +8,8 @@ use sunnycloud_tree::TreeJanitor;
 use uuid::Uuid;
 
 use crate::maintenance_support::{Maint, PURGE_AT, config};
-use crate::statements::StatementLog;
 use crate::support::START;
+use sc_testdb::statements::StatementLog;
 
 /// A deleted folder of 30 files in `account`; returns the folder.
 async fn deleted_folder(maint: &Maint, account: Uuid, root: Uuid) -> Uuid {

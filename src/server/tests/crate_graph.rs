@@ -37,6 +37,7 @@ const WORKSPACE_PACKAGES: &[(&str, &str)] = &[
     ("media-api", "components/08_media_jobs"),
     ("sunnycloud-http-api", "components/11_http_api"),
     ("sunnycloud-vault-service", "components/20_vault_service"),
+    ("sunnycloud-testkit", "components/testkit"),
     ("sunnycloud-server", "server"),
     ("sunnycloud-worker", "worker"),
     ("decoder-runner", "decoder"),

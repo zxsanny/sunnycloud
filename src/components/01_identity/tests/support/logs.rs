@@ -1,7 +1,8 @@
 //! Captures the log events of the test thread (level, target, message and fields) so a test can read the lines
 //! the component wrote. One process-wide subscriber serves every test of the binary (a per-thread default races
 //! with the callsite interest cache when tests run in parallel); `#[tokio::test]` runs a test on one thread.
-//! sqlx's statement events are left out. A binary uses either this or `statements::StatementLog`, not both.
+//! sqlx's statement events are left out. A binary uses either this or `sc_testdb::statements::StatementLog`, not
+//! both.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;

@@ -1,14 +1,14 @@
 //! The real 02 `TreeCommit::publish` (`PgTreeService`) over the media test database, wired as 02's own publish
-//! tests wire it: the real 07a ledger, 04 `GcQueue`, 05 feed stamp and notifier, and an `AccountGuard` read at its boundary (the
-//! identity guard is not a dependency of this crate). Minimal copies of 02's `mutation_support.rs` and
+//! tests wire it: the real 07a ledger, 04 `GcQueue`, 05 feed stamp and notifier, and the boundary-backed
+//! `sunnycloud_testkit::StateGuard` (the identity guard is not a dependency of this crate). Minimal copies of 02's `mutation_support.rs` and
 //! `publish_support.rs`; the tree crate is not edited.
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use contracts::{
-    AccountGuard, AccountGuardError, Begin, CommitActor, CommitEffect, EffectError, EntryOutcome,
-    NewRevision, PublishEntry, PublishedEntry, Target, async_trait,
+    Begin, CommitActor, CommitEffect, EffectError, EntryOutcome, NewRevision, PublishEntry,
+    PublishedEntry, Target, async_trait,
 };
 use sc_db::DbTx;
 use sc_error::ErrorCode;
@@ -17,6 +17,7 @@ use sqlx::Connection;
 use sunnycloud_blobstore::{BlobstoreConfig, GcQueue};
 use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
 use sunnycloud_sync_feed::{InProcessNotifier, PgFeedStamp};
+use sunnycloud_testkit::StateGuard;
 use sunnycloud_tree::PgTreeService;
 use uuid::Uuid;
 
@@ -25,25 +26,6 @@ use crate::support::{blob, load_settings};
 
 /// Large enough that the ledger never refuses in these tests.
 const DEFAULT_QUOTA: i64 = 1 << 40;
-
-/// Reads the account state `FOR SHARE`, as the identity guard does.
-struct StateGuard;
-
-#[async_trait]
-impl AccountGuard for StateGuard {
-    async fn ensure_active(&self, tx: &mut DbTx, account: Uuid) -> Result<(), AccountGuardError> {
-        let state: Option<String> =
-            sqlx::query_scalar("SELECT state FROM accounts WHERE id = $1 FOR SHARE")
-                .bind(account)
-                .fetch_optional(tx.conn())
-                .await
-                .map_err(|error| AccountGuardError::Unexpected(Box::new(error)))?;
-        match state.as_deref() {
-            Some("active") => Ok(()),
-            _ => Err(AccountGuardError::AccountNotActive),
-        }
-    }
-}
 
 /// An effect run after the media effect: its `on_entry` fails the entries of the named revisions, and its
 /// `on_batch` fails the whole commit when `batch` is set.
@@ -104,7 +86,7 @@ pub async fn tree_service(q: &Queue) -> (Arc<PgTreeService>, Uuid) {
     let queue = GcQueue::new(&blobstore, q.fixture.api.clone(), clock.clone()).expect("gc queue");
     let service = PgTreeService::new(
         q.fixture.api.clone(),
-        Arc::new(StateGuard),
+        Arc::new(StateGuard::default()),
         Arc::new(PgQuotaLedger::new(QuotaConfig {
             default_quota_bytes: DEFAULT_QUOTA,
         })),

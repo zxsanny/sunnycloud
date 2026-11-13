@@ -2198,10 +2198,10 @@ dependencies = [
  "sunnycloud-blobstore",
  "sunnycloud-quota",
  "sunnycloud-sync-feed",
+ "sunnycloud-testkit",
  "sunnycloud-tree",
  "thiserror 2.0.21",
  "tokio",
- "tracing",
  "uuid",
 ]
 
@@ -3304,6 +3304,7 @@ dependencies = [
  "sc_db",
  "sqlx",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -4226,11 +4227,23 @@ dependencies = [
  "sc_observability",
  "sc_testdb",
  "sqlx",
+ "sunnycloud-blobstore",
  "sunnycloud-quota",
+ "sunnycloud-testkit",
  "sunnycloud-tree",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "sunnycloud-testkit"
+version = "0.1.0"
+dependencies = [
+ "contracts",
+ "sc_db",
+ "sqlx",
  "uuid",
 ]
 
@@ -4253,6 +4266,7 @@ dependencies = [
  "sqlx",
  "sunnycloud-blobstore",
  "sunnycloud-quota",
+ "sunnycloud-testkit",
  "sunnycloud-tree",
  "thiserror 2.0.21",
  "tokio",
@@ -4276,6 +4290,7 @@ dependencies = [
  "sunnycloud-blobstore",
  "sunnycloud-quota",
  "sunnycloud-sync-feed",
+ "sunnycloud-testkit",
  "sunnycloud-vault-service",
  "thiserror 2.0.21",
  "tokio",
@@ -4288,10 +4303,17 @@ name = "sunnycloud-vault-service"
 version = "0.1.0"
 dependencies = [
  "contracts",
+ "sc_clock",
  "sc_config",
  "sc_db",
+ "sc_ids",
  "sc_testdb",
  "sqlx",
+ "sunnycloud-blobstore",
+ "sunnycloud-quota",
+ "sunnycloud-sync-feed",
+ "sunnycloud-testkit",
+ "sunnycloud-tree",
  "tokio",
  "uuid",
 ]
@@ -4391,6 +4413,8 @@ dependencies = [
 name = "sync-core-wasm"
 version = "0.1.0"
 dependencies = [
+ "sync-core-proto",
+ "uuid",
  "wasm-bindgen",
 ]
 

@@ -53,7 +53,7 @@ reqwest = { workspace = true, features = ["rustls-no-provider"] }
 rustls = { workspace = true }
 rustls-platform-verifier = "0.7.1"
 sha2 = { workspace = true }
-zeroize = "1.9"
+zeroize = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

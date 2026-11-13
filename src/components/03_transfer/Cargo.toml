@@ -37,5 +37,7 @@ bytes = { workspace = true }
 futures-core = { version = "0.3", default-features = false }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
+# The boundary-backed `AccountGuard` double (AZ-4250).
+sunnycloud-testkit = { path = "../testkit" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 uuid = { workspace = true, features = ["v4"] }

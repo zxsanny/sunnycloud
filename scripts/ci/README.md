@@ -74,3 +74,13 @@ The workflow only checks out, caches and calls these scripts, each under `watchd
 Tests: `tests/run-script-tests.sh` (run by `supply-chain`) covers the pinning, audit, coverage-threshold, watchdog (fast), secret-scan and quiet-flag checks. Run separately: `tests/test-watchdog-realtime.sh` (about 2.5 minutes, default 30 s / 120 s) and `tests/test-check-coverage-real.sh` (needs `cargo-llvm-cov`).
 
 Advisory ignore format in `src/deny.toml`: `{ id = "RUSTSEC-YYYY-NNNN", reason = "added=YYYY-MM-DD; expires=YYYY-MM-DD; why=..." }`.
+
+## `check-wasm-vectors.sh`: native, WASM and UniFFI give the same results
+
+Builds `sync-core-wasm` with wasm-pack and runs the shared vector file (`src/sync-core-wasm/vectors/sync_core_vectors.txt`) through the native, Node, browser (Chromium, Firefox, WebKit through Playwright) and UniFFI legs; prints `LEG <name> PASS|FAIL|NOT-RUN(reason)` per leg and fails on any difference, naming the case (contract `13_sync_core/wasm_exports.md`). Needs wasm-pack 0.15.x and node; Playwright from `PLAYWRIGHT_DIR` or the npx cache. The UniFFI leg reports `NOT-RUN(EMU)` until an emulator harness exists.
+
+```bash
+scripts/ci/check-wasm-vectors.sh                      # browsers that cannot launch are NOT-RUN
+scripts/ci/check-wasm-vectors.sh --require-browsers   # a browser that cannot launch fails the gate
+scripts/ci/tests/test-check-wasm-vectors.sh           # a seeded one-bit difference must fail and name the case
+```

@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c05 — `_docs/02_tasks/todo/B01-14_contracts_part3.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: other batches: E-10, E-13, E-14, E-16, E-18, E-21, E-22, E-30
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft (frozen when the producer task is accepted; `VaultService` stays a v1.2 proposal, 20 §1)
 **Last Updated**: 2026-11-11
 
@@ -92,7 +92,7 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 | Port | Method | Input -> Output | Errors |
 |---|---|---|---|
 | `VaultService` | `create_vault` | `account, header: bytes, root_node_id` -> `(vault_id, ETag)` | `VaultExists`, `HeaderTooLarge`, `NotFound` |
-| | `get_header` | `account, vault_id` -> `(header, ETag)` | `NotFound` |
+| | `get_header` | `account, vault_id` -> `VaultHeader{header, etag, root_node_id}` (root node id added 2026-11-13 for the GET route) | `NotFound` |
 | | `replace_header` | `account, vault_id, header, if_match: ETag` -> `ETag` | `NotFound`, `HeaderTooLarge`, `PreconditionFailed` |
 | | `report_unlock_failure` | `account, vault_id` -> `()` (best effort) | none |
 
