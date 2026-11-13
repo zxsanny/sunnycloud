@@ -1,0 +1,2 @@
+ALTER TABLE device_grants DROP CONSTRAINT device_grants_looked_up_by_account_id_fkey;
+ALTER TABLE device_grants DROP COLUMN looked_up_by_account_id;

@@ -116,5 +116,5 @@ Then the session row's `received` and `block_hashes` are rewritten after the 4th
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `put_block` must refuse a deleting account (03 §7, IT-03-15) but its error list has no `AccountNotActive` and it opens no transaction; how the check is made is not stated | E-14 owner | open | Medium |
-| ST-04-8: 04's rule for a rewrite with different bytes is open (E-10/c01); 03 refuses with `BlockConflict` before calling 04 | Owner via E-10 | open | Low |
+| `put_block` must refuse a deleting account (03 §7, IT-03-15) but its error list has no `AccountNotActive` and it opens no transaction; how the check is made is not stated | E-14 owner | resolved 2026-11-13 (owner): checked through `AccountGuard` in the checkpoint transaction (every 8 MiB or 1 s), no extra call per block; a deleting account is refused within one checkpoint interval (its credentials are revoked at the deletion request anyway) | Medium |
+| ST-04-8: 04's rule for a rewrite with different bytes is open (E-10/c01); 03 refuses with `BlockConflict` before calling 04 | Owner via E-10 | resolved 2026-11-12 (batch 48): identical bytes accepted, different bytes `BlockConflict` (04 `write_block_once`) | Low |

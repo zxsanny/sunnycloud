@@ -115,9 +115,11 @@ pub(crate) async fn live_file(
         Some(revision_id) => {
             let content_hash: Vec<u8> = row.try_get(5)?;
             let client_mtime: Option<i64> = row.try_get(7)?;
+            let blob_id: Uuid = row.try_get(10)?;
             let view = RevisionView {
                 id: revision_id,
                 node_id: id,
+                blob_id,
                 size: row.try_get(4)?,
                 content_hash: file_hash(content_hash)?,
                 blocklist: None,
@@ -126,7 +128,7 @@ pub(crate) async fn live_file(
                 client_meta: row.try_get(8)?,
                 created_at: Timestamp::from_unix_micros(row.try_get(9)?),
             };
-            Some((view, row.try_get(10)?))
+            Some((view, blob_id))
         }
     };
     Ok(Some(LiveFileRow {

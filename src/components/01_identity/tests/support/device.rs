@@ -199,3 +199,12 @@ pub async fn grant_approver(
     .await
     .expect("read grant approver")
 }
+
+/// The account the grant behind `user_code` is bound to by its first lookup (AZ-4267), if any.
+pub async fn grant_looked_up_by(conn: &mut PgConnection, user_code: &UserCode) -> Option<Uuid> {
+    sqlx::query_scalar("SELECT looked_up_by_account_id FROM device_grants WHERE user_code = $1")
+        .bind(user_code.as_str())
+        .fetch_one(conn)
+        .await
+        .expect("read grant binding")
+}

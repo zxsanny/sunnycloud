@@ -26,6 +26,7 @@ macro_rules! at {
         )
     };
 }
+pub(crate) use at;
 
 const ENQUEUE: &str = concat!(
     "INSERT INTO jobs (id, account_id, revision_id, kind, content_hash, params_version, priority, status, \
@@ -90,6 +91,15 @@ const LOCK_HOLDER: &str = concat!(
     "SELECT attempts FROM jobs WHERE id = $1 AND status = 'running' AND leased_by = $2 AND available_at > ",
     at!("$3"),
     " FOR UPDATE"
+);
+
+/// The job running under the worker's live lease; with `$4`, also one closed `derived` while it held it (an output
+/// post retried after a lost answer).
+const HELD: &str = concat!(
+    "SELECT account_id, revision_id, kind, content_hash, params_version FROM jobs \
+     WHERE id = $1 AND leased_by = $2 AND ((status = 'running' AND available_at > ",
+    at!("$3"),
+    ") OR ($4 AND status = 'succeeded' AND outcome = 'derived'))"
 );
 
 const MARK_DEAD: &str = concat!(
@@ -159,7 +169,7 @@ fn skip_name(outcome: SkipOutcome) -> &'static str {
     }
 }
 
-fn micros(at: Timestamp) -> i64 {
+pub(crate) fn micros(at: Timestamp) -> i64 {
     at.as_unix_micros()
 }
 
@@ -313,6 +323,50 @@ pub(crate) async fn complete_skipped(
             .execute(tx.conn())
             .await?;
         Ok::<_, DbError>(done.rows_affected() == 1)
+    })
+    .await
+}
+
+/// A held job as `accept_output` and `open_input` need it.
+pub(crate) struct HeldJob {
+    pub account: Uuid,
+    pub revision: Uuid,
+    pub kind: JobKind,
+    pub content_hash: FileHash,
+    pub params_version: u32,
+}
+
+/// account, revision, kind, content hash, params_version.
+type HeldRow = (Uuid, Uuid, String, Vec<u8>, i16);
+
+/// System scope: the job's account is not known before this lookup.
+pub(crate) async fn held(
+    db: &Db,
+    job: Uuid,
+    worker: &str,
+    now: Timestamp,
+    closed_derived_ok: bool,
+) -> Result<Option<HeldJob>, RunError<DbError>> {
+    db.run_system("job_held", async |tx| {
+        let row: Option<HeldRow> = sqlx::query_as(HELD)
+            .bind(job)
+            .bind(worker)
+            .bind(micros(now))
+            .bind(closed_derived_ok)
+            .fetch_optional(tx.conn())
+            .await?;
+        let Some((account, revision, kind, hash, params_version)) = row else {
+            return Ok(None);
+        };
+        let hash = <[u8; 32]>::try_from(hash).map_err(|_| overflow("content hash"))?;
+        Ok::<_, DbError>(Some(HeldJob {
+            account,
+            revision,
+            kind: parse_kind(&kind)?,
+            content_hash: FileHash::from_bytes(hash),
+            params_version: u32::try_from(params_version)
+                .map_err(|_| overflow("params_version"))?,
+        }))
     })
     .await
 }

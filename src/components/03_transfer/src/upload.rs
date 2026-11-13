@@ -15,19 +15,20 @@ use contracts::{
 };
 use sc_clock::{Clock, Timestamp};
 use sc_db::{Db, DbError, DbTx, RunError, Scope};
-use sc_ids::{BLOCK_SIZE, new_id};
+use sc_ids::new_id;
 use sc_names::validate_name;
 use sc_observability::{Metrics, ObsError, log_error, log_warn};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::blocks::{BLOCK_SIZE_U32, as_u32, block_count, need_blocks};
+use crate::caps::InflightCaps;
+use crate::checkpoint::CheckpointMark;
 use crate::config::TransferConfig;
+use crate::progress::{ProgressTable, SessionInfo};
 use crate::session_repo::{self, CLIENT_KEY_INDEX, KeyRow, NewSession};
 use crate::shortcut;
 use crate::upload_metrics::{Rejection, UploadMetrics};
-
-/// The 2 MiB protocol block size as the port's `block_size`.
-const BLOCK_SIZE_U32: u32 = BLOCK_SIZE as u32;
 
 /// The longest `client_key` the session row stores (`upload_sessions_client_key_check`).
 const MAX_CLIENT_KEY_BYTES: usize = 256;
@@ -46,16 +47,20 @@ pub enum StartFault {
 }
 
 /// The upload sessions of 03. `UploadService` itself is implemented once blocks, state and staging exist.
+/// `progress` holds the sessions started by this process (decision 12: one API process); `caps` the account
+/// and buffer in-flight caps.
 pub struct PgUploadService {
-    db: Db,
-    config: TransferConfig,
+    pub(crate) db: Db,
+    pub(crate) config: TransferConfig,
     guard: Arc<dyn AccountGuard>,
     tree: Arc<dyn TreeReader>,
     quota: Arc<dyn QuotaLedger>,
-    writer: Arc<dyn BlobWriter>,
+    pub(crate) writer: Arc<dyn BlobWriter>,
     registry: Arc<dyn BlobRegistry>,
-    clock: Arc<dyn Clock>,
-    metrics: Option<UploadMetrics>,
+    pub(crate) clock: Arc<dyn Clock>,
+    pub(crate) metrics: Option<UploadMetrics>,
+    pub(crate) progress: ProgressTable,
+    pub(crate) caps: InflightCaps,
 }
 
 /// The ports `start_upload` calls: the account guard (01), the tree reader (02), the quota ledger (07a) and the
@@ -84,6 +89,10 @@ impl PgUploadService {
             writer,
             registry,
         } = ports;
+        let caps = InflightCaps::new(
+            config.max_inflight_blocks_per_account,
+            config.max_buffered_block_bytes,
+        );
         PgUploadService {
             db,
             config,
@@ -94,10 +103,12 @@ impl PgUploadService {
             registry,
             clock,
             metrics: None,
+            progress: ProgressTable::new(),
+            caps,
         }
     }
 
-    /// Registers `upload_sessions_active` and `upload_rejections_total`; `Duplicate` when already registered.
+    /// Registers the upload series of [`UploadMetrics`]; `Duplicate` when already registered.
     pub fn with_metrics(mut self, metrics: &Metrics) -> Result<Self, ObsError> {
         self.metrics = Some(UploadMetrics::register(metrics)?);
         Ok(self)
@@ -148,11 +159,25 @@ impl PgUploadService {
                 }
             }
         };
-        if let Err(error) = self.writer.create_file(plan, size, true).await {
-            self.compensate(account, started.upload_id, blob_id, size)
-                .await;
-            return Err(self.refused(account, blob_error(error)));
-        }
+        let handle = match self.writer.create_file(plan, size, true).await {
+            Ok(handle) => handle,
+            Err(error) => {
+                self.compensate(account, started.upload_id, blob_id, size)
+                    .await;
+                return Err(self.refused(account, blob_error(error)));
+            }
+        };
+        let info = SessionInfo {
+            account,
+            declared_size: size,
+            handle,
+        };
+        let mark = CheckpointMark {
+            at: self.clock.monotonic(),
+            expires_at: started.expires_at,
+        };
+        self.progress
+            .insert_new(started.upload_id, info, as_u32(block_count), mark);
         if let Some(metrics) = &self.metrics {
             metrics.session_opened();
         }
@@ -290,7 +315,11 @@ impl PgUploadService {
         }
     }
 
-    async fn ensure_active(&self, tx: &mut DbTx, account: Uuid) -> Result<(), UploadError> {
+    pub(crate) async fn ensure_active(
+        &self,
+        tx: &mut DbTx,
+        account: Uuid,
+    ) -> Result<(), UploadError> {
         self.guard
             .ensure_active(tx, account)
             .await
@@ -342,27 +371,6 @@ fn check_request(request: &StartUpload) -> Result<(), UploadError> {
     Ok(())
 }
 
-/// `ceil(declared_size / 2 MiB)`; the configured size ceiling keeps it within the `integer` column.
-pub(crate) fn block_count(declared_size: i64) -> Result<i32, UploadError> {
-    let block = i64::from(BLOCK_SIZE_U32);
-    let blocks = declared_size / block + i64::from(declared_size % block > 0);
-    i32::try_from(blocks).map_err(|_| UploadError::SizeTooLarge)
-}
-
-/// The indexes whose bit is clear in a `received` bitmap (bit `i` is bit `i % 8` of byte `i / 8`).
-pub(crate) fn need_blocks(block_count: i32, received: &[u8]) -> Vec<u32> {
-    (0..as_u32(block_count))
-        .filter(|index| {
-            let byte = received.get(*index as usize / 8).copied().unwrap_or(0);
-            byte & (1 << (index % 8)) == 0
-        })
-        .collect()
-}
-
-fn as_u32(block_count: i32) -> u32 {
-    u32::try_from(block_count).unwrap_or(0)
-}
-
 fn stop(error: UploadError) -> TxOutcome {
     TxOutcome::Refused(error)
 }
@@ -392,78 +400,13 @@ fn blob_error(error: BlobError) -> UploadError {
     }
 }
 
-fn unexpected(error: DbError) -> UploadError {
+pub(crate) fn unexpected(error: DbError) -> UploadError {
     UploadError::Unexpected(Box::new(error))
 }
 
-fn run_error(error: RunError<UploadError>) -> UploadError {
+pub(crate) fn run_error(error: RunError<UploadError>) -> UploadError {
     match error {
         RunError::Closure(error) => error,
         RunError::Db(error) => unexpected(error),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const MIB: i64 = 1 << 20;
-
-    #[test]
-    fn block_count_is_the_ceiling_of_two_mib_blocks() {
-        // Arrange
-        let cases = [
-            (1, 1),
-            (2 * MIB - 1, 1),
-            (2 * MIB, 1),
-            (2 * MIB + 1, 2),
-            (4 * MIB, 2),
-            (10 * MIB, 5),
-            (10 * MIB + 1, 6),
-        ];
-
-        for (size, expected) in cases {
-            // Act
-            let blocks = block_count(size).expect("block count");
-
-            // Assert
-            assert_eq!(blocks, expected, "size {size}");
-        }
-    }
-
-    #[test]
-    fn a_new_session_needs_every_block() {
-        // Arrange
-        let blocks = block_count(10 * MIB).expect("block count");
-
-        // Act
-        let need = need_blocks(blocks, &[0]);
-
-        // Assert
-        assert_eq!(need, vec![0, 1, 2, 3, 4]);
-    }
-
-    #[test]
-    fn received_bits_are_not_needed_again() {
-        // Arrange
-        let received = [0b0000_0101, 0b0000_0001];
-
-        // Act
-        let need = need_blocks(9, &received);
-
-        // Assert
-        assert_eq!(need, vec![1, 3, 4, 5, 6, 7]);
-    }
-
-    #[test]
-    fn a_count_beyond_the_integer_column_is_too_large() {
-        // Arrange
-        let size = (i64::from(i32::MAX) + 1) * i64::from(BLOCK_SIZE_U32);
-
-        // Act
-        let result = block_count(size);
-
-        // Assert
-        assert!(matches!(result, Err(UploadError::SizeTooLarge)));
     }
 }

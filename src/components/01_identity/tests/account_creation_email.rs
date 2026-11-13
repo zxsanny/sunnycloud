@@ -172,15 +172,15 @@ async fn with_an_allowlist_a_listed_address_is_matched_without_regard_to_case_an
 async fn without_an_allowlist_no_email_is_read_or_stored() {
     // Arrange
     let mut rig = Rig::new(POOL, |config| config.email_allowlist.clear(), Vec::new()).await;
-    rig.member_invite("i-github").await;
-    rig.member_invite("i-oidc").await;
+    rig.member_invite("sc_inv_i-github").await;
+    rig.member_invite("sc_inv_i-oidc").await;
     rig.world.idp.behave(|behaviour| {
         behaviour.github_emails = vec![(VICTIM.to_owned(), true, true)];
     });
 
     // Act
-    let github = sign_in(&rig.world, GITHUB, "4040", Some("i-github"), |_| {}).await;
-    let oidc = sign_in(&rig.world, OIDC, "plain", Some("i-oidc"), |grant| {
+    let github = sign_in(&rig.world, GITHUB, "4040", Some("sc_inv_i-github"), |_| {}).await;
+    let oidc = sign_in(&rig.world, OIDC, "plain", Some("sc_inv_i-oidc"), |grant| {
         grant.email = Some((VICTIM.to_owned(), true));
     })
     .await;

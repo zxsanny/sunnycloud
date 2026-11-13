@@ -216,12 +216,16 @@ async fn a_limited_session_cannot_use_a_correct_code_while_another_caller_can_an
             .expect_err("wrong code");
     }
     let code = rig.pending_code().await;
+    // The other caller's lookup binds `code` to its account (AZ-4267), so the freed session tries its own code.
+    let own_code = rig.pending_code().await;
 
     // Act
     let refused = rig.lookup(&limited_session, &code, ip(APPROVER_IP)).await;
     let allowed = rig.lookup(&other, &code, ip("203.0.113.40")).await;
     rig.harness.clock.tick(WINDOW);
-    let after_window = rig.lookup(&limited_session, &code, ip(APPROVER_IP)).await;
+    let after_window = rig
+        .lookup(&limited_session, &own_code, ip(APPROVER_IP))
+        .await;
 
     // Assert
     assert!(limited(&refused), "{refused:?}");

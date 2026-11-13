@@ -94,3 +94,7 @@ Then both return `UploadNotFound`
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | G-03-1: worst case 16 MiB against AC-3's 10 MiB; AC-2's bound comes from E-14/c01 | Owner | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |
+
+## Notes from AZ-3735 (2026-11-13)
+
+After a restart `put_block` cannot rebuild the write handle of a session this process did not start: 04's `BlobCatalog::get_ref` answers `None` for an `uploading` blob and no port serves an upload's key material, so the lazy load needs a port change (for example a catalog read of an uploading blob's key, account-scoped). The reaper and abort must also remove the in-memory progress entry.

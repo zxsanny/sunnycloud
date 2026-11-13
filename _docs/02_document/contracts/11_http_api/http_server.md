@@ -59,7 +59,7 @@ Error names are proposals of E-21/c03; they become final when that task is accep
 | worker output body caps | `derived_max_thumb`, `derived_max_preview`, `derived_max_transcode` (owned by 08; `WorkerOutputLimits`, bytes) | 5MiB, 20MiB, 10GiB |
 | shutdown grace | `shutdown_grace` | 25s |
 | minimum client version | `min_client_version` | set by the release; one semver or `family=semver,...` |
-| credential format | not in the key table (Open point 6): `credentials.session_cookie`, `credentials.binding_cookie` (each `__Host-` plus a cookie-name token, and different), `credentials.device_token_prefix` | required |
+| credential format | not in the key table (Open point 6): `credentials.session_cookie`, `credentials.binding_cookie` (each `__Host-` plus a cookie-name token, and different); a bearer is a device token when it carries `TokenKind::DeviceToken`'s prefix `sc_dev_` (`sc_ids`, AZ-4268), so there is no `device_token_prefix` setting | required |
 | `ServerInfo` value | built by 12 from the typed sections and the build (`server_info.md`) | - |
 
 ### Listeners

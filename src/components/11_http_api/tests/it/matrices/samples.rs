@@ -174,6 +174,7 @@ fn prepare_files(script: &Script, owner: &str) -> bool {
             Ok::<_, TreeReaderError>(RevisionView {
                 id: REVISION,
                 node_id: NODE,
+                blob_id: uuid::Uuid::from_u128(0xB10B),
                 size: 0,
                 content_hash: sc_ids::FileHash::from_bytes([0xAB; 32]),
                 blocklist: None,

@@ -45,11 +45,13 @@ pub struct NodeView {
     pub thumb_state: ThumbState,
 }
 
-/// `blocklist` is filled only by `TreeReader::get_revision`. `client_meta` is JSON text.
+/// `blocklist` is filled only by `TreeReader::get_revision`. `client_meta` is JSON text. `blob_id` is the
+/// revision's blob (not a `BlobRef`); its key material comes from 04's `BlobCatalog`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevisionView {
     pub id: Uuid,
     pub node_id: Uuid,
+    pub blob_id: Uuid,
     pub size: i64,
     pub content_hash: FileHash,
     pub blocklist: Option<Vec<Hash32>>,
@@ -97,6 +99,8 @@ pub struct LiveFile {
 }
 
 /// Tombstoned, purged, of another account, or under a tombstoned ancestor: `Gone`, never an error.
+// `Found` is the common answer and is moved once per lookup; boxing it would change the port for every caller.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiveFileLookup {
     Found(LiveFile),

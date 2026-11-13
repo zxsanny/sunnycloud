@@ -15,7 +15,7 @@ const USER_CODE_LEN: usize = 8;
 /// Bytes below this value map to a base-20 digit without bias (240 = 12 * 20).
 const USER_CODE_UNBIASED_LIMIT: u8 = 240;
 
-/// The token families. The kind travels with the token for the caller; it does not change the value.
+/// The token families. Every token of a kind starts with the kind's [`TokenKind::prefix`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind {
     Session,
@@ -28,6 +28,23 @@ pub enum TokenKind {
     MobileLoginCode,
 }
 
+impl TokenKind {
+    /// The type prefix of the kind's tokens: `sc_`, three letters, `_` (AZ-4268). Part of the token text, so the
+    /// stored hash covers it: a token of one kind can never match a stored hash of another kind.
+    pub const fn prefix(self) -> &'static str {
+        match self {
+            TokenKind::Session => "sc_ses_",
+            TokenKind::Refresh => "sc_ref_",
+            TokenKind::DeviceToken => "sc_dev_",
+            TokenKind::DeviceCode => "sc_dcd_",
+            TokenKind::Invite => "sc_inv_",
+            TokenKind::Setup => "sc_set_",
+            TokenKind::Share => "sc_shr_",
+            TokenKind::MobileLoginCode => "sc_lgc_",
+        }
+    }
+}
+
 /// A bearer secret as handed to its owner once. `Debug` and `Display` print a placeholder.
 ///
 /// Store only [`sha256_token`] of it; read the value with [`RawToken::expose`] at the single place that
@@ -38,7 +55,10 @@ pub struct RawToken {
 }
 
 impl RawToken {
-    /// Wraps a token received from outside (a request header, a form field) so it can be hashed.
+    /// Wraps a token received from outside (a request header, a form field) as the kind the caller expects, so
+    /// it can be hashed. The text is kept as presented: a token of another kind hashes to a value no row of this
+    /// kind holds, so the lookup answers it as unknown. A store that holds several kinds checks
+    /// [`RawToken::is_of_its_kind`] first.
     pub fn from_presented(kind: TokenKind, value: String) -> Self {
         Self { kind, value }
     }
@@ -47,7 +67,12 @@ impl RawToken {
         self.kind
     }
 
-    /// The secret value, URL-safe base64 without padding.
+    /// Whether the text starts with the prefix of the kind it was presented as.
+    pub fn is_of_its_kind(&self) -> bool {
+        self.value.starts_with(self.kind.prefix())
+    }
+
+    /// The secret value: the kind's prefix, then URL-safe base64 without padding.
     pub fn expose(&self) -> &str {
         &self.value
     }
@@ -113,14 +138,23 @@ fn fill_random(buf: &mut [u8]) -> Result<(), RngUnavailable> {
     getrandom::fill(buf).map_err(|_| RngUnavailable)
 }
 
-/// A new token: 256 CSPRNG bits as URL-safe base64 without padding (43 characters).
+/// A new token: the kind's prefix (7 characters), then 256 CSPRNG bits as URL-safe base64 without padding
+/// (43 characters).
 pub fn new_token(kind: TokenKind) -> Result<RawToken, RngUnavailable> {
     let mut bytes = [0u8; TOKEN_BYTES];
     fill_random(&mut bytes)?;
     Ok(RawToken {
         kind,
-        value: URL_SAFE_NO_PAD.encode(bytes),
+        value: format!("{}{}", kind.prefix(), URL_SAFE_NO_PAD.encode(bytes)),
     })
+}
+
+/// A random 256-bit URL-safe text (43 characters, no padding) with no type prefix, for one-time values that are
+/// never presented as credentials (sign-in state, nonce, PKCE verifier, browser binding).
+pub fn new_random_text() -> Result<String, RngUnavailable> {
+    let mut bytes = [0u8; TOKEN_BYTES];
+    fill_random(&mut bytes)?;
+    Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
 /// A new device-grant user code: 8 characters drawn uniformly from the RFC 8628 base-20 alphabet.
@@ -143,7 +177,7 @@ pub fn new_user_code() -> Result<UserCode, RngUnavailable> {
     Ok(UserCode(code))
 }
 
-/// SHA-256 of the token's text, the only form that is stored.
+/// SHA-256 of the token's full text, prefix included: the only form that is stored.
 pub fn sha256_token(token: impl AsRef<str>) -> TokenHash {
     TokenHash::from_bytes(Sha256::digest(token.as_ref().as_bytes()).into())
 }

@@ -31,7 +31,7 @@ use sc_clock::{Clock, Timestamp};
 use sc_config::{KeyProblem, Reason};
 use sc_db::Db;
 use sc_error::ErrorCode;
-use sc_ids::{RawToken, TokenHash, TokenKind, new_id, new_token, sha256_token};
+use sc_ids::{RawToken, TokenHash, TokenKind, new_id, new_random_text, new_token, sha256_token};
 use sc_ratelimit::AbuseLimiter;
 use uuid::Uuid;
 
@@ -157,6 +157,11 @@ impl IdentitySignIn {
             (Some(_), Some(_)) => return Err(invalid_request()),
             (token, None) | (None, token) => token,
         };
+        // Invites and setup tokens share one table, which a redemption reads by hash whatever the kind: a token
+        // in the other kind's field is refused here, from its text alone (AZ-4268).
+        if invite.as_ref().is_some_and(|token| !token.is_of_its_kind()) {
+            return Err(invalid_request());
+        }
         self.open_state(
             provider.as_ref(),
             StateRequest {
@@ -418,12 +423,10 @@ fn param<'a>(params: &'a CallbackParams, name: &str) -> Option<&'a str> {
         .map(|(_, value)| value.as_str())
 }
 
-/// A random 256-bit URL-safe text for the state, nonce, PKCE verifier and browser binding. The token kind
-/// is only a label of the generator; these values are never presented as credentials.
+/// A random 256-bit URL-safe text for the state, nonce, PKCE verifier and browser binding; never a credential,
+/// so it carries no token type prefix.
 fn random() -> Result<String, SignInError> {
-    new_token(TokenKind::Session)
-        .map(|token| token.expose().to_owned())
-        .map_err(unexpected)
+    new_random_text().map_err(unexpected)
 }
 
 fn after(at: Timestamp, by: Duration) -> Result<Timestamp, SignInError> {

@@ -20,7 +20,7 @@ pub(crate) struct BlobPlace {
 
 const REVISION: &str = "SELECT node_id, size, content_hash, blocklist, media_type, \
     (extract(epoch FROM client_mtime) * 1000000)::bigint, client_meta::text, \
-    (extract(epoch FROM created_at) * 1000000)::bigint \
+    (extract(epoch FROM created_at) * 1000000)::bigint, blob_id \
     FROM revisions WHERE id = $1 AND account_id = $2";
 
 // A revision row exists until the retention purge or the account erase collects it.
@@ -81,6 +81,7 @@ pub(crate) async fn revision(
     Ok(Some(RevisionView {
         id,
         node_id: row.try_get(0)?,
+        blob_id: row.try_get(8)?,
         size: row.try_get(1)?,
         content_hash: file_hash(row.try_get(2)?)?,
         blocklist: Some(blocks(&blocklist)?),

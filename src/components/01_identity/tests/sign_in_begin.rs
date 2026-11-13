@@ -158,7 +158,7 @@ async fn begin_stores_only_the_hash_of_state_and_binding_and_the_hash_of_the_inv
     let mut request = begin_request(OIDC, "/files");
     request.invite_token = Some(RawToken::from_presented(
         TokenKind::Invite,
-        "invite-plaintext-secret".to_owned(),
+        "sc_inv_plaintext-secret".to_owned(),
     ));
 
     // Act
@@ -179,13 +179,13 @@ async fn begin_stores_only_the_hash_of_state_and_binding_and_the_hash_of_the_inv
     )
     .bind(&state)
     .bind(&binding)
-    .bind("invite-plaintext-secret")
+    .bind("sc_inv_plaintext-secret")
     .fetch_one(&mut world.conn)
     .await
     .expect("state row");
     assert!(hash_matches, "state_hash is SHA-256(state || binding)");
     assert!(invite_matches, "invite_token_hash is SHA-256(invite token)");
-    for secret in [state.as_str(), binding.as_str(), "invite-plaintext-secret"] {
+    for secret in [state.as_str(), binding.as_str(), "sc_inv_plaintext-secret"] {
         assert!(!dump.contains(secret), "plaintext secret in oauth_states");
     }
     world.finish().await;

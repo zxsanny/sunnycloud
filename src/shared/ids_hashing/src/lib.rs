@@ -19,5 +19,7 @@ pub use error::{HashError, RngUnavailable};
 pub use hashing::{BLOCK_SIZE, FileHasher, derive_client_key, hash_block, rollup};
 #[cfg(feature = "new-id")]
 pub use id::new_id;
-pub use token::{RawToken, TokenKind, UserCode, ct_eq, new_token, new_user_code, sha256_token};
+pub use token::{
+    RawToken, TokenKind, UserCode, ct_eq, new_random_text, new_token, new_user_code, sha256_token,
+};
 pub use types::{FileHash, Hash32, TokenHash};

@@ -179,8 +179,6 @@ async fn only_hashes_of_random_typed_tokens_are_stored_and_no_token_is_logged() 
 }
 
 #[tokio::test]
-#[ignore = "DEFECT: AZ-3692 AC-4 type prefix: identity tokens carry no type prefix (sc_ids::new_token issues bare \
-            URL-safe base64; the prefix strings are unspecified, sc_ids.md open point 1, data_model.md section 1)"]
 async fn every_token_family_carries_its_own_type_prefix() {
     // Arrange
     let mut rig = Rig::new(POOL, |_| {}, Vec::new()).await;

@@ -98,20 +98,26 @@ async fn without_an_invite_with_an_unknown_one_or_an_expired_one_the_result_is_i
     // Arrange
     let mut rig = Rig::new(POOL, |_| {}, Vec::new()).await;
     let now = START.as_unix_micros();
-    rig.invite("expired-before", "user", now - 1).await;
-    rig.invite("expires-now", "user", now).await;
-    rig.invite("expires-during", "user", now + 100_000).await;
-    let (callback, binding) =
-        support::registration::authorized(&rig.world, OIDC, "late", Some("expires-during"), |_| {})
-            .await;
+    rig.invite("sc_inv_expired-before", "user", now - 1).await;
+    rig.invite("sc_inv_expires-now", "user", now).await;
+    rig.invite("sc_inv_expires-during", "user", now + 100_000)
+        .await;
+    let (callback, binding) = support::registration::authorized(
+        &rig.world,
+        OIDC,
+        "late",
+        Some("sc_inv_expires-during"),
+        |_| {},
+    )
+    .await;
 
     // Act
     let mut results = Vec::new();
     for invite in [
         None,
-        Some("unknown-token"),
-        Some("expired-before"),
-        Some("expires-now"),
+        Some("sc_inv_unknown-token"),
+        Some("sc_inv_expired-before"),
+        Some("sc_inv_expires-now"),
     ] {
         results.push(sign_in(&rig.world, OIDC, "stranger", invite, |_| {}).await);
     }
@@ -215,29 +221,35 @@ async fn a_second_hook_registration_is_refused_and_the_first_list_stays() {
 async fn the_display_name_is_the_name_else_the_username_else_user() {
     // Arrange
     let mut rig = Rig::new(POOL, |_| {}, Vec::new()).await;
-    for token in ["i-1", "i-2", "i-3", "i-4"] {
+    for token in ["sc_inv_i-1", "sc_inv_i-2", "sc_inv_i-3", "sc_inv_i-4"] {
         rig.member_invite(token).await;
     }
 
     // Act
-    sign_in(&rig.world, OIDC, "named", Some("i-1"), |grant| {
+    sign_in(&rig.world, OIDC, "named", Some("sc_inv_i-1"), |grant| {
         grant.name = Some("Grace".to_owned());
         grant.preferred_username = Some("grace-h".to_owned());
     })
     .await
     .expect("named");
-    sign_in(&rig.world, OIDC, "username-only", Some("i-2"), |grant| {
-        grant.preferred_username = Some("grace-h".to_owned());
-    })
+    sign_in(
+        &rig.world,
+        OIDC,
+        "username-only",
+        Some("sc_inv_i-2"),
+        |grant| {
+            grant.preferred_username = Some("grace-h".to_owned());
+        },
+    )
     .await
     .expect("username only");
-    sign_in(&rig.world, OIDC, "anonymous", Some("i-3"), |_| {})
+    sign_in(&rig.world, OIDC, "anonymous", Some("sc_inv_i-3"), |_| {})
         .await
         .expect("no name");
     rig.world
         .idp
         .behave(|behaviour| behaviour.github_no_name = true);
-    sign_in(&rig.world, GITHUB, "7002", Some("i-4"), |_| {})
+    sign_in(&rig.world, GITHUB, "7002", Some("sc_inv_i-4"), |_| {})
         .await
         .expect("github login only");
 

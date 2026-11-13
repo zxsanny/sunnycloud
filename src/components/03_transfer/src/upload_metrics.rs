@@ -1,5 +1,5 @@
-//! The upload series of `deployment/observability.md` § Transfer: `upload_sessions_active` and
-//! `upload_rejections_total{reason}`. A process without a registry leaves them out and records nothing.
+//! The upload series of `deployment/observability.md` § Transfer: `upload_sessions_active`,
+//! `upload_rejections_total{reason}`, `blocks_received_total` and `block_bytes_received_total`. A process without a registry leaves them out and records nothing.
 
 use sc_observability::{Counter, Gauge, LabelSet, Metrics, NoLabels, ObsError};
 
@@ -26,6 +26,8 @@ impl LabelSet for Rejection {
 pub(crate) struct UploadMetrics {
     active: Gauge<NoLabels>,
     rejections: Counter<Rejection>,
+    blocks: Counter<NoLabels>,
+    block_bytes: Counter<NoLabels>,
 }
 
 impl UploadMetrics {
@@ -33,6 +35,8 @@ impl UploadMetrics {
         Ok(UploadMetrics {
             active: metrics.gauge("upload_sessions_active")?,
             rejections: metrics.counter("upload_rejections_total")?,
+            blocks: metrics.counter("blocks_received_total")?,
+            block_bytes: metrics.counter("block_bytes_received_total")?,
         })
     }
 
@@ -42,5 +46,11 @@ impl UploadMetrics {
 
     pub(crate) fn rejected(&self, reason: Rejection) {
         self.rejections.inc(reason);
+    }
+
+    /// A new block made durable.
+    pub(crate) fn block_received(&self, bytes: u64) {
+        self.blocks.inc(NoLabels);
+        self.block_bytes.inc_by(NoLabels, bytes);
     }
 }

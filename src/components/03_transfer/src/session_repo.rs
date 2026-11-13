@@ -1,4 +1,4 @@
-//! The `upload_sessions` statements of `start_upload`. Every statement names the account, so a row of another
+//! The `upload_sessions` statements of `start_upload` and of the `put_block` checkpoint. Every statement names the account, so a row of another
 //! account is never read or written even in system scope. Timestamps travel as Unix microseconds.
 
 use sc_clock::Timestamp;
@@ -33,6 +33,14 @@ const INSERT: &str = "INSERT INTO upload_sessions (id, account_id, blob_id, clie
 
 const DELETE_OPEN: &str = "DELETE FROM upload_sessions \
      WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL";
+
+// A checkpoint rewrites the progress columns and rolls the expiry; a committed or already expired row is never
+// written (the reaper owns an expired one).
+const CHECKPOINT: &str = "UPDATE upload_sessions SET received = $3, block_hashes = $4, \
+     last_checkpoint_at = 'epoch'::timestamptz + $5::bigint * interval '1 microsecond', \
+     expires_at = 'epoch'::timestamptz + $6::bigint * interval '1 microsecond' \
+     WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL \
+     AND expires_at > 'epoch'::timestamptz + $5::bigint * interval '1 microsecond'";
 
 /// The row a `client_key` names. `committed_revision_id` is `Some` once its commit created that revision.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,6 +135,30 @@ pub(crate) async fn delete_open(tx: &mut DbTx, account: Uuid, id: Uuid) -> Resul
     let done = sqlx::query(DELETE_OPEN)
         .bind(id)
         .bind(account)
+        .execute(tx.conn())
+        .await?;
+    Ok(done.rows_affected())
+}
+
+/// The progress columns of an open session as a checkpoint writes them.
+pub(crate) struct Progress<'a> {
+    pub id: Uuid,
+    pub account: Uuid,
+    pub received: &'a [u8],
+    pub block_hashes: &'a [u8],
+    pub now: Timestamp,
+    pub expires_at: Timestamp,
+}
+
+/// Writes a checkpoint; returns the rows written, 0 when the session is gone, committed or expired.
+pub(crate) async fn checkpoint(tx: &mut DbTx, progress: &Progress<'_>) -> Result<u64, DbError> {
+    let done = sqlx::query(CHECKPOINT)
+        .bind(progress.id)
+        .bind(progress.account)
+        .bind(progress.received)
+        .bind(progress.block_hashes)
+        .bind(progress.now.as_unix_micros())
+        .bind(progress.expires_at.as_unix_micros())
         .execute(tx.conn())
         .await?;
     Ok(done.rows_affected())

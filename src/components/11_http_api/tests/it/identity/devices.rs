@@ -123,7 +123,10 @@ async fn an_approved_poll_answers_the_device_token_once() {
     let stack = Stack::start().await;
     stack.script.push(
         POLL,
-        Ok::<_, DeviceGrantError>(DeviceToken(token(TokenKind::DeviceToken, "dev-NEW_token"))),
+        Ok::<_, DeviceGrantError>(DeviceToken(token(
+            TokenKind::DeviceToken,
+            "sc_dev_NEW_token",
+        ))),
     );
 
     // Act
@@ -135,7 +138,7 @@ async fn an_approved_poll_answers_the_device_token_once() {
     assert_eq!(answer.status, 200);
     assert_eq!(
         answer.json(),
-        json!({"access_token": "dev-NEW_token", "token_type": "Bearer"})
+        json!({"access_token": "sc_dev_NEW_token", "token_type": "Bearer"})
     );
     stack.stop().await;
 }

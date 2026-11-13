@@ -23,7 +23,7 @@ use crate::harness::{DEVICE_PREFIX, Script, new_metrics, stub_services};
 
 pub const MEMBER_TOKEN: &str = "member-session";
 pub const ADMIN_TOKEN: &str = "admin-session";
-pub const DEVICE_TOKEN: &str = "dev-laptop";
+pub const DEVICE_TOKEN: &str = "sc_dev_laptop";
 pub const FAULT_TOKEN: &str = "fault-token-9f3a";
 pub const WORKER_SECRET: &str = "worker-secret";
 

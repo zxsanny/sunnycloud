@@ -106,24 +106,32 @@ const TOUCH_GRANT: &str = "UPDATE device_grants \
 const GRANT_STATE: &str = "SELECT status, (extract(epoch FROM expires_at) * 1000000)::bigint \
     FROM device_grants WHERE device_code_hash = $1";
 
-const PENDING_BY_USER_CODE: &str = "SELECT id, (extract(epoch FROM expires_at) * 1000000)::bigint, \
-    device_name, host(requester_ip), requester_location FROM device_grants \
+// The lookup binds the grant to the first account that looks it up (AZ-4267). The conditional update is the
+// bind: of two concurrent lookups by different accounts, the row lock lets one set the column; the other
+// re-checks the `WHERE` after it commits, finds the grant bound to someone else and matches no row.
+const BIND_BY_USER_CODE: &str = "UPDATE device_grants SET looked_up_by_account_id = $3 \
     WHERE user_code = $1 AND status = 'pending' \
-    AND expires_at > 'epoch'::timestamptz + $2::bigint * interval '1 microsecond'";
+    AND expires_at > 'epoch'::timestamptz + $2::bigint * interval '1 microsecond' \
+    AND (looked_up_by_account_id IS NULL OR looked_up_by_account_id = $3) \
+    RETURNING id, (extract(epoch FROM expires_at) * 1000000)::bigint, \
+    device_name, host(requester_ip), requester_location";
 
+// Every decide statement sees only the grants the deciding account looked up: any other grant, bound to
+// another account or to none, is answered as an unknown id.
 const DECIDE_GRANT: &str = "UPDATE device_grants SET status = $2, account_id = $3, \
     approved_by_session_id = $4, \
     approved_at = 'epoch'::timestamptz + $5::bigint * interval '1 microsecond' \
-    WHERE id = $1 AND status = 'pending' \
+    WHERE id = $1 AND looked_up_by_account_id = $6 AND status = 'pending' \
     AND expires_at > 'epoch'::timestamptz + $5::bigint * interval '1 microsecond'";
 
 // There is no `expired` status: a code that ran out undecided is closed as `denied`, and polls report
 // expiry before the status.
 const CLOSE_EXPIRED_GRANT: &str = "UPDATE device_grants SET status = 'denied' \
-    WHERE id = $1 AND status = 'pending' \
+    WHERE id = $1 AND looked_up_by_account_id = $3 AND status = 'pending' \
     AND expires_at <= 'epoch'::timestamptz + $2::bigint * interval '1 microsecond'";
 
-const GRANT_EXISTS: &str = "SELECT 1 FROM device_grants WHERE id = $1";
+const GRANT_EXISTS: &str =
+    "SELECT 1 FROM device_grants WHERE id = $1 AND looked_up_by_account_id = $2";
 
 const LIST_DEVICES: &str = "SELECT id, device_name, platform, \
     (extract(epoch FROM created_at) * 1000000)::bigint, \
@@ -207,14 +215,18 @@ pub(crate) async fn poll(
     )))
 }
 
-pub(crate) async fn pending_by_user_code(
+/// The pending, unexpired grant of `user_code`, bound to `account` unless another account looked it up first.
+/// A grant bound to another account is `None`, as an unknown code.
+pub(crate) async fn bind_by_user_code(
     tx: &mut DbTx,
     user_code: &str,
+    account: Uuid,
     now: Timestamp,
 ) -> Result<Option<PendingGrant>, DbError> {
-    let row = sqlx::query_as::<_, PendingTuple>(PENDING_BY_USER_CODE)
+    let row = sqlx::query_as::<_, PendingTuple>(BIND_BY_USER_CODE)
         .bind(user_code)
         .bind(now.as_unix_micros())
+        .bind(account)
         .fetch_optional(tx.conn())
         .await?;
     Ok(row.map(
@@ -228,8 +240,9 @@ pub(crate) async fn pending_by_user_code(
     ))
 }
 
-/// Approves or denies the pending grant `id`. An approval records the approving account and session; a denial
-/// records only the status.
+/// Approves or denies the pending grant `id` that the approver's account looked up. An approval records the
+/// approving account and session; a denial records only the status. A grant the account did not look up is
+/// `Unknown` and is not touched.
 pub(crate) async fn decide(
     tx: &mut DbTx,
     id: Uuid,
@@ -251,6 +264,7 @@ pub(crate) async fn decide(
         .bind(account)
         .bind(session)
         .bind(now.as_unix_micros())
+        .bind(approver.account_id)
         .execute(tx.conn())
         .await?;
     if applied.rows_affected() == 1 {
@@ -259,6 +273,7 @@ pub(crate) async fn decide(
     let closed = sqlx::query(CLOSE_EXPIRED_GRANT)
         .bind(id)
         .bind(now.as_unix_micros())
+        .bind(approver.account_id)
         .execute(tx.conn())
         .await?;
     if closed.rows_affected() == 1 {
@@ -266,6 +281,7 @@ pub(crate) async fn decide(
     }
     let exists = sqlx::query_scalar::<_, i32>(GRANT_EXISTS)
         .bind(id)
+        .bind(approver.account_id)
         .fetch_optional(tx.conn())
         .await?;
     Ok(if exists.is_some() {

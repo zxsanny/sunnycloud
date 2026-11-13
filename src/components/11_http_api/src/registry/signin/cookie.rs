@@ -104,7 +104,6 @@ mod tests {
         CookieNames::new(&CredentialFormat {
             session_cookie: "__Host-sid".to_owned(),
             binding_cookie: "__Host-bind".to_owned(),
-            device_token_prefix: "dev-".to_owned(),
         })
     }
 

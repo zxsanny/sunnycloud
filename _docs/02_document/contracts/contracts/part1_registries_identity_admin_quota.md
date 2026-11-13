@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c03 — `_docs/02_tasks/todo/B01-12_contracts_part1.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c04 (part 2), E-00/c05 (part 3); other batches: E-10..E-22, E-30 (implementers and callers)
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: draft (frozen when the producer task is accepted)
 **Last Updated**: 2026-11-05
 
@@ -67,8 +67,8 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | | `touch` | `&Principal` -> `()` (at most once a minute) | `Unexpected` |
 | `DeviceGrantService` | `request` | `device_name, platform, requester_ip` -> `DeviceAuthorization{device_code, user_code, interval, expires_in}` | none |
 | | `poll` | `device_code` -> `DeviceToken` (once) | `AuthorizationPending`, `SlowDown`, `AccessDenied`, `ExpiredToken` |
-| | `lookup_for_approval` | `&Principal, user_code, approver_ip` -> `ApprovalView{grant_id, expires_at, device, requester_ip, requester_location, approver_ip, approver_location, mismatch}` (`grant_id` is the id `decide` takes; `expires_at` is the code's expiry, owner decision 2026-11-05) | `UnknownCode`, `RateLimited{retry_after}` |
-| | `decide` | `&Principal, grant_id, Decision{Approve \| Deny}` -> `()` | `UnknownCode`, `Expired`, `AlreadyDecided` |
+| | `lookup_for_approval` | `&Principal, user_code, approver_ip` -> `ApprovalView{grant_id, expires_at, device, requester_ip, requester_location, approver_ip, approver_location, mismatch}` (`grant_id` is the id `decide` takes; `expires_at` is the code's expiry, owner decision 2026-11-05) | `UnknownCode`, `RateLimited{retry_after}` Binds the pending grant to the caller's account on first lookup; a grant bound to another account is `UnknownCode` (AZ-4267). |
+| | `decide` | `&Principal, grant_id, Decision{Approve \| Deny}` -> `()` | `UnknownCode` (also for a grant the caller's account did not look up: another account's, never looked up, or unknown; AZ-4267), `Expired`, `AlreadyDecided` (both only for the caller's own grants) |
 | | `list_devices` | `account` -> `Vec<DeviceInfo>` | none |
 | | `revoke_device` | `account, device_id` -> `()` | `NotFound` |
 | | `revoke_self` | `&Principal` (device) -> `()` | none |
@@ -173,3 +173,4 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | 1.1.0 | 2026-11-05 | `HealthContributor`, `ReadinessCheck`, `HealthItem`, `ReadinessItem` moved to `sc_observability` and re-exported here; `ApprovalView` gains `grant_id` and `expires_at` (owner decisions 2026-11-05) | decompose Step 4 |
 | 1.2.0 | 2026-11-13 | `SignInService`: the caller's address (`client_ip`) on `begin` (`BeginSignIn`), `complete`, `complete_link` and `exchange_mobile_code`, for the per-IP sign-in and invalid-token limits (AZ-3691) | AZ-3691 |
 | 1.3.0 | 2026-11-13 | `InviteError::NotFound`; `OperatorIdentityError::{NotFound, NotAnAdmin}` (open point 7 applied for invites and `reset_admin`) | AZ-3688 |
+| 1.4.0 | 2026-11-13 | Device grant bound at lookup; `decide` answers `UnknownCode` for a grant the caller's account did not look up (owner, security fix) | AZ-4267 |

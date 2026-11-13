@@ -25,7 +25,7 @@ struct Tally {
 /// One iteration: a fresh invite, `racers` identities through `begin` and the provider, then every `complete`
 /// at once.
 async fn race(rig: &Rig, service: &Arc<IdentitySignIn>, iteration: u64, racers: u64) -> Tally {
-    let token = format!("race-{racers}-{iteration}");
+    let token = format!("sc_inv_race-{racers}-{iteration}");
     let mut callbacks = Vec::new();
     for racer in 0..racers {
         let subject = (racers * 1_000_000 + iteration * 100 + racer).to_string();
@@ -82,7 +82,7 @@ async fn concurrent_redemptions_of_one_invite_create_exactly_one_account_and_the
     let mut failures = Vec::new();
     for racers in [2, u64::from(MOST_RACERS)] {
         for iteration in 0..ITERATIONS {
-            rig.member_invite(&format!("race-{racers}-{iteration}"))
+            rig.member_invite(&format!("sc_inv_race-{racers}-{iteration}"))
                 .await;
             let before = rig.rows().await;
             let tally = race(&rig, &service, iteration, racers).await;

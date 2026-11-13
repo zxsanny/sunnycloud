@@ -49,6 +49,7 @@ fn revision() -> RevisionView {
     RevisionView {
         id: Uuid::from_u128(9),
         node_id: id(),
+        blob_id: Uuid::from_u128(10),
         size: 5,
         content_hash: hash(),
         blocklist: Some(vec![Hash32::from_bytes([1; 32])]),

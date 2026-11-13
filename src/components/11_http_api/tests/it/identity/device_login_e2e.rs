@@ -54,7 +54,10 @@ async fn sync_core_runs_a_device_login_against_the_real_routes_and_gets_the_toke
     }
     stack.script.push(
         POLL,
-        Ok::<_, DeviceGrantError>(GrantedToken(token(TokenKind::DeviceToken, "dev-NEW_token"))),
+        Ok::<_, DeviceGrantError>(GrantedToken(token(
+            TokenKind::DeviceToken,
+            "sc_dev_NEW_token",
+        ))),
     );
     let terminator = Terminator::start(stack.public).await;
     let (api, _) = HttpSyncClient::connect_with_roots(
@@ -86,7 +89,7 @@ async fn sync_core_runs_a_device_login_against_the_real_routes_and_gets_the_toke
             Ok(DevicePoll::Denied),
             Ok(DevicePoll::Expired),
             Ok(DevicePoll::Token(DeviceToken {
-                access_token: "dev-NEW_token".to_owned(),
+                access_token: "sc_dev_NEW_token".to_owned(),
                 token_type: TokenType::Bearer,
             })),
         ]

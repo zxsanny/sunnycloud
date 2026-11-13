@@ -169,7 +169,7 @@ async fn account_b_with_a_ids_changes_lists_and_decides_nothing_of_a() {
         refusals,
         [
             vec![format!("{:?}", Err::<(), _>(DeviceGrantError::NotFound)); 2],
-            vec![format!("{:?}", Err::<(), _>(DeviceGrantError::AlreadyDecided)); 4],
+            vec![format!("{:?}", Err::<(), _>(DeviceGrantError::UnknownCode)); 4],
         ]
         .concat()
     );
@@ -199,9 +199,6 @@ async fn account_b_with_a_ids_changes_lists_and_decides_nothing_of_a() {
 }
 
 #[tokio::test]
-#[ignore = "DEFECT: AZ-3692 AC-1 decide on a pending grant: any session that holds the grant id can approve or deny \
-            it (B's decide on the grant A looked up returns Ok and binds A's device to B); lookup_for_approval does \
-            not bind the grant to the looking account, which needs a device_grants column (schema change)"]
 async fn account_b_cannot_decide_a_pending_grant_that_a_looked_up() {
     // Arrange
     let mut world = two_accounts().await;
@@ -232,8 +229,14 @@ async fn account_b_cannot_decide_a_pending_grant_that_a_looked_up() {
         .await;
 
     // Assert
-    assert!(approved.is_err(), "{approved:?}");
-    assert!(denied.is_err(), "{denied:?}");
+    assert!(
+        matches!(approved, Err(DeviceGrantError::UnknownCode)),
+        "{approved:?}"
+    );
+    assert!(
+        matches!(denied, Err(DeviceGrantError::UnknownCode)),
+        "{denied:?}"
+    );
     let status = grant_status(&mut world.rig.world.conn, &authorization.device_code).await;
     assert_eq!(status, "pending");
     assert_eq!(audit::rows(&mut world.rig.world.conn).await, audit_before);

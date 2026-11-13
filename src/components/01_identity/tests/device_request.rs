@@ -28,7 +28,12 @@ async fn request_returns_the_codes_and_stores_only_the_hash() {
         .expect("request");
 
     // Assert
-    assert_eq!(authorization.device_code.expose().len(), 43, "256 bits");
+    let body = authorization
+        .device_code
+        .expose()
+        .strip_prefix("sc_dcd_")
+        .expect("the device-code prefix");
+    assert_eq!(body.len(), 43, "256 bits");
     let user_code = authorization.user_code.as_str();
     assert_eq!(user_code.len(), 8);
     assert!(user_code.chars().all(|c| USER_CODE_ALPHABET.contains(c)));

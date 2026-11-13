@@ -8,16 +8,14 @@ use crate::error::HttpServerError;
 /// The prefix every `__Host-` cookie name carries (`api_v1_surface.md`, credential transport).
 const HOST_PREFIX: &str = "__Host-";
 
-/// How a presented credential is read. Neither value is fixed by the documents (`sc_ids.md` open point 1 for
-/// the token prefixes, none for the cookie name), so 12 supplies both from configuration and 11 invents none.
+/// How a presented credential is read. The cookie names come from configuration (12); a bearer is a device token
+/// when it carries `TokenKind::DeviceToken`'s prefix (`sc_ids`, AZ-4268), otherwise a session access token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CredentialFormat {
     /// The full name of the browser session cookie, `__Host-` prefix included.
     pub session_cookie: String,
     /// The full name of the browser-binding cookie of a sign-in attempt, `__Host-` prefix included.
     pub binding_cookie: String,
-    /// The marker a device token starts with; any other bearer is a session access token.
-    pub device_token_prefix: String,
 }
 
 /// The transport a request's credential arrived in. Cookie-authenticated mutations are the ones CSRF checks.
@@ -39,16 +37,13 @@ impl CredentialFormat {
         if self.binding_cookie == self.session_cookie {
             return invalid("binding_cookie and session_cookie must differ");
         }
-        if self.device_token_prefix.is_empty() {
-            return invalid("device_token_prefix must not be empty");
-        }
         Ok(())
     }
 
     /// The credential of a user route: a bearer wins over the cookie. `None` is "no credential".
     pub(crate) fn credential(&self, headers: &HeaderMap) -> Option<(Credential, CredentialSource)> {
         if let Some(token) = bearer(headers) {
-            let credential = if token.starts_with(&self.device_token_prefix) {
+            let credential = if token.starts_with(TokenKind::DeviceToken.prefix()) {
                 Credential::Device(RawToken::from_presented(
                     TokenKind::DeviceToken,
                     token.to_owned(),

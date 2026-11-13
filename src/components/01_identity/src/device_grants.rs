@@ -34,6 +34,10 @@ const USER_CODE_DRAWS: usize = 5;
 /// to `consumed` and the insert of the device token commit together, so a code exchanges once and never after
 /// its expiry. Wrong user codes count on the shared `AbuseLimiter`; an approval is audited (not mandatory: a
 /// failed audit write is logged and the approval stands).
+///
+/// The first account that looks up a user code is bound to the grant (AZ-4267): only that account may decide
+/// it. Another account looking up the same code, or deciding a grant it did not look up, gets the answer of an
+/// unknown code or id (`UnknownCode`), and nothing changes.
 pub struct IdentityDeviceGrants {
     db: sc_db::Db,
     clock: Arc<dyn Clock>,
@@ -183,10 +187,15 @@ impl DeviceGrantService for IdentityDeviceGrants {
             return Err(DeviceGrantError::RateLimited { retry_after });
         }
         let now = self.clock.now_utc();
-        let Some(grant) = auth_repo::pending_grant_by_user_code(&self.db, user_code.as_str(), now)
-            .await
-            .map_err(unexpected)?
-        else {
+        let bound = auth_repo::bind_grant_by_user_code(
+            &self.db,
+            user_code.as_str(),
+            principal.account_id,
+            now,
+        )
+        .await
+        .map_err(unexpected)?;
+        let Some(grant) = bound else {
             self.limits
                 .record(&dimensions, Some(principal), approver_ip)
                 .await;

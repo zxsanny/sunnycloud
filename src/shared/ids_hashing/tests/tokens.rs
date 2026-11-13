@@ -12,9 +12,8 @@ fn a_million_tokens_carry_256_bits_and_never_collide() {
 
     for _ in 0..1_000_000 {
         let token = new_token(TokenKind::Session).expect("rng");
-        let bytes = URL_SAFE_NO_PAD
-            .decode(token.expose())
-            .expect("url-safe base64");
+        let body = token.expose().strip_prefix("sc_ses_").expect("prefix");
+        let bytes = URL_SAFE_NO_PAD.decode(body).expect("url-safe base64");
         let bytes: [u8; 32] = bytes.try_into().expect("256 bits");
         assert!(seen.insert(bytes), "token collision");
     }
@@ -25,13 +24,86 @@ fn token_text_is_url_safe_without_padding() {
     let token = new_token(TokenKind::Share).expect("rng");
 
     assert_eq!(token.kind(), TokenKind::Share);
-    assert_eq!(token.expose().len(), 43);
+    let body = token.expose().strip_prefix("sc_shr_").expect("prefix");
+    assert_eq!(body.len(), 43);
     assert!(
-        token
-            .expose()
-            .bytes()
+        body.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
     );
+}
+
+const KINDS: [(TokenKind, &str); 8] = [
+    (TokenKind::Session, "sc_ses_"),
+    (TokenKind::Refresh, "sc_ref_"),
+    (TokenKind::DeviceToken, "sc_dev_"),
+    (TokenKind::DeviceCode, "sc_dcd_"),
+    (TokenKind::Invite, "sc_inv_"),
+    (TokenKind::Setup, "sc_set_"),
+    (TokenKind::Share, "sc_shr_"),
+    (TokenKind::MobileLoginCode, "sc_lgc_"),
+];
+
+#[test]
+fn new_token_starts_with_the_prefix_of_its_kind() {
+    // Arrange
+    let kinds = KINDS;
+
+    // Act
+    let tokens: Vec<(TokenKind, &str, String)> = kinds
+        .iter()
+        .map(|(kind, prefix)| {
+            let token = new_token(*kind).expect("rng");
+            (*kind, *prefix, token.expose().to_owned())
+        })
+        .collect();
+
+    // Assert
+    for (kind, prefix, value) in &tokens {
+        assert_eq!(kind.prefix(), *prefix);
+        assert!(value.starts_with(prefix), "{kind:?}");
+        assert_eq!(value.len(), prefix.len() + 43, "{kind:?}");
+    }
+    let distinct: HashSet<&str> = kinds.iter().map(|(_, prefix)| *prefix).collect();
+    assert_eq!(distinct.len(), kinds.len());
+}
+
+#[test]
+fn a_presented_token_is_of_its_kind_only_with_that_kind_prefix() {
+    // Arrange
+    let issued: Vec<(TokenKind, String)> = KINDS
+        .iter()
+        .map(|(kind, _)| (*kind, new_token(*kind).expect("rng").expose().to_owned()))
+        .collect();
+
+    // Act
+    let mut answers = Vec::new();
+    for (issued_kind, value) in &issued {
+        for (expected, _) in KINDS {
+            let presented = RawToken::from_presented(expected, value.clone());
+            answers.push((*issued_kind == expected, presented.is_of_its_kind()));
+        }
+    }
+    let bare = RawToken::from_presented(TokenKind::Session, "no-prefix".to_owned());
+
+    // Assert
+    assert!(answers.iter().all(|(same, of_kind)| same == of_kind));
+    assert!(!bare.is_of_its_kind());
+}
+
+#[test]
+fn the_hash_covers_the_prefix() {
+    // Arrange
+    let token = new_token(TokenKind::Session).expect("rng");
+    let body = token.expose().strip_prefix("sc_ses_").expect("prefix");
+
+    // Act
+    let full = sha256_token(&token);
+    let refresh_labelled = sha256_token(format!("sc_ref_{body}"));
+
+    // Assert
+    assert_eq!(full, sha256_token(token.expose()));
+    assert_ne!(full, sha256_token(body));
+    assert_ne!(full, refresh_labelled);
 }
 
 #[test]
@@ -142,5 +214,27 @@ fn a_presented_user_code_that_cannot_exist_is_refused() {
         "BCDF-GHJ-é",
     ] {
         assert_eq!(UserCode::from_presented(text), None, "{text}");
+    }
+}
+
+#[test]
+fn random_text_is_43_url_safe_characters_so_it_carries_no_type_prefix() {
+    // Arrange
+    let draws = 1000;
+
+    // Act
+    let texts: Vec<String> = (0..draws)
+        .map(|_| sc_ids::new_random_text().expect("random text"))
+        .collect();
+
+    // Assert
+    let distinct: std::collections::HashSet<&String> = texts.iter().collect();
+    assert_eq!(distinct.len(), draws);
+    for text in &texts {
+        assert_eq!(text.len(), 43);
+        assert!(
+            text.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        );
     }
 }

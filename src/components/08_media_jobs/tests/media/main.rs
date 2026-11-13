@@ -2,8 +2,14 @@
 //! (`DATABASE_URL`, a superuser URL): the `jobs`, `derived` and `worker_status` migration, the media settings,
 //! the wire codes of the 08 errors, the enqueue, claim, lease, failure and maintenance statements, and the job
 //! planning effect at commit (AZ-3841), also inside the real 02 `publish`, and the thumbnail states and derived
-//! lookups (AZ-3844).
+//! lookups (AZ-3844), and the acceptance of worker outputs and the worker input (AZ-3842).
 
+mod accept_doubles;
+mod accept_input;
+mod accept_once;
+mod accept_refuse;
+mod accept_store;
+mod accept_support;
 mod blob_support;
 mod config;
 mod derived_open;

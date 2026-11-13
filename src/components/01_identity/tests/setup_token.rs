@@ -35,7 +35,7 @@ async fn the_setup_token_creates_one_admin_once_and_nothing_without_or_with_a_wr
     // Act
     let without = sign_in(&rig.world, OIDC, "first", None, |_| {}).await;
     let without_accounts = account_count(&mut rig).await;
-    let wrong = sign_in_with_setup(&rig.world, OIDC, "first", "not-the-token").await;
+    let wrong = sign_in_with_setup(&rig.world, OIDC, "first", "sc_set_not-the-token").await;
     let wrong_accounts = account_count(&mut rig).await;
     let right = sign_in_with_setup(&rig.world, OIDC, "first", token.expose()).await;
     let again = sign_in_with_setup(&rig.world, OIDC, "second", token.expose()).await;

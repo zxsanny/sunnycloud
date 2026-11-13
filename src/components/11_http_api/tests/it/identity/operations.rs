@@ -237,7 +237,10 @@ fn operations() -> Vec<Operation> {
             |s| {
                 s.push(
                     "DeviceGrantService::poll",
-                    Ok::<_, DeviceGrantError>(DeviceToken(token(TokenKind::DeviceToken, "dev-T"))),
+                    Ok::<_, DeviceGrantError>(DeviceToken(token(
+                        TokenKind::DeviceToken,
+                        "sc_dev_T",
+                    ))),
                 )
             },
         ),

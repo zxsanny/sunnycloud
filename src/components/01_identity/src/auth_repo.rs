@@ -409,15 +409,16 @@ pub(crate) async fn poll_grant(
     .await
 }
 
-/// The pending grant of a user code: the approver is not its owner (a pending grant has no account), so the
-/// read runs in system scope.
-pub(crate) async fn pending_grant_by_user_code(
+/// The pending grant of a user code, bound to the looking-up account: the approver is not its owner (a pending
+/// grant has no account), so the bind runs in system scope.
+pub(crate) async fn bind_grant_by_user_code(
     db: &Db,
     user_code: &str,
+    account: Uuid,
     now: Timestamp,
 ) -> Result<Option<PendingGrant>, RunError<DbError>> {
     db.run_system("device_lookup", async |tx| {
-        device_grant_repo::pending_by_user_code(tx, user_code, now).await
+        device_grant_repo::bind_by_user_code(tx, user_code, account, now).await
     })
     .await
 }

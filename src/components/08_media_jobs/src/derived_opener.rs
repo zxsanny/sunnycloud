@@ -29,7 +29,7 @@ enum Found {
     Absent,
 }
 
-fn output_kind(kind: DerivedKind) -> OutputKind {
+pub(crate) fn output_kind(kind: DerivedKind) -> OutputKind {
     match kind {
         DerivedKind::Thumb => OutputKind::Thumb,
         DerivedKind::Preview => OutputKind::Preview,

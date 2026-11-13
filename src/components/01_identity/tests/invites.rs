@@ -154,7 +154,7 @@ async fn revoke_answers_not_found_alike_for_an_unknown_a_revoked_and_a_redeemed_
     let mut rig = Rig::new(POOL, |_| {}, Vec::new()).await;
     let admin = admin(&mut rig).await;
     let service = invites(&rig.world.harness);
-    let revoked = rig.member_invite("to-revoke").await;
+    let revoked = rig.member_invite("sc_inv_to-revoke").await;
     service.revoke(admin, revoked).await.expect("first revoke");
     let redeemed = rig.member_invite(INVITE).await;
     sign_in(&rig.world, OIDC, "dave", Some(INVITE), |_| {})

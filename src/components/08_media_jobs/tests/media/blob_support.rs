@@ -2,6 +2,7 @@
 //! the writer and registered committed, as the output acceptance will store it, and read back through the reader
 //! from the reference 08 hands out. Wired as 04's `tests/reader/support.rs` wires it.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,6 +18,7 @@ use sc_config::Secret;
 use sc_db::Scope;
 use sunnycloud_blobstore::{
     BlobRegistry, BlobstoreConfig, FileBlobReader, FileBlobWriter, MasterKeyring, SyncBarrier,
+    blob_path, parse_blob_id,
 };
 use uuid::Uuid;
 
@@ -42,9 +44,11 @@ impl Drop for Scratch {
 }
 
 pub struct Store {
-    writer: FileBlobWriter,
-    reader: FileBlobReader,
-    registry: BlobRegistry,
+    pub writer: Arc<FileBlobWriter>,
+    pub reader: Arc<FileBlobReader>,
+    pub registry: Arc<BlobRegistry>,
+    pub config: BlobstoreConfig,
+    pub volume: PathBuf,
     _scratch: Scratch,
 }
 
@@ -84,18 +88,25 @@ impl Store {
                 .expect("reader");
         let registry = BlobRegistry::new(&config, clock).expect("registry");
         Store {
-            writer,
-            reader,
-            registry,
+            writer: Arc::new(writer),
+            reader: Arc::new(reader),
+            registry: Arc::new(registry),
+            config,
+            volume,
             _scratch: scratch,
         }
     }
 
     /// Writes `bytes` as a blob of `account` and registers it committed; returns its id.
     pub async fn put(&self, fixture: &Fixture, account: Uuid, bytes: &'static [u8]) -> Uuid {
+        self.put_bytes(fixture, account, Bytes::from_static(bytes))
+            .await
+    }
+
+    /// `put` for owned bytes.
+    pub async fn put_bytes(&self, fixture: &Fixture, account: Uuid, bytes: Bytes) -> Uuid {
         let size = i64::try_from(bytes.len()).expect("size");
-        let body: ByteStream =
-            Box::pin(futures_util::stream::iter([Ok(Bytes::from_static(bytes))]));
+        let body: ByteStream = Box::pin(futures_util::stream::iter([Ok(bytes)]));
         let written = self
             .writer
             .write_complete(account, size, body)
@@ -137,5 +148,29 @@ impl Store {
             bytes.extend_from_slice(&chunk.expect("chunk"));
         }
         bytes
+    }
+
+    /// The ids of every blob file on the volume (`blobs/<aa>/<bb>/<id>`).
+    pub fn files(&self) -> BTreeSet<Uuid> {
+        let mut ids = BTreeSet::new();
+        let root = self.volume.join("blobs");
+        if !root.exists() {
+            return ids;
+        }
+        for first in fs::read_dir(&root).expect("blobs folder") {
+            for second in fs::read_dir(first.expect("entry").path()).expect("prefix folder") {
+                for file in fs::read_dir(second.expect("entry").path()).expect("prefix folder") {
+                    let name = file.expect("entry").file_name();
+                    let name = name.to_str().expect("utf-8 name");
+                    ids.insert(parse_blob_id(name).expect("a blob file name"));
+                }
+            }
+        }
+        ids
+    }
+
+    /// The raw stored bytes of a blob file, as the volume holds them.
+    pub fn raw(&self, blob_id: Uuid) -> Vec<u8> {
+        fs::read(blob_path(&self.volume, blob_id)).expect("blob file")
     }
 }

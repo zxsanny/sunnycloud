@@ -25,7 +25,7 @@ use super::sign_in::{CLIENT_IP, HOST, World, begin_request, params, roomy_limite
 use super::{Harness, START, load_settings};
 
 /// An invite token of the fixtures; its stored hash is `sha256` of this text, as `begin` stores it.
-pub const INVITE: &str = "invite-token-1";
+pub const INVITE: &str = "sc_inv_invite-token-1";
 /// One day in microseconds.
 pub const DAY_MICROS: i64 = 86_400_000_000;
 

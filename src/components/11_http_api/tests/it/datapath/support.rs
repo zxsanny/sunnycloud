@@ -88,6 +88,7 @@ pub fn revision_view(meta: Option<&str>) -> RevisionView {
     RevisionView {
         id: REVISION,
         node_id: NODE,
+        blob_id: uuid::Uuid::from_u128(0xB10B),
         size: 4_194_304,
         content_hash: file_hash(0xAB),
         blocklist: Some(vec![hash32(1), hash32(2)]),

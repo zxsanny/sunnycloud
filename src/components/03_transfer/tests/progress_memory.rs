@@ -5,7 +5,9 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use sunnycloud_transfer::{BLOCK_SIZE, ProgressTable};
+use contracts::{BlobHandle, BlobPlan};
+use sc_clock::{Clock, ManualClock, Timestamp};
+use sunnycloud_transfer::{BLOCK_SIZE, CheckpointMark, ProgressTable, SessionInfo};
 use uuid::Uuid;
 
 struct Counting;
@@ -50,11 +52,29 @@ fn a_hundred_sessions_of_fifty_gib_fit_in_eighty_mebibytes() {
     let blocks = u32::try_from(DECLARED / BLOCK_SIZE as u64).expect("block count");
     let hash_bytes = SESSIONS * blocks as usize * 32;
     let before = LIVE.load(Ordering::SeqCst);
+    let clock = ManualClock::new(Timestamp::from_unix_micros(0));
+    let mark = CheckpointMark {
+        at: clock.monotonic(),
+        expires_at: clock.now_utc(),
+    };
+    let declared = i64::try_from(DECLARED).expect("declared size");
     let table = ProgressTable::new();
 
     // Act
     for _ in 0..SESSIONS {
-        table.insert_new(Uuid::new_v4(), blocks);
+        let info = SessionInfo {
+            account: Uuid::new_v4(),
+            declared_size: declared,
+            handle: BlobHandle {
+                plan: BlobPlan {
+                    blob_id: Uuid::new_v4(),
+                    wrapped_key: vec![7; 72],
+                    master_key_id: 1,
+                },
+                plaintext_size: declared,
+            },
+        };
+        table.insert_new(Uuid::new_v4(), info, blocks, mark);
     }
     let measured = LIVE.load(Ordering::SeqCst) - before;
     let computed = table.memory_bytes();

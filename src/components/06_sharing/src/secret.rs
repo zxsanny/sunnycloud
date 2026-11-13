@@ -6,18 +6,14 @@ use sc_ids::{RawToken, TokenKind, new_token};
 
 use crate::error::SharingError;
 
-/// The marker in front of every link token (description §5).
-pub const SHARE_TOKEN_PREFIX: &str = "sc_shr_";
+/// The marker in front of every link token (description §5): the share kind's prefix of the shared token helper.
+pub const SHARE_TOKEN_PREFIX: &str = TokenKind::Share.prefix();
 
 const SALT_BYTES: usize = argon2::RECOMMENDED_SALT_LEN;
 
-/// A new link token: the prefix and 256 random bits as URL-safe base64 (the shared token helper).
+/// A new link token: the prefix and 256 random bits as URL-safe base64 (the shared token helper adds both).
 pub(crate) fn new_share_token() -> Result<RawToken, SharingError> {
-    let random = new_token(TokenKind::Share).map_err(|_| SharingError::RandomUnavailable)?;
-    Ok(RawToken::from_presented(
-        TokenKind::Share,
-        format!("{SHARE_TOKEN_PREFIX}{}", random.expose()),
-    ))
+    new_token(TokenKind::Share).map_err(|_| SharingError::RandomUnavailable)
 }
 
 /// The Argon2id PHC string of `password` with the configured cost and a salt drawn for this link only.

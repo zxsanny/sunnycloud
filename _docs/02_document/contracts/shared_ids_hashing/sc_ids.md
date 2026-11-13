@@ -3,7 +3,7 @@
 **Component**: shared/ids_hashing (crate `sc_ids`; hashing part also builds for `wasm32-unknown-unknown`)
 **Producer task**: E-04/c01 — `_docs/02_tasks/todo/B01-10_sc_ids.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c03..c05 (`Hash32`, `FileHash`, `RawToken`, `UserCode` in port signatures), E-00/c06 (`FileHash` in `ClaimedJob`); other batches: 01-04, 06, 09, 11, 12, `sync-core-proto`, `sync-core`, `sync-core-wasm`, 14, `mobile_backup`
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: draft
 **Last Updated**: 2026-11-04
 
@@ -22,7 +22,7 @@ Sources: `common-helpers/05_helper_ids_hashing.md`, `epics/E-04_cross-cutting-id
 | `FileHasher` | `update(&mut self, bytes: &[u8]) -> Result<(), HashError>`, `finish_block(&mut self) -> Hash32`, `finish(self) -> (Vec<Hash32>, FileHash)` | `HashError::BlockTooLarge` | sync |
 | `rollup` | `fn rollup(blocks: &[Hash32]) -> FileHash` (BLAKE3 `derive_key`, context `sunnycloud file v1`, over the ordered 32-byte block hashes; empty list = zero-length file) | none | sync |
 | `derive_client_key` | `fn derive_client_key(device_id: Uuid, asset_id: &str, file_hash: &FileHash) -> Uuid` (first 16 bytes of keyed BLAKE3, context `sunnycloud commit v1`, version and variant bits set) | none | sync |
-| `new_token` | `fn new_token(kind: TokenKind) -> Result<RawToken, RngUnavailable>` (256-bit CSPRNG, URL-safe base64) | `RngUnavailable` | sync |
+| `new_token` | `fn new_token(kind: TokenKind) -> Result<RawToken, RngUnavailable>` (the kind's prefix followed by 43 characters of URL-safe base64 without padding: 256-bit CSPRNG) | `RngUnavailable` | sync |
 | `UserCode::from_presented` | `fn from_presented(text: &str) -> Option<UserCode>`: ignores case, hyphens and spaces; `None` unless exactly 8 base-20 characters remain | none | sync |
 | `new_user_code` | `fn new_user_code() -> Result<UserCode, RngUnavailable>` (8 characters base-20, RFC 8628 5.1) | `RngUnavailable` | sync |
 | `sha256_token` | `fn sha256_token(token: &RawToken \| &str) -> TokenHash` (32 bytes) | none | sync |
@@ -36,7 +36,7 @@ Sources: `common-helpers/05_helper_ids_hashing.md`, `epics/E-04_cross-cutting-id
 | `RawToken` | bearer secret; `Debug`/`Display` print a placeholder, never the value |
 | `TokenHash` | 32-byte SHA-256 of a token (the only stored form) |
 | `UserCode` | device-grant user code, shown to a person, stored plain |
-| `TokenKind` | the token families: session, refresh, device token, device code, invite, setup, share, mobile login code (see Open points) |
+| `TokenKind` | the token families, each with `prefix()`: session `sc_ses_`, refresh `sc_ref_`, device token `sc_dev_`, device code `sc_dcd_`, invite `sc_inv_`, setup `sc_set_`, share `sc_shr_`, mobile login code `sc_lgc_`. `RawToken::is_of_its_kind()` tells whether presented text starts with the prefix of the kind it was presented as; `sha256_token` hashes the full text, prefix included |
 
 Shared vector file: known-answer cases for blocks of 0 bytes, 1 byte, 2 MiB and 2 MiB + 1 byte (the last must be rejected as one block), with their `Hash32` and `FileHash`, consumed by the native, WASM and (from E-27/E-28) UniFFI tests.
 
@@ -69,7 +69,7 @@ Shared vector file: known-answer cases for blocks of 0 bytes, 1 byte, 2 MiB and 
 
 ## Open points (flagged in the producer task)
 
-1. data_model §1 says tokens carry a type prefix; the prefix strings and the exact `TokenKind` list are not specified.
+1. Resolved 2026-11-13 (owner, AZ-4268): one prefix per kind as listed under `TokenKind`.
 2. Helper 05 lists 19 vault_core as a user, but 19 has no sunnycloud dependency (module-layout open point 5, resolved for 19).
 
 ## Change Log
@@ -78,3 +78,4 @@ Shared vector file: known-answer cases for blocks of 0 bytes, 1 byte, 2 MiB and 
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
 | 1.1.0 | 2026-11-11 | `UserCode::from_presented` added (additive): the approval lookup of E-21/c12 needs a `UserCode` from the typed text | AZ-3828 |
+| 1.2.0 | 2026-11-13 | Type prefixes per `TokenKind`, `RawToken::is_of_its_kind` (owner decision) | AZ-4268 |

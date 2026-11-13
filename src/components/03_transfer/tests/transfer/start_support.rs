@@ -15,7 +15,7 @@ use sc_ids::FileHash;
 use sc_names::{name_key, validate_name};
 use sqlx::PgConnection;
 use sunnycloud_blobstore::{
-    BlobRegistry, BlobstoreConfig, FileBlobWriter, MasterKeyring, SyncBarrier,
+    BlobRegistry, BlobstoreConfig, FileBlobReader, FileBlobWriter, MasterKeyring, SyncBarrier,
 };
 use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
 use sunnycloud_transfer::{PgUploadService, TransferConfig, UploadPorts};
@@ -44,6 +44,7 @@ pub struct Rig {
     pub fixture: Fixture,
     pub service: Arc<PgUploadService>,
     pub writer: Arc<FaultyWriter>,
+    pub reader: FileBlobReader,
     pub clock: Arc<ManualClock>,
     pub account: Uuid,
     pub root: Uuid,
@@ -54,6 +55,11 @@ pub struct Rig {
 impl Rig {
     /// An active account with its root and a quota of 10 GiB; at most 8 open sessions.
     pub async fn new() -> Rig {
+        Rig::with_config(transfer_config()).await
+    }
+
+    /// As [`Rig::new`] with another transfer section.
+    pub async fn with_config(config: TransferConfig) -> Rig {
         let fixture = Fixture::new().await;
         let clock = sc_testdb::clock_at_start();
         let account = Uuid::new_v4();
@@ -71,9 +77,17 @@ impl Rig {
         let keyring = Arc::new(MasterKeyring::new(
             blob_config.clone(),
             fixture.api.clone(),
-            audit,
+            audit.clone(),
         ));
         keyring.load_and_verify().await.expect("keyring starts");
+        let reader = FileBlobReader::new(
+            &blob_config,
+            keyring.clone(),
+            fixture.api.clone(),
+            audit,
+            clock.clone(),
+        )
+        .expect("reader");
         let real = FileBlobWriter::new(&blob_config, keyring, SyncBarrier::new(Duration::ZERO))
             .expect("writer");
         let writer = Arc::new(FaultyWriter::new(real));
@@ -81,7 +95,7 @@ impl Rig {
         let tree = PgTreeReader::new(fixture.api.clone(), &tree_config());
         let service = PgUploadService::new(
             fixture.api.clone(),
-            transfer_config(),
+            config,
             UploadPorts {
                 guard: Arc::new(StateGuard),
                 tree: Arc::new(tree),
@@ -97,6 +111,7 @@ impl Rig {
             fixture,
             service: Arc::new(service),
             writer,
+            reader,
             clock,
             account,
             root,
@@ -170,9 +185,10 @@ impl Rig {
             fixture,
             service,
             writer,
+            reader,
             ..
         } = self;
-        drop((service, writer));
+        drop((service, writer, reader));
         fixture.finish().await;
     }
 }
@@ -345,7 +361,8 @@ async fn account_rows(conn: &mut PgConnection, id: Uuid) -> Uuid {
     root
 }
 
-fn transfer_config() -> TransferConfig {
+/// The production defaults of the transfer section, with the 24 h TTL.
+pub fn transfer_config() -> TransferConfig {
     TransferConfig {
         upload_session_ttl: TTL,
         max_declared_size: 50 * (1 << 30),

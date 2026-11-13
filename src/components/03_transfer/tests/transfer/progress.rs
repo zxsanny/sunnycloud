@@ -4,9 +4,12 @@
 
 use std::sync::Arc;
 
+use contracts::{BlobHandle, BlobPlan};
+use sc_clock::{Clock, ManualClock, Timestamp};
 use sc_ids::{Hash32, hash_block};
 use sunnycloud_transfer::{
-    Checkpoint, CheckpointError, ProgressError, ProgressTable, SessionProgress,
+    BLOCK_SIZE, BlockStart, Checkpoint, CheckpointError, CheckpointMark, ProgressError,
+    ProgressTable, SessionInfo, SessionProgress,
 };
 use uuid::Uuid;
 
@@ -16,6 +19,30 @@ const ROUNDS: u64 = 200;
 
 fn hash_of(index: u32) -> Hash32 {
     hash_block(&index.to_le_bytes())
+}
+
+/// The session fields of an entry of `blocks` full blocks (the handle is never used by the table).
+fn info(blocks: u32) -> SessionInfo {
+    SessionInfo {
+        account: Uuid::new_v4(),
+        declared_size: i64::from(blocks) * BLOCK_SIZE as i64,
+        handle: BlobHandle {
+            plan: BlobPlan {
+                blob_id: Uuid::new_v4(),
+                wrapped_key: vec![7; 72],
+                master_key_id: 1,
+            },
+            plaintext_size: i64::from(blocks) * BLOCK_SIZE as i64,
+        },
+    }
+}
+
+fn mark() -> CheckpointMark {
+    let clock = ManualClock::new(Timestamp::from_unix_micros(0));
+    CheckpointMark {
+        at: clock.monotonic(),
+        expires_at: clock.now_utc(),
+    }
 }
 
 /// A small deterministic generator, so a failing round can be replayed.
@@ -60,7 +87,7 @@ async fn four_lanes_lose_no_bit_and_no_hash() {
         // Arrange
         let table = Arc::new(ProgressTable::new());
         let upload = Uuid::new_v4();
-        let session = table.insert_new(upload, BLOCKS);
+        let session = table.insert_new(upload, info(BLOCKS), BLOCKS, mark());
         let operations = plan(seed);
         let mut lanes: Vec<Vec<u32>> = vec![Vec::new(); LANES];
         for (position, index) in operations.iter().enumerate() {
@@ -74,7 +101,10 @@ async fn four_lanes_lose_no_bit_and_no_hash() {
             handles.push(tokio::spawn(async move {
                 let mut newly_set = 0;
                 for index in lane {
-                    session.lock().begin_block(index).expect("begin");
+                    session
+                        .lock()
+                        .begin_block(index, hash_of(index))
+                        .expect("begin");
                     tokio::task::yield_now().await;
                     if session
                         .lock()
@@ -112,7 +142,7 @@ async fn four_lanes_lose_no_bit_and_no_hash() {
 async fn racing_hashes_for_one_block_keep_the_first_and_refuse_the_rest() {
     // Arrange
     let table = ProgressTable::new();
-    let session = table.insert_new(Uuid::new_v4(), 1);
+    let session = table.insert_new(Uuid::new_v4(), info(1), 1, mark());
     let candidates: Vec<Hash32> = (0..8u32).map(hash_of).collect();
 
     // Act
@@ -184,9 +214,9 @@ fn in_flight_bits_are_set_once_and_cleared_by_ack_or_release() {
     let mut progress = SessionProgress::new(10);
 
     // Act
-    let first = progress.begin_block(3);
-    let again = progress.begin_block(3);
-    progress.begin_block(4).expect("block 4");
+    let first = progress.begin_block(3, hash_of(3));
+    let again = progress.begin_block(3, hash_of(3));
+    progress.begin_block(4, hash_of(4)).expect("block 4");
     progress.mark_received(3, hash_of(3)).expect("ack");
     progress.release_block(4).expect("release");
 
@@ -196,6 +226,59 @@ fn in_flight_bits_are_set_once_and_cleared_by_ack_or_release() {
     assert_eq!(progress.is_in_flight(3), Ok(false));
     assert_eq!(progress.is_received(4), Ok(false));
     assert_eq!(progress.missing_blocks(), [0, 1, 2, 4, 5, 6, 7, 8, 9]);
+}
+
+#[test]
+fn a_block_starts_on_a_free_lane_and_repeats_answer_by_their_hash() {
+    // Arrange
+    let mut progress = SessionProgress::new(8);
+    progress
+        .mark_received(0, hash_of(0))
+        .expect("block 0 acked");
+    let started = progress.start_block(1, hash_of(1), 4);
+
+    // Act
+    let outcomes = [
+        progress.start_block(0, hash_of(0), 4),
+        progress.start_block(0, hash_of(9), 4),
+        progress.start_block(1, hash_of(1), 4),
+        progress.start_block(1, hash_of(9), 4),
+    ];
+
+    // Assert
+    assert_eq!(started, Ok(BlockStart::Started));
+    assert_eq!(
+        outcomes,
+        [
+            Ok(BlockStart::Received),
+            Ok(BlockStart::ReceivedOther),
+            Ok(BlockStart::InFlight),
+            Ok(BlockStart::InFlightOther),
+        ]
+    );
+    assert_eq!(progress.in_flight_count(), 1);
+    assert_eq!(progress.hash(0), Ok(Some(hash_of(0))));
+}
+
+#[test]
+fn a_fifth_block_finds_every_lane_busy_until_one_is_released() {
+    // Arrange
+    let mut progress = SessionProgress::new(8);
+    for index in 0..4 {
+        progress
+            .start_block(index, hash_of(index), 4)
+            .expect("lane");
+    }
+
+    // Act
+    let full = progress.start_block(4, hash_of(4), 4);
+    progress.release_block(2).expect("release");
+    let freed = progress.start_block(4, hash_of(4), 4);
+
+    // Assert
+    assert_eq!(full, Ok(BlockStart::LanesFull));
+    assert_eq!(freed, Ok(BlockStart::Started));
+    assert_eq!(progress.in_flight_count(), 4);
 }
 
 #[test]
@@ -209,7 +292,8 @@ fn an_index_past_the_block_count_is_refused_by_every_operation() {
 
     // Act
     let results = [
-        progress.begin_block(8).map(drop),
+        progress.begin_block(8, hash_of(8)).map(drop),
+        progress.start_block(8, hash_of(8), 4).map(drop),
         progress.release_block(8),
         progress.mark_received(8, hash_of(8)).map(drop),
         progress.is_received(8).map(drop),
@@ -252,7 +336,9 @@ fn a_checkpoint_row_restores_the_received_blocks_and_nothing_in_flight() {
     for index in [0, 5, 12] {
         written.mark_received(index, hash_of(index)).expect("mark");
     }
-    written.begin_block(7).expect("in flight at the crash");
+    written
+        .begin_block(7, hash_of(7))
+        .expect("in flight at the crash");
     let table = ProgressTable::new();
     let upload = Uuid::new_v4();
 
@@ -260,6 +346,8 @@ fn a_checkpoint_row_restores_the_received_blocks_and_nothing_in_flight() {
     let loaded = table
         .get_or_load(
             upload,
+            info(13),
+            mark(),
             &Checkpoint {
                 block_count: 13,
                 received: written.received_bytes(),
@@ -283,7 +371,7 @@ fn an_entry_in_memory_wins_over_a_later_checkpoint_row() {
     // Arrange
     let table = ProgressTable::new();
     let upload = Uuid::new_v4();
-    let live = table.insert_new(upload, 4);
+    let live = table.insert_new(upload, info(4), 4, mark());
     live.lock()
         .mark_received(1, hash_of(1))
         .expect("ack after the checkpoint");
@@ -293,6 +381,8 @@ fn an_entry_in_memory_wins_over_a_later_checkpoint_row() {
     let found = table
         .get_or_load(
             upload,
+            info(4),
+            mark(),
             &Checkpoint {
                 block_count: 4,
                 received: stale.received_bytes(),
@@ -315,7 +405,7 @@ fn nothing_is_loaded_until_a_session_is_touched_and_remove_drops_the_entry() {
 
     // Act
     let before = (table.is_empty(), table.get(upload).is_none());
-    table.insert_new(upload, 2);
+    table.insert_new(upload, info(2), 2, mark());
     let during = (table.len(), table.get(upload).is_some());
     let removed = table.remove(upload);
     let removed_again = table.remove(upload);

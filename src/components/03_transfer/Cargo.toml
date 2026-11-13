@@ -33,6 +33,8 @@ sunnycloud-quota = { path = "../07a_quota" }
 sc_audit = { path = "../../shared/audit" }
 # The fault-injecting BlobWriter decorator of the tests takes `Bytes` blocks.
 bytes = { workspace = true }
+# The request bodies of the put_block tests are hand-written streams; the version `contracts` uses.
+futures-core = { version = "0.3", default-features = false }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
