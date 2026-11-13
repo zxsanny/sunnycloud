@@ -2,7 +2,8 @@
 //!
 //! This crate holds the typed configuration section, its error type, the [`IdentityAuthenticator`]
 //! (`Authenticator` and `PrincipalRevalidator`), [`IdentitySignIn`] (provider sign-in: `begin` and `complete`
-//! with the GitHub and generic OIDC [`ProviderClient`]s, and the mobile code exchange), [`IdentitySessions`]
+//! with the GitHub and generic OIDC [`ProviderClient`]s, account creation from an invite over the hook list of
+//! `register_hooks`, and the mobile code exchange), [`IdentitySessions`]
 //! (`SessionService`: refresh rotation, revocation, list, touch), [`IdentityDeviceGrants`]
 //! (`DeviceGrantService`: the RFC 8628 device grant, the device list and revocation, over a [`GeoLookup`],
 //! production: [`MaxmindGeoLookup`]), [`IdentityMaintenance`] (the `Janitor`) and [`IdentityAccounts`]
@@ -18,6 +19,7 @@ mod device_grant_repo;
 mod device_grants;
 mod error;
 mod geo;
+mod invite_repo;
 mod janitor_repo;
 mod login_code_repo;
 mod maintenance;
@@ -34,7 +36,7 @@ pub use accounts::IdentityAccounts;
 pub use authenticator::IdentityAuthenticator;
 pub use config::{IdentityConfig, ProviderConfig};
 pub use device_grants::IdentityDeviceGrants;
-pub use error::IdentityError;
+pub use error::{HooksAlreadyRegistered, IdentityError};
 pub use geo::{GeoLookup, MaxmindGeoLookup};
 pub use maintenance::{IdentityMaintenance, Swept};
 pub use provider::{

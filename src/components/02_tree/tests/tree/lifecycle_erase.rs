@@ -81,6 +81,14 @@ async fn every_batch_queues_the_blobs_of_the_revisions_it_removes_without_an_adv
     // Assert
     assert!(probes.iter().all(|p| p.queued_survivors == 0));
     assert!(probes.iter().all(|p| p.unqueued_orphans == 0));
+    let rows: Vec<i64> = std::iter::once(NODES + REVISIONS)
+        .chain(probes.iter().map(|p| p.nodes + p.revisions))
+        .collect();
+    assert!(
+        rows.windows(2)
+            .all(|pair| pair[0] - pair[1] <= i64::from(LIMIT)),
+        "one call removes at most LIMIT rows: {rows:?}"
+    );
     assert!(
         statements
             .iter()

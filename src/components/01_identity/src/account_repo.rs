@@ -5,6 +5,16 @@ use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx};
 use uuid::Uuid;
 
+const INSERT_ACCOUNT: &str = "INSERT INTO accounts (id, state, created_at, display_name, role) \
+    VALUES ($1, 'active', 'epoch'::timestamptz + $2::bigint * interval '1 microsecond', $3, $4)";
+
+const INSERT_IDENTITY: &str = "INSERT INTO identities \
+    (id, account_id, provider, provider_user_id, email, email_verified, created_at) \
+    VALUES ($1, $2, $3, $4, $5, $6, 'epoch'::timestamptz + $7::bigint * interval '1 microsecond')";
+
+/// The unique key an identity insert hits when the same provider identity was registered concurrently.
+pub(crate) const IDENTITY_KEY: &str = "identities_provider_provider_user_id_key";
+
 const TOUCH_IDENTITY: &str = "UPDATE identities \
     SET last_login_at = 'epoch'::timestamptz + $2::bigint * interval '1 microsecond' WHERE id = $1";
 
@@ -53,6 +63,54 @@ type ListedTuple = (Uuid, String, String, String, Option<i64>);
 // The shared lock makes a concurrent `begin_deletion` (which takes the row for update) wait until this
 // transaction ends, and the state read under it cannot change before then.
 const STATE_SHARED: &str = "SELECT state FROM accounts WHERE id = $1 FOR SHARE";
+
+/// An active account with the role an invite grants (`user` or `admin`).
+pub(crate) async fn insert_account(
+    tx: &mut DbTx,
+    id: Uuid,
+    display_name: &str,
+    role: &str,
+    at: Timestamp,
+) -> Result<(), DbError> {
+    sqlx::query(INSERT_ACCOUNT)
+        .bind(id)
+        .bind(at.as_unix_micros())
+        .bind(display_name)
+        .bind(role)
+        .execute(tx.conn())
+        .await
+        .map(drop)?;
+    Ok(())
+}
+
+/// The identity row of a new account. `email` is stored only as read under the email rule (verified, allowlist
+/// configured); it is never a lookup key.
+pub(crate) struct NewIdentity<'a> {
+    pub id: Uuid,
+    pub account_id: Uuid,
+    pub provider: &'a str,
+    pub provider_user_id: &'a str,
+    pub email: Option<&'a str>,
+    pub created_at: Timestamp,
+}
+
+pub(crate) async fn insert_identity(
+    tx: &mut DbTx,
+    identity: &NewIdentity<'_>,
+) -> Result<(), DbError> {
+    sqlx::query(INSERT_IDENTITY)
+        .bind(identity.id)
+        .bind(identity.account_id)
+        .bind(identity.provider)
+        .bind(identity.provider_user_id)
+        .bind(identity.email)
+        .bind(identity.email.is_some())
+        .bind(identity.created_at.as_unix_micros())
+        .execute(tx.conn())
+        .await
+        .map(drop)?;
+    Ok(())
+}
 
 pub(crate) async fn touch_identity(
     tx: &mut DbTx,

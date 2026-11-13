@@ -72,7 +72,7 @@ Then every file item carries its correct BLAKE3 and folders none, pages chain to
 **AC-7: Lost commit response heals (AC-78 contribution, AC-46)**
 Given the proxy drops the commit response once (`e2e-ctl`)
 When the client recovers for (A) a new revision of an existing node and (B) a brand-new file
-Then (A) yields `NothingToSend{revision}`, 1 revision and 0 block bytes re-sent; (B) yields the result recorded by E-23/c01 (BLOCKED until then)
+Then (A) yields `NothingToSend{revision}`, 1 revision and 0 block bytes re-sent; (B) yields `NothingToSend{revision}`, 1 revision, 0 block bytes re-sent, no conflict copy (AZ-3949)
 
 **AC-8: Cancel and memory on the real stack (AC-52)**
 Given 3 concurrent 2 GiB uploads and RSS sampled every 1 s during a 5 GiB upload
@@ -113,7 +113,7 @@ Then they contain 0 sentinel occurrences
 | AC-4 | 300 files, kills | Batch replay | 300 files, 0 duplicates | IT-13-7, FT-N-38, NFT-RES-22 |
 | AC-5 | `e2e-ctl` restore, group `X` | Poll | `ResyncRequired`; head first | IT-13-12, FT-P-13, NFT-RES-07 |
 | AC-6 | DS-01 subset | Listing and lookup | Hashes; 3 calls | IT-13-14, FT-P-54, FT-P-32 |
-| AC-7 | `e2e-ctl` drops commit response | Recovery | (A) `NothingToSend`; (B) per E-23/c01 | IT-13-16, FT-P-76 |
+| AC-7 | `e2e-ctl` drops commit response | Recovery | (A) `NothingToSend`; (B) `NothingToSend`, 1 revision | IT-13-16, FT-P-76 |
 | AC-8 | 3 x 2 GiB; 5 GiB RSS | Cancel; memory | 1 s; <= 150 MB | IT-13-18, NFT-RES-LIM-03 |
 | AC-9 | Scripted fake | Malicious cases | Contained | ST-13-3 |
 | AC-10 | Sentinel tokens | Whole run | 0 occurrences | ST-13-2 |
@@ -140,6 +140,6 @@ Then they contain 0 sentinel occurrences
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| AC-7 (B) is BLOCKED until E-14/c02 and E-23/c01 record the new-file rule | E-14 / E-23 | open | Low |
+| AC-7 (B) is BLOCKED until E-14/c02 and E-23/c01 record the new-file rule | E-14 / E-23 | resolved 2026-11-13 (AZ-3949) | Low |
 | AC-3's exact fields depend on G-03-3 (E-14/c01) | Owner | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |
 | Split of row E-23/c18 into c18a and c18b; pipelines do not reference c18 | E-23 owner | accepted-risk | Low |

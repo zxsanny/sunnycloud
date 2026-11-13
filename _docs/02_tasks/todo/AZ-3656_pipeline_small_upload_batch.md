@@ -108,4 +108,4 @@ Integration through the real binaries; the system scenarios stay in E-31.
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `NothingToSend` after a lost commit for a new file is still a spike (E-14/c02, E-23/c01) | E-14 | open | Low |
+| `NothingToSend` after a lost commit for a new file is still a spike (E-14/c02, E-23/c01) | E-14 | resolved 2026-11-13 (AZ-3732 server, AZ-3949 client) | Low |

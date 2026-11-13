@@ -5,17 +5,21 @@
 //! state are returned as columns and decided in code, never in the `WHERE` clause, so every dead credential
 //! costs the same database work.
 
+use std::sync::Arc;
+
 use sc_clock::Timestamp;
 use sc_db::{Db, DbError, RunError, Scope};
 use sc_ids::TokenHash;
+use thiserror::Error;
 use uuid::Uuid;
 
-use contracts::{Decision, PrincipalKind};
+use contracts::{AccountLifecycleHook, Decision, LifecycleError, PrincipalKind};
 
-use crate::account_repo::{self, ListedAccount};
+use crate::account_repo::{self, ListedAccount, NewIdentity};
 use crate::device_grant_repo::{
     self, Approver, DecideOutcome, NewDeviceToken, NewGrant, PendingGrant, PollStep,
 };
+use crate::invite_repo;
 use crate::janitor_repo::{self, Target};
 use crate::login_code_repo;
 use crate::session_repo::{self, NewSession};
@@ -152,8 +156,7 @@ pub(crate) async fn by_id(
     Ok(row.map(CredentialRow::from))
 }
 
-/// The columns of a consumed sign-in state that `complete` reads. The invite hash is consumed with the row and
-/// read by the task that redeems it.
+/// The columns of a consumed sign-in state that `complete` reads.
 pub(crate) struct StateRow {
     pub provider: String,
     pub nonce: String,
@@ -163,6 +166,8 @@ pub(crate) struct StateRow {
     /// The PKCE challenge of a mobile sign-in, copied to its login code.
     pub code_challenge: Option<String>,
     pub expires_at_micros: i64,
+    /// The hash of the invite or setup token presented at `begin`, redeemed when the identity is unknown.
+    pub invite_token_hash: Option<Vec<u8>>,
 }
 
 pub(crate) struct NewState<'a> {
@@ -187,12 +192,21 @@ const INSERT_STATE: &str = "INSERT INTO oauth_states (state_hash, provider, nonc
 // Expiry is returned and decided in code: an expired state is consumed like a live one and fails the same way.
 const CONSUME_STATE: &str = "DELETE FROM oauth_states WHERE state_hash = $1 \
     RETURNING provider, nonce, pkce_verifier, return_to, client_kind, code_challenge, \
-    (extract(epoch FROM expires_at) * 1000000)::bigint";
+    (extract(epoch FROM expires_at) * 1000000)::bigint, invite_token_hash";
 
 const IDENTITY_BY_PROVIDER_ID: &str = "SELECT i.id, i.account_id, a.state FROM identities i \
     JOIN accounts a ON a.id = i.account_id WHERE i.provider = $1 AND i.provider_user_id = $2";
 
-type StateTuple = (String, String, String, String, String, Option<String>, i64);
+type StateTuple = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    i64,
+    Option<Vec<u8>>,
+);
 
 /// The identity a provider user id belongs to, with the state of its account.
 pub(crate) struct KnownIdentity {
@@ -250,6 +264,7 @@ pub(crate) async fn consume_state(
         client_kind: row.4,
         code_challenge: row.5,
         expires_at_micros: row.6,
+        invite_token_hash: row.7,
     }))
 }
 
@@ -277,6 +292,64 @@ pub(crate) async fn identity_by_provider_id(
             account_state,
         }),
     )
+}
+
+/// An account created from an invite: the rows identity writes and what the provider said about the user.
+pub(crate) struct NewRegistration<'a> {
+    pub invite_token_hash: &'a [u8],
+    pub account_id: Uuid,
+    pub display_name: &'a str,
+    pub identity: NewIdentity<'a>,
+    pub now: Timestamp,
+}
+
+/// Why the account-creation transaction rolled back.
+#[derive(Debug, Error)]
+pub(crate) enum CreateError {
+    /// No open invite for the token, or a concurrent redemption won the race.
+    #[error("the invite is not redeemable")]
+    InviteNotRedeemable,
+    #[error("an account lifecycle hook failed")]
+    Hook(#[source] LifecycleError),
+    #[error(transparent)]
+    Db(#[from] DbError),
+}
+
+/// Creates the account in one transaction: the `accounts` and `identities` rows, `initialize` of every hook in
+/// registration order, then the conditional redemption. Any failure rolls all of it back, so the invite stays
+/// redeemable. System scope: the invite is resolved before any account exists, and the feed hook reads the
+/// installation epoch from the other accounts' rows.
+pub(crate) async fn create_account(
+    db: &Db,
+    registration: &NewRegistration<'_>,
+    hooks: &[Arc<dyn AccountLifecycleHook>],
+) -> Result<(), RunError<CreateError>> {
+    let (account, now) = (registration.account_id, registration.now);
+    db.run_system("account_create", async |tx| {
+        let invite = invite_repo::open_invite(tx, registration.invite_token_hash, now)
+            .await?
+            .ok_or(CreateError::InviteNotRedeemable)?;
+        account_repo::insert_account(
+            tx,
+            account,
+            registration.display_name,
+            &invite.grants_role,
+            now,
+        )
+        .await?;
+        account_repo::insert_identity(tx, &registration.identity).await?;
+        for hook in hooks {
+            hook.initialize(tx, account)
+                .await
+                .map_err(CreateError::Hook)?;
+        }
+        if invite_repo::redeem(tx, invite.id, account, now).await? {
+            Ok(())
+        } else {
+            Err(CreateError::InviteNotRedeemable)
+        }
+    })
+    .await
 }
 
 /// The new session and the identity's `last_login_at`, in one transaction of the account.

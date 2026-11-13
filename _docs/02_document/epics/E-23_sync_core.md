@@ -161,7 +161,7 @@ sequenceDiagram
 | Target | Threshold | Failure | Test |
 |---|---|---|---|
 | Large transfer, single client (AC-2) | >= 112 MB/s (90% of 1 Gbps), 0% failed blocks | below 100 MB/s or below 90% of calibrated goodput | PT-13-1, NFT-PERF-04 (gate S1, REF-SRV) |
-| Resume re-send (AC-3) | <= 10 MiB per drop | > 10 MiB (see G-03-1) | IT-13-2, AT-13-1 |
+| Resume re-send (AC-3) | <= 16 MiB per drop | > 16 MiB | IT-13-2, AT-13-1 |
 | 50 GiB finish (AC-4) | last ack to `Published` <= 2 s | > 2 s | IT-13-3 |
 | 10,000 small files (AC-40) | <= 45 s target, 0 duplicates | > 60 s | PT-13-4 |
 | Mobile memory (AC-52) | RSS <= 100 MB target | > 150 MB | PT-13-2, IT-13-18 |
@@ -189,7 +189,7 @@ sequenceDiagram
 | # | Criterion | Measurable Condition |
 |---|-----------|---------------------|
 | 1 | AC-2/AC-4 client side | PT-13-1 >= 112 MB/s on REF-SRV; IT-13-3 finish <= 2 s for 5 GiB and 50 GiB |
-| 2 | AC-3 resume | IT-13-2/AT-13-1: each resume re-sends <= 10 MiB over 10 seeded drops, no re-hash from zero |
+| 2 | AC-3 resume | IT-13-2/AT-13-1: each resume re-sends <= 16 MiB over 10 seeded drops, no re-hash from zero |
 | 3 | AC-7, AC-38, AC-68 | IT-13-4/5/15: corrupt block gives `HashMismatch`, sink never sees it; non-204 leaves block needed |
 | 4 | AC-8, AC-70 | IT-13-6: `ConflictCopy` / `EditedSince{current}`; `move_node` request has no `base_revision` |
 | 5 | AC-40 | IT-13-7/8, PT-13-4: save-before-stage, 0 duplicates, 10,000 files <= 60 s at 20 ms RTT |
@@ -208,8 +208,8 @@ sequenceDiagram
 | 2 | R05: mobile token rotation loses a refresh token | Persist-before-use, 30 s server grace, retry once then sign out (IT-13-9) | 13, 17 |
 | 3 | R27: 100 MB daemon budget vs in-flight buffers | In-flight cap 16 MiB option, measure in S2 | 13, 14 |
 | 4 | R31: UniFFI/`syn` pin clash | UniFFI only, pin in workspace lockfile | 13 |
-| 5 | G-03-1: worst-case re-send 16 MiB vs AC-3 10 MiB (owner decision) | Lane/checkpoint limits or AC change; planner takes `lanes_max` and checkpoint interval as inputs | owner |
-| 6 | Lost-commit recovery for new files depends on 03 | Spike with E-14 before the executor task | 13, 03 |
+| 5 | G-03-1 resolved 2026-11-11: AC-3 is 16 MiB, limits stay | Client lanes min(4, max_lanes, lane_limit) = 4, no extra cap; planner takes `lanes_max` only (AZ-3953) | owner |
+| 6 | Lost-commit recovery for new files depends on 03 | Decided 2026-11-13 (AZ-3732, AZ-3949: `sync_api.md` § Lost-commit recovery; owner: 03 answers `NothingToSend` for a committed key until `upload_session_ttl`, AZ-3734/AZ-3738) | 13, 03 |
 
 ### Labels
 

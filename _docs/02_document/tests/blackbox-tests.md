@@ -15,7 +15,7 @@ Functional black-box scenarios for sunnycloud. Every scenario drives a public in
 
 ## Positive Scenarios
 
-### FT-P-01: Resumable 5 GiB upload re-sends at most 10 MiB [v1.0]
+### FT-P-01: Resumable 5 GiB upload re-sends at most 16 MiB [v1.0]
 
 **Summary**: A 5 GiB upload interrupted at 50% resumes and finishes with identical content.
 **Traces to**: AC-3, AC-4, AC-7, RESTRICT-11
@@ -33,9 +33,9 @@ Functional black-box scenarios for sunnycloud. Every scenario drives a public in
 | 1 | Start upload; proxy drops the TCP connection when 2.5 GiB (50%) is acknowledged | Client detects failure; file not visible as committed |
 | 2 | Client retries (new connection) | Session resumes; only unacknowledged blocks are sent |
 | 3 | Wait for commit; fetch the file's stored hash via API | Hash equals BLAKE3 of the original |
-| 4 | Compute bytes sent on the wire after the drop minus bytes still missing at the drop | Re-sent bytes at most 10 MiB |
+| 4 | Compute bytes sent on the wire after the drop minus bytes still missing at the drop | Re-sent bytes at most 16 MiB (AC-3, G-03-1) |
 
-**Expected outcome**: final BLAKE3 equals original (exact); re-sent bytes <= 10 MiB.
+**Expected outcome**: final BLAKE3 equals original (exact); re-sent bytes <= 16 MiB (AC-3, G-03-1).
 **Max execution time**: 300 s
 
 ### FT-P-02: 5 GiB download is hash-verified [v1.0]

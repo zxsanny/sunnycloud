@@ -116,7 +116,7 @@ Names follow `environment.md` (Reference hardware classes).
 
 ### NFT-PERF-05: Interrupted upload resumes with bounded re-send [v1.0]
 
-**Summary**: After a connection drop at 50% the retry re-sends at most 10 MiB and the file is intact.
+**Summary**: After a connection drop at 50% the retry re-sends at most 16 MiB (AC-3, G-03-1) and the file is intact.
 **Traces to**: AC-3, AC-7, RESTRICT-09, RESTRICT-11
 **Metric**: bytes sent on the wire (client-side byte counter on the TCP connection) after the retry, minus the bytes not yet acknowledged at the drop
 **Hardware**: REF-SRV, REF-LOAD (20 ms RTT)
@@ -133,7 +133,7 @@ Names follow `environment.md` (Reference hardware classes).
 | 3 | Commit; download and BLAKE3 | hash |
 | 4 | Repeat 10 times, with the drop at random points between 10% and 90%, and once with `kill -9` of the server instead of a connection drop | re-sent bytes per run |
 
-**Pass criteria**: re-sent bytes <= 10 MiB in all 11 runs; final BLAKE3 equals the original (results_report Transfer row 1).
+**Pass criteria**: re-sent bytes <= 16 MiB (AC-3, G-03-1) in all 11 runs; final BLAKE3 equals the original (results_report Transfer row 1).
 **Duration**: about 25 min
 
 ### NFT-PERF-06: Constant-time upload finish, files up to 50 GiB [v1.0]

@@ -10,6 +10,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# The janitors' WARN and INFO lines.
+sc_observability = { path = "../../shared/observability" }
 contracts = { path = "../../contracts" }
 sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }

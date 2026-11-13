@@ -103,8 +103,8 @@ Then the first attempt returns a typed failure with accounts, identities, root n
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| What the allowlist does at redemption is not stated: is a verified email that is not on `email_allowlist` refused, or only not recorded? AC-23 says only that an email is matched at invite redemption | Product owner | open | Medium |
-| `accounts.display_name` is NOT NULL but an OIDC provider may send no name claim; the fallback is not stated | E-15 owner | open | Low |
+| What the allowlist does at redemption is not stated: is a verified email that is not on `email_allowlist` refused, or only not recorded? AC-23 says only that an email is matched at invite redemption | Product owner | resolved 2026-11-13: with the allowlist set, a verified email not on it refuses the redemption (`InvitationRequired`, no row) | Medium |
+| `accounts.display_name` is NOT NULL but an OIDC provider may send no name claim; the fallback is not stated | E-15 owner | resolved 2026-11-13: the provider's name claim, else its username (GitHub `login`, OIDC `preferred_username`), else `User` | Low |
 
 ## Contract
 

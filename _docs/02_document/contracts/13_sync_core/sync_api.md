@@ -3,9 +3,9 @@
 **Component**: 13_sync_core (crate `sync-core`)
 **Producer task**: E-23/c07 — `_docs/02_tasks/todo/B09-07_http_sync_client_connect.md` (trait, construction, negotiation, transport); contributors: E-23/c06 typed errors and wire table (`B09-06`), E-23/c08 tree operations (`B09-08`), E-23/c09a `hash_file` (`B09-09`), E-23/c09b `upload` (`B09-10`), E-23/c10 `stage_small`/`batch_commit` (`B09-11`), E-23/c11 `download` (`B09-12`), E-23/c12 feed (`B09-13`), E-23/c13 token lifecycle (`B09-14`), E-23/c14 `cancel`, rate limits, `SyncConfig` (`B09-15`); keys assigned at Step 4
 **Consumer tasks**: this batch: E-23/c15, c18a, c18b; other batches: E-24 (14 daemon: device login, uploads, downloads, feed loop, first-sync merge), E-27 (`mobile_backup`: sign-in, refresh, uploads, reinstall rebuild), E-28 through `mobile_backup`; pipelines AZ-3668, AZ-3669, AZ-3670, AZ-3672, AZ-3673, AZ-3674; resolved at Step 4
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-13
 
 ## Purpose
 
@@ -36,6 +36,8 @@ Transport: one HTTP/2 client per `HttpSyncClient`, TLS 1.3 only, ALPN h2, HTTPS 
 
 `server_url`, `client_family`, `client_version` (build-injected), `retry_base` 500ms, `retry_max` 30s, `max_attempts_per_block` 8, `connect_timeout` 10s, `request_idle_timeout` 60s, `longpoll_wait` 30s (clamped to `ServerInfo.longpoll_max_wait`), `longpoll_client_margin` 10s, `h2_stream_window` 8 MiB, `h2_conn_window` 32 MiB, `keepalive_interval` 20s, `hash_cpu_share` (desktop 0.25 of a core), `hash_checkpoint_blocks` 32, `batch_max_bytes_in_flight` 64 MiB. Environment names `SUNNYCLOUD_SYNC_<KEY>`.
 
+No lane key: the upload lane count is negotiated only, `min(4, ServerInfo.max_lanes, UploadSession.lane_limit)` (4 at the server defaults); G-03-1 (AZ-3731, AZ-3953) adds no client in-flight cap. Worst-case resume re-send is 16 MiB (AC-3).
+
 ### Operations (`SyncApi`, async)
 
 | Operation | Route(s) (`api_v1_surface.md`) | Output | Typed errors beyond the common set | Contributor |
@@ -57,6 +59,19 @@ Transport: one HTTP/2 client per `HttpSyncClient`, TLS 1.3 only, ALPN h2, HTTPS 
 | `cancel()` | none | every in-flight operation ends with `Cancelled` within 1 s; nothing is sent afterwards | none | c14 |
 
 Common errors on every operation: `Transport`, `Cancelled`, `UpgradeRequired`, `Unauthorized`, `CredentialUnavailable` (the host's credential could not be read; nothing was sent, AZ-4231), `RateLimited{retry_after}`, `AccountNotActive`, `Unexpected{code, request_id}`. `DeviceGrantRefused` is internal: the device poll answers it as an outcome.
+
+### Lost-commit recovery (`upload`, decided 2026-11-13, AZ-3949; server rule `contracts/03_transfer/upload_service.md` § `NothingToSend` rule)
+
+Trigger: the checkpoint is `Committing` and the commit answer was not received (transport error, timeout, process kill) or the commit answered `upload_session_gone` (410). The client calls `start_upload` once with the identical request (parent, name, `declared_size`, `client_key`, `content_hash`, `base_revision`); it never retries with another name or key.
+
+| `start_upload` answer | `upload` result |
+|---|---|
+| `NothingToSend{revision}` (live file at the name or the base node with the same hash, or a session of this `client_key` committed within `upload_session_ttl`) | `CommitOutcome::NothingToSend{revision}`, 0 block bytes, checkpoint cleared. A brand-new file whose response was lost ends with 1 revision and no conflict copy (IT-13-16 B, C) |
+| `Started` with the stored `upload_id` (the commit never applied) | send `need_blocks`, commit again; result = the commit's answer (`Published`, or `ConflictCopy{node, copy}` with `copy == node` for a taken name) |
+| `Started` with another `upload_id` (only once the key's commit is older than `upload_session_ttl`) | continues with that session |
+| typed error (`ParentNotFound`, `NotAFolder`, `QuotaExceeded`, `FreeSpaceFloor`, `SessionCapReached`) | returned; checkpoint kept |
+
+A session left open when `NothingToSend` answers a commit that never applied is settled by the server reaper (`upload_session_ttl`); the client sends no abort. The committed-key answer is 03's (owner decision 2026-11-13, option a; E-14 tasks AZ-3734 and AZ-3738).
 
 ### Wire-code table (the only place wire codes become typed errors; E-23/c06)
 
@@ -114,6 +129,7 @@ Common errors on every operation: `Transport`, `Cancelled`, `UpgradeRequired`, `
 | wire-table | every row above, plus `weird_code` with request id `r-1` | the row's typed error; `Unexpected{code: "weird_code", request_id: "r-1"}` | IT-13-13 |
 | ack-204 | block PUT answered 200 with body, 202, 500, reset | block stays needed and is re-sent | IT-13-15 |
 | cancel | 3 uploads in flight, `cancel()` | all `Cancelled` within 1 s, nothing sent after | IT-13-18 |
+| lost-commit | commit response dropped once: (A) base revision set, (B) brand-new file, (C) name taken at commit | `NothingToSend{revision}`, 1 revision, 0 block bytes re-sent, no second file | IT-13-16 (A), (B), (C) |
 | rate-limit | 429 `Retry-After: 3` | next attempt not before 3 s, jitter under 1 s | IT-13-19 |
 
 ## Open points
@@ -124,10 +140,12 @@ Common errors on every operation: `Transport`, `Cancelled`, `UpgradeRequired`, `
 4. `sign_out` uses `DELETE /api/v1/devices/me`, which `api_v1_surface.md` declares `DeviceOnly`: a mobile session would get 403. The mobile sign-out route (for example `DELETE /api/v1/sessions/current`) needs an owner answer (E-15, E-21, E-27).
 5. Handling of 500 and 503 outside block PUTs (retry with backoff, or surfaced) is not stated; IT-13-15 covers block PUTs only.
 6. Gate S1 may require a second HTTP/2 connection (13 risk 1); the decision is E-23/c02's and would add a config key.
-7. Commit answers for stale-base and taken-name commits (`ConflictCopy` fields, whether `EditedSince` occurs on commit) follow G-03-3 (E-14/c01).
+7. Resolved 2026-11-11 (G-03-3, `contracts/03_transfer/commit_service.md` 1.1.0): `Committed` without `conflict_copy` is `Published`; with one it is `ConflictCopy{node, copy}`, where `copy == node` means the file itself carries the conflict-copy name; commit never answers `EditedSince` or `name_conflict`. Lost-commit recovery: § Lost-commit recovery (AZ-3949, 2026-11-13).
+8. The `upload` error list still names `NameConflict` and `EditedSince{current}`, which commit never answers; removing them is a breaking change of this contract, left to E-23/c09b (AZ-3962).
 
 ## Change Log
 
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B09) |
+| 1.1.0 | 2026-11-13 | Lost-commit recovery rule per `start_upload` answer (owner: committed-key answer, option a); open point 7 resolved (G-03-3); open point 8; no lane key in `SyncConfig` (G-03-1) | AZ-3949, AZ-3953 |

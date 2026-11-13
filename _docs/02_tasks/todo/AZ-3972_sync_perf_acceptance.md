@@ -19,7 +19,7 @@
 
 ## Problem
 
-The component acceptance of 13 (§10) promises: a 5 GiB upload killed at random points re-sends at most 10 MiB per resume; 10,000 small files commit in at most 60 s at 20 ms RTT with no duplicates after a retried batch; a flipped bit is rejected and re-sent; a corrupt download delivers nothing as valid; an unsupported server gives a clear message; the desktop large transfer reaches at least 90% of 1 Gbps. These need the reference hardware and the finished executor; this is the second half of the split row E-23/c18 (the first is E-23/c18a). PT-13-3 (planner cost) is already AC-5 of E-23/c05 because it needs no server.
+The component acceptance of 13 (§10) promises: a 5 GiB upload killed at random points re-sends at most 16 MiB per resume; 10,000 small files commit in at most 60 s at 20 ms RTT with no duplicates after a retried batch; a flipped bit is rejected and re-sent; a corrupt download delivers nothing as valid; an unsupported server gives a clear message; the desktop large transfer reaches at least 90% of 1 Gbps. These need the reference hardware and the finished executor; this is the second half of the split row E-23/c18 (the first is E-23/c18a). PT-13-3 (planner cost) is already AC-5 of E-23/c05 because it needs no server.
 
 ## Outcome
 
@@ -98,9 +98,9 @@ Then it is recorded as `NOT-RUN(HW-REF)` in `_docs/_process_leftovers/` and no w
 
 ## Risks & Mitigation
 
-**Risk 1: AT-13-1 fails legitimately while G-03-1 is open**
-- *Risk*: the 16 MiB worst case exceeds 10 MiB.
-- *Mitigation*: AC-4 takes its bound from E-23/c03 and records a legitimate failure explicitly.
+**Risk 1: a resume over 16 MiB**
+- *Risk*: a resume re-sends more than 16 MiB (bound recorded by AZ-3953).
+- *Mitigation*: it means a lane or checkpoint defect, not a gap; AC-4 fails and the run is triaged.
 
 ## Flagged concerns
 

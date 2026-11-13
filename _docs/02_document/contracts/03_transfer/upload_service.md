@@ -3,9 +3,9 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c04 — `_docs/02_tasks/todo/B03-20_transfer_start_upload.md` (contributors: E-14/c05 `put_block`, E-14/c06 `get_upload`/`abort_upload`, E-14/c07 `stage_small`, E-14/c11 `ReservationSource`; rule from spike E-14/c02); keys assigned at Step 4
 **Consumer tasks**: E-14/c13, E-14/c16 (this batch); E-21/c13 (11 handlers), E-22 (doctor, `recompute` caller), E-17 (07 `recompute` caller), E-23/E-26/E-27 through the HTTP API, resolved at Step 4
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: draft (the `NothingToSend` rule is recorded; frozen when the producer task passes review)
-**Last Updated**: 2026-11-11
+**Last Updated**: 2026-11-13
 
 ## Purpose
 
@@ -36,6 +36,8 @@ Applies only when `StartUpload.content_hash` is present; without it `start_uploa
 | A live folder at the name | `Started`; no error: a taken name is settled at commit (`CreatedAsCopy`), as for any other name clash |
 | No node at the name | `Started` |
 | `base_revision` given | The node is the one that owns `base_revision` (by id, AC-70), not the one at the name. If it is live and its current revision has the same hash: `NothingToSend{revision}` = that current revision; otherwise `Started`. A `base_revision` that is unknown, foreign or whose node is gone is `Started`, never an error |
+
+Committed key (owner decision 2026-11-13, AZ-3949, option a): before the cases above, a `client_key` whose session committed within `upload_session_ttl` answers `NothingToSend{revision}` = the revision that commit created, whatever the name holds now (taken at commit, replaced, moved or deleted since). A lost commit response therefore never yields a second server file within the TTL. How the committed key is kept (the session row kept in a committed state with its revision id until the reaper removes it, or another bounded record) is the producer's choice (E-14/c02, c03); it holds no reservation.
 
 The rule matches only the node at the given parent and name (or the base node): there is no commit-by-hash across nodes. Reads: `find_live_node`, then `resolve_live_file` for the current revision id, then `get_revision` for its hash, all by indexed keys and before the session transaction; if E-13 later lets `NodeRef` or `LiveFile` carry the hash, the last read goes away. The staged path needs none of this: its receipts heal a lost response (E-14/c09).
 
@@ -83,3 +85,4 @@ Constants and limits: block size 2 MiB (protocol constant); `lane_limit` = `max_
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
 | 1.1.0 | 2026-11-11 | `NothingToSend` rule per case recorded (matched by `name_key`; folder, tombstone, other hash and no node start a session) | AZ-3732 |
+| 1.2.0 | 2026-11-13 | Committed key answers `NothingToSend` with its revision until `upload_session_ttl` (owner, lost-commit recovery) | AZ-3949 |

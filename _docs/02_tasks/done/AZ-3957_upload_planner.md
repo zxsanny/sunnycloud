@@ -108,7 +108,7 @@ Then the mean cost per call is at most 50 us and the planner state is at most 4 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | The planner action set has no "give up" action for a block that exhausted `max_attempts_per_block`; this task decides it and records it in the contract (open point 2) | E-23 | open | Low |
-| G-03-1 (16 MiB worst case vs AC-3's 10 MiB) may change `lanes_max` or add an in-flight cap input; the planner stays parameterised and does not decide it | Owner (via E-14/c01, E-23/c03) | open | Medium |
+| G-03-1 (16 MiB worst case vs AC-3's 10 MiB) may change `lanes_max` or add an in-flight cap input; the planner stays parameterised and does not decide it | Owner (via E-14/c01, E-23/c03) | resolved 2026-11-11 (AZ-3731; AZ-3953: no lanes_max change, no in-flight cap input) | Medium |
 
 ## Contract
 

@@ -32,7 +32,15 @@ pub enum IdentityError {
     /// A statement of a job that has no port error to carry it failed.
     #[error("database operation failed")]
     Database(#[source] RunError<DbError>),
+    /// Account creation ran before the composition root registered the lifecycle hooks; it fails closed.
+    #[error("account lifecycle hooks are not registered")]
+    HooksNotRegistered,
     /// The device grant could not draw an unused user code; the random source or the table is damaged.
     #[error("no unused user code after repeated draws")]
     UserCodeExhausted,
 }
+
+/// `register_hooks` was called a second time; the first list stays.
+#[derive(Debug, Error)]
+#[error("account lifecycle hooks are already registered")]
+pub struct HooksAlreadyRegistered;

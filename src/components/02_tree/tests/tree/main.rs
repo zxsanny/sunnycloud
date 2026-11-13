@@ -1,6 +1,7 @@
 //! Tree skeleton (AZ-3706): settings, typed errors, the retry-once rule and the `nodes`/`revisions` migration;
 //! folder create, rename, move and delete (AZ-3708); `TreeCommit::publish` (AZ-3709); the account lifecycle hook
-//! and the blob owner cleanup (AZ-3717, AZ-3925 AC-4); on a real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
+//! and the blob owner cleanup (AZ-3717, AZ-3925 AC-4); the cascade and purge janitors (AZ-3714); on a real
+//! PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
 
 mod config;
 mod constraints;
@@ -10,6 +11,10 @@ mod lifecycle_cleanup;
 mod lifecycle_erase;
 mod lifecycle_support;
 mod lifecycle_vault;
+mod maintenance_cascade;
+mod maintenance_janitor;
+mod maintenance_purge;
+mod maintenance_support;
 mod migration;
 mod mutation_concurrency;
 mod mutation_delete;

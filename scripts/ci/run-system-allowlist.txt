@@ -17,3 +17,4 @@ src/components/04_blobstore/src/gc_sweeper/sweep_repo.rs
 src/components/04_blobstore/src/orphan_sweeper/orphan_repo.rs
 src/components/04_blobstore/src/scrub/scrub_repo.rs
 src/components/05_sync_feed/src/epoch_repo.rs
+src/components/02_tree/src/maintenance_repo.rs

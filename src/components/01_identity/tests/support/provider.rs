@@ -36,6 +36,8 @@ pub struct Behaviour {
     pub token_redirect: Option<String>,
     /// GitHub's `/user/emails`: `(address, primary, verified)`.
     pub github_emails: Vec<(String, bool, bool)>,
+    /// GitHub's `/user` answers `"name": null`, leaving only the `login`.
+    pub github_no_name: bool,
 }
 
 /// The values behind one authorization code; the fields can be changed before the callback.
@@ -46,6 +48,9 @@ pub struct Grant {
     pub audience: String,
     pub issuer: String,
     pub email: Option<(String, bool)>,
+    /// The id token's `name` and `preferred_username` claims; absent by default.
+    pub name: Option<String>,
+    pub preferred_username: Option<String>,
     code_challenge: String,
 }
 
@@ -168,6 +173,8 @@ impl FakeProvider {
                 .expect("client_id in the url"),
             issuer: self.shared.base.clone(),
             email: None,
+            name: None,
+            preferred_username: None,
             code_challenge: query
                 .get("code_challenge")
                 .cloned()
@@ -298,7 +305,7 @@ impl Shared {
             ("GET", "/jwks") => self.jwks(),
             ("POST", "/token") => self.token(&request, &behaviour, true).await,
             ("POST", "/login/oauth/access_token") => self.token(&request, &behaviour, false).await,
-            ("GET", "/user") => self.github_user(&request),
+            ("GET", "/user") => self.github_user(&request, &behaviour),
             ("GET", "/user/emails") => self.github_emails(&behaviour),
             _ => Response::json(404, &json!({"error": "not_found"})),
         }
@@ -386,6 +393,12 @@ impl Shared {
             claims["email"] = json!(address);
             claims["email_verified"] = json!(verified);
         }
+        if let Some(name) = &grant.name {
+            claims["name"] = json!(name);
+        }
+        if let Some(username) = &grant.preferred_username {
+            claims["preferred_username"] = json!(username);
+        }
         let signing_input = format!(
             "{}.{}",
             URL_SAFE_NO_PAD.encode(header.to_string()),
@@ -401,7 +414,7 @@ impl Shared {
         )
     }
 
-    fn github_user(&self, request: &Request) -> Response {
+    fn github_user(&self, request: &Request, behaviour: &Behaviour) -> Response {
         let subject = request
             .headers
             .get("authorization")
@@ -409,7 +422,8 @@ impl Shared {
             .and_then(|token| self.lock().access_tokens.get(token).cloned());
         match subject.and_then(|subject| subject.parse::<u64>().ok()) {
             Some(id) => {
-                Response::json(200, &json!({"id": id, "login": "octo", "name": "Octo Cat"}))
+                let name = (!behaviour.github_no_name).then_some("Octo Cat");
+                Response::json(200, &json!({"id": id, "login": "octo", "name": name}))
             }
             None => Response::json(401, &json!({"message": "Bad credentials"})),
         }

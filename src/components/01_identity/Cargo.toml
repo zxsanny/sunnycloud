@@ -42,6 +42,12 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+# The real lifecycle hooks of 02 (with 04's GC queue), 05 and 07a that account creation runs (AZ-3685;
+# component dev-dependencies, ADR-015).
+sunnycloud-tree = { path = "../02_tree" }
+sunnycloud-blobstore = { path = "../04_blobstore" }
+sunnycloud-sync-feed = { path = "../05_sync_feed" }
+sunnycloud-quota = { path = "../07a_quota" }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
 # The statement-capture subscriber of the harness reads sqlx's statement events.

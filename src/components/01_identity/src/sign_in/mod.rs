@@ -1,22 +1,24 @@
 //! Provider sign-in: `begin` stores a hashed one-time state and builds the provider redirect, `complete`
-//! consumes the state, has the provider client validate the callback and signs a known identity in (a web
-//! client gets a session, a mobile one a one-time code that `exchange_mobile_code` turns into one).
+//! consumes the state, has the provider client validate the callback, creates the account of an unknown
+//! identity that presented an invite (`register`) and signs the identity in (a web client gets a session, a
+//! mobile one a one-time code that `exchange_mobile_code` turns into one).
 //!
-//! Invite and setup-token redemption, linking and abuse limits are other tasks. This
+//! Setup-token and re-bind redemption, linking and abuse limits are other tasks. This
 //! type implements `begin` and `complete` with the signatures of `contracts::SignInService`; the trait is
 //! implemented once its remaining methods exist.
 
 mod mobile;
+mod register;
 mod rules;
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use contracts::{
-    AuthorizationRedirect, BeginSignIn, BrowserBinding, CallbackParams, ClientKind, SessionTokens,
-    SignInError, SignInOutcome,
+    AccountLifecycleHook, AuthorizationRedirect, BeginSignIn, BrowserBinding, CallbackParams,
+    ClientKind, SessionTokens, SignInError, SignInOutcome,
 };
 use rules::{PublicUrl, is_relative_return_path, state_hash};
 use sc_clock::{Clock, Timestamp};
@@ -52,6 +54,10 @@ pub struct IdentitySignIn {
     access_token_ttl: Duration,
     refresh_token_ttl: Duration,
     provider_timeout: Duration,
+    /// Empty when no allowlist is configured; then no email is read at all.
+    email_allowlist: Vec<String>,
+    /// Set once by the composition root; account creation fails closed while it is unset.
+    hooks: OnceLock<Vec<Arc<dyn AccountLifecycleHook>>>,
 }
 
 impl IdentitySignIn {
@@ -72,9 +78,16 @@ impl IdentitySignIn {
             OutboundClient::new(config.allow_plain_http_dev)
                 .map_err(|error| IdentityError::OutboundSetup(Box::new(error)))?,
         );
+        let read_email = !config.email_allowlist.is_empty();
         let mut providers = HashMap::new();
         for (index, provider) in config.providers.iter().enumerate() {
-            let client = provider::build(index, provider, Arc::clone(&http), Arc::clone(&clock))?;
+            let client = provider::build(
+                index,
+                provider,
+                Arc::clone(&http),
+                Arc::clone(&clock),
+                read_email,
+            )?;
             providers.insert(provider.key.clone(), client);
         }
         Ok(IdentitySignIn {
@@ -87,6 +100,8 @@ impl IdentitySignIn {
             access_token_ttl: config.access_token_ttl,
             refresh_token_ttl: config.refresh_token_ttl,
             provider_timeout: config.provider_timeout,
+            email_allowlist: config.email_allowlist.clone(),
+            hooks: OnceLock::new(),
         })
     }
 
@@ -188,7 +203,13 @@ impl IdentitySignIn {
                     code: ErrorCode::Unauthenticated,
                 },
             })?;
-        let known = self.known_identity(provider, &identity).await?;
+        let known = match self.known_identity(provider, &identity).await? {
+            Some(known) => known,
+            None => {
+                self.register(provider, &identity, stored.invite_token_hash.as_deref())
+                    .await?
+            }
+        };
         if known.account_state != ACTIVE {
             return Err(SignInError::TrustedFailure {
                 code: ErrorCode::AccountNotActive,
@@ -248,11 +269,10 @@ impl IdentitySignIn {
         &self,
         provider: &str,
         identity: &ProviderIdentity,
-    ) -> Result<KnownIdentity, SignInError> {
+    ) -> Result<Option<KnownIdentity>, SignInError> {
         auth_repo::identity_by_provider_id(&self.db, provider, &identity.provider_user_id)
             .await
-            .map_err(unexpected)?
-            .ok_or(SignInError::InvitationRequired)
+            .map_err(unexpected)
     }
 
     async fn start_session(

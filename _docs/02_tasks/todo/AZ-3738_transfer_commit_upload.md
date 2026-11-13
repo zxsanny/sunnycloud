@@ -55,7 +55,7 @@ Then their media types are `image/jpeg`, `text/html` and none
 **AC-3: Blocklist checks**
 Given an upload missing block 2, a blocklist with one wrong hash, a blocklist of 3 hashes for 5 blocks, and an unknown upload id
 When each is committed
-Then they return `NeedBlocks([2])`, `BlocklistMismatch`, `BlocklistMismatch` and `UploadNotFound`, and on success the session row is deleted
+Then they return `NeedBlocks([2])`, `BlocklistMismatch`, `BlocklistMismatch` and `UploadNotFound`, and on success the open session is gone (its row deleted, or kept only as the committed-key record of AC-6b)
 
 **AC-4: Target choice and conflict outcomes (AC-8)**
 Given a file at its current base, the same file with a stale base, and a new file whose name is taken
@@ -70,7 +70,12 @@ Then it returns `UploadNotFound`, no revision exists, usage is unchanged, and th
 **AC-6: Interrupted upload resumes and commits (AC-3, AC-4)**
 Given a 100 MiB upload started with `client_key` k and 40 MiB sent before the connections drop
 When start is called again with k, the missing blocks are sent and the upload is committed
-Then the same `upload_id` and only the missing blocks are returned, the committed file's hash equals the source, and the resend is at most 10 MiB or the bound E-14/c01 recorded
+Then the same `upload_id` and only the missing blocks are returned, the committed file's hash equals the source, and the resend is at most 16 MiB (AC-3, G-03-1)
+
+**AC-6b: Committed key kept (lost-commit recovery, owner decision 2026-11-13)**
+Given an upload committed with `client_key` k
+When the commit transaction ends
+Then k and the revision it created stay findable by `start_upload` until `upload_session_ttl` (`commit_service.md` 1.2.0), the reservation is settled once at commit, and the reaper removes the record after the TTL
 
 ## Non-Functional Requirements
 

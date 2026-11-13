@@ -7,7 +7,7 @@ Component tests complement the system-level scenarios in `02_document/tests/` an
 | AC ID | Acceptance Criterion (short) | Test IDs | Coverage |
 |-------|-----------------------------|----------|----------|
 | AC-2 | Large transfer >= 90% of link speed | PT-13-1 | Covered; system NFT-PERF-04 (C-REF) |
-| AC-3 | Interrupted upload re-sends <= 10 MiB | IT-13-1, IT-13-2, AT-13-1 | Covered; system FT-P-01, NFT-RES-01 |
+| AC-3 | Interrupted upload re-sends <= 16 MiB (G-03-1) | IT-13-1, IT-13-2, AT-13-1 | Covered; system FT-P-01, NFT-RES-01 |
 | AC-4 | Files up to 50 GiB, constant-time finish | IT-13-3, PT-13-3 | Covered; system FT-P-03, NFT-PERF-06 |
 | AC-7 | Hash verification on every transfer | IT-13-4, IT-13-5, IT-13-20, AT-13-2 | Covered; system FT-N-01, FT-N-02 |
 | AC-8 | Base revision on every mutation, typed conflicts | IT-13-6 | Covered; system FT-P-10, FT-P-12 |
@@ -138,7 +138,7 @@ Component tests complement the system-level scenarios in `02_document/tests/` an
 - **Summary**: A commit whose answer is lost is recovered by the same `client_key`.
 - **Traces to**: AC-78, AC-46
 - **Input**: the proxy drops the commit response once (`e2e-ctl`). Case A: new revision of an existing node (base revision set). Case B: brand-new file at `(parent, name, hash)`.
-- **Expected**: A: `start_upload` with the same `client_key` -> `NothingToSend{revision}`, 1 revision, 0 block bytes re-sent. B: a NEW file whose commit response was lost: `start_upload` with the same parent, name, `client_key` and file hash -> `NothingToSend{revision}` of the live file at that name (03 rule decided 2026-11-11, AZ-3732, `contracts/03_transfer/upload_service.md`), 1 revision, no conflict copy.
+- **Expected**: A: `start_upload` with the same `client_key` -> `NothingToSend{revision}`, 1 revision, 0 block bytes re-sent. B: a NEW file whose commit response was lost: `start_upload` with the same parent, name, `client_key` and file hash -> `NothingToSend{revision}` of the live file at that name (03 rule decided 2026-11-11, AZ-3732, `contracts/03_transfer/upload_service.md`), 1 revision, no conflict copy. C: a new file whose name is taken at commit by another device's file (or changed before the retry): `start_upload` with the same `client_key` -> `NothingToSend{revision}` of the committed revision (03 keeps the committed key until `upload_session_ttl`, owner 2026-11-13), 1 server file. Client rule: `contracts/13_sync_core/sync_api.md` § Lost-commit recovery (AZ-3949).
 - **Max time / Deps**: 30 s; server, `e2e-ctl`.
 
 ### IT-13-17: `client_key` and `commit_id` rules
@@ -221,10 +221,10 @@ Component tests complement the system-level scenarios in `02_document/tests/` an
 ## Acceptance Tests
 
 ### AT-13-1: Killed 5 GiB upload resumes
-- **Summary**: Random kills cost at most 10 MiB each.
+- **Summary**: Random kills cost at most 16 MiB each (AC-3; G-03-1, AZ-3953).
 - **Traces to**: AC-3
 - **Preconditions**: server, DS-09, `shape-flaky`.
-- **Steps**: (1) upload 5 GiB and drop the connection at 10 seeded random offsets; (2) sum block PUT bytes per resume from the proxy log: each <= 10 MiB, no re-hash from zero (checkpoint); (3) server hash equals local BLAKE3. System FT-P-01, NFT-RES-01.
+- **Steps**: (1) upload 5 GiB and drop the connection at 10 seeded random offsets; (2) sum block PUT bytes per resume from the proxy log: each <= 16 MiB, no re-hash from zero (checkpoint); (3) server hash equals local BLAKE3. System FT-P-01, NFT-RES-01.
 
 ### AT-13-2: Flipped bit, corrupt download, wrong server version
 - **Summary**: Corruption is rejected and an unsupported server gives a clear message.

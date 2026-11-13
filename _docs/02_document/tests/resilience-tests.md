@@ -26,7 +26,7 @@ Black-box specifications (no test code). Each scenario is a behavioral test: fau
 | 2 | Restore network, let client resume | Client re-queries the received set and sends only missing blocks |
 | 3 | Final commit | File listed; download BLAKE3 equals source |
 
-**Pass criteria**: final BLAKE3 equals original (exact); bytes re-sent after each resume that were already acknowledged ≤ 10 MiB per fault; upload finish ≤ 2 s after the last block; exactly 1 blob file for the file on the volume; 0 duplicate or conflict-copy entries.
+**Pass criteria**: final BLAKE3 equals original (exact); bytes re-sent after each resume that were already acknowledged ≤ 16 MiB per fault (AC-3, G-03-1); upload finish ≤ 2 s after the last block; exactly 1 blob file for the file on the volume; 0 duplicate or conflict-copy entries.
 
 ---
 

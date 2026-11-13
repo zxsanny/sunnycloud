@@ -17,7 +17,8 @@ use sc_config::Reason;
 use thiserror::Error;
 
 use super::{
-    AuthorizationRequest, CodeExchange, ProviderClient, ProviderError, ProviderIdentity, invalid,
+    AuthorizationRequest, CodeExchange, ProviderClient, ProviderError, ProviderIdentity,
+    display_name, invalid, is_relay,
 };
 use crate::config::ProviderConfig;
 use crate::error::IdentityError;
@@ -42,6 +43,7 @@ pub(crate) struct OidcClient {
     issuer: IssuerUrl,
     client_id: ClientId,
     client_secret: ClientSecret,
+    read_email: bool,
 }
 
 impl OidcClient {
@@ -50,6 +52,7 @@ impl OidcClient {
         config: &ProviderConfig,
         http: Arc<OutboundClient>,
         clock: Arc<dyn Clock>,
+        read_email: bool,
     ) -> Result<Self, IdentityError> {
         let issuer = config
             .issuer
@@ -62,6 +65,7 @@ impl OidcClient {
                 .map_err(|_| invalid(index, "issuer", Reason::WrongType))?,
             client_id: ClientId::new(config.client_id.clone()),
             client_secret: ClientSecret::new(config.client_secret.expose().clone()),
+            read_email,
         })
     }
 
@@ -135,18 +139,33 @@ impl ProviderClient for OidcClient {
         let claims = id_token
             .claims(&verifier, &Nonce::new(exchange.nonce.to_owned()))
             .map_err(|error| ProviderError::Rejected(Box::new(error)))?;
+        let email = if self.read_email {
+            verified_email(
+                claims.email().map(|email| email.as_str()),
+                claims.email_verified(),
+            )
+        } else {
+            None
+        };
         Ok(ProviderIdentity {
             provider_user_id: claims.subject().as_str().to_owned(),
-            email: claims
-                .email()
-                .filter(|_| claims.email_verified() == Some(true))
-                .map(|email| email.as_str().to_owned()),
-            display_name: claims
-                .name()
-                .and_then(|name| name.get(None))
-                .map(|name| name.as_str().to_owned()),
+            email,
+            display_name: display_name(
+                claims
+                    .name()
+                    .and_then(|name| name.get(None))
+                    .map(|name| name.as_str()),
+                claims.preferred_username().map(|name| name.as_str()),
+            ),
         })
     }
+}
+
+/// The `email` claim, only when `email_verified` is `true` and the address is not a relay address.
+fn verified_email(email: Option<&str>, email_verified: Option<bool>) -> Option<String> {
+    email
+        .filter(|address| email_verified == Some(true) && !is_relay(address))
+        .map(str::to_owned)
 }
 
 fn transport_error(error: OutboundError) -> ProviderError {
@@ -157,5 +176,37 @@ fn discovery_error(error: DiscoveryError<OutboundError>) -> ProviderError {
     match error {
         DiscoveryError::Request(transport) => transport_error(transport),
         other => ProviderError::Rejected(Box::new(other)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_verified_non_relay_email_claim_is_an_email() {
+        // Arrange
+        let cases = [
+            (Some("victim@example.test"), Some(true)),
+            (Some("victim@example.test"), Some(false)),
+            (Some("victim@example.test"), None),
+            (Some("x1@privaterelay.appleid.com"), Some(true)),
+            (None, Some(true)),
+        ];
+
+        // Act
+        let results = cases.map(|(email, verified)| verified_email(email, verified));
+
+        // Assert
+        assert_eq!(
+            results,
+            [
+                Some("victim@example.test".to_owned()),
+                None,
+                None,
+                None,
+                None
+            ]
+        );
     }
 }

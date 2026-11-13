@@ -3,9 +3,9 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c08 — `_docs/02_tasks/todo/B03-24_transfer_commit_upload.md` (contributor: E-14/c09 `B03-25_transfer_commit_batch.md`; response mapping decided by spike E-14/c01); keys assigned at Step 4
 **Consumer tasks**: E-13/c16, E-14/c12, E-14/c15, E-14/c16 (this batch); E-21/c02, E-21/c13 (11), E-22/c03 (composition root), E-23/E-26/E-27 through the HTTP API, resolved at Step 4
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: frozen for the response mapping (G-03-3 decided 2026-11-11); the producer task still passes review
-**Last Updated**: 2026-11-11
+**Last Updated**: 2026-11-13
 
 ## Purpose
 
@@ -46,6 +46,7 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 - `name_conflict` never occurs on commit.
 - `commit_upload` and `commit_batch` never answer `EditedSince`: 02's `publish` accepts a stale base and answers `ConflictCopied`. `edited_since` stays an error of `delete_node` only. The `EditedSince` variants of `CommitError` and `EntryError` in `contracts` are removed by E-14/c08.
 - `parent_id` is only a hint for an existing file; the node is addressed by id (AC-70).
+- A committed large upload keeps its `(account, client_key)` → revision until `upload_session_ttl`, so `start_upload` answers a retry after a lost commit response with `NothingToSend{revision}` (`upload_service.md` § `NothingToSend` rule, owner decision 2026-11-13); the reservation is settled at commit as before.
 - Receipts exist for batches only; the stored response is the serialised `BatchResult`; receipts are per account and live `commit_receipt_ttl` (48 h).
 - An identical batch applies at most once, also under concurrency, without relying on a unique violation.
 - 03's effects add no statement after the stamp and do no I/O (AC-69).
@@ -80,4 +81,5 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
+| 1.2.0 | 2026-11-13 | Committed key kept until `upload_session_ttl` for lost-commit recovery (owner) | AZ-3949 |
 | 1.1.0 | 2026-11-11 | G-03-3 decided: fields per `PublishOutcome`; `CreatedAsCopy` repeats the node id in `conflict_copy`; `EditedSince` removed from commit | AZ-3731 |

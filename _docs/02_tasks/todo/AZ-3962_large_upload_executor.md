@@ -20,7 +20,7 @@
 
 ## Problem
 
-A 50 GiB upload over a flaky link must finish, resume after drops re-sending at most 10 MiB (AC-3), count a block only after the server made it durable (AC-38, AC-68 client share), resend a block whose bytes were flipped in transit (AC-7, FT-N-01), and finish in constant time (AC-4). A lost commit response must not create a duplicate or a conflict copy of the user's own file (AC-78 contribution, AC-46). The planner (E-23/c05) decides; nothing executes its actions over the network yet. The hashing step of the same flow is E-23/c09a (split from this row because both together exceed 5 points).
+A 50 GiB upload over a flaky link must finish, resume after drops re-sending at most 16 MiB (AC-3, G-03-1), count a block only after the server made it durable (AC-38, AC-68 client share), resend a block whose bytes were flipped in transit (AC-7, FT-N-01), and finish in constant time (AC-4). A lost commit response must not create a duplicate or a conflict copy of the user's own file (AC-78 contribution, AC-46). The planner (E-23/c05) decides; nothing executes its actions over the network yet. The hashing step of the same flow is E-23/c09a (split from this row because both together exceed 5 points).
 
 ## Outcome
 
@@ -80,7 +80,7 @@ Then it calls `start_upload` with the same key and hash, the result is `NothingT
 **AC-7: Lost commit response, new file (IT-13-16 B)**
 Given a brand-new file at `(parent, name, hash)` whose commit response is dropped once
 When the client recovers
-Then the result is the one recorded by E-23/c01 for this case (expected: `NothingToSend{revision}` and 1 server revision); until E-23/c01 records it, this AC is BLOCKED
+Then the result is the one recorded by E-23/c01 (`sync_api.md` § Lost-commit recovery): `NothingToSend{revision}`, 0 block bytes re-sent, 1 server revision, no conflict copy; the case where the name was taken at commit (IT-13-16 C) is asserted once E-14's committed-key answer (AZ-3734, AZ-3738) lands
 
 **AC-8: Conflict outcomes (AC-8)**
 Given a fake answering the commit with a conflict copy for a stale base revision, and with a server-assigned copy name for a new-file name collision
@@ -116,7 +116,7 @@ Then the first ends in `SourceChanged` without a commit request, and the second 
 | AC-3 | Fake drop at block 37 | Resume | <= 4 in flight; only needed blocks | IT-13-2, FT-P-01, NFT-RES-01 |
 | AC-5 | Fake `NothingToSend` | Upload | 0 block bytes | IT-13-16 |
 | AC-6 | Fake drops commit response | Recovery, existing node | `NothingToSend`, 0 bytes re-sent | IT-13-16 (A), AC-78 |
-| AC-7 | Fake drops commit response | Recovery, new file | Per E-23/c01 | IT-13-16 (B) |
+| AC-7 | Fake drops commit response | Recovery, new file | `NothingToSend`; 1 revision; 0 bytes | IT-13-16 (B) |
 | AC-8 | Fake conflict answers | Stale base; name collision | `ConflictCopy`; 1 request | IT-13-6, FT-P-12 |
 | AC-9 | Fake and changing source | Identity change; mismatch | `SourceChanged`; restart same key | FT-N-03 |
 
@@ -129,12 +129,12 @@ Then the first ends in `SourceChanged` without a commit request, and the second 
 
 **Risk 1: Recovery creates a conflict copy of the user's own file**
 - *Risk*: 03 does not match a new file after a lost response (13 risk 2).
-- *Mitigation*: AC-7 is BLOCKED on E-23/c01 rather than asserting a guessed result.
+- *Mitigation*: Recorded by AZ-3949 (2026-11-13); branch IT-13-16 (C) is asserted after AZ-3734/AZ-3738.
 
 ## Flagged concerns
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| IT-13-16 (B) new-file recovery depends on E-14/c02 and E-23/c01 | E-14 / E-23 | open | Low |
+| IT-13-16 (B) new-file recovery depends on E-14/c02 and E-23/c01 | E-14 / E-23 | resolved 2026-11-13 (AZ-3949: sync_api.md § Lost-commit recovery; IT-13-16 C by 03's committed-key answer, owner) | Low |
 | G-03-3: commit answers for stale-base and taken-name commits and whether `EditedSince` occurs on commit (E-14/c01) decide AC-8's exact fields | Owner (via E-14/c01) | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |
-| G-03-1: worst-case re-send 16 MiB vs AC-3's 10 MiB; AC-3 here checks the lane bound, the MiB bound is asserted in AT-13-1 per E-23/c03 | Owner (via E-14/c01, E-23/c03) | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |
+| G-03-1: worst-case re-send 16 MiB vs AC-3's 10 MiB; AC-3 here checks the lane bound (planner `lanes_max` = `effective_lanes(ServerInfo.max_lanes, UploadSession.lane_limit)`; `Limits.lanes` in `negotiate.rs` does not include `lane_limit`); the 16 MiB bound is asserted in AT-13-1 (AZ-3953) | Owner (via E-14/c01, E-23/c03) | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |

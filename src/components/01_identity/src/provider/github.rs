@@ -13,7 +13,8 @@ use sc_config::Reason;
 use serde::Deserialize;
 
 use super::{
-    AuthorizationRequest, CodeExchange, ProviderClient, ProviderError, ProviderIdentity, invalid,
+    AuthorizationRequest, CodeExchange, ProviderClient, ProviderError, ProviderIdentity,
+    display_name, invalid, is_relay,
 };
 use crate::config::ProviderConfig;
 use crate::error::IdentityError;
@@ -30,6 +31,7 @@ pub(crate) struct GithubClient {
     auth_url: AuthUrl,
     token_url: TokenUrl,
     api: String,
+    read_email: bool,
 }
 
 #[derive(Deserialize)]
@@ -52,6 +54,7 @@ impl GithubClient {
         index: usize,
         config: &ProviderConfig,
         http: Arc<OutboundClient>,
+        read_email: bool,
     ) -> Result<Self, IdentityError> {
         let (oauth, api) = match &config.issuer {
             Some(base) => (base.trim_end_matches('/'), base.trim_end_matches('/')),
@@ -66,6 +69,7 @@ impl GithubClient {
             token_url: TokenUrl::new(format!("{oauth}/login/oauth/access_token"))
                 .map_err(bad_issuer)?,
             api: api.to_owned(),
+            read_email,
         })
     }
 
@@ -125,11 +129,12 @@ impl GithubClient {
 #[error("provider answered {0}")]
 struct StatusError(http::StatusCode);
 
-/// The primary address, and only when GitHub marks it verified.
+/// The primary address, only when GitHub marks that address verified and it is not a relay address.
 fn verified_primary(emails: Vec<Email>) -> Option<String> {
     emails
         .into_iter()
-        .find(|entry| entry.primary && entry.verified)
+        .find(|entry| entry.primary)
+        .filter(|entry| entry.verified && !is_relay(&entry.email))
         .map(|entry| entry.email)
 }
 
@@ -166,11 +171,15 @@ impl ProviderClient for GithubClient {
             .map_err(token_error)?;
         let access_token = token.access_token().secret();
         let user: User = self.get("/user", access_token).await?;
-        let emails: Vec<Email> = self.get("/user/emails", access_token).await?;
+        let email = if self.read_email {
+            verified_primary(self.get("/user/emails", access_token).await?)
+        } else {
+            None
+        };
         Ok(ProviderIdentity {
             provider_user_id: user.id.to_string(),
-            email: verified_primary(emails),
-            display_name: Some(user.name.unwrap_or(user.login)),
+            email,
+            display_name: display_name(user.name.as_deref(), Some(&user.login)),
         })
     }
 }
@@ -209,15 +218,17 @@ mod tests {
             entry("a@x.test", true, true),
         ];
         let none: Vec<Email> = Vec::new();
+        let relay_primary = vec![entry("x1@privaterelay.appleid.com", true, true)];
 
         // Act
         let results = [
             verified_primary(unverified_primary),
             verified_primary(verified_primary_second),
             verified_primary(none),
+            verified_primary(relay_primary),
         ];
 
         // Assert
-        assert_eq!(results, [None, Some("a@x.test".to_owned()), None]);
+        assert_eq!(results, [None, Some("a@x.test".to_owned()), None, None]);
     }
 }

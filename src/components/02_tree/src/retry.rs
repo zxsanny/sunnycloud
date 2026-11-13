@@ -1,4 +1,4 @@
-use contracts::{LifecycleError, TreeCommitError, TreeServiceError};
+use contracts::{LifecycleError, MaintenanceError, TreeCommitError, TreeServiceError};
 use sc_db::{Db, DbError, DbTx, RunError, Scope};
 
 use crate::error::TreeError;
@@ -66,6 +66,18 @@ impl TxFailure for LifecycleError {
     }
 }
 
+impl TxFailure for MaintenanceError {
+    fn from_db(error: DbError) -> Self {
+        MaintenanceError::Unexpected(Box::new(error))
+    }
+
+    fn db_error(&self) -> Option<&DbError> {
+        match self {
+            MaintenanceError::Unexpected(fault) => fault.downcast_ref::<DbError>(),
+        }
+    }
+}
+
 /// Runs `f` in one transaction scoped to `scope`. When the database aborts the transaction for a deadlock or a
 /// serialization failure, whether inside `f` or at commit, the whole unit of work runs once more in a new
 /// transaction. A second abort is returned as it is: the unexpected tier.
@@ -89,21 +101,27 @@ pub(crate) async fn run_retrying_each<
     scope: Scope,
     attempt: impl Fn() -> F,
 ) -> Result<T, E> {
-    match run_once(db, scope, attempt()).await {
-        Err(error) if aborted(&error) => run_once(db, scope, attempt()).await,
+    retry_aborted(|| async { db.run(scope, attempt()).await.map_err(run_failure) }).await
+}
+
+/// The retry-once rule on its own: `attempt` runs one whole transaction, and runs once more when the database
+/// aborted the first for a deadlock or a serialization failure. Lets a system-scope unit of work
+/// (`crate::maintenance_repo`) share the rule.
+pub(crate) async fn retry_aborted<T, E: TxFailure, Fut: Future<Output = Result<T, E>>>(
+    attempt: impl Fn() -> Fut,
+) -> Result<T, E> {
+    match attempt().await {
+        Err(error) if aborted(&error) => attempt().await,
         outcome => outcome,
     }
 }
 
-async fn run_once<T, E: TxFailure>(
-    db: &Db,
-    scope: Scope,
-    f: impl AsyncFnOnce(&mut DbTx) -> Result<T, E>,
-) -> Result<T, E> {
-    db.run(scope, f).await.map_err(|error| match error {
+/// The error of a finished transaction: the unit of work's own, or the database failure of `BEGIN` or `COMMIT`.
+pub(crate) fn run_failure<E: TxFailure>(error: RunError<E>) -> E {
+    match error {
         RunError::Closure(error) => error,
         RunError::Db(error) => E::from_db(error),
-    })
+    }
 }
 
 fn aborted(error: &impl TxFailure) -> bool {

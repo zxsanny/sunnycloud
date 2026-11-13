@@ -25,10 +25,13 @@ const REVISION_BATCH: &str =
 const DELETE_REVISIONS: &str = "DELETE FROM revisions WHERE account_id = $1 AND id = ANY($2)";
 
 // A leaf has no child row. The root is a leaf only once every other node of the account is gone, so it goes last.
-const DELETE_LEAVES: &str = "DELETE FROM nodes WHERE account_id = $1 AND id IN ( \
+// The pick is a materialized CTE, evaluated once: as an `IN (... LIMIT)` subquery the planner may rescan it while
+// the delete runs and remove more than the limit.
+const DELETE_LEAVES: &str = "WITH picked AS MATERIALIZED ( \
     SELECT n.id FROM nodes n WHERE n.account_id = $1 \
     AND NOT EXISTS (SELECT 1 FROM nodes c WHERE c.parent_id = n.id) \
-    ORDER BY n.id LIMIT $2)";
+    ORDER BY n.id LIMIT $2) \
+    DELETE FROM nodes d USING picked WHERE d.account_id = $1 AND d.id = picked.id";
 
 const TREE_ROWS: &str = "SELECT (SELECT count(*) FROM nodes WHERE account_id = $1), \
     (SELECT count(*) FROM revisions WHERE account_id = $1)";

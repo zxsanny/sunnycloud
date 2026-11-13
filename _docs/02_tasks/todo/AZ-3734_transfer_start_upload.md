@@ -71,6 +71,11 @@ Given an existing file whose current revision has content hash h
 When start is called for its parent and name with `content_hash = h`
 Then the answer is `NothingToSend{revision}` with 0 bytes to send and nothing reserved, and every other case of the E-14/c02 rule gives its recorded outcome
 
+**AC-6b: Committed key answers NothingToSend (lost-commit recovery, owner decision 2026-11-13)**
+Given an upload with `client_key` k committed (its commit response lost), after which the name holds another file or the file was moved or deleted
+When start is called again with k within `upload_session_ttl`
+Then the answer is `NothingToSend{revision}` = the revision k's commit created, nothing reserved and no new session; after the TTL k starts a new session (`upload_service.md` 1.2.0)
+
 **AC-7: Compensation after a failed file create**
 Given file creation is made to fail after the transaction
 When start runs
