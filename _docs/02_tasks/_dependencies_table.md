@@ -382,3 +382,6 @@ Recommended execution order (topological; ties by key). Test-epic refs (E-31) ar
 | AZ-4264 | blob_registry_port_account | 2 | AZ-3734 | AZ-3627 |
 | AZ-4267 | device_grant_lookup_binding | 2 | AZ-3692 | AZ-3646 |
 | AZ-4268 | token_type_prefixes | 2 | AZ-3692 | AZ-3623 |
+| AZ-4309 | admin_service_impl | 3 | AZ-3817, AZ-3818 | AZ-3624 |
+| AZ-4310 | share_authorize_derived | 3 | AZ-3700, AZ-3699, AZ-3701 | AZ-3619 |
+| AZ-4311 | media_effect_account_per_commit | 2 | AZ-3843 | AZ-3629 |

@@ -19,6 +19,7 @@ mod log;
 mod migration;
 mod outcome;
 mod output;
+pub mod root;
 mod run;
 mod secret;
 mod settings;

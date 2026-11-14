@@ -135,3 +135,14 @@ The deletion sweep of IT-12-7 (every table empty after `admin user delete`) is A
 ## Owner decision
 
 2026-11-14 (complexity budget, option A): plain constructor functions, one lazy builder per component (built once, on first use); no registry/container abstraction. Vault crates (19, 20) are behind a `vault` Cargo feature of the server crate, off by default, so v1.0 and v1.1 binaries contain no vault code (resolves the module-layout exception 6 flag for 12). 08's media enqueue effect is changed to take the account from each commit instead of its constructor, so one shared instance serves every account (also unblocks AZ-3822's media part).
+
+## Implementation status (batch 70, 2026-11-14)
+
+Done: `src/server/src/root/` (lazy builders, late lists, `DatabaseReady`, the `vault` feature); tests `src/server/tests/composition_root.rs` and the vault and limiter checks in `crate_graph.rs`.
+
+Blocked, nothing stubbed:
+- `ApiServices` and `HttpServer`: 07's `AdminServiceImpl` does not implement `contracts::AdminService` (`AdminError` has no `Forbidden`, and `health` returns `Result` where the port returns `HealthReport`); 06's `PgShareService` does not implement `PublicShareService` (`authorize_derived` missing). AC-1 and the `serve` half of AC-5 wait on both.
+- 08's media effect for one shared instance: `CommitEffect::on_entry(tx, entry)` receives no account (`PublishedEntry` has no `account_id`, `DbTx` exposes no scope, and reading the scope setting outside `sc_db` fails `check-db-gates`). Needs a contracts change: `PublishedEntry.account_id` filled by 02 from `CommitActor::account_id` (or the account as an `on_entry` argument). 03's injected effect list stays empty until then.
+- No interval key for 01's `IdentityMaintenance` or the audit-retention janitor; both are not scheduled until helper 01's table gets keys (or the owner names keys to reuse).
+
+Owner decision 2026-11-14 (janitor keys): new `sc_config` keys `identity_janitor_interval` (default 5 min) for 01's `IdentityMaintenance` and `audit_retention_interval` (default 1 h) for the audit-retention janitor; register both in the scheduler. Completion of `ApiServices`/`serve` waits on AZ-4309, AZ-4310 and AZ-4311.

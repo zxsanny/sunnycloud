@@ -16,6 +16,7 @@ type Build = Box<
 >;
 
 struct Slot {
+    name: &'static str,
     build: Build,
     built: OnceCell<Built>,
 }
@@ -52,6 +53,7 @@ impl ContextBuilder {
         self.slots.insert(
             TypeId::of::<T>(),
             Slot {
+                name: type_name::<T>(),
                 build,
                 built: OnceCell::new(),
             },
@@ -69,6 +71,19 @@ impl ContextBuilder {
 impl ServiceContext {
     pub fn builder() -> ContextBuilder {
         ContextBuilder::default()
+    }
+
+    /// The type names of the services built so far, sorted; what a command constructed is readable without a
+    /// counter in any builder.
+    pub fn built(&self) -> Vec<&'static str> {
+        let mut names: Vec<_> = self
+            .slots
+            .values()
+            .filter(|slot| slot.built.initialized())
+            .map(|slot| slot.name)
+            .collect();
+        names.sort_unstable();
+        names
     }
 
     /// The service `T`, built on first use.

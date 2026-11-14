@@ -1,0 +1,264 @@
+//! The late lists (ADR-015): the cycles a constructor graph cannot express, registered once in their documented
+//! order and handed to their consumers.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use contracts::{AccountLifecycleHook, BlobOwnerCleanup, DoctorCheck, Janitor};
+use media_api::{DerivedJanitor, JobReaper};
+use sc_audit::AuditWriter;
+use sc_clock::Clock;
+use sc_db::Db;
+use sc_observability::{HealthContributor, Metrics, ReadinessCheck};
+use sunnycloud_admin::DeletionPurger;
+use sunnycloud_blobstore::{
+    BlobHealthContributor, GcSweeper, KeyDoctorCheck, MissingBlobsCheck, OrphanSweeper,
+    RetentionCheck, ScrubJanitor, VolumeCheck,
+};
+use sunnycloud_transfer::{IdleFlush, ReceiptJanitor, SessionReaper};
+use sunnycloud_tree::TreeJanitor;
+
+use super::base::{DatabaseReady, Shutdown};
+use super::domain::{Admin, Identity, Quota, Sharing, Transfer, Tree};
+use super::failed;
+use super::media::{Media, MediaPlanning};
+use super::storage::Blobstore;
+use crate::context::{ContextBuilder, ServiceContext};
+use crate::error::CliError;
+use crate::janitor::{JanitorMetrics, Scheduled, Scheduler};
+
+/// A list entry with the component that registered it (`"06"`, `"07a"`); the hook and cleanup ports carry no
+/// name of their own.
+pub struct Registered<T: ?Sized> {
+    pub owner: &'static str,
+    pub item: Arc<T>,
+}
+
+impl<T: ?Sized> Registered<T> {
+    fn new(owner: &'static str, item: Arc<T>) -> Self {
+        Registered { owner, item }
+    }
+}
+
+fn items<T: ?Sized>(list: &[Registered<T>]) -> Vec<Arc<T>> {
+    list.iter().map(|entry| Arc::clone(&entry.item)).collect()
+}
+
+/// 06 first so links stop at once, 20 (v1.2 builds) before 02 because vault roots reference 02's nodes, then 02,
+/// 03, 08, and 05, 07a last because the tree's batches still use the feed and the quota row (07 §4). Given to
+/// 07's `DeletionPurger` and to 01's account creation.
+pub struct AccountHooks(pub Vec<Registered<dyn AccountLifecycleHook>>);
+
+/// 02, then 08; given to 04's GC sweeper.
+pub struct BlobCleanups(pub Vec<Registered<dyn BlobOwnerCleanup>>);
+
+/// The janitors with their owners' intervals, in the order 03, 04, 02, 07, 08.
+pub struct Janitors(pub Vec<Scheduled>);
+
+/// What 07's health aggregation runs: 04, then 08.
+pub struct HealthContributors(pub Vec<Arc<dyn HealthContributor>>);
+
+/// The owners' doctor checks: 04, then 08.
+pub struct DoctorChecks(pub Vec<Arc<dyn DoctorCheck>>);
+
+/// What `/readyz` runs: the database, then `scheduler_alive`.
+pub struct ReadinessChecks(pub Vec<Arc<dyn ReadinessCheck>>);
+
+pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
+    builder
+        .register::<AccountHooks, _, _>(|services| async move {
+            let hooks = account_hooks(&services).await?;
+            let identity = services.get::<Identity>().await?;
+            identity
+                .sign_in
+                .register_hooks(items(&hooks))
+                .map_err(|error| failed("the account hook list", error))?;
+            Ok(Arc::new(AccountHooks(hooks)))
+        })
+        .register::<BlobCleanups, _, _>(|services| async move {
+            let tree = services.get::<Tree>().await?;
+            let media = services.get::<Media>().await?;
+            Ok(Arc::new(BlobCleanups(vec![
+                Registered::new("02", tree.lifecycle.clone()),
+                Registered::new("08", media.lifecycle.clone()),
+            ])))
+        })
+        .register::<HealthContributors, _, _>(|services| async move {
+            let blobs = services.get::<Blobstore>().await?;
+            let media = services.get::<Media>().await?;
+            Ok(Arc::new(HealthContributors(vec![
+                Arc::new(BlobHealthContributor::new(blobs.health.clone())),
+                media.health.clone(),
+            ])))
+        })
+        .register::<DoctorChecks, _, _>(|services| async move {
+            let db = Db::clone(&*services.get::<Db>().await?);
+            let blobs = services.get::<Blobstore>().await?;
+            let media = services.get::<Media>().await?;
+            Ok(Arc::new(DoctorChecks(vec![
+                Arc::new(KeyDoctorCheck::new(blobs.config.clone(), db)),
+                Arc::new(VolumeCheck::new(&blobs.config)),
+                Arc::new(RetentionCheck::new(&blobs.config)),
+                Arc::new(MissingBlobsCheck::new(
+                    blobs.inventory.clone(),
+                    blobs.batch(),
+                )),
+                media.health.clone(),
+            ])))
+        })
+        .register::<Janitors, _, _>(
+            |services| async move { janitors(&services).await.map(Arc::new) },
+        )
+        .register::<Scheduler, _, _>(|services| async move {
+            let clock = services.get::<dyn Clock>().await?;
+            let metrics = services.get::<Metrics>().await?;
+            let janitors = services.get::<Janitors>().await?;
+            let metrics = JanitorMetrics::new(&metrics)
+                .map_err(|error| failed("the janitor metrics", error))?;
+            let jobs = janitors
+                .0
+                .iter()
+                .map(|job| Scheduled {
+                    janitor: Arc::clone(&job.janitor),
+                    interval: job.interval,
+                })
+                .collect();
+            let scheduler = Scheduler::start(clock, Arc::new(metrics), jobs)
+                .map_err(|error| failed("the janitor scheduler", error))?;
+            Ok(Arc::new(scheduler))
+        })
+        .register::<ReadinessChecks, _, _>(|services| async move {
+            let database = services.get::<DatabaseReady>().await?;
+            let scheduler = services.get::<Scheduler>().await?;
+            Ok(Arc::new(ReadinessChecks(vec![
+                database,
+                scheduler.readiness(),
+            ])))
+        })
+}
+
+async fn account_hooks(
+    services: &ServiceContext,
+) -> Result<Vec<Registered<dyn AccountLifecycleHook>>, CliError> {
+    let sharing = services.get::<Sharing>().await?;
+    let tree = services.get::<Tree>().await?;
+    let transfer = services.get::<Transfer>().await?;
+    let media = services.get::<Media>().await?;
+    let feed = services.get::<super::domain::Feed>().await?;
+    let quota = services.get::<Quota>().await?;
+    let mut hooks: Vec<Registered<dyn AccountLifecycleHook>> =
+        vec![Registered::new("06", sharing.lifecycle.clone())];
+    #[cfg(feature = "vault")]
+    hooks.push(Registered::new(
+        "20",
+        services
+            .get::<super::vault::Vault>()
+            .await?
+            .lifecycle
+            .clone(),
+    ));
+    hooks.extend([
+        Registered::new(
+            "02",
+            tree.lifecycle.clone() as Arc<dyn AccountLifecycleHook>,
+        ),
+        Registered::new("03", transfer.lifecycle.clone()),
+        Registered::new("08", media.lifecycle.clone()),
+        Registered::new("05", feed.lifecycle.clone()),
+        Registered::new("07a", quota.admin.clone()),
+    ]);
+    Ok(hooks)
+}
+
+/// Not registered, because no configuration key gives their interval: 01's `IdentityMaintenance` and the
+/// audit-retention janitor of 12 (`identity_janitor_interval` / `audit_retention_interval` do not exist).
+async fn janitors(services: &ServiceContext) -> Result<Janitors, CliError> {
+    let db = Db::clone(&*services.get::<Db>().await?);
+    let audit = AuditWriter::clone(&*services.get::<AuditWriter>().await?);
+    let clock = services.get::<dyn Clock>().await?;
+    let metrics = services.get::<Metrics>().await?;
+    let shutdown = services.get::<Shutdown>().await?;
+    let transfer = services.get::<Transfer>().await?;
+    let blobs = services.get::<Blobstore>().await?;
+    let tree = services.get::<Tree>().await?;
+    let identity = services.get::<Identity>().await?;
+    let admin = services.get::<Admin>().await?;
+    let hooks = services.get::<AccountHooks>().await?;
+    let cleanups = services.get::<BlobCleanups>().await?;
+    let planning = services.get::<MediaPlanning>().await?;
+    let blob = |error: contracts::BlobError| failed("a blobstore janitor", error);
+
+    let gc = GcSweeper::new(
+        &blobs.config,
+        db.clone(),
+        Arc::clone(&clock),
+        blobs.registry.clone(),
+        items(&cleanups.0),
+        shutdown.janitors.clone(),
+    )
+    .map_err(blob)?;
+    let orphans =
+        OrphanSweeper::new(&blobs.config, db.clone(), Arc::clone(&clock)).map_err(blob)?;
+    let purger = DeletionPurger::new(
+        identity.accounts.clone(),
+        items(&hooks.0),
+        admin.config.clone(),
+        audit,
+        db.clone(),
+        Arc::clone(&clock),
+    )
+    .with_metrics(&metrics)
+    .map_err(|error| failed("the deletion purger metrics", error))?;
+    let media = &planning.config;
+    let every = |janitor: Arc<dyn Janitor>, interval: Duration| Scheduled { janitor, interval };
+    Ok(Janitors(vec![
+        every(
+            Arc::new(SessionReaper::new(transfer.service.clone())),
+            transfer.config.session_reap_interval,
+        ),
+        every(
+            Arc::new(ReceiptJanitor::new(transfer.service.clone())),
+            transfer.config.receipt_janitor_interval,
+        ),
+        every(
+            Arc::new(IdleFlush::new(transfer.service.clone())),
+            transfer.config.checkpoint_interval,
+        ),
+        every(Arc::new(gc), blobs.config.gc_interval),
+        every(Arc::new(orphans), blobs.config.orphan_sweep_interval),
+        every(
+            Arc::new(ScrubJanitor::new(&blobs.config, blobs.scrubber.clone())),
+            blobs.config.scrub_interval,
+        ),
+        every(
+            Arc::new(TreeJanitor::purge(
+                tree.maintenance.clone(),
+                &tree.config,
+                Arc::clone(&clock),
+            )),
+            tree.config.tree_maintenance_interval,
+        ),
+        every(
+            Arc::new(TreeJanitor::cascade(
+                tree.maintenance.clone(),
+                &tree.config,
+                Arc::clone(&clock),
+            )),
+            tree.config.tree_maintenance_interval,
+        ),
+        every(Arc::new(purger), admin.config.account_delete_interval),
+        every(
+            Arc::new(JobReaper::new(
+                db.clone(),
+                Arc::clone(&clock),
+                planning.queue.clone(),
+                media,
+            )),
+            media.job_reap_interval,
+        ),
+        every(
+            Arc::new(DerivedJanitor::new(db, clock, blobs.gc.clone())),
+            media.derived_janitor_interval,
+        ),
+    ]))
+}

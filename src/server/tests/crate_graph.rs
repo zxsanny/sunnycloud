@@ -339,3 +339,74 @@ fn testdb_as_a_dev_dependency_is_accepted() {
 
     assert!(found.is_empty(), "forbidden edges: {found:?}");
 }
+
+/// The packages of `sunnycloud-server`'s normal and build graph with `features` (empty: the default build).
+fn server_tree(features: &[&str]) -> BTreeSet<String> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let mut args = vec![
+        "tree",
+        "-p",
+        "sunnycloud-server",
+        "--edges",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--locked",
+    ];
+    let joined = features.join(",");
+    if !features.is_empty() {
+        args.extend(["--features", joined.as_str()]);
+    }
+    let output = Command::new(cargo)
+        .args(&args)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("cargo tree did not start");
+    assert!(
+        output.status.success(),
+        "cargo tree failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn default_server_build_links_no_vault_crate() {
+    // Act
+    let packages = server_tree(&[]);
+
+    // Assert
+    let vault: Vec<_> = packages
+        .iter()
+        .filter(|name| *name == "sunnycloud-vault-service" || *name == "vault-core")
+        .collect();
+    assert!(
+        vault.is_empty(),
+        "vault crates in a v1.0/v1.1 build: {vault:?}"
+    );
+}
+
+#[test]
+fn vault_feature_links_the_vault_service() {
+    // Act
+    let packages = server_tree(&["vault"]);
+
+    // Assert
+    assert!(packages.contains("sunnycloud-vault-service"));
+}
+
+#[test]
+fn the_http_api_can_build_no_limiter() {
+    // Arrange
+    let graph = workspace_graph();
+
+    // Act
+    let http = &graph["sunnycloud-http-api"];
+
+    // Assert: 11 never constructs the `AbuseLimiter`; 12 builds the one instance.
+    assert!(!http.deps.contains("sc_ratelimit"), "{:?}", http.deps);
+}

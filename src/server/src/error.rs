@@ -28,6 +28,13 @@ pub enum CliError {
     NotImplemented(&'static str),
     #[error("service `{0}` is not registered in the context")]
     NotRegistered(&'static str),
+    /// A builder of the composition root failed; the command stops with the builder's own error.
+    #[error("cannot build {service}: {source}")]
+    Build {
+        service: &'static str,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 impl CliError {
@@ -35,9 +42,10 @@ impl CliError {
         match self {
             CliError::Usage(_) | CliError::Config(_) => Exit::Usage,
             CliError::Operator { exit, .. } => *exit,
-            CliError::Domain(_) | CliError::NotImplemented(_) | CliError::NotRegistered(_) => {
-                Exit::Failed
-            }
+            CliError::Domain(_)
+            | CliError::NotImplemented(_)
+            | CliError::NotRegistered(_)
+            | CliError::Build { .. } => Exit::Failed,
         }
     }
 
@@ -47,7 +55,7 @@ impl CliError {
             CliError::Usage(_) | CliError::Config(_) => ErrorCode::InvalidRequest.as_str(),
             CliError::Domain(error) => error.code().as_str(),
             CliError::Operator { code, .. } => code,
-            CliError::NotImplemented(_) | CliError::NotRegistered(_) => {
+            CliError::NotImplemented(_) | CliError::NotRegistered(_) | CliError::Build { .. } => {
                 ErrorCode::Internal.as_str()
             }
         }
