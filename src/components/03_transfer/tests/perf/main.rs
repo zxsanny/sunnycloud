@@ -24,6 +24,9 @@ mod put_support;
 #[path = "../transfer/rig_config.rs"]
 mod rig_config;
 #[allow(dead_code, unused_imports)]
+#[path = "../transfer/rig_wiring.rs"]
+mod rig_wiring;
+#[allow(dead_code, unused_imports)]
 #[path = "../transfer/start_ports.rs"]
 mod start_ports;
 #[allow(dead_code, unused_imports)]

@@ -56,6 +56,7 @@ async fn a_consumer_slower_than_the_disk_stays_at_one_chunk_ahead() {
     let mut ahead = probe.read_ahead();
     let mut stream = rig.open(&blob, None).await.expect("open");
     let mut bytes = Vec::with_capacity(MIB);
+    let mut taken = 0_u64;
 
     // Act
     while bytes.len() < MIB {
@@ -64,15 +65,16 @@ async fn a_consumer_slower_than_the_disk_stays_at_one_chunk_ahead() {
             .expect("chunk")
             .expect("chunk bytes");
         bytes.extend_from_slice(&chunk);
+        taken += 1;
         if bytes.len() < MIB {
-            let reads = probe.chunk_reads();
             ahead
                 .wait_for(|queued| *queued == 1)
                 .await
                 .expect("the next read started");
-            // The disk read can outlast a fixed pause under load: wait until it has finished, then give the
-            // decryption of that one chunk the pause, so the consumer always finds its next chunk ready.
-            while probe.chunk_reads() == reads {
+            // The disk read can outlast a fixed pause under load: wait until the read of the next chunk has
+            // finished (the open read the first chunk, so `taken + 1` reads in all), then give its decryption the
+            // pause, so the consumer always finds its next chunk ready.
+            while probe.chunk_reads() < taken + 1 {
                 tokio::time::sleep(Duration::from_millis(1)).await;
             }
             tokio::time::sleep(SLOW).await;

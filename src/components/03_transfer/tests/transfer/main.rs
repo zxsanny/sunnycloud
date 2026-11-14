@@ -1,6 +1,6 @@
 //! Transfer skeleton (AZ-3733): settings, typed errors, the progress table and the `upload_sessions` and
 //! `commit_receipts` migration; `start_upload` (AZ-3734); `put_block` (AZ-3735); `get_upload`, the lazy load and
-//! `abort_upload` (AZ-3736); `stage_small` (AZ-3737); `commit_upload` (AZ-3738); `commit_batch` (AZ-3754); downloads (AZ-3755); janitors and `ReservationSource` (AZ-3756); the transfer metrics scrape and constant commit I/O (AZ-3759); the account erase hook and the crash, stamp-order and moved-parent cases (AZ-3757). All on a real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
+//! `abort_upload` (AZ-3736); `stage_small` (AZ-3737); `commit_upload` (AZ-3738); `commit_batch` (AZ-3754); downloads (AZ-3755); janitors and `ReservationSource` (AZ-3756); the transfer metrics scrape and constant commit I/O (AZ-3759); the account erase hook and the crash, stamp-order and moved-parent cases (AZ-3757); the integration pass with the real 01 guard and 08 media effect (AZ-3760). All on a real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
 
 mod abort;
 mod access;
@@ -33,12 +33,18 @@ mod put_checkpoint;
 mod put_lanes;
 mod put_support;
 mod put_verify;
+mod real_account_repo;
+mod real_guard;
+mod real_media;
+mod real_plan;
+mod real_support;
 mod reaper;
 mod reaper_race;
 mod receipt_janitor;
 mod reservations;
 mod resume;
 mod rig_config;
+mod rig_wiring;
 mod rls;
 mod security_content;
 mod security_dos;

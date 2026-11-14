@@ -103,3 +103,9 @@ Then the functional assertions pass (error rate 0%, response values equal, permi
 ## Owner decision
 
 Owner decision 2026-11-14 (complexity budget, option A): ST-06-1/2/3/7/8 now; PT-06-1..3 written with functional assertions running in CI and timing assertions `NOT-RUN(HW-REF)` off the reference server.
+
+## Implementation notes
+
+- Security: `src/components/06_sharing/tests/share_security/` (new binary with the log capture): `cross_account.rs` (ST-06-1), `token_strength.rs` + `chi_square.rs` (ST-06-2, with the helper's unit tests), `enumeration.rs` (ST-06-3), `disclosure.rs` (ST-06-7), `lookup_scope.rs` (ST-06-8); test data `link_factory.rs`, `corpora.rs`, `password_corpus.txt`.
+- Performance: `src/components/06_sharing/tests/share_perf/`: `open_mix.rs` (PT-06-1), `missing_uniformity.rs` (PT-06-2), `password_flood.rs` (PT-06-3); per scenario a CI `functional` test and the full scenario ignored as `NOT-RUN(HW-REF)`.
+- PT-06-3 finding: with the harness window moving in real time, the per-link limit did not refuse in the CI run (the permits bound the attempts first), so "limited > 0" is not a functional assertion; it depends on hash time against refill.

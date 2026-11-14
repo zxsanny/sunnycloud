@@ -42,5 +42,9 @@ sc_audit = { path = "../../shared/audit" }
 sc_testdb = { path = "../../shared/testdb" }
 # The boundary-backed `AccountGuard` double (AZ-4250).
 sunnycloud-testkit = { path = "../testkit" }
+# The integration pass (AZ-3760): the real 01 guard and account admin, and the real 08 media effect in the
+# composition-root effect slot (component dev-dependencies, ADR-015).
+sunnycloud-identity = { path = "../01_identity" }
+media-api = { path = "../08_media_jobs" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 uuid = { workspace = true, features = ["v4"] }

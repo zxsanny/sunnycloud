@@ -1,5 +1,7 @@
 //! `PgUploadService` on the real 02 reader and `publish`, 04 writer, reader, registry and GC queue (a temporary
-//! volume), 05 feed stamp and 07a ledger, all on one test database. The account guard is the port backed at its boundary (the real one is wired by E-14/c15). File
+//! volume), 05 feed stamp and 07a ledger, all on one test database. The account guard, the effects in 03's
+//! composition-root slot and the account come from a `rig_wiring::Wiring`: by default the guard is the port backed
+//! at its boundary and the slot is empty; `real_support` wires the real 01 guard and 08 media effect (AZ-3760). File
 //! creation and the quota reservation can be made to fail through thin decorators that otherwise delegate to the
 //! real writer and ledger; the reader counts its calls and `publish` can be paused (`commit_ports`). A restart is a new `PgUploadService` over the same ports (an empty progress table).
 
@@ -8,7 +10,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use contracts::{StartUpload, StartUploadOutcome, Started, UploadError};
+use contracts::{
+    AccountGuard, CommitEffect, StartUpload, StartUploadOutcome, Started, UploadError,
+};
 use sc_audit::AuditWriter;
 use sc_clock::{Clock, ManualClock};
 use sc_ids::FileHash;
@@ -20,15 +24,15 @@ use sunnycloud_blobstore::{
 };
 use sunnycloud_quota::{PgQuotaAdmin, PgQuotaLedger, QuotaConfig};
 use sunnycloud_sync_feed::{InProcessNotifier, PgFeedStamp};
-use sunnycloud_testkit::StateGuard;
 use sunnycloud_transfer::{PgUploadService, TransferConfig, UploadPorts};
 use sunnycloud_tree::{PgTreeReader, PgTreeService};
 use uuid::Uuid;
 
 use crate::commit_ports::{CountingReader, PausingCommit};
 use crate::rig_config::{blob_config, tree_config};
+use crate::rig_wiring::{Site, Wiring, boundary};
 use crate::start_ports::{FaultyLedger, FaultyWriter};
-use crate::support::{Fixture, account};
+use crate::support::Fixture;
 
 pub const MIB: i64 = 1 << 20;
 pub const GIB: i64 = 1 << 30;
@@ -48,6 +52,8 @@ impl Drop for Scratch {
 /// The ports and settings a service instance is built from; shared by every instance of a rig.
 struct Parts {
     config: TransferConfig,
+    guard: Arc<dyn AccountGuard>,
+    effects: Vec<Arc<dyn CommitEffect>>,
     tree: Arc<PgTreeReader>,
     commit: Arc<PausingCommit>,
     reader: Arc<CountingReader>,
@@ -107,11 +113,23 @@ impl Rig {
         preallocate: bool,
         read_ahead: u64,
     ) -> Rig {
+        let wire = async |site: Site| (boundary(site).await, ());
+        let (rig, ()) =
+            Rig::wired(fixture, config, free_reserve, preallocate, read_ahead, wire).await;
+        rig
+    }
+
+    /// As [`Rig::build_on`] with the guard, slot effects and account `wire` makes once the volume exists; returns
+    /// the rig and what `wire` kept for the test.
+    pub async fn wired<T>(
+        fixture: Fixture,
+        config: TransferConfig,
+        free_reserve: u64,
+        preallocate: bool,
+        read_ahead: u64,
+        wire: impl AsyncFnOnce(Site) -> (Wiring, T),
+    ) -> (Rig, T) {
         let clock = sc_testdb::clock_at_start();
-        let account = Uuid::new_v4();
-        let mut owner = fixture.owner_conn().await;
-        let root = account_rows(&mut owner, account).await;
-        close(owner).await;
         let dir = std::env::temp_dir().join(format!("sc-transfer-{}", Uuid::new_v4()));
         let volume = dir.join("volume");
         fs::create_dir_all(&volume).expect("volume folder");
@@ -130,6 +148,8 @@ impl Rig {
             audit.clone(),
         ));
         keyring.load_and_verify().await.expect("keyring starts");
+        // After the keyring check, which wants an empty volume: a real `initialize` writes 05's epoch marker on it.
+        let (wiring, kept) = wire(Site::new(&fixture, &blob_config, &clock).await).await;
         let reader = FileBlobReader::new(
             &blob_config,
             keyring.clone(),
@@ -150,7 +170,7 @@ impl Rig {
         let gc = GcQueue::new(&blob_config, fixture.api.clone(), clock.clone()).expect("gc queue");
         let commit = Arc::new(PausingCommit::new(PgTreeService::new(
             fixture.api.clone(),
-            Arc::new(StateGuard::default()),
+            wiring.guard.clone(),
             ledger.clone(),
             Arc::new(gc),
             Arc::new(PgFeedStamp),
@@ -159,6 +179,8 @@ impl Rig {
         )));
         let parts = Parts {
             config,
+            guard: wiring.guard,
+            effects: wiring.effects,
             tree: Arc::new(PgTreeReader::new(fixture.api.clone(), &tree_config())),
             commit: commit.clone(),
             reader: reader.clone(),
@@ -168,7 +190,7 @@ impl Rig {
             catalog: Arc::new(BlobCatalog::new(fixture.api.clone())),
         };
         let service = instance(&fixture, &parts, &writer, &clock);
-        Rig {
+        let rig = Rig {
             fixture,
             service: Arc::new(service),
             parts,
@@ -177,11 +199,12 @@ impl Rig {
             reader,
             commit,
             clock,
-            account,
-            root,
+            account: wiring.account,
+            root: wiring.root,
             volume,
             _scratch: scratch,
-        }
+        };
+        (rig, kept)
     }
 
     /// A new instance over the same database, volume and ports: what a process restart leaves.
@@ -280,11 +303,11 @@ fn instance(
         fixture.api.clone(),
         parts.config.clone(),
         UploadPorts {
-            guard: Arc::new(StateGuard::default()),
+            guard: parts.guard.clone(),
             tree: parts.tree.clone(),
             commit: parts.commit.clone(),
             reader: parts.reader.clone(),
-            commit_effects: Vec::new(),
+            commit_effects: parts.effects.clone(),
             quota: parts.quota.clone(),
             quota_admin: parts.quota_admin.clone(),
             writer: writer.clone(),
@@ -449,24 +472,6 @@ pub fn ticks_past_ttl(clock: &ManualClock) {
 /// Now on the rig's clock, for assertions on `expires_at`.
 pub fn now(clock: &ManualClock) -> sc_clock::Timestamp {
     clock.now_utc()
-}
-
-/// The account, its root, its feed row and its quota row (the installation default of 10 GiB applies); returns
-/// the root.
-async fn account_rows(conn: &mut PgConnection, id: Uuid) -> Uuid {
-    account(conn, id).await;
-    let root = node(conn, id, None, "folder", "").await;
-    sqlx::query("INSERT INTO account_feeds (account_id, epoch) VALUES ($1, 1)")
-        .bind(id)
-        .execute(&mut *conn)
-        .await
-        .expect("insert feed row");
-    sqlx::query("INSERT INTO quota (account_id) VALUES ($1)")
-        .bind(id)
-        .execute(conn)
-        .await
-        .expect("insert quota row");
-    root
 }
 
 /// The production defaults of the transfer section, with the 24 h TTL.

@@ -2,7 +2,7 @@
 //! `erase_batch` is one short account-scoped transaction without the account advisory lock that deletes rows and
 //! queues their blobs `AccountDeleted`, `Due::Now` together; no reservation is released; the progress entries go
 //! after COMMIT; `remaining` counts the session rows and receipts left. Starts are refused while the account is
-//! `deleting` (the guard is the boundary-backed `StateGuard`; E-14/c15 repeats it with the real 01 guard).
+//! `deleting` (the guard is the boundary-backed `StateGuard`; `real_guard` repeats it with the real 01 guard, AZ-3760).
 
 use std::sync::Arc;
 

@@ -156,6 +156,8 @@ each trip writes ONE audit event (not one per rejected call); WARN log carries l
 
 Architecture §6 has no sharing number; targets derive from AC-12 (opens in <= 2 s, constant-work lookup within 1 ms).
 
+Implementation (AZ-3703, owner decision 2026-11-14): `tests/share_perf/`. Each scenario has a `functional` test that runs in CI with a small load and asserts only what does not depend on the hardware (error rate 0%, equal response values, permits and DB connections within their bounds) and prints its times, and the full scenario with the timing thresholds, ignored as `NOT-RUN(HW-REF)` off REF-SRV (run there with `cargo test --release -p sunnycloud-sharing --test share_perf -- --ignored --nocapture --test-threads=1`). There is no `share_lookup_cache` any more (no cache, owner decision 2026-11-14), so PT-06-2 runs without one. PT-06-2's single client sends far more than 100 unknown tokens a minute, so its service counts on a limiter with a raised invalid-token limit (every `NotFound` still records a failure). In PT-06-3 the harness's 500 ms wrong-password window moves on the manual clock in step with real time, so the Argon2 checks queue on the permits for the whole run; a refused attacker waits the `retry_after` it was given; the CPU figure is the whole process's, an upper bound of the hashing.
+
 ### PT-06-1: Open and content authorisation
 **Summary**: per-request cost of `open` and `authorize_content`.
 **Traces to**: AC-12
@@ -195,6 +197,8 @@ Architecture §6 has no sharing number; targets derive from AC-12 (opens in <= 2
 **Env**: C-REF (system: NFT-SEC-06).
 
 ## Security Tests
+
+Implementation (AZ-3703): ST-06-1, 2, 3, 7, 8 are `tests/share_security/` (with the link factory, the password corpus `password_corpus.txt`, the seeded token corpus and the chi-square helper); ST-06-8's unscoped/DDL checks are `tests/sharing/rls.rs` and its one-scope-switch source check `tests/sharing/visitor_statements.rs`. ST-06-4 is `tests/sharing/visitor_grant.rs`, ST-06-5 `tests/sharing/visitor_password.rs`, ST-06-6 `tests/share_abuse/password_limit.rs`; `cargo test -p sunnycloud-sharing` runs all eight.
 
 ### ST-06-1: Cross-account owner operations
 **Summary**: account B cannot create, list or revoke A's links.

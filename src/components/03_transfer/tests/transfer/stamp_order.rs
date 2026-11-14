@@ -23,7 +23,7 @@ fn first_word_is(line: &str, word: &str) -> bool {
 /// The `publish` transaction: from its start (sqlx logs no BEGIN; `sc_db` opens the transaction with its scope
 /// `set_config`) before the stamp to the COMMIT after it; returns the statements in it and the stamp's index among
 /// them.
-fn publish_transaction(log: &[String]) -> (&[String], usize) {
+pub fn publish_transaction(log: &[String]) -> (&[String], usize) {
     let stamp = log
         .iter()
         .rposition(|line| line.contains(STAMP))
@@ -40,7 +40,7 @@ fn publish_transaction(log: &[String]) -> (&[String], usize) {
     (&log[begin..=commit], stamp - begin)
 }
 
-fn position(tx: &[String], what: &str, test: impl Fn(&str) -> bool) -> usize {
+pub fn position(tx: &[String], what: &str, test: impl Fn(&str) -> bool) -> usize {
     tx.iter()
         .position(|line| test(line))
         .unwrap_or_else(|| panic!("no {what} in {tx:#?}"))
@@ -50,11 +50,11 @@ fn is_blob_io(line: &str) -> bool {
     line == "blob_reader" || line == "blob_writer"
 }
 
-fn is_effect(line: &str) -> bool {
+pub fn is_effect(line: &str) -> bool {
     line.contains("upload_sessions") || line.contains("commit_receipts")
 }
 
-fn trimmed(log: &StatementLog) -> Vec<String> {
+pub fn trimmed(log: &StatementLog) -> Vec<String> {
     log.take()
         .iter()
         .map(|line| line.trim().to_owned())

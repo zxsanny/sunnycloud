@@ -92,4 +92,6 @@ Then all pass
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| AC-1 depends on the `AccountGuard` port being added to 03's ports (see E-14/c04) | E-14 owner, E-00 | open | Medium |
+| AC-1 depends on the `AccountGuard` port being added to 03's ports (see E-14/c04) | E-14 owner, E-00 | resolved 2026-11-13 (owner, see AZ-3734's spec, Flagged concerns): 03 takes `Arc<dyn AccountGuard>` (`UploadPorts::guard`) like 02 | Medium |
+| Account creation: 01 creates an account only inside its sign-in (live OIDC provider). The tests create it as AZ-3720 does: 01's `INSERT INTO accounts` text, then the real `initialize` of 07a, 05 and 02 in one system-scope transaction (`tests/transfer/real_account_repo.rs`, which needs a line in `scripts/ci/run-system-allowlist.txt`); 03's own `initialize` writes nothing and is not run | E-14/c15 (AZ-3760) | Implemented as described | Low |
+| The media effect runs after 03's effects in the slot, so a 03 entry failure stops the entry before 08 plans a job; the case where 08's effect ran and a later effect of the same entry fails is covered by 02's AZ-3720 (`real_effects.rs`, with an injected fault effect) | E-14/c15 (AZ-3760) | Noted | Low |
