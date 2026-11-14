@@ -1,6 +1,7 @@
 //! A double of 01's `AccountAdmin` over the real `accounts`, `sessions` and `device_tokens` tables, because
 //! 07 may not link the identity crate (ADR 015, `crate_graph`). It keeps the two properties 07 relies on:
-//! `set_role` and `set_state` run on the caller's transaction, and disabling revokes the credentials in it.
+//! `lock_active_admins`, `set_role` and `set_state` run on the caller's transaction, and disabling revokes the
+//! credentials in it.
 //! Listing is oldest first, as 01 does it. The calls the user administration does not make answer with a typed
 //! failure.
 
@@ -99,8 +100,13 @@ impl AccountAdmin for AccountsDouble {
         Err(failure(NOT_CALLED))
     }
 
-    async fn lock_active_admins(&self, _tx: &mut DbTx) -> Result<Vec<Uuid>, AccountAdminError> {
-        Err(failure(NOT_CALLED))
+    async fn lock_active_admins(&self, tx: &mut DbTx) -> Result<Vec<Uuid>, AccountAdminError> {
+        sqlx::query_scalar(
+            "SELECT id FROM accounts WHERE role = 'admin' AND state = 'active' ORDER BY id FOR UPDATE",
+        )
+        .fetch_all(tx.conn())
+        .await
+        .map_err(database)
     }
 
     async fn set_role(

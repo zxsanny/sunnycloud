@@ -25,7 +25,8 @@ pub trait AccountAdmin: Send + Sync {
     /// transaction in the account's scope. An unknown account is `Unexpected`.
     async fn profile(&self, account: Uuid) -> Result<AccountProfile, AccountAdminError>;
 
-    /// Locks the active admin rows for the last-admin check.
+    /// Locks the active admin rows (role admin, state active; ordered by id) for the last-admin check, before
+    /// any target row. A lost lock race is retried once inside the call; a second one is `Unexpected`.
     async fn lock_active_admins(&self, tx: &mut DbTx) -> Result<Vec<Uuid>, AccountAdminError>;
 
     async fn set_role(

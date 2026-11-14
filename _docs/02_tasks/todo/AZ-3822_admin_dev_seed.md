@@ -83,8 +83,10 @@ Then it returns the refusal and the row counts of `accounts` and `nodes` are unc
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| No port creates an account without a provider sign-in: `OperatorIdentityOps` returns invite tokens, whose redemption needs a sign-in (mock-idp in dev). How `seed` creates its accounts is not specified | E-15 / E-17 owners | open | Medium |
-| The refusal has no variant name (contracts part 1 open point 5) | E-17 owner | open | Low |
+| No port creates an account without a provider sign-in: `OperatorIdentityOps` returns invite tokens, whose redemption needs a sign-in (mock-idp in dev). How `seed` creates its accounts is not specified | E-15 / E-17 owners | resolved (owner decision 2026-11-14: setup token and invites redeemed by sign-ins; the provider step is 07's `ProviderLogin` port) | Medium |
+| The refusal has no variant name (contracts part 1 open point 5) | E-17 owner | resolved: the existing `DevSeedError::RefusedInProduction` (contracts part 1 1.5.1) | Low |
+| Queued media jobs: 08's `MediaEnqueueEffect` is built for one account, and 03's `UploadPorts::commit_effects` is a fixed list, so one `CommitService` cannot queue jobs for accounts the seed creates; the seed commits the photo and queues whatever the composition root's effects queue (none today). IT-07-14 does not assert a queued job | E-16 / E-22 owners (per-account effect slot in the composition root) | open | Medium |
+| `ProviderLogin` has no development implementation: mock-idp (`tests/mocks/idp`, E-31/c13) does not exist yet, so `admin dev-seed` (E-22/c09) cannot be composed; IT-07-14 drives 01's in-process provider | E-22 / E-31 owners | open | Medium |
 
 ## Owner decision
 

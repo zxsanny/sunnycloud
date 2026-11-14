@@ -1,4 +1,5 @@
-//! AC-6: 100 sessions declaring 50 GiB each (25,600 blocks) hold at most 80 MiB in the progress table. The
+//! AC-6 (PT-03-5, progress-table half; AZ-3759 AC-6): 100 sessions declaring 50 GiB each (25,600 blocks), one
+//! block each in flight, hold at most 80 MiB in the progress table. The
 //! bytes are measured at the allocator, not computed: a counting global allocator reports what the table
 //! really holds after the entries are built. One test only, so no other thread allocates meanwhile.
 
@@ -7,7 +8,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use contracts::{BlobHandle, BlobPlan};
 use sc_clock::{Clock, ManualClock, Timestamp};
-use sunnycloud_transfer::{BLOCK_SIZE, CheckpointMark, ProgressTable, SessionInfo};
+use sc_ids::Hash32;
+use sunnycloud_transfer::{BLOCK_SIZE, BlockStart, CheckpointMark, ProgressTable, SessionInfo};
 use uuid::Uuid;
 
 struct Counting;
@@ -60,6 +62,8 @@ fn a_hundred_sessions_of_fifty_gib_fit_in_eighty_mebibytes() {
     let declared = i64::try_from(DECLARED).expect("declared size");
     let table = ProgressTable::new();
 
+    let mut in_flight = 0;
+
     // Act
     for _ in 0..SESSIONS {
         let info = SessionInfo {
@@ -74,7 +78,9 @@ fn a_hundred_sessions_of_fifty_gib_fit_in_eighty_mebibytes() {
                 plaintext_size: declared,
             },
         };
-        table.insert_new(Uuid::new_v4(), info, blocks, mark);
+        let entry = table.insert_new(Uuid::new_v4(), info, blocks, mark);
+        let start = entry.lock().start_block(0, Hash32::from_bytes([5; 32]), 4);
+        in_flight += usize::from(matches!(start, Ok(BlockStart::Started)));
     }
     let measured = LIVE.load(Ordering::SeqCst) - before;
     let computed = table.memory_bytes();
@@ -82,6 +88,7 @@ fn a_hundred_sessions_of_fifty_gib_fit_in_eighty_mebibytes() {
     // Assert
     assert_eq!(blocks, 25_600);
     assert_eq!(table.len(), SESSIONS);
+    assert_eq!(in_flight, SESSIONS, "one block in flight per session");
     assert!(
         measured >= hash_bytes,
         "{measured} bytes cannot hold {hash_bytes} bytes of hashes"

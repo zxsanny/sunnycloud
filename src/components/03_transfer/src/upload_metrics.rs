@@ -153,3 +153,70 @@ impl UploadMetrics {
         self.download_bytes.inc_by(NoLabels, bytes);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every label value of `sets`, in order: one row per set.
+    fn values<L: LabelSet>(sets: &[L]) -> Vec<Vec<&'static str>> {
+        sets.iter()
+            .map(|set| (0..L::NAMES.len()).map(|index| set.value(index)).collect())
+            .collect()
+    }
+
+    #[test]
+    fn every_label_set_carries_only_the_documented_names_and_values() {
+        // Arrange
+        let kinds = [CommitKind::BlockList, CommitKind::Batch];
+        let results = [
+            CommitResult::Committed,
+            CommitResult::Refused,
+            CommitResult::Failed,
+        ];
+        let commits: Vec<CommitLabels> = kinds
+            .iter()
+            .flat_map(|kind| results.iter().map(|result| CommitLabels(*kind, *result)))
+            .collect();
+
+        // Act
+        let rejections = values(&[
+            Rejection::Quota,
+            Rejection::SessionCap,
+            Rejection::FreeFloor,
+        ]);
+        let sessions = values(&[
+            SessionResult::Aborted,
+            SessionResult::Committed,
+            SessionResult::Expired,
+        ]);
+        let kind_values = values(&kinds);
+        let commit_values = values(&commits);
+
+        // Assert
+        assert_eq!(Rejection::NAMES, ["reason"]);
+        assert_eq!(
+            rejections,
+            [vec!["quota"], vec!["session_cap"], vec!["free_floor"]]
+        );
+        assert_eq!(SessionResult::NAMES, ["result"]);
+        assert_eq!(
+            sessions,
+            [vec!["aborted"], vec!["committed"], vec!["expired"]]
+        );
+        assert_eq!(CommitKind::NAMES, ["kind"]);
+        assert_eq!(kind_values, [vec!["block_list"], vec!["batch"]]);
+        assert_eq!(CommitLabels::NAMES, ["kind", "result"]);
+        assert_eq!(
+            commit_values,
+            [
+                vec!["block_list", "committed"],
+                vec!["block_list", "refused"],
+                vec!["block_list", "failed"],
+                vec!["batch", "committed"],
+                vec!["batch", "refused"],
+                vec!["batch", "failed"],
+            ]
+        );
+    }
+}

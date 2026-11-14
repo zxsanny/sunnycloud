@@ -96,7 +96,17 @@ impl Rig {
     }
 
     async fn build(config: TransferConfig, free_reserve: u64, preallocate: bool) -> Rig {
-        let fixture = Fixture::new().await;
+        Rig::build_on(Fixture::new().await, config, free_reserve, preallocate, 1).await
+    }
+
+    /// The rig over `fixture` (its component pool) with 04's read-ahead of `read_ahead` chunks.
+    pub async fn build_on(
+        fixture: Fixture,
+        config: TransferConfig,
+        free_reserve: u64,
+        preallocate: bool,
+        read_ahead: u64,
+    ) -> Rig {
         let clock = sc_testdb::clock_at_start();
         let account = Uuid::new_v4();
         let mut owner = fixture.owner_conn().await;
@@ -110,6 +120,7 @@ impl Rig {
         fs::write(&key_file, [0x11u8; 32]).expect("key file");
         let blob_config = BlobstoreConfig {
             blob_preallocate: preallocate,
+            blob_read_ahead_chunks: read_ahead,
             ..blob_config(&volume, &key_file, free_reserve)
         };
         let audit = AuditWriter::new(fixture.api.clone(), clock.clone());

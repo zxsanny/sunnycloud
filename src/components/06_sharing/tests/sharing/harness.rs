@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use sc_audit::AuditWriter;
 use sc_clock::{Clock, ManualClock};
-use sc_config::Environment;
+use sc_config::{Environment, KeyProblem};
 use sc_db::Db;
 use sc_ratelimit::{AbuseLimiter, LimitId, LimitSpec, LimitTable, Subject, Verdict};
 pub use sc_testdb::{API, MIGRATOR, START, TestDb};
@@ -88,9 +88,18 @@ impl Harness {
 
     /// The owner service with `config` and `audit`, over the real tree reader.
     pub fn shares_on(&self, config: &ShareConfig, audit: AuditWriter) -> PgShareService {
+        self.try_shares(config, audit)
+            .expect("the harness sharing section is valid")
+    }
+
+    /// The service's own refusal of `config`, over the real tree reader.
+    pub fn try_shares(
+        &self,
+        config: &ShareConfig,
+        audit: AuditWriter,
+    ) -> Result<PgShareService, KeyProblem> {
         let tree = Arc::new(PgTreeReader::new(self.api.clone(), &self.tree_config));
         PgShareService::new(self.api.clone(), self.clock.clone(), tree, audit, config)
-            .expect("the harness sharing section is valid")
     }
 
     /// Fixtures and probes run as the schema owner.

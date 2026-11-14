@@ -9,7 +9,7 @@ use sc_clock::{Clock, Timestamp};
 use sc_db::{Db, DbError, DbTx, Scope};
 use uuid::Uuid;
 
-use crate::account_repo::{self, ListedAccount};
+use crate::account_repo::{self, AdminLockError, ListedAccount};
 use crate::auth_repo;
 use crate::device_grant_repo;
 use crate::error::IdentityError;
@@ -67,6 +67,11 @@ impl IdentityAccounts {
 
 fn unexpected(error: impl std::error::Error + Send + Sync + 'static) -> AccountAdminError {
     AccountAdminError::Unexpected(Box::new(error))
+}
+
+/// Whether an attempt to lock the active admins lost a lock race, so that one more attempt is made.
+fn lost_lock_race<T>(attempt: &Result<T, AdminLockError>) -> bool {
+    matches!(attempt, Err(AdminLockError::Conflict(_)))
 }
 
 /// The guard's decision: only an existing, active account passes.
@@ -168,10 +173,16 @@ impl AccountAdmin for IdentityAccounts {
         })
     }
 
+    /// A lost lock race (deadlock, lock not available, serialization failure) is retried once; a second
+    /// conflict or any other failure is `Unexpected`.
     async fn lock_active_admins(&self, tx: &mut DbTx) -> Result<Vec<Uuid>, AccountAdminError> {
-        account_repo::lock_active_admins(tx)
-            .await
-            .map_err(unexpected)
+        let first = account_repo::lock_active_admins(tx).await;
+        let settled = if lost_lock_race(&first) {
+            account_repo::lock_active_admins(tx).await
+        } else {
+            first
+        };
+        settled.map_err(unexpected)
     }
 
     async fn set_role(
@@ -268,6 +279,23 @@ impl AccountGuard for IdentityAccounts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_lost_lock_race_is_retried() {
+        // Arrange
+        let attempts: [Result<(), AdminLockError>; 4] = [
+            Ok(()),
+            Err(AdminLockError::Conflict("40P01".to_owned())),
+            Err(AdminLockError::Db(DbError::Unavailable)),
+            Err(AdminLockError::Db(DbError::Serialization)),
+        ];
+
+        // Act
+        let retried = attempts.each_ref().map(lost_lock_race);
+
+        // Assert
+        assert_eq!(retried, [false, true, false, false]);
+    }
 
     #[test]
     fn only_an_existing_active_account_passes_the_guard() {

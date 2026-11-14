@@ -1,7 +1,9 @@
 //! The link secrets: the token handed to the owner once, and the optional password, stored as an Argon2id PHC
-//! string with a fresh salt per link. Neither value is logged or put into an error.
+//! string with a fresh salt per link and checked against that string's own parameters. Neither value is logged or
+//! put into an error.
 
-use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version};
+use argon2::password_hash::Error as PhcError;
+use argon2::{Algorithm, Argon2, Params, PasswordHasher, PasswordVerifier, Version};
 use sc_ids::{RawToken, TokenKind, new_token};
 
 use crate::error::SharingError;
@@ -25,6 +27,17 @@ pub(crate) fn hash_password(params: &Params, password: &str) -> Result<String, S
         .hash_password_with_salt(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(SharingError::PasswordHash)
+}
+
+/// Whether `password` matches the stored PHC string `phc`. The algorithm, version, cost and salt are the ones the
+/// string carries (share create's, owner decision 2026-11-14), so a later change of `share_argon2_params` does not
+/// lock existing links. A string that does not parse is `PasswordHash`, never a wrong password.
+pub(crate) fn verify_password(phc: &str, password: &str) -> Result<bool, SharingError> {
+    match Argon2::default().verify_password(password.as_bytes(), phc) {
+        Ok(()) => Ok(true),
+        Err(PhcError::PasswordInvalid) => Ok(false),
+        Err(other) => Err(SharingError::PasswordHash(other)),
+    }
 }
 
 #[cfg(test)]
@@ -68,5 +81,36 @@ mod tests {
         assert!(first.starts_with("$argon2id$v=19$m=8,t=1,p=1$"), "{first}");
         assert!(!first.contains("correct horse"));
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn verification_uses_the_cost_stored_in_the_phc_string() {
+        // Arrange
+        let stored =
+            hash_password(&Params::new(16, 2, 1, None).expect("cost"), "пароль 🔑").expect("hash");
+
+        // Act
+        let right = verify_password(&stored, "пароль 🔑").expect("verify");
+        let wrong = verify_password(&stored, "пароль").expect("verify");
+        let empty = verify_password(&stored, "").expect("verify");
+
+        // Assert
+        assert!(right);
+        assert!(!wrong && !empty);
+    }
+
+    #[test]
+    fn a_stored_string_that_does_not_parse_is_an_error_not_a_wrong_password() {
+        // Arrange
+        let broken = "$argon2id$v=19$m=8,t=1,p=1$not-base64!";
+
+        // Act
+        let outcome = verify_password(broken, "anything");
+
+        // Assert
+        assert!(
+            matches!(outcome, Err(SharingError::PasswordHash(_))),
+            "{outcome:?}"
+        );
     }
 }

@@ -121,9 +121,9 @@ async fn a_password_link_needs_a_grant_and_a_plain_link_is_allowed_without_one()
         .create(owner.account, file.node, None, Some(PASSWORD))
         .await
         .expect("password link");
-    // Grants are verified from E-16/c05 on; until then a presented grant counts as absent.
+    // A value no grant key produced counts as absent (valid grants: `visitor_grant`).
     let presented = AccessGrant {
-        value: "not-yet-verifiable".to_owned(),
+        value: "not-a-grant-of-this-link".to_owned(),
         expires_at: harness.clock.now_utc(),
     };
 

@@ -157,7 +157,7 @@ settings_table! {
     share_wrong_password_limit: Count = dflt("10", A);
     share_wrong_password_window: Dur = dflt("10m", A);
     share_invalid_token_limit: Count = dflt("100", A);
-    share_password_max_concurrency: Opt<Count> = unset(A);
+    share_password_max_concurrency: Count = dflt("4", A);
     share_argon2_params: Opt<Text> = unset(A);
     share_grant_key: Sec = unset(A);
 

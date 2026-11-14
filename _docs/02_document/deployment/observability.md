@@ -47,8 +47,8 @@ All names below are written without their prefix; the exported names carry the p
 | `upload_rejections_total` | counter | `reason` (`quota`, `session_cap`, `free_floor`) | AC-39 |
 | `blocks_received_total`, `block_bytes_received_total` | counter | | Throughput |
 | `block_fsync_duration_seconds` | histogram | | Durability cost (AC-38) |
-| `commits_total` | counter | `kind` (`single`, `batch`, `block_list`), `result` | AC-40 |
-| `commit_duration_seconds` | histogram | `kind` | Constant-time finish (AC-4) |
+| `commits_total` | counter | `kind` (`block_list` = `commit_upload`, `batch` = `commit_batch`), `result` (`committed`, `refused` = a typed error, `failed` = unexpected; a batch with failed entries is `committed`) | AC-40 |
+| `commit_duration_seconds` | histogram | `kind` (`block_list`, `batch`) | Constant-time finish (AC-4) |
 | `download_bytes_total` | counter | | |
 | `blob_free_bytes`, `blob_free_floor_bytes`, `blob_reserved_bytes` | gauge | | Disk headroom, quota reservations |
 | `blob_read_duration_seconds` | histogram | `kind` (`range`, `stream`) | 4 KiB range p95 (AC-43) |

@@ -3,6 +3,7 @@
 
 use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx};
+use thiserror::Error;
 use uuid::Uuid;
 
 const INSERT_ACCOUNT: &str = "INSERT INTO accounts (id, state, created_at, display_name, role) \
@@ -40,6 +41,9 @@ const MARK_DELETING: &str = "UPDATE accounts SET state = 'deleting', deletion_re
 // Ordered by id so that two callers locking the set take the rows in the same order.
 const ACTIVE_ADMINS: &str =
     "SELECT id FROM accounts WHERE role = 'admin' AND state = 'active' ORDER BY id FOR UPDATE";
+
+// The SQLSTATEs of a lost lock race: deadlock_detected, lock_not_available, serialization_failure.
+const LOCK_CONFLICT: [&str; 3] = ["40P01", "55P03", "40001"];
 
 const LIST: &str = "SELECT a.id, a.display_name, a.role, a.state, \
     (SELECT (extract(epoch FROM max(i.last_login_at)) * 1000000)::bigint FROM identities i \
@@ -234,10 +238,42 @@ pub(crate) async fn mark_deleting(
     Ok(())
 }
 
-pub(crate) async fn lock_active_admins(tx: &mut DbTx) -> Result<Vec<Uuid>, DbError> {
-    Ok(sqlx::query_scalar::<_, Uuid>(ACTIVE_ADMINS)
+/// Failure of one attempt to lock the active admin rows.
+#[derive(Debug, Error)]
+pub(crate) enum AdminLockError {
+    /// The statement lost a lock race; its savepoint was rolled back, so the caller's transaction is usable.
+    #[error("lock conflict on the active admin rows (SQLSTATE {0})")]
+    Conflict(String),
+    #[error(transparent)]
+    Db(#[from] DbError),
+}
+
+/// Locks the active admin rows inside a savepoint, so that a lost lock race releases what it took and leaves
+/// the caller's transaction usable for one more attempt.
+pub(crate) async fn lock_active_admins(tx: &mut DbTx) -> Result<Vec<Uuid>, AdminLockError> {
+    tx.savepoint(async |tx| select_active_admins(tx).await)
+        .await
+}
+
+async fn select_active_admins(tx: &mut DbTx) -> Result<Vec<Uuid>, AdminLockError> {
+    sqlx::query_scalar::<_, Uuid>(ACTIVE_ADMINS)
         .fetch_all(tx.conn())
-        .await?)
+        .await
+        .map_err(lock_failure)
+}
+
+fn lock_failure(error: sqlx::Error) -> AdminLockError {
+    let conflict = match &error {
+        sqlx::Error::Database(database) => database
+            .code()
+            .filter(|code| LOCK_CONFLICT.contains(&code.as_ref()))
+            .map(|code| code.into_owned()),
+        _ => None,
+    };
+    match conflict {
+        Some(code) => AdminLockError::Conflict(code),
+        None => AdminLockError::Db(DbError::from(error)),
+    }
 }
 
 pub(crate) async fn list(

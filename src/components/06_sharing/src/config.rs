@@ -3,10 +3,12 @@ use std::time::Duration;
 
 use argon2::Params;
 use sc_config::{ConfigError, ConfigSources, KeyProblem, Reason, Secret, Settings, TABLE};
+use tokio::sync::Semaphore;
 
 pub const GRANT_KEY_KEY: &str = "share_grant_key";
 pub const GRANT_KEY_MIN_BYTES: usize = 32;
 pub const ARGON2_PARAMS_KEY: &str = "share_argon2_params";
+pub const PASSWORD_MAX_CONCURRENCY_KEY: &str = "share_password_max_concurrency";
 
 /// The sharing section of the key table, typed. Defaults and the production duration ranges come from
 /// `sc_config`. The grant key stays a `Secret`: it prints as `***` and never enters a problem.
@@ -19,8 +21,8 @@ pub struct ShareConfig {
     pub wrong_password_limit: u64,
     pub wrong_password_window: Duration,
     pub invalid_token_limit: u64,
-    /// No default in the key table: absent means the password path sets its own bound.
-    pub password_max_concurrency: Option<u64>,
+    /// Default 4 (key table). Read through [`ShareConfig::password_concurrency`].
+    pub password_max_concurrency: u64,
     /// No default in the key table (`m,t,p`); unset means argon2's `Params::DEFAULT` (19456 KiB, 2 passes,
     /// 1 lane). Read through [`ShareConfig::password_params`].
     pub argon2_params: Option<String>,
@@ -70,13 +72,7 @@ impl ShareConfig {
                 problems.push(out_of_range(key, "1", "no ceiling"));
             }
         }
-        if self.password_max_concurrency == Some(0) {
-            problems.push(out_of_range(
-                "share_password_max_concurrency",
-                "1",
-                "no ceiling",
-            ));
-        }
+        problems.extend(self.password_concurrency().err());
         problems.extend(self.password_params().err());
         problems.extend(self.grant_key_problem());
         problems
@@ -100,6 +96,19 @@ impl ShareConfig {
         }
     }
 
+    /// How many Argon2id password checks may run at once: `share_password_max_concurrency`. Zero, or more permits
+    /// than tokio's semaphore holds, is a problem naming the key.
+    pub fn password_concurrency(&self) -> Result<usize, KeyProblem> {
+        match usize::try_from(self.password_max_concurrency) {
+            Ok(permits @ 1..) if permits <= Semaphore::MAX_PERMITS => Ok(permits),
+            _ => Err(out_of_range(
+                PASSWORD_MAX_CONCURRENCY_KEY,
+                "1",
+                &Semaphore::MAX_PERMITS.to_string(),
+            )),
+        }
+    }
+
     /// A key that the loader refused (no value, empty file, file that cannot be read) is a problem naming
     /// `share_grant_key`, so a refused start reads the same whichever layer saw the key first. `None` when the
     /// error is about something else.
@@ -114,7 +123,7 @@ impl ShareConfig {
         refused.then(|| KeyProblem::new(GRANT_KEY_KEY, Reason::MissingRequired))
     }
 
-    fn grant_key_problem(&self) -> Option<KeyProblem> {
+    pub(crate) fn grant_key_problem(&self) -> Option<KeyProblem> {
         match self.grant_key.expose().len() {
             0 => Some(KeyProblem::new(GRANT_KEY_KEY, Reason::MissingRequired)),
             GRANT_KEY_MIN_BYTES.. => None,

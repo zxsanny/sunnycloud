@@ -267,3 +267,50 @@ async fn the_guard_refuses_a_disabled_a_deleting_and_an_unknown_account() {
     assert_eq!(results, [true, false, false, false]);
     f.finish().await;
 }
+
+#[tokio::test]
+async fn a_lock_conflict_is_retried_once_then_unexpected_and_the_transaction_stays_usable() {
+    // Arrange
+    const LOCK_TIMEOUT: Duration = Duration::from_millis(100);
+    let mut f = fixture().await;
+    let admin_row = f.account("admin", "active").await;
+    let member = f.account("user", "active").await;
+    let mut probe = f.conn.begin().await.expect("probe transaction");
+    sqlx::query("SELECT 1 FROM accounts WHERE id = $1 FOR UPDATE")
+        .bind(admin_row)
+        .execute(&mut *probe)
+        .await
+        .expect("the probe holds the admin row");
+
+    // Act
+    let started = Instant::now();
+    let outcome = f
+        .harness
+        .api
+        .run(Scope::Account(member), async |tx| {
+            sqlx::query("SET LOCAL lock_timeout = '100ms'")
+                .execute(tx.conn())
+                .await
+                .expect("set the lock timeout");
+            let locked = f.admin.lock_active_admins(tx).await;
+            let elapsed = started.elapsed();
+            let usable: i32 = sqlx::query_scalar("SELECT 1")
+                .fetch_one(tx.conn())
+                .await
+                .expect("the transaction is still usable");
+            Ok::<_, contracts::AccountAdminError>((locked.is_err(), elapsed, usable))
+        })
+        .await
+        .expect("the transaction commits");
+    probe.rollback().await.expect("release the probe");
+
+    // Assert
+    let (refused, elapsed, usable) = outcome;
+    assert!(refused, "the held row did not make the lock fail");
+    assert!(
+        elapsed >= LOCK_TIMEOUT * 2,
+        "one attempt only: failed after {elapsed:?}"
+    );
+    assert_eq!(usable, 1);
+    f.finish().await;
+}

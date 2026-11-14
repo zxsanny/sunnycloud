@@ -3,7 +3,7 @@
 **Component**: 07_admin
 **Producer task**: E-17/c05 (`view`, `quota_view`, `request`, `request_as_operator`), E-17/c04 (last-admin rule in `request` and `request_as_operator`) — `_docs/02_tasks/todo/AZ-3819_account_view_deletion_request.md`, `AZ-3818_last_admin_guard.md`
 **Consumer tasks**: E-21/c12 (account handlers), E-22/c09 (`admin user delete`); in batch E-17/c06, E-17/c09
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft (open points below)
 **Last Updated**: 2026-11-14
 
@@ -45,7 +45,7 @@ A user's own account view and the request that starts account deletion. The requ
 - The confirmation (decided 2026-11-07) is the caller's own account id as lowercase hyphenated UUID text, compared for exact equality with the principal's account id rendered that way: no trimming, no case folding. Empty, whitespace, wrong case and another account's id are all `ConfirmationMismatch`. The value is inferred from ST-07-2's cases; no earlier text names it.
 - `request` checks the principal kind first (a device token is `Forbidden` whatever the confirmation), then the confirmation; both refusals happen before any transaction.
 - `request_as_operator` (decided 2026-11-07) serves `admin user delete --yes` (`Actor::Operator`, no principal): it skips the confirmation, because `--yes` is the confirmation, runs the same transaction as `request` including `lock_active_admins` and the last-admin guard (`LastAdmin`), and refuses nothing else. `request` is unchanged and stays session-only.
-- `request` runs one short transaction in the account's scope: `lock_active_admins` and the last-admin guard (E-17/c04, AZ-3818; not yet in the transaction as of 1.2.0), then `AccountAdmin::begin_deletion` (state `deleting`; 01 revokes sessions, device tokens and grants), then the audit row. Nothing else happens in the request: no erase hook, no blob work.
+- `request` runs one short transaction in the account's scope: `lock_active_admins` and the last-admin guard (E-17/c04, AZ-3818; in the transaction since 1.3.0), then `AccountAdmin::begin_deletion` (state `deleting`; 01 revokes sessions, device tokens and grants), then the audit row. Nothing else happens in the request: no erase hook, no blob work.
 - `deadline` = now (injected clock) + `account_delete_deadline` (15 min by default).
 - From commit on: every credential of the account is rejected (within 5 s, AC-21), commits are refused by `AccountGuard`, and the account's data still exists until the purger removes it.
 - The audit entry for the request is one `admin_action` row written in the request's transaction: actor account and session id (none for the operator), subject `account` with the account id, `action = deletion_requested`. Ids and the action code only; no name, email or path.
@@ -88,3 +88,4 @@ A user's own account view and the request that starts account deletion. The requ
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
 | 1.1.0 | 2026-11-07 | Confirmation value and comparison fixed; `request_as_operator` added (proposed; frozen when its `contracts` change task is accepted) (AZ-3814) | spike AZ-3814 |
 | 1.2.0 | 2026-11-14 | Implemented: `view` from `AccountAdmin::profile`, `QuotaAdmin::view`, `TreeReader::root_node`; `request_as_operator` in `contracts` (CC-2); audit row and wire-error table; open point 3 resolved, 4 carries a proposal, 5 added | AZ-3819 |
+| 1.3.0 | 2026-11-14 | Last-admin guard in the `request` and `request_as_operator` transaction (`lock_active_admins` first, then `begin_deletion`); IT-07-3, IT-07-5 | AZ-3818 |

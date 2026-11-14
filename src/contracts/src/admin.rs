@@ -127,7 +127,7 @@ pub trait AccountDeletionService: Send + Sync {
 
 #[derive(Debug, Error)]
 pub enum DevSeedError {
-    /// The variant name is open in 07; this is the refusal when `environment = production`.
+    /// The refusal when `environment = production`; nothing is written (AZ-3822).
     #[error("refused in production")]
     RefusedInProduction,
     #[error("unexpected failure")]

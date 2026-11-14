@@ -11,6 +11,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::AdminConfig;
+use crate::last_admin::{GuardRefusal, guard_removal};
 use crate::user_admin::admin_action;
 
 const DELETION_REQUESTED: &str = "deletion_requested";
@@ -54,12 +55,18 @@ impl AccountDeletionServiceImpl {
         &self.config
     }
 
-    /// `begin_deletion` (01 marks the account `deleting` and revokes its sessions, device tokens and grants)
-    /// and the audit row, in one transaction in the account's scope.
+    /// The last-admin guard, `begin_deletion` (01 marks the account `deleting` and revokes its sessions, device
+    /// tokens and grants) and the audit row, in one transaction in the account's scope.
     async fn begin(&self, actor: &Actor, account: Uuid) -> Result<DeletionAccepted, DeletionError> {
         let deadline = deadline(self.clock.now_utc(), &self.config)?;
         self.db
             .run(Scope::Account(account), async |tx| {
+                guard_removal(self.accounts.as_ref(), tx, account)
+                    .await
+                    .map_err(|refusal| match refusal {
+                        GuardRefusal::LastAdmin => DeletionError::LastAdmin,
+                        GuardRefusal::Port(error) => unexpected(error),
+                    })?;
                 self.accounts
                     .begin_deletion(tx, account)
                     .await

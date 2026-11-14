@@ -102,3 +102,11 @@ Then the progress table is at most 80 MB (fail 100 MB) and download RSS growth a
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | G-03-1 may lower lanes or checkpoint sizes, which changes AC-2's throughput risk (E-14/c01) | Owner | resolved 2026-11-11 (AZ-3731: AC-3 is 16 MiB; commit answers in commit_service.md) | Medium |
+
+## Implementation notes (2026-11-14)
+
+- Metrics: all eight series were already registered and emitted by the operation tasks (`upload_metrics.rs`); nothing new is emitted. `observability.md` listed a `kind = single` for `commits_total` that no operation produces (`commit_service.md` names `block_list` and `batch` only); the row now names the two kinds and the `result` values.
+- AC-1: unit test of the label sets (`upload_metrics.rs`) and the mixed-run scrape `tests/transfer/metrics_scrape.rs` (label names and values limited to the documented enumerations; no account, node, revision, file name or address in any transfer sample).
+- AC-2 to AC-5: `tests/perf/` (PT-03-1..4), every case `NOT-RUN(HW-REF)` off REF-SRV (PT-03-2: the C-LARGE host); functional assertions (no errors, buffered bytes, connections, all files committed) sit in the same cases. The structural reading of AC-3 runs everywhere: `tests/transfer/commit_constant.rs` (1 MiB and 16 MiB commits: one head read of at most 64 KiB, no other read, no write, blob file untouched).
+- AC-4 reading: `max_staged` is 1,000 per account, so PT-03-3 runs 10 rounds of 1,000 stages followed by their 2 batches of 500 on the production limit (same 10,000 stages and 20 timed batches).
+- AC-6: the progress-table half is `tests/progress_memory.rs` (now with one block in flight per session); the 5 GiB download half is `tests/download_memory.rs`, ignored in the default debug run (5 GiB through the debug-build cipher takes about an hour) and run with `--release --ignored` (2026-11-14, env C class workstation, release: 5 GiB in 81,920 chunks, heap peak growth 350,251 B, RSS peak growth 77,824 B; 16.5 s). PT-03-1..4 harness compiles and is clippy-clean but has not been executed anywhere yet (REF-SRV only).

@@ -3,9 +3,9 @@
 **Component**: 07_admin
 **Producer task**: E-17/c02 (construction), E-17/c03 (`list_users`, `update_user`, `set_quota`), E-17/c04 (last-admin rule), E-17/c07 (`health`) — `_docs/02_tasks/todo/B05-02_admin_crate_skeleton.md`, `B05-03_admin_user_management.md`, `B05-04_last_admin_guard.md`, `B05-07_admin_health_aggregation.md` (renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-21/c12 (admin handlers), E-22/c03 (composition root), E-22/c08 (`admin promote|demote`), E-22/c09 (`admin user list|set-quota`); in batch E-17/c08, E-17/c09, E-17/c10
-**Version**: 1.0.1
+**Version**: 1.2.0
 **Status**: draft (open points below)
-**Last Updated**: 2026-11-07
+**Last Updated**: 2026-11-14
 
 ## Purpose
 
@@ -46,9 +46,17 @@ The admin operations behind the web admin page and the operator CLI: list users 
 
 `AdminService` is built with `AccountAdmin`, `QuotaAdmin`, the `HealthContributor` list, the admin settings, the audit writer, the clock and the database handle, all passed to its constructor. There is no global registry.
 
+### Dev seed (E-17/c08, AZ-3822)
+
+`DevSeedImpl::new(environment, DevSeedTarget{provider, host}, Arc<AdminServiceImpl>, DevSeedPorts, clock)` implements `contracts::DevSeed`. `DevSeedPorts` carries the ports beyond 07's Requires, passed by the composition root to the seed only: `OperatorIdentityOps`, `InviteService`, `SignInService`, `Authenticator`, `TreeService`, `TreeReader`, `UploadService`, `CommitService`, `ShareService`, and `ProviderLogin` (07's trait for the user's step at the identity provider: `authorize(authorization_url, subject) -> CallbackParams`; in development the mock identity provider).
+
+- `environment = production`: `RefusedInProduction` before any port call.
+- An installation with any account: `Ok`, nothing written (a second run adds nothing).
+- Otherwise: the admin signs up with the setup token, two users with admin invites, each through `SignInService::begin`, `ProviderLogin::authorize` and `complete` (owner decision 2026-11-14: no development-only account-creation port); per user four folders with Unicode and mixed-case names, a staged photo committed by `commit_batch` and one share link on it; a 1 GiB limit on the first user (`set_quota` as `Actor::Operator`, audited); an upload session left open for the second user. Media jobs are whatever the composition root's commit effects queue for the photo.
+
 ## Invariants
 
-- Last-admin rule: demotion, disabling and deletion of an account run in one short transaction that first calls `AccountAdmin::lock_active_admins`; if the change would leave no account with role admin and state active, the call returns `LastAdmin` and changes nothing. Disabled and `deleting` accounts are never active. The same rule serves `update_user`, `AccountDeletionService::request` and the operator path. Two concurrent removals never both pass; a lock conflict is retried at most once inside the port.
+- Last-admin rule: demotion, disabling and deletion of an account run in one short transaction that first calls `AccountAdmin::lock_active_admins`; if the change would leave no account with role admin and state active, the call returns `LastAdmin` and changes nothing. Disabled and `deleting` accounts are never active. The same rule serves `update_user`, `AccountDeletionService::request` and the operator path. Two concurrent removals never both pass; a lock conflict is retried at most once inside the port. The guard runs only for a removal (a demotion or a disabling); a target that is not an active admin removes none and passes. Lock order: the active admin rows (ordered by id), then the target row, on every path.
 - Every successful mutation writes one `admin_action` audit row with actor, subject account id and action code, and no name or email.
 - `list_users` returns every account exactly once across pages, in a stable order; no field carries a token or secret.
 - 07 issues no SQL; accounts come from 01 and usage from 07a.
@@ -71,7 +79,10 @@ The admin operations behind the web admin page and the operator CLI: list users 
 | list-paging | 45 accounts, page size 20 | pages 20, 20, 5; each account once | IT-07-1 |
 | change-audit | role, state and two quota changes | 4 `admin_action` rows, ids only | IT-07-2 |
 | last-admin | demote, disable, delete the only active admin | `LastAdmin` each; nothing changed | IT-07-3 |
-| concurrent-demotion | two admins demote each other | exactly one passes | IT-07-4 |
+| concurrent-demotion | two admins demote each other, 100 rounds | exactly one passes | IT-07-4 |
+| mixed-removals | 200 concurrent pairs of deletions, disabling and demotions of two admins | an active admin always remains; refusals are `LastAdmin` | IT-07-5 |
+| delayed-lock | 200 ms after `lock_active_admins`, 100 rounds | the second waits; one passes | ST-07-3 |
+| dev-seed | development, empty database; second run; production | 3 accounts, 1 GiB limit, a share per user, an open upload; nothing added; `RefusedInProduction` with 0 rows | IT-07-14 |
 | non-admin | user session, admin device token | `Forbidden` | ST-07-1 |
 | health-timeout | contributor sleeping 5 s, timeout 300 ms | `down` within 500 ms; others present | IT-07-6 |
 
@@ -89,3 +100,5 @@ The admin operations behind the web admin page and the operator CLI: list users 
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
 | 1.0.1 | 2026-11-07 | `Forbidden` status fixed at 403 (G-S6) (AZ-3814) | spike AZ-3814 |
+| 1.1.0 | 2026-11-14 | Last-admin guard implemented in `update_user` and both deletion requests; lock order stated; IT-07-3 to IT-07-5, ST-07-3 | AZ-3818 |
+| 1.2.0 | 2026-11-14 | Dev seed construction and behaviour (`DevSeedImpl`, `DevSeedPorts`, `ProviderLogin`); IT-07-14 | AZ-3822 |

@@ -7,6 +7,7 @@
 
 pub mod account_data;
 pub mod accounts_double;
+pub mod delayed_accounts;
 pub mod doubles;
 pub mod harness;
 pub mod health_doubles;

@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use sc_config::{ConfigError, Environment, KeyProblem, Reason, Secret};
-use sunnycloud_sharing::{ARGON2_PARAMS_KEY, GRANT_KEY_MIN_BYTES, ShareConfig};
+use sunnycloud_sharing::{
+    ARGON2_PARAMS_KEY, GRANT_KEY_MIN_BYTES, PASSWORD_MAX_CONCURRENCY_KEY, ShareConfig,
+};
 
 use crate::settings::{KeyFile, TEST_GRANT_KEY, load_settings, load_with_key};
 
@@ -73,7 +75,7 @@ fn only_the_grant_key_set_gives_the_documented_defaults() {
         Duration::from_secs(10 * MINUTE)
     );
     assert_eq!(config.invalid_token_limit, 100);
-    assert_eq!(config.password_max_concurrency, None);
+    assert_eq!(config.password_max_concurrency, 4);
     assert_eq!(config.argon2_params, None);
     assert_eq!(config.grant_key.expose(), TEST_GRANT_KEY);
     assert_eq!(config.validate(), Vec::new());
@@ -95,7 +97,7 @@ fn set_keys_replace_the_defaults() {
     // Assert
     assert_eq!(config.default_ttl, Duration::from_secs(DAY));
     assert_eq!(config.wrong_password_limit, 3);
-    assert_eq!(config.password_max_concurrency, Some(4));
+    assert_eq!(config.password_max_concurrency, 4);
     assert_eq!(config.argon2_params.as_deref(), Some("19456,2,1"));
     assert_eq!(config.validate(), Vec::new());
 }
@@ -266,7 +268,7 @@ fn zero_values_that_would_expire_or_refuse_everything_are_refused() {
         ("share_wrong_password_limit", |c| c.wrong_password_limit = 0),
         ("share_invalid_token_limit", |c| c.invalid_token_limit = 0),
         ("share_password_max_concurrency", |c| {
-            c.password_max_concurrency = Some(0);
+            c.password_max_concurrency = 0;
         }),
     ];
 
@@ -380,5 +382,38 @@ fn unusable_argon2_params_are_refused_naming_the_key() {
             vec![KeyProblem::new(ARGON2_PARAMS_KEY, Reason::WrongType)],
             "{value}"
         );
+    }
+}
+
+#[test]
+fn an_unset_password_concurrency_is_four_and_a_set_one_is_used() {
+    // Arrange
+    let unset = valid();
+    let set = config_from(&[("SUNNYCLOUD_SHARE_PASSWORD_MAX_CONCURRENCY", "16")]);
+
+    // Act
+    let (default, configured) = (unset.password_concurrency(), set.password_concurrency());
+
+    // Assert
+    assert_eq!(default, Ok(4));
+    assert_eq!(configured, Ok(16));
+}
+
+#[test]
+fn a_password_concurrency_of_zero_or_beyond_the_semaphore_is_refused_naming_the_key() {
+    // Arrange
+    let mut zero = valid();
+    zero.password_max_concurrency = 0;
+    let mut huge = valid();
+    huge.password_max_concurrency = u64::MAX;
+
+    // Act
+    let refused = [zero.password_concurrency(), huge.password_concurrency()];
+
+    // Assert
+    for outcome in refused {
+        let problem = outcome.expect_err("refused");
+        assert_eq!(problem.key, PASSWORD_MAX_CONCURRENCY_KEY);
+        assert!(matches!(problem.reason, Reason::OutOfRange { .. }));
     }
 }

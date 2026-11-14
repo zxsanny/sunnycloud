@@ -115,8 +115,8 @@ Then 100% are `argon2id` PHC strings with the configured memory, iterations and 
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `verify_password` on a live link that has no password: outcome not stated | E-16 owner | open | Low |
-| Argon2id parameters and `share_password_max_concurrency` have no stated defaults (see E-16/c02) | E-16 owner | open | Medium |
+| `verify_password` on a live link that has no password: outcome not stated | E-16 owner | resolved (owner decision 2026-11-14: `NotFound`) | Low |
+| Argon2id parameters and `share_password_max_concurrency` have no stated defaults (see E-16/c02) | E-16 owner | resolved (owner decision 2026-11-14: PHC-stored parameters, concurrency default 4 in `ShareConfig`; the `sc_config` key table still has no default for the key) | Medium |
 | This task follows E-16/c06 so that the grant check lands in an existing `authorize_content`; the epic lists the rows in the other order | E-16 owner | resolved | Low |
 
 ## Owner decision

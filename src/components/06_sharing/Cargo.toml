@@ -21,12 +21,17 @@ sc_ids = { path = "../../shared/ids_hashing" }
 # getrandom feature stays off. Same pin as vault-core.
 argon2 = { version = "=0.6.0", default-features = false, features = ["alloc", "password-hash", "zeroize"] }
 getrandom = { workspace = true }
+# Access grants (AZ-3699): HMAC-SHA-256 over the link's token hash and the grant's expiry, as URL-safe base64.
+hmac = { workspace = true }
+sha2 = { workspace = true }
+base64 = { workspace = true }
 async-trait = "0.1"
 # The repository modules run their statements on the transaction's connection; same features as sc_db.
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 thiserror = { workspace = true }
-# Argon2 runs on the blocking pool, off the async workers (owner decision 2026-11-14).
-tokio = { workspace = true, features = ["rt"] }
+# Argon2 runs on the blocking pool, off the async workers (owner decision 2026-11-14); a semaphore bounds the
+# password checks running at once (AZ-3699).
+tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 uuid = { workspace = true }
 

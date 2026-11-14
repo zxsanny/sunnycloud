@@ -1,5 +1,5 @@
-//! The account services over the real components on a real PostgreSQL 18: 01's `IdentityAccounts` (account
-//! admin and guard) and `IdentityAuthenticator`, 02's tree reader and commit (`PgTreeService` with 01's guard,
+//! The account services and the user administration over the real components on a real PostgreSQL 18: 01's
+//! `IdentityAccounts` (account admin and guard) and `IdentityAuthenticator`, 02's tree reader and commit (`PgTreeService` with 01's guard,
 //! 07a's ledger, 04's GC queue and 05's stamp and notifier), and 07a's `PgQuotaAdmin`. The components connect
 //! as the API role with row-level security on; fixtures and probes use a plain connection of the schema owner.
 
@@ -13,7 +13,9 @@ use sc_db::Db;
 use sc_ids::{RawToken, TokenKind};
 use sc_testdb::{MIGRATOR, TestDb};
 use sqlx::PgConnection;
-use sunnycloud_admin::{AccountDeletionServiceImpl, AccountServiceImpl, AdminConfig};
+use sunnycloud_admin::{
+    AccountDeletionServiceImpl, AccountServiceImpl, AdminConfig, AdminServiceImpl,
+};
 use sunnycloud_blobstore::{BlobstoreConfig, GcQueue};
 use sunnycloud_identity::{IdentityAccounts, IdentityAuthenticator, IdentityConfig};
 use sunnycloud_quota::{PgQuotaAdmin, PgQuotaLedger, QuotaConfig};
@@ -31,6 +33,7 @@ pub struct World {
     pub clock: Arc<ManualClock>,
     pub accounts: AccountServiceImpl,
     pub deletion: AccountDeletionServiceImpl,
+    pub admin: AdminServiceImpl,
     pub quota: Arc<PgQuotaAdmin>,
     pub tree: Arc<PgTreeReader>,
     pub commit: PgTreeService,
@@ -40,6 +43,13 @@ pub struct World {
 
 impl World {
     pub async fn new() -> World {
+        World::with_accounts(|identity| identity).await
+    }
+
+    /// The services see 01's account admin through `wrap`, for a decorator around the real component.
+    pub async fn with_accounts(
+        wrap: impl FnOnce(Arc<dyn AccountAdmin>) -> Arc<dyn AccountAdmin>,
+    ) -> World {
         let settings = load_settings(
             Environment::Test,
             &[("SUNNYCLOUD_ACCOUNT_DELETE_DEADLINE", DELETE_DEADLINE)],
@@ -71,20 +81,29 @@ impl World {
             InProcessNotifier::new(),
             dyn_clock.clone(),
         );
-        let admin: Arc<dyn AccountAdmin> = identity;
-        let accounts = AccountServiceImpl::new(admin.clone(), quota.clone(), tree.clone());
+        let account_admin = wrap(identity);
+        let accounts = AccountServiceImpl::new(account_admin.clone(), quota.clone(), tree.clone());
         let deletion = AccountDeletionServiceImpl::new(
-            admin,
+            account_admin.clone(),
             AdminConfig::from_settings(&settings),
             AuditWriter::new(api.clone(), dyn_clock.clone()),
             api.clone(),
-            dyn_clock,
+            dyn_clock.clone(),
+        );
+        let admin = AdminServiceImpl::new(
+            account_admin,
+            quota.clone(),
+            Vec::new(),
+            AdminConfig::from_settings(&settings),
+            AuditWriter::new(api.clone(), dyn_clock),
+            api.clone(),
         );
         World {
             db,
             clock,
             accounts,
             deletion,
+            admin,
             quota,
             tree,
             commit,
@@ -109,6 +128,7 @@ impl World {
             clock,
             accounts,
             deletion,
+            admin,
             quota,
             tree,
             commit,
@@ -119,6 +139,7 @@ impl World {
             clock,
             accounts,
             deletion,
+            admin,
             quota,
             tree,
             commit,

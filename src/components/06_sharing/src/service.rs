@@ -13,34 +13,42 @@ use contracts::{
 };
 use sc_audit::{AuditDetail, AuditEvent, AuditEventKind, AuditWriter, SubjectRef};
 use sc_clock::{Clock, Timestamp};
-use sc_config::KeyProblem;
+use sc_config::{KeyProblem, Reason};
 use sc_db::{Db, DbError, RunError, Scope};
 use sc_ids::{new_id, sha256_token};
+use tokio::sync::Semaphore;
 use uuid::Uuid;
 
-use crate::config::ShareConfig;
+use crate::config::{GRANT_KEY_KEY, ShareConfig};
 use crate::error::{SharingError, TxError};
-use crate::secret::{hash_password, new_share_token};
+use crate::grant::GrantKey;
+use crate::secret::{hash_password, new_share_token, verify_password};
 use crate::share_repo::{self, ListedLink, NewLink};
 
 pub(crate) const SHARE_LINK: &str = "share_link";
 /// The public page of a link (16 web app, `/s/<token>`).
 const URL_PATH_PREFIX: &str = "/s/";
 
-/// The owner side of share links over `share_links`.
+/// The owner side of share links over `share_links`, and the visitor's access decisions.
 pub struct PgShareService {
     pub(crate) db: Db,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) tree: Arc<dyn TreeReader>,
     pub(crate) audit: AuditWriter,
+    pub(crate) grants: GrantKey,
+    pub(crate) grant_ttl: Duration,
     default_ttl: Duration,
     max_ttl: Duration,
     password_params: Params,
+    /// One permit per Argon2id password check running (`share_password_max_concurrency`).
+    password_checks: Arc<Semaphore>,
+    password_concurrency: usize,
 }
 
 impl PgShareService {
-    /// Opens no connection. `config` is the validated sharing section; an unusable `share_argon2_params` is
-    /// refused here as well, naming the key.
+    /// Opens no connection. `config` is the validated sharing section; an unusable `share_argon2_params`,
+    /// `share_password_max_concurrency` or `share_grant_key` is refused here as well, naming the key, so no
+    /// service ever signs grants with a short or empty key.
     pub fn new(
         db: Db,
         clock: Arc<dyn Clock>,
@@ -48,15 +56,51 @@ impl PgShareService {
         audit: AuditWriter,
         config: &ShareConfig,
     ) -> Result<Self, KeyProblem> {
+        if let Some(problem) = config.grant_key_problem() {
+            return Err(problem);
+        }
+        let grants = GrantKey::new(config.grant_key.expose().as_bytes())
+            .map_err(|_| KeyProblem::new(GRANT_KEY_KEY, Reason::WrongType))?;
+        let password_concurrency = config.password_concurrency()?;
         Ok(PgShareService {
             db,
             clock,
             tree,
             audit,
+            grants,
+            grant_ttl: config.grant_ttl,
             default_ttl: config.default_ttl,
             max_ttl: config.max_ttl,
             password_params: config.password_params()?,
+            password_checks: Arc::new(Semaphore::new(password_concurrency)),
+            password_concurrency,
         })
+    }
+
+    /// How many Argon2id password checks hold a permit now; never above `share_password_max_concurrency`.
+    pub fn password_checks_in_progress(&self) -> usize {
+        self.password_concurrency - self.password_checks.available_permits()
+    }
+
+    /// Whether `password` matches the PHC string `phc`, on tokio's blocking pool under one permit. The blocking
+    /// task owns the permit, so a caller that goes away before the check ends does not free its slot early.
+    pub(crate) async fn check_password_off_worker(
+        &self,
+        phc: String,
+        password: &str,
+    ) -> Result<bool, SharingError> {
+        let permit = Arc::clone(&self.password_checks)
+            .acquire_owned()
+            .await
+            .map_err(SharingError::PasswordPool)?;
+        let password = password.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let matched = verify_password(&phc, &password);
+            drop(permit);
+            matched
+        })
+        .await
+        .map_err(SharingError::HashTask)?
     }
 
     /// The Argon2id PHC string of `password`, computed on tokio's blocking pool.

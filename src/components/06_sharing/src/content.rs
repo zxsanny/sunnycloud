@@ -20,25 +20,27 @@ use crate::service::{PgShareService, SHARE_LINK};
 impl PgShareService {
     /// `PublicShareService::authorize_content` (the port is implemented once its other operations exist): the
     /// link's account, node and the node's current revision, or `NotFound` for every dead link and every gone or
-    /// folder target, or `PasswordRequired` for a live password link on a live file. Grants are not verified yet
-    /// (E-16/c05 adds them), so a presented grant counts as absent. `client_ip` is for the invalid-token limit
-    /// (E-16/c07). With `starts_download`, an allowed call writes one `share_accessed` event; its failure is
+    /// folder target, or `PasswordRequired` for a live password link on a live file without a valid grant of its
+    /// own (an expired, altered, empty, oversized or other link's grant counts as absent). A link without a
+    /// password ignores grants. `client_ip` is for the invalid-token limit (E-16/c07). With `starts_download`, an allowed call writes one `share_accessed` event; its failure is
     /// logged at ERROR by the writer and never changes the answer.
     pub async fn authorize_content(
         &self,
         token: &RawToken,
-        _grant: Option<&AccessGrant>,
+        grant: Option<&AccessGrant>,
         _client_ip: IpAddr,
         starts_download: bool,
     ) -> Result<ShareContent, PublicShareError> {
         let now = self.clock.now_utc();
-        let row = lookup_repo::by_token_hash(&self.db, &sha256_token(token.expose()))
+        let token_hash = sha256_token(token.expose());
+        let row = lookup_repo::by_token_hash(&self.db, &token_hash)
             .await
             .map_err(run_unexpected)?;
         let link = live_link(row, now);
         let (account, node) = link.map_or(DUMMY_TARGET, |row| (row.account_id, row.node_id));
         let file = self.tree.resolve_live_file(account, node).await;
-        let content = decide_content(link.as_ref(), current_revision(file)?)?;
+        let granted = grant.is_some_and(|grant| self.grants.accepts(&token_hash, grant, now));
+        let content = decide_content(link.as_ref(), current_revision(file)?, granted)?;
         if let (true, Some(link)) = (starts_download, link) {
             self.audit
                 .record_best_effort(access_event(&link, content.revision_id))
@@ -64,13 +66,17 @@ pub(crate) fn current_revision(
     }
 }
 
-/// The answer from the live link (if any) and its target's current revision (if live).
+/// The answer from the live link (if any), its target's current revision (if live) and whether a valid grant of
+/// this link was presented.
 pub(crate) fn decide_content(
     link: Option<&LinkRow>,
     revision: Option<Uuid>,
+    granted: bool,
 ) -> Result<ShareContent, PublicShareError> {
     match (link, revision) {
-        (Some(link), Some(_)) if link.has_password => Err(PublicShareError::PasswordRequired),
+        (Some(link), Some(_)) if link.has_password && !granted => {
+            Err(PublicShareError::PasswordRequired)
+        }
         (Some(link), Some(revision_id)) => Ok(ShareContent {
             account_id: link.account_id,
             node_id: link.node_id,
@@ -161,13 +167,13 @@ mod tests {
         let (plain, protected) = (link(false), link(true));
 
         // Act
-        let allowed = decide_content(Some(&plain), Some(REVISION));
-        let password = decide_content(Some(&protected), Some(REVISION));
+        let allowed = decide_content(Some(&plain), Some(REVISION), false);
+        let password = decide_content(Some(&protected), Some(REVISION), false);
         let dead = [
-            decide_content(None, Some(REVISION)),
-            decide_content(None, None),
-            decide_content(Some(&plain), None),
-            decide_content(Some(&protected), None),
+            decide_content(None, Some(REVISION), false),
+            decide_content(None, None, false),
+            decide_content(Some(&plain), None, false),
+            decide_content(Some(&protected), None, false),
         ];
 
         // Assert
@@ -180,6 +186,35 @@ mod tests {
             }
         );
         assert!(matches!(password, Err(PublicShareError::PasswordRequired)));
+        for answer in dead {
+            assert!(
+                matches!(answer, Err(PublicShareError::NotFound)),
+                "{answer:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_valid_grant_opens_a_password_link_only_while_it_and_its_file_are_live() {
+        // Arrange
+        let (plain, protected) = (link(false), link(true));
+
+        // Act
+        let granted = decide_content(Some(&protected), Some(REVISION), true);
+        let plain_with_grant = decide_content(Some(&plain), Some(REVISION), true);
+        let dead = [
+            decide_content(None, Some(REVISION), true),
+            decide_content(Some(&protected), None, true),
+        ];
+
+        // Assert
+        let expected = ShareContent {
+            account_id: protected.account_id,
+            node_id: protected.node_id,
+            revision_id: REVISION,
+        };
+        assert_eq!(granted.expect("granted"), expected);
+        assert_eq!(plain_with_grant.expect("plain"), expected);
         for answer in dead {
             assert!(
                 matches!(answer, Err(PublicShareError::NotFound)),

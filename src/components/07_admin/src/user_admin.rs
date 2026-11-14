@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::actor::authorize;
 use crate::admin_service::AdminServiceImpl;
 use crate::error::AdminCallError;
+use crate::last_admin::{GuardRefusal, guard_removal, removes_admin};
 use crate::listing::{merge, page_limit};
 
 const SUBJECT_TYPE: &str = "account";
@@ -44,8 +45,9 @@ impl AdminServiceImpl {
     }
 
     /// Applies `role` and `state` in one transaction in the account's scope, each followed by its audit row.
-    /// Disabling revokes the account's credentials inside `AccountAdmin::set_state`, so the revocation rolls
-    /// back with the audit row.
+    /// A demotion or a disabling first passes the last-admin guard in the same transaction. Disabling revokes
+    /// the account's credentials inside `AccountAdmin::set_state`, so the revocation rolls back with the audit
+    /// row.
     pub async fn update_user(
         &self,
         actor: &Actor,
@@ -61,6 +63,14 @@ impl AdminServiceImpl {
         let result = self
             .db
             .run(Scope::Account(account), async |tx| {
+                if removes_admin(role, state) {
+                    guard_removal(self.accounts.as_ref(), tx, account)
+                        .await
+                        .map_err(|refusal| match refusal {
+                            GuardRefusal::LastAdmin => AdminError::LastAdmin,
+                            GuardRefusal::Port(error) => unexpected(error),
+                        })?;
+                }
                 if let Some(role) = role {
                     self.accounts
                         .set_role(tx, account, role)
