@@ -41,6 +41,8 @@ sunnycloud-quota = { path = "../07a_quota" }
 # limiter (AZ-3822).
 sunnycloud-transfer = { path = "../03_transfer" }
 sunnycloud-sharing = { path = "../06_sharing" }
+# The purger suite runs the full v1.0 hook chain with 08's real erase hook and GC cleanup (AZ-3825).
+media-api = { path = "../08_media_jobs" }
 sc_ratelimit = { path = "../../shared/ratelimit" }
 # 01's in-process identity provider (its `tests/support/provider.rs`, standing in for mock-idp) serves OIDC on a
 # local socket and signs ES256 id tokens.

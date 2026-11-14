@@ -91,7 +91,7 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 **Expected result**: `erase_batch` is never called with limit above 50; hook N+1 is first called only after hook N reported 0; `finalize_deletion` runs once, last; afterwards the harness table sweep (every table with an `account_id` column from `information_schema`, plus `identities`, `sessions`, `device_tokens`, `device_grants`, `login_codes`, `accounts`) counts 0 rows for the account; `blob_gc` holds the account's blobs with `Due::Now`; after 04's GC runs, 0 blob files remain for it; audit `account_deleted` written once; other accounts' row counts unchanged.
 **Max execution time**: 30 s (deadline config)
 **Dependencies**: all hook owners, 04 GC
-**Implemented (AZ-3820)**: `07_admin/tests/purger/drain.rs` with the real hooks 06, 02, 03, 05, 07a (08 and 20 are outside AZ-3820: no media rows, no vault); 04's GC runs between purger cycles; the self-deadlock check (a hook inserting a row that references the account on its own connection while the purger holds `lock_deleting`) and its control (the same insert waits under `FOR UPDATE`) are in the same file.
+**Implemented (AZ-3820, AZ-3825)**: `07_admin/tests/purger/drain.rs` with the real hooks of the v1.0 list 06, 02, 03, 08 (`MediaLifecycle`), 05, 07a and the media subset as rows (30 jobs over the account's revisions, 60 derived rows over committed blobs with files); 20 is not built in v1.0 and no stand-in is used (AZ-3825 flagged concern, open). 04's GC runs between purger cycles with 02's and 08's owner cleanups; after every purger cycle each blob without an owner row is queued `account_deleted` and due, and every derived blob is seen queued so before GC removes its file; the self-deadlock check (a hook inserting a row that references the account on its own connection while the purger holds `lock_deleting`) and its control (the same insert waits under `FOR UPDATE`) are in the same file.
 
 ### IT-07-10: Resume after a failed batch at each hook position
 **Summary**: a batch failure at any step is logged and retried; the purge finishes without manual action.
@@ -100,7 +100,7 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 **Expected result**: failure logged at ERROR with account id and hook position (no row data); next `run_cycle` continues from the remaining data (no duplicate `erase_batch` effects, no error from already-deleted rows); final sweep 0 rows in each round; no second `account_deleted` audit row; account remains `deleting` until the last step.
 **Max execution time**: 60 s total
 **Dependencies**: all hook owners
-**Implemented (AZ-3820)**: `07_admin/tests/purger_logs/resume.rs`, positions 0 to 4 (06, 02, 03, 05, 07a) and `finalize_deletion` (logged as `finalize (position 5)`), plus the dropped-cycle round; the ERROR lines are read from a capturing JSON subscriber.
+**Implemented (AZ-3820, AZ-3825)**: `07_admin/tests/purger_logs/resume.rs`, positions 0 to 5 (06, 02, 03, 08, 05, 07a; the log names the 0-based index, so 08 is `hook position 3`) and `finalize_deletion` (logged as `finalize (position 6)`), plus the dropped-cycle round; the ERROR lines are read from a capturing JSON subscriber.
 
 ### IT-07-11: Cycle time budget and batch bound
 **Summary**: a cycle stops at its time budget and the next cycle resumes; no batch exceeds the configured size.
@@ -190,6 +190,7 @@ The targets are proposed (the description sets none) and replaced by a measured 
 **Expected behavior**: steps 1 and 2 return `Forbidden` (HTTP 403 at the route, G-S6 resolved 2026-11-07); step 3 returns `NotFound` (HTTP 404) with no distinction between "exists but other" and "missing" (accounts have no owner notion, so the only 404 case is absence).
 **Pass criteria**: 0 successful mutations; 0 rows written to `admin_action` for refused calls except an optional refusal event with ids only.
 **Fail criteria**: any role, state or limit change by a non-admin.
+**Implemented (AZ-3823)**: `07_admin/tests/admin_security.rs` over real 01 and 07a; the principals come from 01's authenticator over U's session and A's device token. No refusal entry is written (the optional one is not built).
 
 ### ST-07-2: Deletion is session-only with confirmation
 **Summary**: a device token or a missing confirmation cannot start a deletion.
@@ -220,6 +221,7 @@ The targets are proposed (the description sets none) and replaced by a measured 
 **Expected behavior**: no occurrence.
 **Pass criteria**: 0 matches.
 **Fail criteria**: any match.
+**Implemented (AZ-3823)**: `07_admin/tests/admin_acceptance/no_personal_data.rs` (audit rows as JSON, every captured JSON log line of the binary, the metrics registry with `account_deletion_seconds`); the deletion runs the v1.0 hook chain. The audit detail builder is unit-tested in `user_admin.rs`.
 
 ## Acceptance Tests
 
@@ -239,6 +241,7 @@ The targets are proposed (the description sets none) and replaced by a measured 
 | 4 | Poll ctl read-only probe until deletion finished | within 15 min (target 60 s) 0 rows, 0 blob files, 0 shares for the account; share link answers as missing |
 
 Sys scenario FT-P-19 / NFT-RES-30 repeat this with the full client set; this test is the component-level check of 07.
+**Implemented in port form (AZ-3823)**: `07_admin/tests/admin_acceptance/nothing_left.rs`: 300 small files (DS-23 mass-delete set, as rows over one-byte files), a photo job with a finished thumbnail, a link made through 06, 2 sessions and a device token; the own request returns the deadline, the credentials cached by a running authenticator are refused within 5 s, a purger dropped mid-step is replaced by a fresh one on a fresh pool, and within 60 s 0 rows, 0 files and 0 links remain and 06's `open` answers `NotFound`. Steps 1 to 3 in their stack form (202, 401, `docker kill`) run in AZ-3665 and FT-P-19 (AZ-3823 flagged concern, open).
 
 ### AT-07-2: The last admin cannot be removed by any route
 **Summary**: no admin route, account route or operator command removes the last active admin.
@@ -253,6 +256,9 @@ Sys scenario FT-P-19 / NFT-RES-30 repeat this with the full client set; this tes
 | 2 | `DELETE /api/v1/accounts/me` as A | refusal `last_admin` |
 | 3 | `sunnycloud admin demote A`, `admin user delete A --yes` | exit 2 both |
 | 4 | Admin health in `GET /api/v1/admin/health` with a failing contributor | report shows `degraded` |
+| 4 | Admin health in `GET /api/v1/admin/health` with a failing contributor | report shows `degraded` |
+
+**Implemented in port form (AZ-3823)**: `07_admin/tests/admin_security.rs` (`update_user` by A and by the operator, A's own request and `request_as_operator`, `health` with a named degraded test contributor). The HTTP statuses and CLI exit codes run in FT-N-46 and AZ-3665.
 
 ## Test Data Management
 

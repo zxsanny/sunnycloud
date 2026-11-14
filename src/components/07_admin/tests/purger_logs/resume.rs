@@ -1,5 +1,6 @@
-//! IT-07-10 (AZ-3820 AC-2, NFT-RES-30): a 500-file account; one round per position where the first call fails
-//! (each hook of 06, 02, 03, 05, 07a, then `finalize_deletion`), and one round where the cycle is dropped mid-step
+//! IT-07-10 (AZ-3820 AC-2, AZ-3825 AC-2, NFT-RES-30): a 500-file account with its jobs and derived rows; one round
+//! per position where the first call fails (each hook of 06, 02, 03, 08, 05, 07a, then `finalize_deletion`), and one
+//! round where the cycle is dropped mid-step
 //! and a fresh purger instance on a fresh pool takes over. Each failure is one ERROR line with the account id and
 //! the position and no row data; the purge resumes without further errors; the account stays `deleting` until the
 //! finalize; the end is clean with one `account_deleted`.
@@ -17,7 +18,7 @@ use crate::purge_support::probes::{
 };
 use crate::purge_support::recording::{Fault, Log, RecordedAccounts, failed_calls, record_hooks};
 use crate::purge_support::seed::{self, NAME_MARKER};
-use crate::purge_support::world::{HOOK_NAMES, PurgeWorld};
+use crate::purge_support::world::{HOOK_NAMES, MEDIA_POSITION, PurgeWorld};
 
 const FILES: usize = 500;
 
@@ -95,19 +96,25 @@ async fn it_07_10_a_failure_at_the_transfer_hook_is_logged_and_the_purge_resumes
     failing_round(2, "hook position 2").await;
 }
 
+/// AZ-3825 AC-2: 08 is the fourth hook of the v1.0 list; the log names its 0-based index, 3.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn it_07_10_a_failure_at_the_feed_hook_is_logged_and_the_purge_resumes() {
-    failing_round(3, "hook position 3").await;
+async fn it_07_10_a_failure_at_the_media_hook_is_logged_and_the_purge_resumes() {
+    failing_round(MEDIA_POSITION, "hook position 3").await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn it_07_10_a_failure_at_the_quota_hook_is_logged_and_the_purge_resumes() {
+async fn it_07_10_a_failure_at_the_feed_hook_is_logged_and_the_purge_resumes() {
     failing_round(4, "hook position 4").await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn it_07_10_a_failure_at_the_quota_hook_is_logged_and_the_purge_resumes() {
+    failing_round(5, "hook position 5").await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn it_07_10_a_failure_at_finalize_is_logged_and_the_purge_resumes() {
-    failing_round(5, "finalize (position 5)").await;
+    failing_round(6, "finalize (position 6)").await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

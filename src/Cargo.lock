@@ -3972,6 +3972,7 @@ dependencies = [
  "bytes",
  "contracts",
  "futures-util",
+ "media-api",
  "reqwest",
  "ring",
  "sc_audit",

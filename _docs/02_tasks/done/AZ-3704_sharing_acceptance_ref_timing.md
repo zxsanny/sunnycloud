@@ -86,3 +86,16 @@ Then the report records `open` p95 (target 10 ms), `authorize_content` p95 (targ
 |---------|----------------|--------|----------|
 | REF-SRV model and availability are owner items (performance gaps G1, G11; E-31/c01) | Product owner | open | Medium |
 | AT-06-2 step 3 depends on the G-06-2 decision only if the right password is sent before the window ends; this scenario waits for the window | E-16 owner | resolved | Low |
+
+## Execution record (batch 69, 2026-11-14)
+
+| AC | Test | Result |
+|----|------|--------|
+| AC-1 | `tests/sharing/acceptance.rs` `at_06_1_a_shared_photo_opens_downloads_once_and_is_not_found_after_revoke` | PASS (workstation, CI tier) |
+| AC-2 | `tests/sharing/acceptance.rs` `at_06_2_a_password_link_limits_wrong_guesses_and_grants_content_after_the_window` | PASS (workstation, CI tier) |
+| AC-3 | `tests/sharing/acceptance.rs` `at_06_3_a_link_follows_edits_renames_and_moves_and_is_not_found_within_5_s_of_delete` | PASS (workstation, CI tier) |
+| AC-4 | `tests/share_perf/open_mix.rs` `pt_06_1_open_and_content_mix_meets_the_p95_targets`, `missing_uniformity.rs` `pt_06_2_missing_cases_take_the_same_time`, `password_flood.rs` `pt_06_3_wrong_password_flood_does_not_starve_open` | `NOT-RUN(HW-REF)`: REF-SRV is not provisioned; the cases stay `#[ignore = "NOT-RUN(HW-REF): ..."]` and no workstation number is reported as a result |
+
+AC-4 code: every REF-SRV case prints the host with its hardware (CPU model, logical CPUs, memory) and one line per metric marked `PASS`, `TARGET-MISSED` or `FAIL` against its target and failure threshold (`open` p95 10/50 ms, `authorize_content` p95 15/60 ms, largest median difference 0.3/1 ms, `open` p95 in the flood 50/200 ms, peak permits <= `share_password_max_concurrency`, CPU permits x 1 / x 1.5 cores) before it asserts. Run on REF-SRV: `cargo test --release -p sunnycloud-sharing --test share_perf -- --ignored --nocapture --test-threads=1`.
+
+DS-03: the component tier has no DS-03 file (`data-cache/photos/` is a system-tier cache); AT-06-1 uses a DS-03-shaped revision (3 MiB, `image/jpeg`), which is all 06 reads. The Medium flag (REF-SRV model and availability, product owner) stays open; the `_docs/_process_leftovers/` record of the NOT-RUN is the batch orchestrator's to write.

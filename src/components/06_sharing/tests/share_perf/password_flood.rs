@@ -16,7 +16,7 @@ use sunnycloud_sharing::PgShareService;
 
 use crate::harness::Harness;
 use crate::link_factory::{FactoryLink, LinkFactory};
-use crate::load::{address, host, percentile, process_cpu};
+use crate::load::{address, host, percentile, process_cpu, report as report_metric};
 
 const MAX_CONNECTIONS: i64 = 12;
 /// How far the manual clock moves per step, and how long a step is in real time.
@@ -260,6 +260,28 @@ async fn pt_06_3_wrong_password_flood_does_not_starve_open() {
     // Assert
     let open_p95 = print_and_check("REF-SRV", &mut report);
     let permits = report.permits as f64;
+    let ms = Duration::from_millis;
+    report_metric(
+        "PT-06-3",
+        "open p95 during the flood",
+        open_p95,
+        ms(50),
+        ms(200),
+    );
+    report_metric(
+        "PT-06-3",
+        "peak permits in use",
+        report.peak_permits,
+        report.permits,
+        report.permits,
+    );
+    report_metric(
+        "PT-06-3",
+        "process CPU cores",
+        report.cores,
+        permits,
+        permits * 1.5,
+    );
     assert!(
         open_p95 <= Duration::from_millis(200),
         "fail above 200 ms: {open_p95:?}"

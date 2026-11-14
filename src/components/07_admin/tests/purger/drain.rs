@@ -1,8 +1,10 @@
-//! IT-07-9 (AZ-3820 AC-1, AC-27, AC-30): the purger drains the real hooks of 06, 02, 03, 05 and 07a in order with
-//! 04's GC between cycles, finalizes once and last, and leaves no row or blob file of the account while other
-//! accounts keep theirs. The self-deadlock check: a hook that inserts a row referencing the account on its own
+//! IT-07-9 (AZ-3820 AC-1, AZ-3825 AC-1, AC-27, AC-30): the purger drains the real hooks of 06, 02, 03, 08, 05 and
+//! 07a in order with 04's GC between cycles, finalizes once and last, and leaves no row (jobs and derived rows
+//! included) or blob file of the account while other accounts keep theirs; every derived blob is queued
+//! `account_deleted` and due at once before 04's GC removes its file. The self-deadlock check: a hook that inserts a row referencing the account on its own
 //! connection while the purger holds its claim finishes (`FOR NO KEY UPDATE` leaves `FOR KEY SHARE` free).
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -13,12 +15,14 @@ use sc_db::{Db, DbTx, Scope};
 use sqlx::{Connection, PgConnection};
 use uuid::Uuid;
 
-use crate::purge_support::probes::{deleted_audits, drain, files_left, rows_of, state, total};
+use crate::purge_support::probes::{
+    MAX_CYCLES, deleted_audits, drain, files_left, rows_of, state, total,
+};
 use crate::purge_support::recording::{
-    Log, RecordedAccounts, failed_calls, order_breach, record_hooks,
+    Call, Log, RecordedAccounts, failed_calls, order_breach, record_hooks,
 };
 use crate::purge_support::seed::{self, TREE_SMALL};
-use crate::purge_support::world::{HOOK_NAMES, PurgeWorld};
+use crate::purge_support::world::{HOOK_NAMES, MEDIA_POSITION, PurgeWorld};
 
 const INSERT_WAIT: Duration = Duration::from_secs(5);
 
@@ -30,12 +34,14 @@ fn system_clock() -> Arc<dyn Clock> {
     Arc::new(SystemClock::new())
 }
 
-/// Blobs of the account whose owner row is gone but which are not queued `account_deleted` and due by now.
+/// Blobs of the account whose owner row (revision, upload session or derived row) is gone but which are not
+/// queued `account_deleted` and due by now.
 async fn unqueued_orphans(conn: &mut PgConnection, account: Uuid) -> i64 {
     sqlx::query_scalar(
         "SELECT count(*) FROM blobs b WHERE b.account_id = $1 \
          AND NOT EXISTS (SELECT 1 FROM revisions r WHERE r.blob_id = b.id) \
          AND NOT EXISTS (SELECT 1 FROM upload_sessions s WHERE s.blob_id = b.id) \
+         AND NOT EXISTS (SELECT 1 FROM derived d WHERE d.blob_id = b.id) \
          AND NOT EXISTS (SELECT 1 FROM blob_gc g WHERE g.blob_id = b.id \
          AND g.reason = 'account_deleted' AND g.due_at <= clock_timestamp())",
     )
@@ -43,6 +49,32 @@ async fn unqueued_orphans(conn: &mut PgConnection, account: Uuid) -> i64 {
     .fetch_one(conn)
     .await
     .expect("count unqueued blobs")
+}
+
+/// Of `blobs`, those queued `account_deleted` and due by now.
+async fn queued_now(conn: &mut PgConnection, account: Uuid, blobs: &[Uuid]) -> BTreeSet<Uuid> {
+    let queued: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT blob_id FROM blob_gc WHERE account_id = $1 AND blob_id = ANY($2) \
+         AND reason = 'account_deleted' AND due_at <= clock_timestamp()",
+    )
+    .bind(account)
+    .bind(blobs)
+    .fetch_all(conn)
+    .await
+    .expect("read queued blobs");
+    queued.into_iter().collect()
+}
+
+/// (jobs, derived rows) of `account`.
+async fn media_rows(conn: &mut PgConnection, account: Uuid) -> (i64, i64) {
+    sqlx::query_as(
+        "SELECT (SELECT count(*) FROM jobs WHERE account_id = $1), \
+         (SELECT count(*) FROM derived WHERE account_id = $1)",
+    )
+    .bind(account)
+    .fetch_one(conn)
+    .await
+    .expect("count media rows")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -53,6 +85,7 @@ async fn it_07_9_purger_drains_every_hook_in_order_and_finalizes_last() {
     let target = seed::account(&world, TREE_SMALL).await;
     let other = seed::account(&world, seed::files(30)).await;
     let mut conn = world.fixture().await;
+    let media_before = media_rows(&mut conn, target.account).await;
     let other_before = rows_of(&mut conn, other.account).await;
     world.request_deletion(target.account).await;
     let log = Log::default();
@@ -62,15 +95,30 @@ async fn it_07_9_purger_drains_every_hook_in_order_and_finalizes_last() {
     let sweeper = world.sweeper(&wiring);
 
     // Act
-    purger
-        .run_cycle(world.clock.now_utc())
-        .await
-        .expect("first cycle");
-    let orphans_after_first = unqueued_orphans(&mut conn, target.account).await;
-    let cycles = 1 + drain(&world, &purger, &sweeper, target.account).await;
+    let mut cycles = 0;
+    let mut worst_orphans = 0;
+    let mut derived_queued = BTreeSet::new();
+    while state(&mut conn, target.account).await.is_some() {
+        assert!(
+            cycles < MAX_CYCLES,
+            "the account is not gone after {MAX_CYCLES} cycles"
+        );
+        cycles += 1;
+        purger
+            .run_cycle(world.clock.now_utc())
+            .await
+            .expect("purger cycle");
+        worst_orphans = worst_orphans.max(unqueued_orphans(&mut conn, target.account).await);
+        derived_queued.extend(queued_now(&mut conn, target.account, &target.derived).await);
+        sweeper
+            .run_cycle(world.clock.now_utc())
+            .await
+            .expect("gc cycle");
+    }
 
     // Assert
     assert!(cycles > 1);
+    assert_eq!(media_before, (30, 60));
     let calls = log.calls();
     assert_eq!(
         order_breach(&calls, HOOK_NAMES.len(), 50),
@@ -79,9 +127,23 @@ async fn it_07_9_purger_drains_every_hook_in_order_and_finalizes_last() {
         calls.len()
     );
     assert_eq!(failed_calls(&calls), 0);
-    assert_eq!(orphans_after_first, 0, "freed blobs are queued Due::Now");
+    assert!(
+        calls.iter().any(|call| matches!(
+            call,
+            Call::Hook { position: MEDIA_POSITION, remaining: Some(left), .. } if *left > 0
+        )),
+        "08's hook never erased a derived row"
+    );
+    assert_eq!(worst_orphans, 0, "freed blobs are queued Due::Now");
+    assert_eq!(
+        derived_queued,
+        target.derived.iter().copied().collect::<BTreeSet<_>>(),
+        "every derived blob is queued account_deleted, due now"
+    );
     let left = rows_of(&mut conn, target.account).await;
     assert_eq!(total(&left), 0, "{left:?}");
+    assert_eq!((left["jobs"], left["derived"]), (0, 0));
+    assert_eq!(files_left(&world, &target.derived), 0);
     assert_eq!(files_left(&world, &target.blobs), 0);
     assert_eq!(deleted_audits(&mut conn, target.account).await, 1);
     assert_eq!(rows_of(&mut conn, other.account).await, other_before);

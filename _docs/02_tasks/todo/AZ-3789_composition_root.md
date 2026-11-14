@@ -131,3 +131,7 @@ The deletion sweep of IT-12-7 (every table empty after `admin user delete`) is A
 | The entry point through which 12 hands the hook list to 01's account creation is still a spike (E-15/c01) | E-15 | open | Low |
 | How `ChangeFeed` receives its shutdown signal is not a method in `contracts` (part 2 open point 5); this task passes it at construction | E-12 / E-22 owner | open | Low |
 | `module-layout.md` open point 4 (12 registers the database readiness check) is applied here | module layout | resolved | Low |
+
+## Owner decision
+
+2026-11-14 (complexity budget, option A): plain constructor functions, one lazy builder per component (built once, on first use); no registry/container abstraction. Vault crates (19, 20) are behind a `vault` Cargo feature of the server crate, off by default, so v1.0 and v1.1 binaries contain no vault code (resolves the module-layout exception 6 flag for 12). 08's media enqueue effect is changed to take the account from each commit instead of its constructor, so one shared instance serves every account (also unblocks AZ-3822's media part).

@@ -78,3 +78,11 @@ Then the failure is logged with the account id and position 4, the next cycle co
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | The epic row says "and E-30 stub"; no stub is built. How the vault hook is left out of v1.0 builds is open (module-layout exception 6) | E-17 / E-30 / E-22 owners | open | Low |
+
+## Implementation notes (2026-11-14)
+
+- The purger world (`07_admin/tests/purge_support`) now wires the v1.0 list 06, 02, 03, 08, 05, 07a and gives 04's sweeper 02's and 08's owner cleanups; every purger account carries the media subset (30 jobs and 60 derived rows for `tree-small`). IT-07-9, IT-07-10, IT-07-11 and IT-07-12 all run on it. `media-api` is a dev-dependency of 07 (ADR-015).
+- AC-1: `purger/drain.rs::it_07_9_purger_drains_every_hook_in_order_and_finalizes_last`.
+- AC-2: `purger_logs/resume.rs::it_07_10_a_failure_at_the_media_hook_is_logged_and_the_purge_resumes`. "Position 4" in AC-2 is 08's 1-based place; the purger contract logs the 0-based index, so the line reads `hook position 3`.
+- The jobs of the account are removed by 02's revision erase (`jobs_revision_id_account_id_fkey … ON DELETE CASCADE`) before 08 runs; 08's calls erase the derived rows.
+- The Low flag about the vault hook (20) stays open as recorded; no stand-in is built.

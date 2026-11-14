@@ -179,3 +179,65 @@ pub(crate) fn admin_action(actor: &Actor, subject: Uuid, action: &'static str) -
         ..AuditEvent::new(AuditEventKind::AdminAction)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use contracts::{Principal, PrincipalKind};
+    use sc_audit::DetailValue;
+
+    use super::*;
+
+    #[test]
+    fn an_admin_action_carries_ids_and_one_action_code_only() {
+        // Arrange
+        let (admin, session, subject) =
+            (Uuid::from_u128(1), Uuid::from_u128(2), Uuid::from_u128(3));
+        let actor = Actor::Admin(Principal {
+            account_id: admin,
+            kind: PrincipalKind::Session,
+            session_or_device_id: session,
+            role: Role::Admin,
+            label: "Zed Unique-7Q zed.unique7q@example.test".to_owned(),
+        });
+
+        // Act
+        let event = admin_action(&actor, subject, "state_disabled");
+
+        // Assert
+        assert_eq!(event.event, AuditEventKind::AdminAction);
+        assert_eq!(
+            (event.actor_account_id, event.actor_session_id, event.ip),
+            (Some(admin), Some(session), None)
+        );
+        assert_eq!(
+            event
+                .subject
+                .map(|subject| (subject.subject_type, subject.id)),
+            Some((SUBJECT_TYPE, subject))
+        );
+        assert_eq!(
+            event.detail.entries(),
+            [("action", DetailValue::Code("state_disabled"))]
+        );
+        assert!(!format!("{event:?}").contains("Zed"), "{event:?}");
+    }
+
+    #[test]
+    fn the_operator_is_recorded_without_an_actor() {
+        // Arrange
+        let subject = Uuid::from_u128(3);
+
+        // Act
+        let event = admin_action(&Actor::Operator, subject, "quota_limit_default");
+
+        // Assert
+        assert_eq!(
+            (event.actor_account_id, event.actor_session_id),
+            (None, None)
+        );
+        assert_eq!(
+            event.detail.entries(),
+            [("action", DetailValue::Code("quota_limit_default"))]
+        );
+    }
+}

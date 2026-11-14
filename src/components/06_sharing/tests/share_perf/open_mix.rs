@@ -13,7 +13,7 @@ use tokio::time::MissedTickBehavior;
 
 use crate::harness::Harness;
 use crate::link_factory::{FactoryLink, LinkFactory, MEDIA_TYPE};
-use crate::load::{address, host, percentile};
+use crate::load::{address, host, percentile, report as report_metric};
 use crate::visitor_support::VISITOR;
 
 const MAX_CONNECTIONS: i64 = 12;
@@ -220,6 +220,15 @@ async fn pt_06_1_open_and_content_mix_meets_the_p95_targets() {
 
     // Assert
     let (open_p95, content_p95) = print_and_check("REF-SRV", &mut report, connections);
+    let ms = Duration::from_millis;
+    report_metric("PT-06-1", "open p95", open_p95, ms(10), ms(50));
+    report_metric(
+        "PT-06-1",
+        "authorize_content p95",
+        content_p95,
+        ms(15),
+        ms(60),
+    );
     assert!(
         open_p95 <= Duration::from_millis(50),
         "fail above 50 ms: {open_p95:?}"

@@ -2,8 +2,10 @@
 //! security under the real roles and the sharing settings with the grant key rule (AZ-3696), and the owner
 //! operations create, list and revoke over the real tree and audit log (AZ-3697), and the visitor's `open` with its
 //! constant-work lookup (AZ-3698), the visitor's `authorize_content` over files changed through the real 02
-//! (AZ-3700), the visitor's password check and access grant (AZ-3699), and the account erase hook (AZ-3702).
+//! (AZ-3700), the visitor's password check and access grant (AZ-3699), the account erase hook (AZ-3702), and the
+//! owner-visible acceptance scenarios AT-06-1..3 (AZ-3704).
 
+mod acceptance;
 mod cascade;
 mod config;
 mod content_support;

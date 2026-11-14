@@ -135,6 +135,13 @@ async fn pt_06_2_missing_cases_take_the_same_time() {
 
     // Assert
     let difference = print_and_check("REF-SRV", samples, &report);
+    crate::load::report(
+        "PT-06-2",
+        "largest median difference",
+        difference,
+        Duration::from_micros(300),
+        Duration::from_millis(1),
+    );
     assert!(
         difference <= Duration::from_millis(1),
         "fail above 1 ms: {difference:?}"

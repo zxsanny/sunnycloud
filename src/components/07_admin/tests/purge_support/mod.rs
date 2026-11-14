@@ -3,6 +3,7 @@
 
 #![allow(dead_code)]
 
+pub mod media;
 pub mod probes;
 pub mod recording;
 pub mod seed;

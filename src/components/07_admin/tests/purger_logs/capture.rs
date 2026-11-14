@@ -47,13 +47,17 @@ pub fn install() {
 
 /// The captured lines that carry `account`.
 pub fn of_account(account: Uuid) -> Vec<String> {
-    let id = account.hyphenated().to_string();
+    containing(&account.hyphenated().to_string())
+}
+
+/// The captured lines that contain `needle`, from every test of the binary.
+pub fn containing(needle: &str) -> Vec<String> {
     lines()
         .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .iter()
-        .filter(|line| line.contains(&id))
+        .filter(|line| line.contains(needle))
         .cloned()
         .collect()
 }

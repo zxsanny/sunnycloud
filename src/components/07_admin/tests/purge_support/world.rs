@@ -1,8 +1,9 @@
 //! The purger over the real components on a real PostgreSQL 18 and a scratch blob volume (IT-07-9 to IT-07-13):
 //! 01's `IdentityAccounts` (claim and finalize), the erase hooks of 06 (`PgShareLifecycle`), 02
-//! (`PgTreeLifecycle`), 03 (`PgTransferLifecycle` over a real `PgUploadService`), 05 (`PgFeedLifecycle`) and 07a
-//! (`PgQuotaAdmin`) in the production order, 04's GC queue and sweeper, and 07's deletion request. Components
-//! connect as the API role; fixtures and probes use the schema owner.
+//! (`PgTreeLifecycle`), 03 (`PgTransferLifecycle` over a real `PgUploadService`), 08 (`MediaLifecycle`), 05
+//! (`PgFeedLifecycle`) and 07a (`PgQuotaAdmin`) in the v1.0 production order, 04's GC queue and sweeper (with 02's
+//! and 08's owner cleanups), and 07's deletion request. Components connect as the API role; fixtures and probes
+//! use the schema owner.
 
 use std::fs;
 use std::path::PathBuf;
@@ -10,6 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use contracts::{AccountAdmin, AccountDeletionService, AccountLifecycleHook, BlobOwnerCleanup};
+use media_api::MediaLifecycle;
 use sc_audit::AuditWriter;
 use sc_clock::{CancellationToken, Clock};
 use sc_config::{ApiSettings, Environment, Secret};
@@ -38,8 +40,12 @@ pub const PURGER_KEYS: [(&str, &str); 3] = [
     ("SUNNYCLOUD_ACCOUNT_DELETE_ALERT_AFTER", "20s"),
 ];
 
-/// The hook positions of the production order (06, 02, 03, 05, 07a; no 20 in v1.0, no 08 in this suite).
-pub const HOOK_NAMES: [&str; 5] = ["06", "02", "03", "05", "07a"];
+/// The hook positions of the v1.0 production order (06, 02, 03, 08, 05, 07a). 20 (vault) joins before 02 in v1.2
+/// builds only (E-30/c05); no stand-in is built for it (AZ-3825 flagged concern).
+pub const HOOK_NAMES: [&str; 6] = ["06", "02", "03", "08", "05", "07a"];
+
+/// The 0-based position of 08's hook in `HOOK_NAMES`, as the purger's log names it.
+pub const MEDIA_POSITION: usize = 3;
 
 const DAY: Duration = Duration::from_secs(86_400);
 
@@ -48,6 +54,7 @@ pub struct Wiring {
     pub accounts: Arc<IdentityAccounts>,
     pub hooks: Vec<Arc<dyn AccountLifecycleHook>>,
     pub tree: Arc<PgTreeLifecycle>,
+    pub media: Arc<MediaLifecycle>,
     pub db: Db,
 }
 
@@ -185,10 +192,12 @@ impl PurgeWorld {
             clock.clone(),
         ));
         let tree = Arc::new(PgTreeLifecycle::new(db.clone(), gc.clone(), clock.clone()));
+        let media = Arc::new(MediaLifecycle::new(db.clone(), gc.clone()));
         let hooks: Vec<Arc<dyn AccountLifecycleHook>> = vec![
             Arc::new(PgShareLifecycle::new(db.clone())),
             tree.clone(),
             Arc::new(PgTransferLifecycle::new(upload, gc)),
+            media.clone(),
             Arc::new(PgFeedLifecycle::new(
                 db.clone(),
                 clock.clone(),
@@ -200,6 +209,7 @@ impl PurgeWorld {
             accounts,
             hooks,
             tree,
+            media,
             db,
         }
     }
@@ -221,15 +231,16 @@ impl PurgeWorld {
         )
     }
 
-    /// The real sweeper with the tree as its owner cleanup.
+    /// The real sweeper with the tree and media as its owner cleanups.
     pub fn sweeper(&self, wiring: &Wiring) -> GcSweeper {
-        let cleanup: Arc<dyn BlobOwnerCleanup> = wiring.tree.clone();
+        let tree: Arc<dyn BlobOwnerCleanup> = wiring.tree.clone();
+        let media: Arc<dyn BlobOwnerCleanup> = wiring.media.clone();
         GcSweeper::new(
             &self.blobstore,
             wiring.db.clone(),
             self.clock.clone(),
             Arc::new(BlobRegistry::new(&self.blobstore, self.clock.clone()).expect("registry")),
-            vec![cleanup],
+            vec![tree, media],
             CancellationToken::new(),
         )
         .expect("sweeper")

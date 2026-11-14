@@ -6,7 +6,10 @@
 //! (C-REF) only: it is ignored by default as `NOT-RUN(HW-REF)`, and a run on any other host is informational, never
 //! a pass of the gate. On REF-SRV, in release, one case at a time:
 //! `cargo test --release -p sunnycloud-sharing --test share_perf -- --ignored --nocapture --test-threads=1`.
-//! Each case prints one `PT-06-n` line with its numbers and the host before it asserts.
+//! Each case prints one `PT-06-n` line with its numbers and the host with its hardware (CPU model, logical CPUs,
+//! memory) before it asserts; the REF-SRV cases then print one line per metric marked `PASS`, `TARGET-MISSED` or
+//! `FAIL` against its target and failure threshold (AZ-3704 AC-4), so the report has every verdict even when the
+//! first assertion stops the case.
 
 #[allow(dead_code)]
 #[path = "../share_security/corpora.rs"]

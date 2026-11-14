@@ -2,13 +2,15 @@
 //! session and a device token; its quota row (with the reservations of its open uploads) and feed row; a tree of
 //! folders and live files, each file with a current revision over a committed blob, some with retained older
 //! revisions; share links; open upload sessions (large and staged) with reservations; commit receipts. Every
-//! blob has a file on the volume. Statements are test code (the SQL gate exempts `tests/`).
+//! blob has a file on the volume. The media part (08's jobs and derived rows, with the derived blobs) is in
+//! `media`. Statements are test code (the SQL gate exempts `tests/`).
 
 use sc_testdb::START;
 use sqlx::PgConnection;
 use sunnycloud_blobstore::blob_path;
 use uuid::Uuid;
 
+use super::media;
 use super::world::PurgeWorld;
 use crate::support::seed;
 
@@ -24,10 +26,15 @@ pub struct Plan {
     pub shares: usize,
     pub feed_rows: usize,
     pub receipts: usize,
+    /// Photo and video jobs over the account's revisions.
+    pub jobs: usize,
+    /// Derived rows (thumbnails, previews, transcodes), each over a committed blob with a file.
+    pub derived: usize,
 }
 
-/// `tree-small` without media rows (07 `tests.md`, IT-07-9): 10,000 files in 200 folders, 400 retained revisions,
-/// 50 shares, 120 stamped feed rows. Every plan also has 3 upload sessions (two large, one staged).
+/// `tree-small` with the media subset (07 `tests.md`, IT-07-9): 10,000 files in 200 folders, 400 retained
+/// revisions, 50 shares, 120 stamped feed rows, 30 photo and video jobs, 60 derived rows. Every plan also has 3
+/// upload sessions (two large, one staged).
 pub const TREE_SMALL: Plan = Plan {
     files: 10_000,
     folders: 200,
@@ -35,6 +42,8 @@ pub const TREE_SMALL: Plan = Plan {
     shares: 50,
     feed_rows: 120,
     receipts: 5,
+    jobs: 30,
+    derived: 60,
 };
 
 /// A plan of `files` files with the same proportions as `tree-small`.
@@ -46,6 +55,8 @@ pub fn files(files: usize) -> Plan {
         shares: files.min(50),
         feed_rows: files.min(120),
         receipts: 5,
+        jobs: files.min(30),
+        derived: 2 * files.min(30),
     }
 }
 
@@ -58,8 +69,10 @@ const SESSIONS: [(i64, i32, &[u8]); 3] = [
 
 pub struct Seeded {
     pub account: Uuid,
-    /// Every blob of the account: revisions' and sessions'.
+    /// Every blob of the account: revisions', sessions' and derived.
     pub blobs: Vec<Uuid>,
+    /// The derived blobs only.
+    pub derived: Vec<Uuid>,
 }
 
 fn new_ids(count: usize) -> Vec<Uuid> {
@@ -101,6 +114,9 @@ pub async fn account(world: &PurgeWorld, plan: Plan) -> Seeded {
     let blobs = tree(&mut conn, account, plan).await;
     let mut all = blobs;
     all.extend(sessions(&mut conn, account).await);
+    media::jobs(&mut conn, account, plan.jobs).await;
+    let derived = media::derived(&mut conn, account, plan.derived).await;
+    all.extend(&derived);
     exec(
         &mut conn,
         "INSERT INTO commit_receipts (account_id, commit_id, request_hash, response, created_at) \
@@ -116,6 +132,7 @@ pub async fn account(world: &PurgeWorld, plan: Plan) -> Seeded {
     Seeded {
         account,
         blobs: all,
+        derived,
     }
 }
 

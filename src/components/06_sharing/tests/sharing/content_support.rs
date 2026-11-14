@@ -23,6 +23,18 @@ use crate::harness::Harness;
 use crate::owner_support::account_with_root;
 
 const PURGE_LIMIT: u32 = 100;
+/// What `new_file` and `edit` publish: a one-byte text file.
+const PLAIN: Body = Body {
+    size: 1,
+    media_type: "text/plain",
+};
+
+/// The size and sniffed media type a published revision carries.
+#[derive(Debug, Clone, Copy)]
+pub struct Body {
+    pub size: i64,
+    pub media_type: &'static str,
+}
 
 /// One published file version: its node and its revision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,11 +113,22 @@ impl Owner {
 
     /// A new file `name` under `parent`, published through 02.
     pub async fn new_file(&mut self, harness: &Harness, parent: Uuid, name: &str) -> Version {
+        self.new_file_of(harness, parent, name, PLAIN).await
+    }
+
+    /// A new file `name` under `parent` whose revision has `body`'s size and media type, published through 02.
+    pub async fn new_file_of(
+        &mut self,
+        harness: &Harness,
+        parent: Uuid,
+        name: &str,
+        body: Body,
+    ) -> Version {
         let target = Target::New {
             parent_id: parent,
             name: name.to_owned(),
         };
-        self.publish(harness, target).await
+        self.publish_with_outcome(harness, target, body).await.1
     }
 
     /// A new revision of `file` on top of `base` (a save in place; on a deleted file, the edit that beats it).
@@ -114,23 +137,20 @@ impl Owner {
             node_id: base.node,
             base_revision: Some(base.revision),
         };
-        self.publish_with_outcome(harness, target).await
-    }
-
-    async fn publish(&mut self, harness: &Harness, target: Target) -> Version {
-        self.publish_with_outcome(harness, target).await.1
+        self.publish_with_outcome(harness, target, PLAIN).await
     }
 
     async fn publish_with_outcome(
         &mut self,
         harness: &Harness,
         target: Target,
+        body: Body,
     ) -> (PublishOutcome, Version) {
-        let blob = self.committed_blob().await;
+        let blob = self.committed_blob(body.size).await;
         let revision_id = Uuid::new_v4();
         let entry = PublishEntry {
             target,
-            revision: new_revision(revision_id, blob),
+            revision: new_revision(revision_id, blob, body),
             vault: false,
         };
         let actor = CommitActor {
@@ -210,14 +230,15 @@ impl Owner {
         &mut self.probe
     }
 
-    async fn committed_blob(&mut self) -> Uuid {
+    async fn committed_blob(&mut self, size: i64) -> Uuid {
         let blob = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO blobs (id, account_id, state, size, wrapped_key, master_key_id, created_at) \
-             VALUES ($1, $2, 'committed', 1, '\\x00', 1, 'epoch'::timestamptz)",
+             VALUES ($1, $2, 'committed', $3, '\\x00', 1, 'epoch'::timestamptz)",
         )
         .bind(blob)
         .bind(self.account)
+        .bind(size)
         .execute(&mut self.probe)
         .await
         .expect("insert blob");
@@ -237,16 +258,16 @@ impl Owner {
     }
 }
 
-fn new_revision(revision_id: Uuid, blob_id: Uuid) -> NewRevision {
+fn new_revision(revision_id: Uuid, blob_id: Uuid, body: Body) -> NewRevision {
     let mut hash = [0u8; 32];
     hash[..16].copy_from_slice(revision_id.as_bytes());
     NewRevision {
         revision_id,
         blob_id,
-        size: 1,
+        size: body.size,
         content_hash: FileHash::from_bytes(hash),
         blocklist: vec![Hash32::from_bytes([3; 32])],
-        media_type: Some("text/plain".to_owned()),
+        media_type: Some(body.media_type.to_owned()),
         client_mtime: None,
         client_meta: None,
         reserved_bytes: 0,

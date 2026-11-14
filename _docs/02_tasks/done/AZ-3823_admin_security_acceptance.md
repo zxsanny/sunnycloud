@@ -94,3 +94,11 @@ Then every removal returns `LastAdmin` with A unchanged, and the health report s
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | AT-07-1 and AT-07-2 are written as compose-stack tests in 07 tests.md; their stack steps (container kill, 409, CLI exit 2) run in AZ-3665 and FT-N-46, and this task runs their port form. The owner may want the stack form here instead | E-17 owner | open | Low |
+
+## Implementation notes (2026-11-14)
+
+- AC-1: `07_admin/tests/admin_security.rs::st_07_1_…` (principals from 01's authenticator; no refusal entry is written, the optional one is not built).
+- AC-2: `07_admin/tests/admin_acceptance/no_personal_data.rs::st_07_4_…`; unit row: `user_admin::tests::an_admin_action_carries_ids_and_one_action_code_only`. Metrics output = the registry with `account_deletion_seconds`; the audit-write-failure collector needs `sc_observability`'s `db` feature, which 07 does not enable.
+- AC-3: `07_admin/tests/admin_acceptance/nothing_left.rs::at_07_1_…` with the v1.0 hook chain (08 included, AZ-3825). DS-23 is used as its 300-file mass-delete set, seeded as rows over one-byte blob files.
+- AC-4: `07_admin/tests/admin_security.rs::at_07_2_…`.
+- The Low flag (port form here, stack form in AZ-3665 / FT-N-46) stays open as recorded.

@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use contracts::{AccountAdmin, Credential};
+use contracts::{AccountAdmin, Credential, HealthContributor};
 use sc_audit::AuditWriter;
 use sc_clock::{Clock, ManualClock};
 use sc_config::Environment;
@@ -50,6 +50,18 @@ impl World {
     pub async fn with_accounts(
         wrap: impl FnOnce(Arc<dyn AccountAdmin>) -> Arc<dyn AccountAdmin>,
     ) -> World {
+        World::build(wrap, Vec::new()).await
+    }
+
+    /// The admin service reports `contributors` (named test contributors, IT-07-6) in its health page.
+    pub async fn with_health(contributors: Vec<Arc<dyn HealthContributor>>) -> World {
+        World::build(|identity| identity, contributors).await
+    }
+
+    async fn build(
+        wrap: impl FnOnce(Arc<dyn AccountAdmin>) -> Arc<dyn AccountAdmin>,
+        contributors: Vec<Arc<dyn HealthContributor>>,
+    ) -> World {
         let settings = load_settings(
             Environment::Test,
             &[("SUNNYCLOUD_ACCOUNT_DELETE_DEADLINE", DELETE_DEADLINE)],
@@ -93,7 +105,7 @@ impl World {
         let admin = AdminServiceImpl::new(
             account_admin,
             quota.clone(),
-            Vec::new(),
+            contributors,
             AdminConfig::from_settings(&settings),
             AuditWriter::new(api.clone(), dyn_clock),
             api.clone(),
