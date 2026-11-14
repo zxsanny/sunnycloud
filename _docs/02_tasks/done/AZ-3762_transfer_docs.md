@@ -91,5 +91,5 @@ Then each rule in Scope is present, matches the contracts, and names the test th
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `module-layout.md` names no path or owner for operator and client-protocol documentation beyond `README.md` (E-00) | E-00 / owner | open | Low |
+| `module-layout.md` names no path or owner for operator and client-protocol documentation beyond `README.md` (E-00). Proposal (AZ-3762, 2026-11-14): client-protocol documentation lives next to the component's contracts, `_docs/02_document/contracts/<component>/client_protocol.md` (here `contracts/03_transfer/client_protocol.md`: error catalogue, client retry rules, codes per route), owned by the component's epic; operator rules stay in `_docs/02_document/deployment/` (the one-process rule is already in `deployment_procedures.md` and `containerization.md`) and the client file links them. Awaiting E-00 / owner confirmation | E-00 / owner | open (proposal recorded) | Low |
 | `need_blocks` and `edited_since` are both 409 (resolved 2026-11-07, E-21/c02, G-11-1) | E-21 | resolved | Low |

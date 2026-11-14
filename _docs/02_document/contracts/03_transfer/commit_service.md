@@ -3,7 +3,7 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c08 — `_docs/02_tasks/todo/B03-24_transfer_commit_upload.md` (contributor: E-14/c09 `B03-25_transfer_commit_batch.md`; response mapping decided by spike E-14/c01); keys assigned at Step 4
 **Consumer tasks**: E-13/c16, E-14/c12, E-14/c15, E-14/c16 (this batch); E-21/c02, E-21/c13 (11), E-22/c03 (composition root), E-23/E-26/E-27 through the HTTP API, resolved at Step 4
-**Version**: 1.5.0
+**Version**: 1.5.1
 **Status**: frozen for the response mapping (G-03-3 decided 2026-11-11); the producer task still passes review
 **Last Updated**: 2026-11-14
 
@@ -18,7 +18,7 @@ Signatures: part 2 (`CommitService`). Behaviour:
 | Method | Behaviour | Errors |
 |---|---|---|
 | `commit_upload(actor, CommitUpload)` | Outside any transaction: blocklist against received hashes, whole-file hash from block hashes, `read_head` (<= 64 KiB) and byte sniffing. Target: `Existing` on the node of `base_revision`, else `New{parent_id, name}`. One `publish` call with `BlobCommitEffect` plus injected effects | `NeedBlocks(list)`, `BlocklistMismatch`, `UploadNotFound`, `InvalidName`, `ParentGone`, `ParentNotFound`, `NotAFolder`, `AccountNotActive` |
-| `commit_batch(actor, BatchCommit)` | Up to `batch_max_entries` (500) staged entries in one `publish` call with `ReceiptEffect`, `BlobCommitEffect` and injected effects | `BatchTooLarge`, `CommitIdReused`, `AccountNotActive`; per entry: `EntryError` |
+| `commit_batch(actor, BatchCommit)` | Up to `batch_max_entries` (500) staged entries in one `publish` call with `ReceiptEffect`, `StagedCommitEffect` and injected effects | `BatchTooLarge`, `CommitIdReused`, `AccountNotActive`; per entry: `EntryError` |
 
 Effects supplied by 03:
 
@@ -26,7 +26,7 @@ Effects supplied by 03:
 |---|---|---|
 | `ReceiptEffect` (batch only) | `on_begin` | Look up `commit_receipts(account, commit_id)` under the lock `publish` holds: same `request_hash` gives `Replay(stored response)`; different gives `Batch(CommitIdReused)` |
 | `ReceiptEffect` | `on_batch` | Insert `(account, commit_id, request_hash, response)` with every entry outcome |
-| `BlobCommitEffect` | `on_entry` | Lock the entry's session or staged row (`FOR UPDATE`); zero rows gives `Entry(UploadNotFound)`; otherwise mark the blob committed; a staged row is deleted, a large upload's session row is kept as the committed-key record (`committed_revision_id` = the new revision, `reserved_bytes = 0`, `expires_at = now + upload_session_ttl`; owner decision 2026-11-13) |
+| `BlobCommitEffect` (single), `StagedCommitEffect` (batch) | `on_entry` | Lock the entry's session or staged row (`FOR UPDATE`); zero rows gives `Entry(upload_session_gone)` (`UploadNotFound`); otherwise mark the blob committed; a staged row is deleted, a large upload's session row is kept as the committed-key record (`committed_revision_id` = the new revision, `reserved_bytes = 0`, `expires_at = now + upload_session_ttl`; owner decision 2026-11-13) |
 
 Outcome mapping to `Committed{node_id, revision_id, conflict_copy?}` (decided 2026-11-11, AZ-3731, G-03-3). `conflict_copy` is a node id. A client that gets a `conflict_copy` reads the folder again: either the older content sits beside its file, or its own file carries a conflict-copy name:
 
@@ -100,6 +100,7 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
+| 1.5.1 | 2026-11-14 | The batch runs `StagedCommitEffect`, not `BlobCommitEffect` (as in the `commit_batch` details); client error catalogue and retry rules in `client_protocol.md`; AC-69 statement order covered by IT-03-19 (AZ-3757) | AZ-3757, AZ-3762 |
 | 1.5.0 | 2026-11-14 | Polyglot heads sniffed as `text/html` (AZ-3758); receipt expiry by `ReceiptJanitor` (AZ-3756) | AZ-3756, AZ-3758 |
 | 1.4.0 | 2026-11-14 | `commit_batch` details: refusals before `publish`, request hash (entries in order sent, owner), stored response form, `NotFound` as `EffectFailed(not_found)`, staged-row effect and `NoChange`, metric labels | AZ-3754 |
 | 1.3.0 | 2026-11-14 | `commit_upload` details: blocklist check order, unknown base ignored, ownership failure as `UploadNotFound`, `NoChange` cleanup, sniffed types, metric labels | AZ-3738 |

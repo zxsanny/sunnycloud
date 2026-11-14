@@ -20,7 +20,7 @@ use sc_observability::log_error;
 use uuid::Uuid;
 
 use crate::janitor_repo;
-use crate::session_repo::{self, ExpiredRow};
+use crate::session_repo::{self, DeletedRow};
 use crate::upload::PgUploadService;
 use crate::upload_metrics::SessionResult;
 
@@ -41,9 +41,9 @@ impl PgUploadService {
         client_key: Option<&str>,
         now: Timestamp,
         limit: i64,
-    ) -> Result<Vec<ExpiredRow>, Fault> {
+    ) -> Result<Vec<DeletedRow>, Fault> {
         tx.advisory_lock_account(account).await?;
-        let rows = session_repo::delete_expired(tx, account, client_key, now, limit).await?;
+        let rows = session_repo::delete_rows(tx, account, client_key, Some(now), limit).await?;
         let reserved = rows
             .iter()
             .fold(0i64, |sum, row| sum.saturating_add(row.reserved_bytes));
@@ -62,7 +62,7 @@ impl PgUploadService {
 
     /// After COMMIT of a reap: evicts the progress entries, discards the files of the open rows (best effort: a
     /// file left behind has no row and is 04's orphan sweeper's) and counts each expired large session.
-    pub(crate) async fn reaped(&self, account: Uuid, rows: &[ExpiredRow]) {
+    pub(crate) async fn reaped(&self, account: Uuid, rows: &[DeletedRow]) {
         for row in rows {
             self.evict(row.id);
             if !row.open {

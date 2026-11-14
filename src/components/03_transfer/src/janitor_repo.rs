@@ -13,10 +13,13 @@ const EXPIRED_ACCOUNTS: &str = "SELECT DISTINCT account_id FROM upload_sessions 
      AND ($2::uuid IS NULL OR account_id > $2) ORDER BY account_id LIMIT $3";
 
 // Receipts created before `$1`, at most `$2`; a receipt another janitor holds is skipped.
-const DELETE_OLD_RECEIPTS: &str = "DELETE FROM commit_receipts WHERE (account_id, commit_id) IN ( \
+// The picked set is materialised once, so a rescan can never delete more than `$2` rows.
+const DELETE_OLD_RECEIPTS: &str = "WITH picked AS MATERIALIZED ( \
      SELECT account_id, commit_id FROM commit_receipts \
      WHERE created_at < 'epoch'::timestamptz + $1::bigint * interval '1 microsecond' \
-     LIMIT $2 FOR UPDATE SKIP LOCKED)";
+     LIMIT $2 FOR UPDATE SKIP LOCKED) \
+     DELETE FROM commit_receipts r USING picked \
+     WHERE r.account_id = picked.account_id AND r.commit_id = picked.commit_id";
 
 /// Up to `limit` accounts with a session or staged row expired at `now`, in id order after `after`.
 pub(crate) async fn expired_accounts(

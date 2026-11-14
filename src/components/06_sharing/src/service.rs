@@ -4,6 +4,7 @@
 //! their audit event in the link's transaction (fail closed).
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use argon2::Params;
@@ -16,6 +17,7 @@ use sc_clock::{Clock, Timestamp};
 use sc_config::{KeyProblem, Reason};
 use sc_db::{Db, DbError, RunError, Scope};
 use sc_ids::{new_id, sha256_token};
+use sc_ratelimit::AbuseLimiter;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
@@ -37,23 +39,30 @@ pub struct PgShareService {
     pub(crate) audit: AuditWriter,
     pub(crate) grants: GrantKey,
     pub(crate) grant_ttl: Duration,
+    /// The server's one abuse limiter (built by 12): invalid tokens per address, wrong passwords per link.
+    pub(crate) limiter: Arc<AbuseLimiter>,
     default_ttl: Duration,
     max_ttl: Duration,
     password_params: Params,
     /// One permit per Argon2id password check running (`share_password_max_concurrency`).
     password_checks: Arc<Semaphore>,
     password_concurrency: usize,
+    /// Argon2id password checks started since the service was built.
+    password_checks_run: AtomicU64,
 }
 
 impl PgShareService {
     /// Opens no connection. `config` is the validated sharing section; an unusable `share_argon2_params`,
     /// `share_password_max_concurrency` or `share_grant_key` is refused here as well, naming the key, so no
-    /// service ever signs grants with a short or empty key.
+    /// service ever signs grants with a short or empty key. `limiter` is the server's one `AbuseLimiter`, whose
+    /// table carries the share limits of `config` (`share_wrong_password_limit`, `share_wrong_password_window`,
+    /// `share_invalid_token_limit`).
     pub fn new(
         db: Db,
         clock: Arc<dyn Clock>,
         tree: Arc<dyn TreeReader>,
         audit: AuditWriter,
+        limiter: Arc<AbuseLimiter>,
         config: &ShareConfig,
     ) -> Result<Self, KeyProblem> {
         if let Some(problem) = config.grant_key_problem() {
@@ -69,17 +78,24 @@ impl PgShareService {
             audit,
             grants,
             grant_ttl: config.grant_ttl,
+            limiter,
             default_ttl: config.default_ttl,
             max_ttl: config.max_ttl,
             password_params: config.password_params()?,
             password_checks: Arc::new(Semaphore::new(password_concurrency)),
             password_concurrency,
+            password_checks_run: AtomicU64::new(0),
         })
     }
 
     /// How many Argon2id password checks hold a permit now; never above `share_password_max_concurrency`.
     pub fn password_checks_in_progress(&self) -> usize {
         self.password_concurrency - self.password_checks.available_permits()
+    }
+
+    /// How many Argon2id password checks have started since the service was built (ST-06-6 counts them).
+    pub fn password_checks_run(&self) -> u64 {
+        self.password_checks_run.load(Ordering::Relaxed)
     }
 
     /// Whether `password` matches the PHC string `phc`, on tokio's blocking pool under one permit. The blocking
@@ -93,6 +109,7 @@ impl PgShareService {
             .acquire_owned()
             .await
             .map_err(SharingError::PasswordPool)?;
+        self.password_checks_run.fetch_add(1, Ordering::Relaxed);
         let password = password.to_owned();
         tokio::task::spawn_blocking(move || {
             let matched = verify_password(&phc, &password);

@@ -177,7 +177,7 @@ impl SeedWorld {
             clock.clone(),
             &identity_config,
             audit.clone(),
-            limiter,
+            limiter.clone(),
         )
         .expect("sign-in service");
         sign_in
@@ -216,6 +216,7 @@ impl SeedWorld {
                 clock.clone(),
                 tree_reader.clone(),
                 audit.clone(),
+                limiter,
                 &share_config,
             )
             .expect("share service"),

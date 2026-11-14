@@ -3,12 +3,14 @@
 //! This crate holds the typed configuration section with the grant key rule, the owner side of the links
 //! (`PgShareService`: create, list, revoke) with the visitor's `open`, `verify_password` (a bounded Argon2id check
 //! that issues a stateless HMAC access grant, `grant`) and `authorize_content` (one system-scope lookup by token
-//! hash in `lookup_repo`, then the same target reads in every case, nothing cached), and the account erase hook
-//! (`PgShareLifecycle`); derived files follow in a later task.
+//! hash in `lookup_repo`, then the same target reads in every case, nothing cached), the AC-20 counters of those
+//! three on the shared `AbuseLimiter` (`abuse`: invalid tokens per address, wrong passwords per link), and the
+//! account erase hook (`PgShareLifecycle`); derived files follow in a later task.
 //! The schema is `src/migrations/*_create_share_tables.*.sql`: `share_links`, whose composite foreign key to the
 //! tree's `nodes` cascades, so a purged file removes its links. Only the SHA-256 of a token and the Argon2id PHC
 //! string of a password are stored.
 
+mod abuse;
 mod config;
 mod content;
 mod error;

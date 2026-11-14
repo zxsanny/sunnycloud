@@ -3,7 +3,7 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c04 — `_docs/02_tasks/todo/B03-20_transfer_start_upload.md` (contributors: E-14/c05 `put_block`, E-14/c06 `get_upload`/`abort_upload`, E-14/c07 `stage_small`, E-14/c11 `ReservationSource`; rule from spike E-14/c02); keys assigned at Step 4
 **Consumer tasks**: E-14/c13, E-14/c16 (this batch); E-21/c13 (11 handlers), E-22 (doctor, `recompute` caller), E-17 (07 `recompute` caller), E-23/E-26/E-27 through the HTTP API, resolved at Step 4
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: draft (the `NothingToSend` rule is recorded; frozen when the producer task passes review)
 **Last Updated**: 2026-11-14
 
@@ -32,6 +32,7 @@ Signatures: part 2 (`UploadService`, `ReservationSource`). Behaviour per method:
 - `ReceiptJanitor` (`receipt_janitor`): deletes receipts with `created_at < now - commit_receipt_ttl` in system-scope batches of 1000 (`FOR UPDATE SKIP LOCKED`); a later batch with a deleted `commit_id` is a new batch.
 - `IdleFlush` (`progress_flush`; the description's `ProgressTable::flush_idle`, on the service because the table has no database handle): an entry with no block in flight and none acknowledged for `checkpoint_interval` writes its unsaved `received` and `block_hashes` as a checkpoint (no `AccountGuard`: no client request) and is evicted; an entry with nothing unsaved is evicted without a write. A block that starts between the idle check and the eviction lands in the evicted entry; at worst its bit misses the row and the client resends it, as after a restart.
 - Scheduling and registration of the three janitors are E-22/c06.
+- Account erase (`PgTransferLifecycle::erase_batch`, AZ-3757): the reaper's delete statement with no expiry filter, one short account-scoped transaction per call and no advisory lock (no reservation is released, so the lock order above does not apply); each open row's blob is queued `AccountDeleted`, `Due::Now` in that transaction; receipts with the rest of the limit; progress entries evicted after COMMIT. The delete claims rows through a materialised CTE: as an `IN (… LIMIT)` subquery a rescan picked other rows of the same `expires_at` and deleted more than the limit (found by AZ-3757).
 
 ### `NothingToSend` rule (decided 2026-11-11, AZ-3732)
 
@@ -57,7 +58,7 @@ Constants and limits: block size 2 MiB (protocol constant); `lane_limit` = `max_
 - Quota is reserved before any file exists; a refusal reserves nothing and writes nothing.
 - A block's bit is set only after `await_durable`; a corrupt or wrong-length body never reaches disk.
 - `Overloaded` consumes 0 body bytes.
-- Whoever deletes the session row (commit via 02, reaper, abort, erase) settles its reservation; never twice.
+- Whoever deletes the session row (commit via 02, reaper, abort) settles its reservation; never twice. The account erase settles none: 07a erases the account's `quota` row (AZ-3757).
 - Every lookup is account-scoped; the same `client_key`, `staged_key` in another account is independent.
 - Progress is never rehydrated at start; v1.0 runs one API process.
 
@@ -104,5 +105,6 @@ Constants and limits: block size 2 MiB (protocol constant); `lane_limit` = `max_
 | 1.3.0 | 2026-11-13 | `start_upload` implemented: `AccountGuard`, session-cap counting, floor after the transaction (compensated), committed-key record as `committed_revision_id` (an expired one is deleted by the next start with that key) | AZ-3734 |
 | 1.4.0 | 2026-11-13 | `put_block` implemented: caps before reading, verify before write, ack after durable, checkpoint with `AccountGuard`; same-hash in-flight duplicate is `Overloaded` | AZ-3735 |
 | 1.5.0 | 2026-11-14 | `get_upload`, lazy load from the checkpoint row (via `BlobCatalog::get_uploading_plan`) and `abort_upload` implemented; abort checks `AccountGuard` and leaves an expired row to the reaper | AZ-3736 |
+| 1.8.0 | 2026-11-14 | Account erase hook (`PgTransferLifecycle`); the shared delete claim materialised; client rules in `client_protocol.md` | AZ-3757, AZ-3762 |
 | 1.7.0 | 2026-11-14 | Expiry rule in one place (expired row under a key reaped by the next start or stage), `SessionReaper`, `ReceiptJanitor`, `IdleFlush`, `ReservationSource`, advisory lock first on abort | AZ-3756 |
 | 1.6.0 | 2026-11-14 | `stage_small` implemented (order per row above; `QuotaAdmin` port added to `UploadPorts`; body above 2 MiB `LengthMismatch` proposed; bytes without a hash `HashMismatch`); `UploadService` implemented by `PgUploadService` | AZ-3737 |

@@ -185,7 +185,9 @@ async fn at_most_the_configured_number_of_checks_run_at_once() {
     let mut config = harness.config.clone();
     config.password_max_concurrency = 4;
     config.argon2_params = Some(SLOW_ARGON2.to_owned());
-    let shares = Arc::new(harness.shares_with(&config));
+    // Room for all 50 wrong guesses on the one link: this test is about the permit bound, not the AC-20 limit.
+    config.wrong_password_limit = 50;
+    let shares = Arc::new(harness.shares_limited_by(&config));
     let created = link(&shares, &owner, file.node, Some(PASSWORD)).await;
     let mut callers = JoinSet::new();
 

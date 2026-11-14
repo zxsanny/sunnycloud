@@ -138,3 +138,48 @@ fn the_message_of_each_variant_is_its_summary_without_request_data() {
     assert!(!shown.contains("123456"));
     assert_eq!(converted, "need_blocks");
 }
+
+/// The client-facing catalogue (AZ-3762 AC-1): one row per code between its markers.
+const CATALOGUE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../_docs/02_document/contracts/03_transfer/client_protocol.md"
+));
+
+/// `(code, status)` of each catalogue row, in document order.
+fn catalogue_rows() -> Vec<(String, u16)> {
+    let start = CATALOGUE
+        .find("<!-- transfer-error-catalogue:start -->")
+        .expect("start marker");
+    let end = CATALOGUE
+        .find("<!-- transfer-error-catalogue:end -->")
+        .expect("end marker");
+    CATALOGUE[start..end]
+        .lines()
+        .filter_map(|line| {
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            let code = cells.get(1)?.strip_prefix('`')?.strip_suffix('`')?;
+            let status = cells.get(2)?.parse().ok()?;
+            Some((code.to_owned(), status))
+        })
+        .collect()
+}
+
+#[test]
+fn the_client_catalogue_lists_every_transfer_code_once_with_its_status() {
+    // Arrange
+    let mut from_code: Vec<(String, u16)> = expected()
+        .into_iter()
+        .map(|(error, _, _)| {
+            let code = error.code();
+            (code.as_str().to_owned(), code.status())
+        })
+        .collect();
+    from_code.sort();
+
+    // Act
+    let mut documented = catalogue_rows();
+    documented.sort();
+
+    // Assert
+    assert_eq!(documented, from_code);
+}

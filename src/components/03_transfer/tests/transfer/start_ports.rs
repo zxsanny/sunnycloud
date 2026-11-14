@@ -1,6 +1,9 @@
 //! The port doubles of the `start_upload` and `put_block` tests, each at its boundary: a writer decorator that
 //! delegates to the real 04 writer, can make file creation fail, counts block writes, can hold or fail the
-//! group fdatasync wait and can hold `discard` (the reaper tests look at the database while a discard waits); a ledger decorator that delegates to the real 07a ledger and can make `reserve` fail.
+//! group fdatasync wait, can hold `discard` (the reaper tests look at the database while a discard waits) and can
+//! fail a `write_complete` after the real one wrote the file (AZ-3757 AC-68 b); a ledger decorator that delegates
+//! to the real 07a ledger, can make `reserve` fail and counts `release_reservation` calls. Every writer call marks
+//! `blob_writer` in the statement log (AZ-3757 AC-69), a no-op while no log is installed.
 //! The registry is the real 04 one, through the port; the account guard is `sunnycloud_testkit::StateGuard`.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -11,6 +14,7 @@ use contracts::{
     QuotaLedgerError, Reserved, WrittenBlob, async_trait,
 };
 use sc_db::DbTx;
+use sc_testdb::statements::mark;
 use sunnycloud_blobstore::FileBlobWriter;
 use sunnycloud_quota::PgQuotaLedger;
 use tokio::sync::{Notify, Semaphore};
@@ -41,6 +45,7 @@ pub struct FaultyWriter {
     durable: Mutex<DurableFault>,
     writes: AtomicUsize,
     completes: AtomicUsize,
+    fail_after_complete: AtomicBool,
     parked: AtomicUsize,
     parked_changed: Notify,
     gate: Semaphore,
@@ -58,6 +63,7 @@ impl FaultyWriter {
             durable: Mutex::new(DurableFault::None),
             writes: AtomicUsize::new(0),
             completes: AtomicUsize::new(0),
+            fail_after_complete: AtomicBool::new(false),
             parked: AtomicUsize::new(0),
             parked_changed: Notify::new(),
             gate: Semaphore::new(0),
@@ -94,6 +100,12 @@ impl FaultyWriter {
         *self.fault.lock().unwrap_or_else(PoisonError::into_inner) = fault;
     }
 
+    /// While set, `write_complete` writes the file through the real writer and then fails with `Io`: a failure
+    /// after the file is on disk and before any row exists.
+    pub fn fail_after_complete(&self, fail: bool) {
+        self.fail_after_complete.store(fail, Ordering::SeqCst);
+    }
+
     pub fn set_durable(&self, fault: DurableFault) {
         *self.durable.lock().unwrap_or_else(PoisonError::into_inner) = fault;
     }
@@ -128,6 +140,7 @@ impl FaultyWriter {
 #[async_trait]
 impl BlobWriter for FaultyWriter {
     fn plan(&self, account: Uuid, plaintext_size: i64) -> Result<BlobPlan, BlobError> {
+        mark("blob_writer");
         self.inner.plan(account, plaintext_size)
     }
 
@@ -137,6 +150,7 @@ impl BlobWriter for FaultyWriter {
         plaintext_size: i64,
         preallocate: bool,
     ) -> Result<BlobHandle, BlobError> {
+        mark("blob_writer");
         let fault = *self.fault.lock().unwrap_or_else(PoisonError::into_inner);
         match fault {
             CreateFault::None => {
@@ -156,6 +170,7 @@ impl BlobWriter for FaultyWriter {
         master_key_id: i16,
         plaintext_size: i64,
     ) -> Result<BlobHandle, BlobError> {
+        mark("blob_writer");
         self.inner
             .open_for_write(blob_id, wrapped_key, master_key_id, plaintext_size)
             .await
@@ -167,11 +182,13 @@ impl BlobWriter for FaultyWriter {
         block_index: u32,
         plaintext: bytes::Bytes,
     ) -> Result<DurableToken, BlobError> {
+        mark("blob_writer");
         self.writes.fetch_add(1, Ordering::SeqCst);
         self.inner.write_block(handle, block_index, plaintext).await
     }
 
     async fn await_durable(&self, token: DurableToken) -> Result<(), BlobError> {
+        mark("blob_writer");
         let fault = *self.durable.lock().unwrap_or_else(PoisonError::into_inner);
         match fault {
             DurableFault::None => {}
@@ -193,12 +210,19 @@ impl BlobWriter for FaultyWriter {
         size: i64,
         body: ByteStream,
     ) -> Result<WrittenBlob, BlobError> {
+        mark("blob_writer");
         let written = self.inner.write_complete(account, size, body).await?;
         self.completes.fetch_add(1, Ordering::SeqCst);
+        if self.fail_after_complete.load(Ordering::SeqCst) {
+            return Err(BlobError::Io(Box::new(std::io::Error::other(
+                "injected after write_complete",
+            ))));
+        }
         Ok(written)
     }
 
     async fn discard(&self, blob_id: Uuid) -> Result<(), BlobError> {
+        mark("blob_writer");
         if self.hold_discards.load(Ordering::SeqCst) {
             self.discards_parked.fetch_add(1, Ordering::SeqCst);
             self.discards_changed.notify_waiters();
@@ -214,10 +238,11 @@ impl BlobWriter for FaultyWriter {
 }
 
 /// Delegates to the real ledger; while `fail_reserve` is set, `reserve` fails with `Unexpected` and changes
-/// nothing.
+/// nothing. `releases` counts the `release_reservation` calls.
 pub struct FaultyLedger {
     inner: PgQuotaLedger,
     fail_reserve: AtomicBool,
+    releases: AtomicUsize,
 }
 
 impl FaultyLedger {
@@ -225,11 +250,17 @@ impl FaultyLedger {
         FaultyLedger {
             inner,
             fail_reserve: AtomicBool::new(false),
+            releases: AtomicUsize::new(0),
         }
     }
 
     pub fn fail_reserve(&self, fail: bool) {
         self.fail_reserve.store(fail, Ordering::SeqCst);
+    }
+
+    /// `release_reservation` calls so far.
+    pub fn releases(&self) -> usize {
+        self.releases.load(Ordering::SeqCst)
     }
 }
 
@@ -255,6 +286,7 @@ impl QuotaLedger for FaultyLedger {
         account: Uuid,
         bytes: i64,
     ) -> Result<(), QuotaLedgerError> {
+        self.releases.fetch_add(1, Ordering::SeqCst);
         self.inner.release_reservation(tx, account, bytes).await
     }
 

@@ -1,7 +1,7 @@
 //! The `upload_sessions` statements of `start_upload`, the `put_block` checkpoint, the lazy load,
-//! `abort_upload`, `stage_small`, the commit effects, the staged rows of `commit_batch`, the reaper and
-//! `ReservationSource`. Every statement names the account, so a row of another account is never read or written even
-//! in system scope. Timestamps travel as Unix microseconds.
+//! `abort_upload`, `stage_small`, the commit effects, the staged rows of `commit_batch`, the reaper, the account
+//! erase and `ReservationSource`. Every statement names the account, so a row of another account is never read or
+//! written even in system scope. Timestamps travel as Unix microseconds.
 
 use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx};
@@ -16,16 +16,20 @@ const BY_KEY: &str = "SELECT id, declared_size, block_count, received, \
      (extract(epoch FROM expires_at) * 1000000)::bigint, committed_revision_id \
      FROM upload_sessions WHERE account_id = $1 AND client_key = $2";
 
-// The reaper's claim: rows of the account past `expires_at` (open, staged or committed), of one key when `$3` is
-// set, at most `$4`. The lock waits for a running checkpoint and re-checks the expiry it rolled. A committed row
-// holds no reservation and its blob is the revision's; an open row returns what its deleter settles.
-const DELETE_EXPIRED: &str = "DELETE FROM upload_sessions WHERE account_id = $1 AND id IN ( \
+// The one "delete sessions" claim of the reaper and the account erase: rows of the account (open, staged or
+// committed), past `expires_at` when `$2` is set (the reaper; the erase takes every row), of one key when `$3` is
+// set, at most `$4`. The lock waits for a running checkpoint or commit and re-checks the expiry it rolled. A
+// committed row holds no reservation and its blob is the revision's; an open row returns what its deleter settles.
+// The claim is a materialised CTE: as an `IN (... LIMIT)` subquery a rescan may pick another set of rows with the
+// same `expires_at` and delete more than `$4` (seen with 231 rows of one expiry and `$4 = 100`).
+const DELETE_ROWS: &str = "WITH picked AS MATERIALIZED ( \
      SELECT id FROM upload_sessions WHERE account_id = $1 \
-     AND expires_at <= 'epoch'::timestamptz + $2::bigint * interval '1 microsecond' \
+     AND ($2::bigint IS NULL OR expires_at <= 'epoch'::timestamptz + $2::bigint * interval '1 microsecond') \
      AND ($3::text IS NULL OR client_key = $3) \
      ORDER BY expires_at LIMIT $4 FOR UPDATE) \
-     RETURNING id, blob_id, reserved_bytes, committed_revision_id IS NULL, \
-     (block_count > 1 OR received = '\\x00'::bytea)";
+     DELETE FROM upload_sessions s USING picked WHERE s.account_id = $1 AND s.id = picked.id \
+     RETURNING s.id, s.blob_id, s.reserved_bytes, s.committed_revision_id IS NULL, \
+     (s.block_count > 1 OR s.received = '\\x00'::bytea)";
 
 // Every row of the account counts, expired ones too: their reservation stays in 07a until the reaper releases it.
 const OPEN_RESERVED: &str = "SELECT coalesce(sum(reserved_bytes), 0)::bigint FROM upload_sessions \
@@ -151,11 +155,11 @@ pub(crate) fn is_expired(expires_at: Timestamp, now: Timestamp) -> bool {
     now >= expires_at
 }
 
-/// A row the reaper deleted. `open` rows held `reserved_bytes` and their `uploading` blob row; `large` tells a
-/// large-path session from a staged row as the session cap does (a one-block session with its block counts as
-/// staged).
+/// A row the reaper or the account erase deleted. `open` rows held `reserved_bytes` and their `uploading` blob row;
+/// `large` tells a large-path session from a staged row as the session cap does (a one-block session with its
+/// block counts as staged).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExpiredRow {
+pub(crate) struct DeletedRow {
     pub id: Uuid,
     pub blob_id: Uuid,
     pub reserved_bytes: i64,
@@ -163,24 +167,25 @@ pub(crate) struct ExpiredRow {
     pub large: bool,
 }
 
-/// Deletes up to `limit` rows of `account` (of `client_key` alone when given) expired at `now`.
-pub(crate) async fn delete_expired(
+/// Deletes up to `limit` rows of `account` (of `client_key` alone when given), only those expired at `expired_at`
+/// when it is given.
+pub(crate) async fn delete_rows(
     tx: &mut DbTx,
     account: Uuid,
     client_key: Option<&str>,
-    now: Timestamp,
+    expired_at: Option<Timestamp>,
     limit: i64,
-) -> Result<Vec<ExpiredRow>, DbError> {
-    let rows: Vec<(Uuid, Uuid, i64, bool, bool)> = sqlx::query_as(DELETE_EXPIRED)
+) -> Result<Vec<DeletedRow>, DbError> {
+    let rows: Vec<(Uuid, Uuid, i64, bool, bool)> = sqlx::query_as(DELETE_ROWS)
         .bind(account)
-        .bind(now.as_unix_micros())
+        .bind(expired_at.map(Timestamp::as_unix_micros))
         .bind(client_key)
         .bind(limit)
         .fetch_all(tx.conn())
         .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, blob_id, reserved_bytes, open, large)| ExpiredRow {
+        .map(|(id, blob_id, reserved_bytes, open, large)| DeletedRow {
             id,
             blob_id,
             reserved_bytes,

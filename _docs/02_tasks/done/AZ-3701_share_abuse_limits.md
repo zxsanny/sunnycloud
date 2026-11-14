@@ -92,4 +92,4 @@ Then each trip wrote exactly one audit event and one WARN line, with the link id
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| Whether `verify_password` with an unknown token also counts against the per-IP invalid-token counter is not stated (06 §3 names the content route only) | E-16 owner | open | Low |
+| Whether `verify_password` with an unknown token also counts against the per-IP invalid-token counter is not stated (06 §3 names the content route only) | E-16 owner | open; proposal (implemented, AZ-3701): yes, the stricter reading. An unknown token is an invalid token whatever the route, so every `NotFound` of `open`, `authorize_content` and `verify_password` counts on the one per-IP counter and a limited IP gets `RateLimited` on all three; otherwise `verify_password` would be an unlimited token oracle. Awaiting owner confirmation | Low |

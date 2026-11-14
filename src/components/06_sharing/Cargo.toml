@@ -17,6 +17,8 @@ sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }
 sc_error = { path = "../../shared/error" }
 sc_ids = { path = "../../shared/ids_hashing" }
+# The shared AbuseLimiter (built by 12) holding the share abuse counters (AZ-3701).
+sc_ratelimit = { path = "../../shared/ratelimit" }
 # Link passwords: Argon2id PHC strings (06 description §5); the salt comes from getrandom, so argon2's own
 # getrandom feature stays off. Same pin as vault-core.
 argon2 = { version = "=0.6.0", default-features = false, features = ["alloc", "password-hash", "zeroize"] }
@@ -44,8 +46,6 @@ sunnycloud-quota = { path = "../07a_quota" }
 sunnycloud-blobstore = { path = "../04_blobstore" }
 sunnycloud-sync-feed = { path = "../05_sync_feed" }
 sunnycloud-testkit = { path = "../testkit" }
-# The AbuseLimiter the later suites build per test.
-sc_ratelimit = { path = "../../shared/ratelimit" }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

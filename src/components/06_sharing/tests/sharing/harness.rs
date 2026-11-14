@@ -1,6 +1,6 @@
 //! Component test harness on a real PostgreSQL 18: a clone of the migrated template of `sc_testdb`. The component
 //! connects as `sunnycloud`; fixtures and probes run as `sunnycloud_migrator`. Time comes from a `ManualClock`,
-//! the grant key is a fixed test key, and every test gets an `AbuseLimiter` of its own. The owner service reads
+//! the grant key is a fixed test key, and every test gets an `AbuseLimiter` of its own, which its services count on. The owner service reads
 //! the real tree (02's `PgTreeReader`) and writes through the real `AuditWriter`; link passwords use a small
 //! Argon2id cost set through the configuration key, never a lowered default.
 
@@ -41,7 +41,8 @@ pub struct Harness {
     pub tree_config: TreeConfig,
     /// The blob section of the same settings: the GC queue of 02's mutations in the content tests reads it.
     pub blob_config: BlobstoreConfig,
-    pub limiter: AbuseLimiter,
+    /// The limiter every service of this harness counts on, built from the harness section.
+    pub limiter: Arc<AbuseLimiter>,
 }
 
 impl Harness {
@@ -59,7 +60,7 @@ impl Harness {
         let config = ShareConfig::from_settings(&settings);
         let tree_config = TreeConfig::from_settings(&settings);
         let blob_config = BlobstoreConfig::from_settings(&settings);
-        let limiter = limiter(&config, clock.clone());
+        let limiter = Arc::new(limiter(&config, clock.clone()));
         Harness {
             db,
             api,
@@ -92,14 +93,38 @@ impl Harness {
             .expect("the harness sharing section is valid")
     }
 
+    /// The service with `config` counting on a limiter of its own whose share limits are `config`'s, for a test that
+    /// needs other limits than the harness section's.
+    pub fn shares_limited_by(&self, config: &ShareConfig) -> PgShareService {
+        let limiter = Arc::new(limiter(config, self.clock.clone()));
+        self.try_shares_on(config, self.audit_writer(), limiter)
+            .expect("the sharing section is valid")
+    }
+
     /// The service's own refusal of `config`, over the real tree reader.
     pub fn try_shares(
         &self,
         config: &ShareConfig,
         audit: AuditWriter,
     ) -> Result<PgShareService, KeyProblem> {
+        self.try_shares_on(config, audit, Arc::clone(&self.limiter))
+    }
+
+    fn try_shares_on(
+        &self,
+        config: &ShareConfig,
+        audit: AuditWriter,
+        limiter: Arc<AbuseLimiter>,
+    ) -> Result<PgShareService, KeyProblem> {
         let tree = Arc::new(PgTreeReader::new(self.api.clone(), &self.tree_config));
-        PgShareService::new(self.api.clone(), self.clock.clone(), tree, audit, config)
+        PgShareService::new(
+            self.api.clone(),
+            self.clock.clone(),
+            tree,
+            audit,
+            limiter,
+            config,
+        )
     }
 
     /// Fixtures and probes run as the schema owner.
@@ -115,6 +140,7 @@ impl Harness {
     }
 }
 
+/// The share limits of `config` (the invalid-token window is one minute, no key); the other limits are unused here.
 fn limiter(config: &ShareConfig, clock: Arc<dyn Clock>) -> AbuseLimiter {
     let capacity = |limit: u64| u32::try_from(limit).expect("limit fits u32");
     let placeholder = LimitSpec::new(1, INVALID_TOKEN_WINDOW);

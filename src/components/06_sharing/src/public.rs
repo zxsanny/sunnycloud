@@ -2,6 +2,8 @@
 //! in code. A link that is missing, expired or revoked (and every malformed token, which simply hashes to a value
 //! no row holds) reads a fixed dummy target instead of its own, so the five not-found cases run the same statements
 //! and differ from each other only in values (AC-12, IT-06-9). No password is checked here, so no Argon2 runs.
+//! The address is checked against the invalid-token limit before the lookup, and every `NotFound` counts on it
+//! (`abuse`), so the not-found cases also do the same limiter work.
 
 use std::net::IpAddr;
 
@@ -35,13 +37,15 @@ pub(crate) enum Target {
 impl PgShareService {
     /// `PublicShareService::open` (the port is implemented once its other operations exist): `Available` with the
     /// name, the current revision's size and media type and the expiry; `PasswordRequired` for a live password
-    /// link on a live file, with no file data; `NotFound` for everything else. `client_ip` is for the invalid-token
-    /// limit (E-16/c07).
+    /// link on a live file, with no file data; `NotFound` for everything else, counted against `client_ip`'s
+    /// invalid tokens; `RateLimited` before any read while that address is limited (AC-20).
     pub async fn open(
         &self,
         token: &RawToken,
-        _client_ip: IpAddr,
+        client_ip: IpAddr,
     ) -> Result<ShareOpen, PublicShareError> {
+        let ip = client_ip.to_canonical();
+        self.check_token_ip(ip)?;
         let now = self.clock.now_utc();
         let row = lookup_repo::by_token_hash(&self.db, &sha256_token(token.expose()))
             .await
@@ -52,7 +56,11 @@ impl PgShareService {
         let file = self.tree.resolve_live_file(account, node).await;
         let view = self.tree.get_node(account, NodeSelector::Id(node)).await;
         let target = target_of(file, view)?;
-        Ok(decide(link.as_ref(), target))
+        let answer = decide(link.as_ref(), target);
+        if answer == ShareOpen::NotFound {
+            self.count_invalid_token(ip).await;
+        }
+        Ok(answer)
     }
 }
 
