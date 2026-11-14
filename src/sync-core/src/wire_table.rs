@@ -108,7 +108,9 @@ pub fn map_problem(status: u16, headers: &[(&str, &str)], body: &[u8]) -> Mapped
         | ErrorCode::CsrfRejected
         | ErrorCode::OutputTooLarge
         | ErrorCode::OutputTypeRejected
-        | ErrorCode::OutputKindRejected => unexpected(code, &raw, &correlation),
+        | ErrorCode::OutputKindRejected
+        | ErrorCode::VaultBoundary
+        | ErrorCode::VaultFileTooLarge => unexpected(code, &raw, &correlation),
     }
 }
 

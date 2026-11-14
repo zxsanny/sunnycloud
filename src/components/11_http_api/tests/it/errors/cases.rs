@@ -129,6 +129,12 @@ pub const CASES: &[Case] = &[
     case("size_too_large", 413, "size_too_large", |id| {
         ApiProblem::from_port(UploadError::SizeTooLarge, id)
     }),
+    case("vault_file_too_large", 413, "vault_file_too_large", |id| {
+        ApiProblem::from_port(UploadError::VaultFileTooLarge, id)
+    }),
+    case("vault_boundary", 409, "vault_boundary", |id| {
+        ApiProblem::from_port(TreeServiceError::VaultBoundary, id)
+    }),
     case(
         "range_not_satisfiable",
         416,

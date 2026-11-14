@@ -3,9 +3,9 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c04 — `_docs/02_tasks/todo/B01-13_contracts_part2.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c05 (part 3); other batches: E-11..E-14, E-16..E-18, E-21, E-22, E-30
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft (frozen when the producer task is accepted)
-**Last Updated**: 2026-11-11
+**Last Updated**: 2026-11-14
 
 ## Purpose
 
@@ -29,7 +29,7 @@ Conventions (ids, `Timestamp`, `DbTx`, error enums, object safety) are those of 
 | Port | Method | Input -> Output | Errors |
 |---|---|---|---|
 | `TreeService` | `create_folder` | `account, parent_id, name` -> `NodeView` | `NameInvalid(reason)`, `NameConflict`, `ParentDeleted`, `NotFound`, `NotAFolder` |
-| | `update_node` | `account, node_id, new_name?, new_parent?` -> `NodeView` | `NameInvalid`, `NameConflict`, `Cycle`, `ParentDeleted`, `NotAFolder`, `IsRoot`, `NotFound` |
+| | `update_node` | `account, node_id, new_name?, new_parent?` -> `NodeView` | `NameInvalid`, `NameConflict`, `Cycle`, `VaultBoundary` (v1.2), `ParentDeleted`, `NotAFolder`, `IsRoot`, `NotFound` |
 | | `delete_node` | `account, node_id, base_revision?` -> `()` (idempotent) | `EditedSince{current_revision}`, `IsRoot`, `NotFound` |
 | | `resolve_path` | `account, path` -> `Uuid` | `NotFound` |
 | | `find_revisions` | `account, client_device filter, page` -> `Vec<RevisionRef>` | `InvalidCursor` |
@@ -45,6 +45,7 @@ Conventions (ids, `Timestamp`, `DbTx`, error enums, object safety) are those of 
 | `TreeCommit` | `publish` | `CommitActor, Vec<PublishEntry>, Vec<Arc<dyn CommitEffect>>, now: Timestamp` -> `PublishResult{Published(Vec<EntryResult>) \| Replayed(StoredResponse)}` | whole call: `AccountNotActive`, `CommitIdReused`, `EffectFailed(ErrorCode)` |
 | `TreeRestore` | `restore_revision` | `account, NodeOrPath, at: Timestamp` -> `RestoreOutcome{restored_revision, placement: Original \| Restored}` | `BeyondRetention`, `FileMissing`, `NotFound` |
 | `LiveUsageSource` | `live_bytes` | `account` -> `i64` | none |
+| `VaultRoots` (v1.2) | `claim_root` | `tx: &mut DbTx, account, root_node_id, vault` -> `()`: locks the folder row `FOR UPDATE`, checks it is a live, empty folder other than the account's root folder and in no vault, and sets its `vault_id`; called by 20's `create_vault` after its `vaults` insert | `NotFound`, `Taken` |
 | `TreeMaintenance` | `cascade_batch` | `now, limit` -> `processed: u64` | `Unexpected` |
 | | `purge_tombstones` | `now, limit` -> `processed: u64` | `Unexpected` |
 
@@ -53,13 +54,13 @@ Per-entry failures of `publish` (an `EntryResult` value, not an error of the cal
 | DTO | Fields / variants |
 |---|---|
 | `CommitActor` | `account_id, device_label` |
-| `PublishEntry` | `target: Target, revision: NewRevision, vault: bool` (false in v1.0) |
+| `PublishEntry` | `target: Target, revision: NewRevision, vault: bool` (the caller's flag; 03 always passes `false`. 02 publishes `vault = true` when it is set or the target is in a vault, v1.2) |
 | `Target` | `Existing{node_id, base_revision?}`, `New{parent_id, name}` |
 | `NewRevision` | `revision_id, blob_id, size, content_hash: FileHash, blocklist: Vec<Hash32>, media_type?, client_mtime?, client_meta?, reserved_bytes, import_hint` |
 | `EntryResult` | `Published{outcome: PublishOutcome, node_id, revision_id, conflict_copy?}` or a per-entry failure |
 | `PublishOutcome` | `Created`, `Updated`, `Replaced`, `ConflictCopied{copy_node}`, `CreatedAsCopy{node}`, `Revived`, `NoChange{existing_revision}` |
-| `LiveFile` | `kind: File \| Folder`, `revision: Option<RevisionView>` (current), `blob_ref: Option<Uuid>` (the revision's blob id; empty for a folder) |
-| `NodeView` | derived from data_model §5.1/§5.2: `id, parent_id, kind, name, state: Live \| Tombstone, current_revision_id?, size?, content_hash?, media_type?, client_mtime?, created_at, updated_at, seq`, plus the thumbnail state field that E-13 adds from `ThumbnailStateSource` |
+| `LiveFile` | `kind: File \| Folder`, `revision: Option<RevisionView>` (current), `blob_ref: Option<Uuid>` (the revision's blob id; empty for a folder), `vault: bool` (v1.2 membership) |
+| `NodeView` | derived from data_model §5.1/§5.2: `id, parent_id, kind, name, state: Live \| Tombstone, current_revision_id?, size?, content_hash?, media_type?, client_mtime?, created_at, updated_at, seq`, plus the thumbnail state field that E-13 adds from `ThumbnailStateSource`, and `vault: bool` (v1.2 membership: the node is a vault root or was created under one) |
 | `NodeRef` | `id, kind` |
 | `RevisionView` | `id, node_id, size, content_hash, blocklist?, media_type?, client_mtime?, client_meta?, created_at` |
 | `RevisionRef` | `revision_id, node_id` |
@@ -72,7 +73,7 @@ Per-entry failures of `publish` (an `EntryResult` value, not an error of the cal
 | `on_entry` | `(tx: &mut DbTx, entry: &PublishedEntry) -> Result<(), EffectError>` | `Entry` error rolls back that entry's savepoint only |
 | `on_batch` | `(tx: &mut DbTx, outcomes: &[EntryOutcome]) -> Result<(), EffectError>` | receives every entry outcome, failed ones included |
 
-`EffectError` = `Entry(ErrorCode)` or `Batch(ErrorCode)` (whole transaction rolls back). `PublishedEntry` = `node_id, revision_id, content_hash, media_type?, size, import_hint, vault`. `EntryOutcome` = the entry's `EntryResult` paired with its index. Effects do no I/O, read only rows they own and add no statement after the feed stamp.
+`EffectError` = `Entry(ErrorCode)` or `Batch(ErrorCode)` (whole transaction rolls back). `PublishedEntry` = `node_id, revision_id, content_hash, media_type?, size, import_hint, vault` (`vault` set by 02 from the entry's flag or the target's membership). `EntryOutcome` = the entry's `EntryResult` paired with its index. Effects do no I/O, read only rows they own and add no statement after the feed stamp.
 
 ### 03 transfer
 
@@ -80,12 +81,12 @@ All methods take the resolved account id first (from 11's authentication), never
 
 | Port | Method | Input -> Output | Errors |
 |---|---|---|---|
-| `UploadService` | `start_upload` | `account, StartUpload{parent_id, name, declared_size, client_key, content_hash?, base_revision?, client_meta?}` -> `Started{upload_id, need_blocks, block_size, lane_limit, expires_at}` or `NothingToSend{revision}` | `InvalidName`, `ParentNotFound`, `NotAFolder`, `SizeTooLarge`, `QuotaExceeded`, `SessionCapReached`, `FreeSpaceFloor`, `ClientKeyMismatch`, `AccountNotActive` |
+| `UploadService` | `start_upload` | `account, StartUpload{parent_id, name, declared_size, client_key, content_hash?, base_revision?, client_meta?}` -> `Started{upload_id, need_blocks, block_size, lane_limit, expires_at}` or `NothingToSend{revision}` | `InvalidName`, `ParentNotFound`, `NotAFolder`, `SizeTooLarge`, `VaultFileTooLarge` (v1.2), `QuotaExceeded`, `SessionCapReached`, `FreeSpaceFloor`, `ClientKeyMismatch`, `AccountNotActive` |
 | | `get_upload` | `account, upload_id` -> `UploadState{need_blocks, received_count, expires_at}` | `UploadNotFound` |
 | | `put_block` | `account, upload_id, index, expected_hash: Hash32, body: ByteStream, length` -> `BlockAck` | `UploadNotFound`, `IndexOutOfRange`, `LengthMismatch`, `HashMismatch`, `BlockConflict`, `Overloaded`, `StorageFull`, `Storage` |
 | | `abort_upload` | `account, upload_id` -> `()` | `UploadNotFound` |
 | | `stage_small` | `account, staged_key, expected_hash?, body: ByteStream, length (0..=2 MiB)` -> `Staged{staged_key, size}` | `QuotaExceeded`, `StagedCapReached`, `HashMismatch`, `LengthMismatch`, `ClientKeyMismatch`, `FreeSpaceFloor`, `Overloaded`, `AccountNotActive`, `Storage` |
-| `CommitService` | `commit_upload` | `CommitActor, CommitUpload{upload_id, parent_id, name, base_revision?, blocklist, client_mtime?, client_meta?, import_hint}` -> `Committed{node_id, revision_id, conflict_copy?}` | `NeedBlocks(list)`, `BlocklistMismatch`, `UploadNotFound`, `InvalidName`, `ParentGone`, `ParentNotFound`, `NotAFolder`, `AccountNotActive` |
+| `CommitService` | `commit_upload` | `CommitActor, CommitUpload{upload_id, parent_id, name, base_revision?, blocklist, client_mtime?, client_meta?, import_hint}` -> `Committed{node_id, revision_id, conflict_copy?}` | `NeedBlocks(list)`, `BlocklistMismatch`, `UploadNotFound`, `InvalidName`, `ParentGone`, `ParentNotFound`, `NotAFolder`, `VaultFileTooLarge` (v1.2), `AccountNotActive` |
 | | `commit_batch` | `CommitActor, BatchCommit{commit_id, entries}` (entry `{staged_key, parent_id, name, base_revision?, client_mtime?, client_meta?, import_hint}`) -> `BatchResult{per_entry: Committed \| EntryError}` | `BatchTooLarge`, `CommitIdReused`, `AccountNotActive` |
 | `DownloadService` | `open_revision_content` | `account, RevisionOrCurrent{Revision(revision_id) \| Current(node_id)}, retained_ok, range: Option<ByteRange>, if_range?, if_none_match?` -> `Download` | `NotFound`, `RangeNotSatisfiable`, `ContentUnavailable`, `Storage` |
 | | `open_blob_content` | `account, BlobRef, media_type?, same options` -> `Download` | as above |
@@ -115,6 +116,7 @@ All methods take the resolved account id first (from 11's authentication), never
 - A folder and a gone node are distinct results of `resolve_live_file` (`kind = Folder` versus `Gone`), never told apart by an error.
 - Retained non-current revisions are served only when `retained_ok` is true (admin principal, set by 11).
 - `BlobRef` has exactly the four fields above; nothing else in the crate redefines it.
+- Vault membership (v1.2, E-30/c01) is answered by 02 from the node row (`nodes.vault_id`), never by 20 and never by a client flag: 03 and 06 read `NodeView::vault`, `LiveFile::vault` and `PublishedEntry::vault`.
 - All conventions of part 1 hold (no implementation, no HTTP/sqlx types, `Arc<dyn Port>` usable, `DbTx` only from `sc_db`).
 
 ## Non-Goals
@@ -154,3 +156,4 @@ All methods take the resolved account id first (from 11's authentication), never
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
 | 1.1.0 | 2026-11-11 | `DownloadError::RangeNotSatisfiable` becomes `RangeNotSatisfiable { total_size: i64 }` so 11 can answer `Content-Range: bytes */<total>`; owner-approved; the only matching caller (11 `port_error`) and its tests updated, 03 does not construct it yet (AZ-3755) | owner-approved change |
 | 1.2.0 | 2026-11-14 | `EditedSince` removed from `CommitServiceError` and `EntryError` (commits never answer it: a stale base becomes a conflict copy, an unknown or foreign base is ignored; `commit_service.md`); 11 and 03 updated, `edited_since` stays a `delete_node` error | AZ-3738 |
+| 1.3.0 | 2026-11-14 | Vault membership (v1.2, additive): `NodeView::vault`, `LiveFile::vault`, `TreeServiceError::VaultBoundary` (409 `vault_boundary`), port `VaultRoots::claim_root` (joins 20's transaction), `UploadError::VaultFileTooLarge` and `CommitServiceError::VaultFileTooLarge` (413 `vault_file_too_large`, owner decision 2026-11-14); `PublishEntry::vault` is OR-ed with the target's membership by 02 | AZ-3927 |

@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c05 — `_docs/02_tasks/todo/B01-14_contracts_part3.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: other batches: E-10, E-13, E-14, E-16, E-18, E-21, E-22, E-30
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: draft (frozen when the producer task is accepted; `VaultService` stays a v1.2 proposal, 20 §1)
 **Last Updated**: 2026-11-14
 
@@ -53,7 +53,7 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 
 | Port | Method | Input -> Output | Errors |
 |---|---|---|---|
-| `ShareService` | `create` | `account, node_id, expires_in?, password?` -> `CreatedShare{id, token (plaintext, only here), url_path, expires_at, has_password}` | `TargetNotFound`, `TargetNotShareable`, `ExpiryOutOfRange` |
+| `ShareService` | `create` | `account, node_id, expires_in?, password?` -> `CreatedShare{id, token (plaintext, only here), url_path, expires_at, has_password}` | `TargetNotFound`, `TargetNotShareable` (a folder, and in v1.2 a file in a vault, read from 02's `LiveFile::vault`), `ExpiryOutOfRange` |
 | | `list` | `account, node_id?` -> `Vec<ShareInfo>` (no token) | none |
 | | `revoke` | `account, share_id` -> `()` (idempotent) | `NotFound` |
 | `PublicShareService` | `open` | `token, client_ip` -> `ShareOpen{Available{name, size, media_type, expires_at} \| PasswordRequired \| NotFound}` | `RateLimited{retry_after}` |
@@ -92,7 +92,7 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 
 | Port | Method | Input -> Output | Errors |
 |---|---|---|---|
-| `VaultService` | `create_vault` | `account, header: bytes, root_node_id` -> `(vault_id, ETag)` | `VaultExists`, `HeaderTooLarge`, `NotFound` |
+| `VaultService` | `create_vault` | `account, header: bytes, root_node_id` -> `(vault_id, ETag)`; one transaction: the `vaults` row, then 02's `VaultRoots::claim_root` (part 2) makes the root the vault's first member | `VaultExists`, `HeaderTooLarge`, `NotFound` |
 | | `get_header` | `account, vault_id` -> `VaultHeader{header, etag, root_node_id}` (root node id added 2026-11-13 for the GET route) | `NotFound` |
 | | `replace_header` | `account, vault_id, header, if_match: ETag` -> `ETag` | `NotFound`, `HeaderTooLarge`, `PreconditionFailed` |
 | | `report_unlock_failure` | `account, vault_id` -> `()` (best effort) | none |
@@ -143,3 +143,4 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 | 1.2.0 | 2026-11-13 | `DerivedBlob{blob, media_type}` returned by `DerivedOpener`; `open_derived_for` takes `account` (parent-approved, AZ-3844); `CreatedShare` `Debug` hides `url_path` | AZ-3844, AZ-3697 |
 | 1.3.0 | 2026-11-13 | `VaultHeader.root_node_id` (additive; `get_header` also returns the vault root; parent-approved, AZ-3923) | AZ-3923 |
 | 1.4.0 | 2026-11-14 | `BlobCatalog::get_uploading_plan` (additive, required; parent-approved, AZ-3736) so 03 can reopen an upload's writer after a restart | AZ-3736 |
+| 1.5.0 | 2026-11-14 | Vault membership (v1.2): `ShareService::create` refuses a file in a vault with `TargetNotShareable`; `create_vault` claims its root through 02's `VaultRoots` in its own transaction (no signature change) | AZ-3927 |

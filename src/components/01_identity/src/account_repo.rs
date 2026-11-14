@@ -26,6 +26,11 @@ const TOUCH_IDENTITY: &str = "UPDATE identities \
 
 const LOCK_STATE: &str = "SELECT state FROM accounts WHERE id = $1 FOR UPDATE";
 
+// The purger's claim: a second purger skips the row instead of waiting. `NO KEY UPDATE` leaves `FOR KEY SHARE`
+// free, which a foreign-key check of an insert referencing the account takes on another connection.
+const LOCK_DELETING: &str = "SELECT id FROM accounts WHERE id = $1 AND state = 'deleting' \
+    FOR NO KEY UPDATE SKIP LOCKED";
+
 const LOCK_ROLE_STATE: &str = "SELECT role, state FROM accounts WHERE id = $1 FOR UPDATE";
 
 const DELETE_IDENTITIES: &str = "DELETE FROM identities WHERE account_id = $1";
@@ -47,7 +52,8 @@ const LOCK_CONFLICT: [&str; 3] = ["40P01", "55P03", "40001"];
 
 const LIST: &str = "SELECT a.id, a.display_name, a.role, a.state, \
     (SELECT (extract(epoch FROM max(i.last_login_at)) * 1000000)::bigint FROM identities i \
-     WHERE i.account_id = a.id) \
+     WHERE i.account_id = a.id), \
+    (extract(epoch FROM a.deletion_requested_at) * 1000000)::bigint \
     FROM accounts a WHERE ($1::text IS NULL OR a.role = $1) AND ($2::text IS NULL OR a.state = $2) \
     ORDER BY a.created_at, a.id LIMIT $3 OFFSET $4";
 
@@ -74,9 +80,10 @@ pub(crate) struct ListedAccount {
     pub role: String,
     pub state: String,
     pub last_login_micros: Option<i64>,
+    pub deletion_requested_micros: Option<i64>,
 }
 
-type ListedTuple = (Uuid, String, String, String, Option<i64>);
+type ListedTuple = (Uuid, String, String, String, Option<i64>, Option<i64>);
 
 // The shared lock makes a concurrent `begin_deletion` (which takes the row for update) wait until this
 // transaction ends, and the state read under it cannot change before then.
@@ -180,6 +187,16 @@ pub(crate) async fn lock(tx: &mut DbTx, account: Uuid) -> Result<Option<String>,
         .bind(account)
         .fetch_optional(tx.conn())
         .await?)
+}
+
+/// Whether this transaction now holds the claim on the `deleting` row of `account`; `false` when another
+/// transaction holds it, the account is in another state or does not exist.
+pub(crate) async fn lock_deleting(tx: &mut DbTx, account: Uuid) -> Result<bool, DbError> {
+    Ok(sqlx::query_scalar::<_, Uuid>(LOCK_DELETING)
+        .bind(account)
+        .fetch_optional(tx.conn())
+        .await?
+        .is_some())
 }
 
 /// Takes the row lock of `account` and returns its `(role, state)`; `None` when it does not exist.
@@ -293,12 +310,15 @@ pub(crate) async fn list(
     Ok(rows
         .into_iter()
         .map(
-            |(id, display_name, role, state, last_login_micros)| ListedAccount {
-                id,
-                display_name,
-                role,
-                state,
-                last_login_micros,
+            |(id, display_name, role, state, last_login_micros, deletion_requested_micros)| {
+                ListedAccount {
+                    id,
+                    display_name,
+                    role,
+                    state,
+                    last_login_micros,
+                    deletion_requested_micros,
+                }
             },
         )
         .collect())

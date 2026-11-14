@@ -128,10 +128,11 @@ impl PgShareService {
             .map_err(SharingError::HashTask)?
     }
 
-    /// `TargetNotFound` for every gone case, `TargetNotShareable` for a folder.
+    /// `TargetNotFound` for every gone case, `TargetNotShareable` for a folder (a vault root included) and for a
+    /// file in a vault (v1.2, owner decision: no link sharing of vault files), read from 02's membership answer.
     async fn check_target(&self, account: Uuid, node_id: Uuid) -> Result<(), ShareError> {
         match self.tree.resolve_live_file(account, node_id).await {
-            Ok(LiveFileLookup::Found(file)) if file.kind == NodeKind::File => Ok(()),
+            Ok(LiveFileLookup::Found(file)) if file.kind == NodeKind::File && !file.vault => Ok(()),
             Ok(LiveFileLookup::Found(_)) => Err(ShareError::TargetNotShareable),
             Ok(LiveFileLookup::Gone) | Err(TreeReaderError::NotFound) => {
                 Err(ShareError::TargetNotFound)

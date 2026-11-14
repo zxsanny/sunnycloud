@@ -253,6 +253,7 @@ async fn derived_opener_double_separates_not_ready_from_not_found() {
         kind: NodeKind::File,
         revision: None,
         blob_ref: None,
+        vault: false,
     };
 
     // Act

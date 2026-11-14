@@ -71,4 +71,8 @@ impl AccountAdmin for DelayedAccounts {
     ) -> Result<(), AccountAdminError> {
         self.inner.finalize_deletion(tx, account).await
     }
+
+    async fn lock_deleting(&self, tx: &mut DbTx, account: Uuid) -> Result<bool, AccountAdminError> {
+        self.inner.lock_deleting(tx, account).await
+    }
 }

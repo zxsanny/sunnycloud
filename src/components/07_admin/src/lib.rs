@@ -18,6 +18,7 @@ mod error;
 mod health;
 mod last_admin;
 mod listing;
+mod purge_step;
 mod user_admin;
 
 pub use account_service::AccountServiceImpl;

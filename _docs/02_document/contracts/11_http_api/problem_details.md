@@ -3,7 +3,7 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c09 — `_docs/02_tasks/todo/B07-09_error_mapper.md` (statuses for `need_blocks`/`edited_since`/`batch_too_large` decided 2026-11-07, spike E-21/c02); keys assigned at Step 4
 **Consumer tasks**: E-23/c06 (typed error model and wire-code mapping), E-23/c07 (426 handling), E-26/c06 (SPA error mapping), E-20/c03 (`WorkerApi` status mapping), E-24 and E-27 through `sync-core`/`mobile_backup`, E-31 consumer framework; every E-21 handler task (c04..c17) produces errors through it; resolved at Step 4
-**Version**: 1.0.5
+**Version**: 1.0.6
 **Status**: draft (G-11-1 and batch-too-large decided 2026-11-07)
 **Last Updated**: 2026-11-11
 
@@ -56,6 +56,9 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 | block PUT without `Content-Length` | 411 | 11 |
 | declared body over the route class (including a `POST /commits:batch` body over the 4 MiB `Batch` class) | 413 `size_too_large` | 11 |
 | `need_blocks`, `edited_since` | 409 (412 is reserved for `If-Match` header preconditions) | 03, 02 (G-11-1) |
+| v1.2: an upload start, commit or batch entry of a file in a vault above `max_vault_file_bytes` | 413 `vault_file_too_large` (owner decision 2026-11-14) | 03, 20 (E-30/c01) |
+| v1.2: a move into, out of or between vaults | 409 `vault_boundary` | 02, 20 (E-30/c01) |
+| v1.2: a share of a file in a vault or of a vault root | 422 `target_not_shareable` | 06, 20 (E-30/c01) |
 | more entries than `batch_max_entries` | 422 `batch_too_large`, produced by the commit service, not by this layer | 03 |
 | client below the minimum version | 426 `upgrade_required` | 11 |
 | worker route with no credential, a user or device credential, or a wrong secret | 403 `forbidden`, one body for every cause | 08, 11 (AC-79) |
@@ -126,3 +129,4 @@ Sources: `components/11_http_api/description.md` §6; `common-helpers/02_helper_
 | 1.0.3 | 2026-11-11 | Share and media answers (403 for a device on owner share routes, the two thumbnail 404 codes, 422 for `thumbnail-states`; the password row names the wrong password) added to the fixed rules | AZ-3830 |
 | 1.0.4 | 2026-11-11 | Tree, transfer and feed answers (400 for a request that does not bind, 422 `invalid_cursor` for a cursor that is not `E.S`, 411 for a staged PUT of unknown length, the hold cap) added to the fixed rules | AZ-3829 |
 | 1.0.5 | 2026-11-11 | Identity, account and admin answers added to the fixed rules: the four RFC 8628 poll codes (400, own `code` and `error`), an invalid mobile code (400), the callback redirects, 403 for a device token on session-only routes, `last_admin` 409, unknown admin targets 404; open point 3 narrowed | AZ-3828 |
+| 1.0.6 | 2026-11-14 | v1.2 vault answers: 413 `vault_file_too_large`, 409 `vault_boundary` (new `sc_error` codes), 422 `target_not_shareable` for vault files | AZ-3927 |

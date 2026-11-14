@@ -27,7 +27,8 @@ pub enum EffectError {
     Batch(ErrorCode),
 }
 
-/// The entry as published; `account_id` is not part of it (read it from the `CommitActor`).
+/// The entry as published; `account_id` is not part of it (read it from the `CommitActor`). `vault` is set by 02:
+/// the entry's own flag or the target's vault membership.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishedEntry {
     pub node_id: Uuid,

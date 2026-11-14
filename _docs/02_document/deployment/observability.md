@@ -110,7 +110,7 @@ A run's summary (verified, mismatched and missing counts, duration) is also writ
 | `gc_orphans_swept_total` | counter | 48 h orphan sweep |
 | `tombstones_purged_total` | counter | 90-day horizon |
 | `upload_sessions_expired_total` | counter | 24 h sessions |
-| `account_deletions_total`, `account_deletion_duration_seconds` | counter, histogram | AC-27 (15 min) |
+| `account_deletion_seconds` | histogram | AC-27 (15 min): request to finalize, recorded by 07's purger; its `_count` is the number of finished deletions |
 
 ### Authentication and abuse
 

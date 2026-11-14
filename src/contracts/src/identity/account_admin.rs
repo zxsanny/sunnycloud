@@ -46,6 +46,12 @@ pub trait AccountAdmin: Send + Sync {
 
     async fn begin_deletion(&self, tx: &mut DbTx, account: Uuid) -> Result<(), AccountAdminError>;
 
+    /// The purger's per-step claim: takes the `deleting` account row with `FOR NO KEY UPDATE SKIP LOCKED` until
+    /// the caller's transaction ends. `false` when the row is held by another transaction or the account is not
+    /// `deleting` (or gone); the caller then skips the step. The lock mode leaves `FOR KEY SHARE` free, so an
+    /// erase hook on its own connection can still insert a row that references the account.
+    async fn lock_deleting(&self, tx: &mut DbTx, account: Uuid) -> Result<bool, AccountAdminError>;
+
     /// Called by 07 only after every lifecycle hook reports nothing remaining.
     async fn finalize_deletion(
         &self,

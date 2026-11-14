@@ -18,7 +18,7 @@ use sc_error::ErrorCode;
 use sc_observability::log_error;
 use uuid::Uuid;
 
-use crate::session_repo;
+use crate::{session_repo, vault_limit};
 
 /// The one large upload a `commit_upload` call publishes.
 pub(crate) struct BlobCommitEffect {
@@ -31,6 +31,7 @@ pub(crate) struct BlobCommitEffect {
     pub revision_id: Uuid,
     /// Commit time + `upload_session_ttl`: how long the committed key stays findable.
     pub record_expires_at: Timestamp,
+    pub max_vault_file_bytes: u64,
 }
 
 /// The entry failure that `commit_upload` answers as `UploadNotFound`.
@@ -84,6 +85,7 @@ impl CommitEffect for BlobCommitEffect {
     }
 
     async fn on_entry(&self, tx: &mut DbTx, entry: &PublishedEntry) -> Result<(), EffectError> {
+        vault_limit::check_entry(entry, self.max_vault_file_bytes)?;
         match self.settle(tx, entry).await {
             Ok(()) => Ok(()),
             Err(Failure::Gone) => Err(EffectError::Entry(SESSION_GONE)),

@@ -3,7 +3,7 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c16 — `_docs/02_tasks/todo/AZ-3762_transfer_docs.md`
 **Consumer tasks**: E-23 (desktop), E-26 (web), E-27 (Android), later iOS; E-21/c11 and E-21/c13 (OpenAPI and handlers in 11); operators of a v1.0 installation
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (frozen when the producer task passes review)
 **Last Updated**: 2026-11-14
 
@@ -21,6 +21,7 @@ One row per `TransferError` variant, each code once. The comparison with the err
 | `quota_exceeded` | 507 | start, staged | The declared size does not fit the account's free quota (reserved bytes count) | Do not retry on a timer. Tell the user; retry only after the quota changed (files deleted, quota raised) |
 | `free_space_floor` | 507 | start, block, staged | The server volume is below its free-space floor (also a full volume on a block write) | Do not retry on a timer. Report a server-side condition; retry later, after the operator freed space |
 | `size_too_large` | 413 | start | The declared size is above `max_declared_size` (50 GiB) | Never retry; the file cannot be uploaded |
+| `vault_file_too_large` | 413 | start, commit, batch entry | v1.2: the target folder is in a vault and the file is above `max_vault_file_bytes` (100 MiB by default); refused at start from the declared size before any block is sent, and at commit for a vault target the start did not name. Outside a vault the limit does not apply | Never retry the same file into the vault; tell the user the vault limit. The session of a refused commit stays open: commit it outside the vault or abort it |
 | `session_cap_exceeded` | 409 | start | The account already has `max_open_sessions` (8) open large uploads | Finish or abort an open session (`DELETE /api/v1/uploads/{upload_id}`), then start again |
 | `staged_cap_reached` | 409 | staged | The account holds `max_staged` (1000) staged files not yet committed | Commit the staged files (`POST /api/v1/commits:batch`), then stage more; keep at most half the cap staged per client |
 | `commit_id_reused` | 422 | batch | The `commit_id` arrived before with a different request (entries, order or any field) | A client bug: a persisted batch is resent unchanged. Never change entries under a `commit_id`; failed entries go into a new batch with a new `commit_id` |
@@ -95,13 +96,13 @@ The codes each transfer route can return, from the contracts, compared with the 
 
 | Route | Codes from the contracts | Missing from the registry list (E-21) |
 |---|---|---|
-| `POST /api/v1/uploads` | `invalid_name`, `parent_not_found`, `not_a_folder`, `size_too_large`, `quota_exceeded`, `session_cap_exceeded`, `free_space_floor`, `account_not_active` | none (`ClientKeyMismatch` has no wire code: see Open items) |
+| `POST /api/v1/uploads` | `invalid_name`, `parent_not_found`, `not_a_folder`, `size_too_large`, `vault_file_too_large` (v1.2), `quota_exceeded`, `session_cap_exceeded`, `free_space_floor`, `account_not_active` | none (`ClientKeyMismatch` has no wire code: see Open items) |
 | `GET /api/v1/uploads/{upload_id}` | `upload_session_gone` | none |
 | `DELETE /api/v1/uploads/{upload_id}` | `upload_session_gone`, `account_not_active` | `account_not_active` |
 | `PUT /api/v1/uploads/{upload_id}/blocks/{index}` | `upload_session_gone`, `invalid_request` (index), `length_required`, `block_length_mismatch`, `block_hash_mismatch`, `block_conflict`, `overloaded`, `free_space_floor`, `account_not_active` (checkpoint) | `invalid_request`, `account_not_active` |
 | `PUT /api/v1/staged-uploads/{staged_key}` | `quota_exceeded`, `staged_cap_reached`, `block_hash_mismatch`, `block_length_mismatch`, `length_required`, `free_space_floor`, `overloaded`, `account_not_active` | none (`ClientKeyMismatch`: see Open items) |
-| `POST /api/v1/commits` | `need_blocks`, `blocklist_mismatch`, `upload_session_gone`, `invalid_name`, `parent_deleted`, `parent_not_found`, `not_a_folder`, `account_not_active` | none |
-| `POST /api/v1/commits:batch` | `batch_too_large`, `commit_id_reused`, `account_not_active`; per entry in the 200 body: `invalid_name`, `parent_deleted`, `parent_not_found`, `not_a_folder`, `blocklist_mismatch`, `upload_session_gone`, and the code a failed effect carries (`not_found` when the base revision's node vanished, `internal`) | none |
+| `POST /api/v1/commits` | `need_blocks`, `blocklist_mismatch`, `upload_session_gone`, `invalid_name`, `parent_deleted`, `parent_not_found`, `not_a_folder`, `vault_file_too_large` (v1.2), `account_not_active` | none |
+| `POST /api/v1/commits:batch` | `batch_too_large`, `commit_id_reused`, `account_not_active`; per entry in the 200 body: `invalid_name`, `parent_deleted`, `parent_not_found`, `not_a_folder`, `blocklist_mismatch`, `upload_session_gone`, and the code a failed effect carries (`not_found` when the base revision's node vanished, `vault_file_too_large` in v1.2, `internal`) | none |
 | `GET|HEAD /api/v1/nodes/{node_id}/content`, `/api/v1/revisions/{revision_id}/content` | `invalid_request`, `not_found`, `range_not_satisfiable`, `content_unavailable` | none |
 
 Every status in the registry comes from the same `sc_error` table as the catalogue, so a listed code always carries the catalogue's status.
@@ -118,3 +119,4 @@ Every status in the registry comes from the same `sc_error` table as the catalog
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-14 | Initial: catalogue of the 20 transfer codes, client retry rules, one-process note, codes per route | AZ-3762 |
+| 1.1.0 | 2026-11-14 | v1.2 `vault_file_too_large` (413; start, commit, batch entry; owner decision 2026-11-14) | AZ-3927 |

@@ -91,6 +91,7 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 **Expected result**: `erase_batch` is never called with limit above 50; hook N+1 is first called only after hook N reported 0; `finalize_deletion` runs once, last; afterwards the harness table sweep (every table with an `account_id` column from `information_schema`, plus `identities`, `sessions`, `device_tokens`, `device_grants`, `login_codes`, `accounts`) counts 0 rows for the account; `blob_gc` holds the account's blobs with `Due::Now`; after 04's GC runs, 0 blob files remain for it; audit `account_deleted` written once; other accounts' row counts unchanged.
 **Max execution time**: 30 s (deadline config)
 **Dependencies**: all hook owners, 04 GC
+**Implemented (AZ-3820)**: `07_admin/tests/purger/drain.rs` with the real hooks 06, 02, 03, 05, 07a (08 and 20 are outside AZ-3820: no media rows, no vault); 04's GC runs between purger cycles; the self-deadlock check (a hook inserting a row that references the account on its own connection while the purger holds `lock_deleting`) and its control (the same insert waits under `FOR UPDATE`) are in the same file.
 
 ### IT-07-10: Resume after a failed batch at each hook position
 **Summary**: a batch failure at any step is logged and retried; the purge finishes without manual action.
@@ -99,11 +100,12 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 **Expected result**: failure logged at ERROR with account id and hook position (no row data); next `run_cycle` continues from the remaining data (no duplicate `erase_batch` effects, no error from already-deleted rows); final sweep 0 rows in each round; no second `account_deleted` audit row; account remains `deleting` until the last step.
 **Max execution time**: 60 s total
 **Dependencies**: all hook owners
+**Implemented (AZ-3820)**: `07_admin/tests/purger_logs/resume.rs`, positions 0 to 4 (06, 02, 03, 05, 07a) and `finalize_deletion` (logged as `finalize (position 5)`), plus the dropped-cycle round; the ERROR lines are read from a capturing JSON subscriber.
 
 ### IT-07-11: Cycle time budget and batch bound
 **Summary**: a cycle stops at its time budget and the next cycle resumes; no batch exceeds the configured size.
 **Traces to**: AC-27
-**Input data**: account with 5,000 files, `account_delete_batch_size=50`, cycle budget 300 ms (config), hook decorator recording batch sizes and transaction durations.
+**Input data**: account with 5,000 files, `account_delete_batch_size=50`, cycle budget 300 ms (`account_delete_cycle_budget`), hook decorator recording batch sizes and transaction durations.
 **Expected result**: more than 1 cycle needed; each `erase_batch` call with limit 50; no single transaction open longer than 1 s (measured by `pg_stat_activity` sampling every 50 ms: no `xact_start` older than 1 s attributable to the purger); end state same as IT-07-9.
 **Max execution time**: 60 s
 **Dependencies**: 02, 03, 04
@@ -112,7 +114,7 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 **Summary**: two `run_cycle` calls on the same account in parallel end in the same clean state.
 **Traces to**: AC-27
 **Input data**: account with 2,000 files; two purger instances (as two API processes would be during a rolling restart) call `run_cycle` in a loop on separate connections.
-**Expected result**: final sweep 0 rows; zero unhandled errors (a lost race is a retried tick); exactly one `account_deleted` audit event. Rule (resolved 2026-11-07, G-07-2): each purger step takes a per-step `FOR UPDATE SKIP LOCKED` claim on the `deleting` account row through `AccountAdmin::lock_deleting(tx, account)`; a purger that gets `false` skips the step, and two purgers alternating steps on one account is harmless because the hooks are restart-safe by query alone.
+**Expected result**: final sweep 0 rows; zero unhandled errors (a lost race is a retried tick); exactly one `account_deleted` audit event. Rule (resolved 2026-11-07, G-07-2; lock mode owner decision 2026-11-14): each purger step takes a per-step `FOR NO KEY UPDATE SKIP LOCKED` claim on the `deleting` account row through `AccountAdmin::lock_deleting(tx, account)`; a purger that gets `false` skips the step, and two purgers alternating steps on one account is harmless because the hooks are restart-safe by query alone.
 **Max execution time**: 60 s
 **Dependencies**: all hook owners
 
@@ -120,7 +122,7 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 **Summary**: `run_cycle` with no `deleting` account does no writes.
 **Traces to**: AC-27
 **Input data**: stack with 20 active accounts; 100 consecutive `run_cycle(now)` calls; `name()` queried.
-**Expected result**: `name()` is a stable non-empty string; `pg_stat_user_tables` insert/update/delete deltas are 0 for all tables; each cycle returns in under 100 ms.
+**Expected result**: `name()` is a stable non-empty string; no INSERT, UPDATE or DELETE is run (read from sqlx's statement log of the test thread, `07_admin/tests/purger_idle.rs`: `pg_stat_user_tables` counters reach the server only after the backends' stats flush, so their deltas are not reliable within a test); each cycle returns in under 100 ms.
 **Max execution time**: 10 s
 **Dependencies**: PostgreSQL
 
@@ -278,5 +280,5 @@ Sys scenario FT-P-19 / NFT-RES-30 repeat this with the full client set; this tes
 ## Spec gaps found
 
 - G-07-1: the late-registration method that gives `DeletionPurger` its hook list is not named in the description (only "registered late by 12"). Tests use the seam 12 uses; name needed from the contracts crate.
-- G-07-2 (resolved 2026-11-07): concurrent `run_cycle` calls on one account are kept apart by a per-step `FOR UPDATE SKIP LOCKED` claim through the proposed `AccountAdmin::lock_deleting`; IT-07-12 states the rule, nothing is assumed.
+- G-07-2 (resolved 2026-11-07): concurrent `run_cycle` calls on one account are kept apart by a per-step `FOR NO KEY UPDATE SKIP LOCKED` claim through `AccountAdmin::lock_deleting` (lock mode owner decision 2026-11-14, AZ-3820); IT-07-12 states the rule, nothing is assumed.
 - G-07-3: the HTTP code for `LastAdmin` is not in 11's error table (AT-07-2 step 1 accepts the 409/422 class); one fixed code is needed.

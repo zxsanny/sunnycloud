@@ -66,6 +66,14 @@ impl AccountAdmin for AccountAdminDouble {
     ) -> Result<(), AccountAdminError> {
         Err(AccountAdminError::Unexpected(NOT_CALLED.into()))
     }
+
+    async fn lock_deleting(
+        &self,
+        _tx: &mut DbTx,
+        _account: Uuid,
+    ) -> Result<bool, AccountAdminError> {
+        Err(AccountAdminError::Unexpected(NOT_CALLED.into()))
+    }
 }
 
 pub struct QuotaAdminDouble;

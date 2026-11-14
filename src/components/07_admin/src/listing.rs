@@ -50,6 +50,7 @@ mod tests {
             role: Role::User,
             state: AccountStatus::Active,
             last_login: None,
+            deletion_requested_at: None,
         }
     }
 

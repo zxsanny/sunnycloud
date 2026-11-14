@@ -30,7 +30,7 @@ use uuid::Uuid;
 
 use crate::batch_response::{assemble, encode};
 use crate::commit_effect::SESSION_GONE;
-use crate::{receipt_repo, session_repo};
+use crate::{receipt_repo, session_repo, vault_limit};
 
 pub(crate) struct ReceiptEffect {
     pub account: Uuid,
@@ -99,6 +99,7 @@ pub(crate) struct StagedCommitEffect {
     pub plans: Vec<StagedPlan>,
     /// Planned revision id -> index into `plans`.
     pub by_revision: HashMap<Uuid, usize>,
+    pub max_vault_file_bytes: u64,
 }
 
 impl StagedCommitEffect {
@@ -106,6 +107,7 @@ impl StagedCommitEffect {
         registry: Arc<dyn BlobRegistry>,
         account: Uuid,
         plans: Vec<StagedPlan>,
+        max_vault_file_bytes: u64,
     ) -> Self {
         let by_revision = plans
             .iter()
@@ -117,6 +119,7 @@ impl StagedCommitEffect {
             account,
             plans,
             by_revision,
+            max_vault_file_bytes,
         }
     }
 
@@ -169,6 +172,7 @@ impl CommitEffect for StagedCommitEffect {
     }
 
     async fn on_entry(&self, tx: &mut DbTx, entry: &PublishedEntry) -> Result<(), EffectError> {
+        vault_limit::check_entry(entry, self.max_vault_file_bytes)?;
         match self.settle(tx, entry).await {
             Ok(()) => Ok(()),
             Err(Failure::Gone) => Err(EffectError::Entry(SESSION_GONE)),

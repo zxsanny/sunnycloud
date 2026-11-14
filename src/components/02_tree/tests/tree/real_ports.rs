@@ -47,9 +47,10 @@ pub enum Fault {
 }
 
 /// The effect the composition root may append after 03's own (`UploadPorts::commit_effects`), here to inject a
-/// failure after the real 03 and 08 effects ran. It runs no statement.
+/// failure after the real 03 and 08 effects ran, and to record the `(revision, vault)` of every entry it is
+/// handed (AZ-3927). It runs no statement.
 #[derive(Default)]
-pub struct Faults(Mutex<Option<Fault>>);
+pub struct Faults(Mutex<Option<Fault>>, Mutex<Vec<(Uuid, bool)>>);
 
 impl Faults {
     pub fn set(&self, fault: Option<Fault>) {
@@ -58,6 +59,14 @@ impl Faults {
 
     fn current(&self) -> Option<Fault> {
         *self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The `vault` flag of each entry an `on_entry` call carried, by revision, in call order.
+    pub fn seen(&self) -> Vec<(Uuid, bool)> {
+        self.1
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 
@@ -68,6 +77,10 @@ impl CommitEffect for Faults {
     }
 
     async fn on_entry(&self, _tx: &mut DbTx, entry: &PublishedEntry) -> Result<(), EffectError> {
+        self.1
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((entry.revision_id, entry.vault));
         match self.current() {
             Some(Fault::Entry(hash)) if hash == entry.content_hash => {
                 Err(EffectError::Entry(ErrorCode::UploadSessionGone))

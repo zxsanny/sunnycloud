@@ -47,14 +47,16 @@ impl From<DbError> for EntryError {
 }
 
 /// A published entry before the effects see it: its outcome, node, revision, the revision of the file that
-/// counted in usage before it (`crate::publish_usage`), and the ancestors a revival brought back (touched besides
-/// the outcome's own nodes).
+/// counted in usage before it (`crate::publish_usage`), the ancestors a revival brought back (touched besides
+/// the outcome's own nodes) and whether the node is in a vault (its `vault_id`, read from the row the entry
+/// locked: the file, or a new file's parent).
 pub(crate) struct Written {
     pub outcome: PublishOutcome,
     pub node_id: Uuid,
     pub revision_id: Uuid,
     pub counted: Option<CurrentContent>,
     pub revived: Vec<Uuid>,
+    pub vault: bool,
 }
 
 /// What every step of one entry needs: the account, the entry, the inputs of conflict-copy names and the commit
@@ -190,7 +192,7 @@ impl PgTreeService {
             media_type: entry.revision.media_type.clone(),
             size: entry.revision.size,
             import_hint: entry.revision.import_hint,
-            vault: entry.vault,
+            vault: entry.vault || written.vault,
         };
         for effect in effects {
             effect
@@ -220,7 +222,9 @@ impl PgTreeService {
     }
 
     /// `Created`, or `CreatedAsCopy` under a conflict-copy name when the name is taken: never a name conflict.
-    /// The parent row is locked `FOR SHARE`, so nothing is added under a folder whose tombstone committed first.
+    /// The parent row is locked `FOR SHARE`, so nothing is added under a folder whose tombstone committed first,
+    /// and the file copies the parent's vault as read under that lock: a vault created on the parent meanwhile
+    /// (`crate::vault_root`) either saw nothing or committed first.
     async fn create_file(
         &self,
         tx: &mut DbTx,
@@ -231,20 +235,22 @@ impl PgTreeService {
         let (account, entry, now) = (at.account, at.entry, at.now);
         let name = validate_name(name)
             .map_err(|reason| EntryError::Failed(EntryFailure::NameInvalid(reason.to_string())))?;
-        let failure = match node_repo::lock_for_share(tx, account, parent_id).await? {
-            None => Some(EntryFailure::ParentNotFound),
-            Some(parent) if parent.kind != NodeKind::Folder => Some(EntryFailure::NotAFolder),
-            Some(parent) if parent.deleted => Some(EntryFailure::ParentDeleted),
-            Some(_) => None,
+        let vault_id = match node_repo::lock_for_share(tx, account, parent_id).await? {
+            None => return Err(EntryError::Failed(EntryFailure::ParentNotFound)),
+            Some(parent) if parent.kind != NodeKind::Folder => {
+                return Err(EntryError::Failed(EntryFailure::NotAFolder));
+            }
+            Some(parent) if parent.deleted => {
+                return Err(EntryError::Failed(EntryFailure::ParentDeleted));
+            }
+            Some(parent) => parent.vault_id,
         };
-        if let Some(failure) = failure {
-            return Err(EntryError::Failed(failure));
-        }
         let key = name_key(&name);
         let file = NewFile {
             id: new_id(self.clock.as_ref()),
             account,
             parent_id,
+            vault_id,
             name: name.as_str(),
             name_key: key.as_str(),
             revision_id: entry.revision.revision_id,
@@ -263,6 +269,7 @@ impl PgTreeService {
             revision_id: entry.revision.revision_id,
             counted: None,
             revived: Vec::new(),
+            vault: vault_id.is_some(),
         })
     }
 
@@ -297,6 +304,7 @@ impl PgTreeService {
                 revision_id: existing_revision,
                 counted: None,
                 revived: Vec::new(),
+                vault: file.vault_id.is_some(),
             });
         }
         // A live file always has a current revision; without one there is nothing a stale base could supersede.
@@ -317,6 +325,7 @@ impl PgTreeService {
             revision_id: entry.revision.revision_id,
             counted: file.counted().copied(),
             revived: Vec::new(),
+            vault: file.vault_id.is_some(),
         })
     }
 }

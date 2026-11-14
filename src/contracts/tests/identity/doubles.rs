@@ -336,4 +336,13 @@ impl AccountAdmin for Double {
         self.0.record("finalize_deletion");
         Ok(())
     }
+
+    async fn lock_deleting(
+        &self,
+        _tx: &mut DbTx,
+        _account: Uuid,
+    ) -> Result<bool, AccountAdminError> {
+        self.0.record("lock_deleting");
+        Ok(true)
+    }
 }

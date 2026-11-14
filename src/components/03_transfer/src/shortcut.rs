@@ -9,17 +9,17 @@ use sc_ids::FileHash;
 use sc_names::ValidName;
 use uuid::Uuid;
 
-/// A live folder of the account. A tombstoned parent, or one under a tombstoned ancestor, is not found: the
-/// port has no `ParentDeleted`.
+/// A live folder of the account; `true` when it is in a vault (02's membership answer, E-30/c01). A tombstoned
+/// parent, or one under a tombstoned ancestor, is not found: the port has no `ParentDeleted`.
 pub(crate) async fn check_parent(
     tree: &dyn TreeReader,
     account: Uuid,
     parent_id: Uuid,
-) -> Result<(), UploadError> {
+) -> Result<bool, UploadError> {
     match tree.get_node(account, NodeSelector::Id(parent_id)).await {
         Ok(node) if node.state == NodeState::Tombstone => Err(UploadError::ParentNotFound),
         Ok(node) if node.kind != NodeKind::Folder => Err(UploadError::NotAFolder),
-        Ok(_) => Ok(()),
+        Ok(node) => Ok(node.vault),
         Err(TreeReaderError::NotFound) => Err(UploadError::ParentNotFound),
         Err(other) => Err(tree_fault(other)),
     }

@@ -56,6 +56,7 @@ const UPDATE_ERRORS: &[ErrorCode] = &[
     ErrorCode::InvalidName,
     ErrorCode::NameConflict,
     ErrorCode::Cycle,
+    ErrorCode::VaultBoundary,
     ErrorCode::ParentDeleted,
     ErrorCode::NotAFolder,
     ErrorCode::NotFound,

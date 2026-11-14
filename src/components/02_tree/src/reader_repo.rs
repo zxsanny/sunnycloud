@@ -17,6 +17,7 @@ pub(crate) struct LiveFileRow {
     pub kind: NodeKind,
     pub deleted: bool,
     pub revision: Option<(RevisionView, Uuid)>,
+    pub vault: bool,
 }
 
 /// One page of live children in `name_key` order, each with its key (the cursor of the next page).
@@ -37,7 +38,7 @@ const CHILD_BY_KEY: &str = "SELECT id, deleted_at IS NOT NULL FROM nodes \
 
 const LIVE_FILE: &str = "SELECT n.parent_id, n.kind, n.deleted_at IS NOT NULL, r.id, r.size, r.content_hash, \
     r.media_type, (extract(epoch FROM r.client_mtime) * 1000000)::bigint, r.client_meta::text, \
-    (extract(epoch FROM r.created_at) * 1000000)::bigint, r.blob_id \
+    (extract(epoch FROM r.created_at) * 1000000)::bigint, r.blob_id, n.vault_id IS NOT NULL \
     FROM nodes n LEFT JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id \
     WHERE n.id = $1 AND n.account_id = $2";
 
@@ -50,7 +51,8 @@ pub const LISTING_PAGE_SQL: &str = "SELECT n.parent_id, n.kind, n.name, n.delete
     n.current_revision_id, r.size, r.content_hash, r.media_type, \
     (extract(epoch FROM r.client_mtime) * 1000000)::bigint, \
     (extract(epoch FROM n.created_at) * 1000000)::bigint, \
-    (extract(epoch FROM n.updated_at) * 1000000)::bigint, n.seq, n.id, n.name_key \
+    (extract(epoch FROM n.updated_at) * 1000000)::bigint, n.seq, n.id, n.name_key, \
+    n.vault_id IS NOT NULL AS in_vault \
     FROM nodes n LEFT JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id \
     WHERE n.parent_id = $1 AND n.account_id = $2 AND n.deleted_at IS NULL \
     AND n.name_key > COALESCE($3, '') \
@@ -136,6 +138,7 @@ pub(crate) async fn live_file(
         kind: kind(&row, 1)?,
         deleted: row.try_get(2)?,
         revision,
+        vault: row.try_get(11)?,
     }))
 }
 

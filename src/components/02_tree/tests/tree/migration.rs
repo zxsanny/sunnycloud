@@ -9,7 +9,7 @@ use crate::support::{API, Fixture, refusal};
 const TREE_VERSION: i64 = 20_261_106_130_000;
 const PERMISSION_DENIED: &str = "42501";
 
-const NODE_INDEXES: [&str; 8] = [
+const NODE_INDEXES: [&str; 9] = [
     "nodes_cascade_idx",
     "nodes_feed_idx", // owned by 05 sync_feed, added by its migration
     "nodes_id_account_id_key",
@@ -18,6 +18,7 @@ const NODE_INDEXES: [&str; 8] = [
     "nodes_pkey",
     "nodes_root_key",
     "nodes_tombstone_idx",
+    "nodes_vault_idx", // vault membership (AZ-3927)
 ];
 const REVISION_INDEXES: [&str; 6] = [
     "revisions_account_id_content_hash_idx",
@@ -133,6 +134,7 @@ async fn every_index_of_the_specification_exists() {
         index_definition(&mut conn, "nodes_tombstone_idx").await,
         index_definition(&mut conn, "nodes_cascade_idx").await,
         index_definition(&mut conn, "revisions_client_device_idx").await,
+        index_definition(&mut conn, "nodes_vault_idx").await,
     ];
 
     // Assert
@@ -147,6 +149,7 @@ async fn every_index_of_the_specification_exists() {
     assert!(defs[3].contains("WHERE cascade_pending"));
     assert!(defs[4].contains("((client_meta ->> 'device'::text))"));
     assert!(defs[4].contains("WHERE (client_meta IS NOT NULL)"));
+    assert!(defs[5].contains("(vault_id) WHERE (vault_id IS NOT NULL)"));
     conn.close().await.expect("close fixture connection");
     fixture.finish().await;
 }
@@ -168,6 +171,7 @@ async fn every_constraint_of_the_specification_exists() {
         "nodes_name_size_check",
         "nodes_parent_id_account_id_fkey",
         "nodes_pkey",
+        "nodes_vault_id_account_id_fkey",
     ];
     let expected_revisions = [
         "revisions_blob_id_account_id_fkey",
@@ -186,7 +190,8 @@ async fn every_constraint_of_the_specification_exists() {
     let revisions = constraint_names(&mut conn, "revisions").await;
     let deferred: Vec<(String, bool, bool, String)> = sqlx::query_as(
         "SELECT conname::text, condeferrable, condeferred, confdeltype::text FROM pg_constraint \
-         WHERE conname IN ('nodes_current_revision_id_account_id_fkey', 'revisions_blob_id_account_id_fkey') \
+         WHERE conname IN ('nodes_current_revision_id_account_id_fkey', 'nodes_vault_id_account_id_fkey', \
+         'revisions_blob_id_account_id_fkey') \
          ORDER BY conname",
     )
     .fetch_all(&mut conn)
@@ -203,6 +208,12 @@ async fn every_constraint_of_the_specification_exists() {
                 "nodes_current_revision_id_account_id_fkey".to_owned(),
                 true,
                 true,
+                "n".to_owned()
+            ),
+            (
+                "nodes_vault_id_account_id_fkey".to_owned(),
+                false,
+                false,
                 "n".to_owned()
             ),
             (

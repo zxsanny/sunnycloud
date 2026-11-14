@@ -32,6 +32,7 @@ mod retry;
 mod revision_repo;
 mod service;
 mod service_queries;
+mod vault_root;
 
 pub use config::{DEFAULT_MAINTENANCE_INTERVAL, DEFAULT_PURGE_BATCH_SIZE, TreeConfig};
 pub use error::TreeError;

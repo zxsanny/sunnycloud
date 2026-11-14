@@ -23,7 +23,7 @@
 | `create` | account, node id, `expires_in?` (default `share_default_ttl`), `password?` | `CreatedShare{id, token (plaintext, only here), url_path, expires_at, has_password}` | `TargetNotFound` (`Gone`: other accounts' ids, tombstoned, purged), `TargetNotShareable` (`LiveFile.kind = Folder`), `ExpiryOutOfRange` |
 | `list` | account, optional node id | `[ShareInfo]` (no token) | none |
 | `revoke` | account, share id | `()` idempotent | `NotFound` |
-Scope for all: `SessionOnly` (device tokens get 403, AC-57). Share links target files only in v1.0 (decision 15); the schema would allow folders, `create` refuses them with `TargetNotShareable` (a folder is told apart from a gone node by `kind`, not by the error of a lookup). Vault files cannot be link-shared in v1.2 either (`TargetNotShareable`; how 06 learns a file is a vault file is defined with 20).
+Scope for all: `SessionOnly` (device tokens get 403, AC-57). Share links target files only in v1.0 (decision 15); the schema would allow folders, `create` refuses them with `TargetNotShareable` (a folder is told apart from a gone node by `kind`, not by the error of a lookup). Vault files cannot be link-shared in v1.2 either (`TargetNotShareable`): `create` reads `LiveFile.vault` from 02's `resolve_live_file` (the node's `vault_id`, E-30/c01, AZ-3927); 06 never calls 20. The vault root is a folder and is refused as one.
 
 ### PublicShareService (visitor side, no account)
 | Method | Input | Output | Errors / outcomes |

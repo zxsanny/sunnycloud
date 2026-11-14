@@ -24,8 +24,9 @@ sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", 
 uuid = { workspace = true }
 
 [dev-dependencies]
-# The real 02 reader, folder creation, delete and tombstone purge, with the 07a ledger and 04 GC queue the tree
-# needs (component dev-dependencies, ADR-015; AZ-3923 AC-3 and AC-8).
+# The real 02 `PgTreeService` (the `VaultRoots` of `create_vault`, AZ-3927), folder creation, delete and tombstone
+# purge, with the 07a ledger and 04 GC queue the tree needs (component dev-dependencies, ADR-015; AZ-3923 AC-3
+# and AC-8).
 sunnycloud-tree = { path = "../02_tree" }
 sunnycloud-quota = { path = "../07a_quota" }
 sunnycloud-blobstore = { path = "../04_blobstore" }

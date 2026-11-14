@@ -200,6 +200,7 @@ mod tests {
             updated_at: NOW,
             seq: 1,
             thumb_state: ThumbState::None,
+            vault: false,
         }
     }
 
@@ -208,6 +209,7 @@ mod tests {
             kind,
             revision: (kind == NodeKind::File).then(|| revision(size)),
             blob_ref: None,
+            vault: false,
         })
     }
 

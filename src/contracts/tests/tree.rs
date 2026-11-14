@@ -42,6 +42,7 @@ fn node(kind: NodeKind) -> NodeView {
         updated_at: NOW,
         seq: 1,
         thumb_state: ThumbState::None,
+        vault: false,
     }
 }
 
@@ -157,6 +158,7 @@ impl TreeReader for Double {
             kind: NodeKind::Folder,
             revision: None,
             blob_ref: None,
+            vault: false,
         }))
     }
 
@@ -420,6 +422,7 @@ fn a_file_lookup_carries_the_revision_and_the_blob_id() {
         kind: NodeKind::File,
         revision: Some(revision()),
         blob_ref: Some(Uuid::from_u128(5)),
+        vault: false,
     };
 
     assert_eq!(classify(&LiveFileLookup::Found(live)), "file");

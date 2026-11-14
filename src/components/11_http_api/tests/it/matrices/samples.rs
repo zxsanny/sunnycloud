@@ -36,6 +36,7 @@ fn node() -> NodeView {
         updated_at: WHEN,
         seq: 1,
         thumb_state: ThumbState::None,
+        vault: false,
     }
 }
 

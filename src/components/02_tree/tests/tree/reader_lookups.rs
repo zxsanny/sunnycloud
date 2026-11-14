@@ -51,6 +51,7 @@ async fn a_live_file_and_folder_are_found_and_tombstoned_purged_and_foreign_file
         kind: NodeKind::File,
         revision: Some(current),
         blob_ref: Some(blob_ref),
+        vault: false,
     }) = &results[0]
     else {
         panic!("live file: {:?}", results[0]);
@@ -66,6 +67,7 @@ async fn a_live_file_and_folder_are_found_and_tombstoned_purged_and_foreign_file
                 kind: NodeKind::Folder,
                 revision: None,
                 blob_ref: None,
+                vault: false,
             }),
             LiveFileLookup::Gone,
             LiveFileLookup::Gone,

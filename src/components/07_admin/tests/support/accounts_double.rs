@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 const NOT_CALLED: &str = "the user administration does not call this port";
 
-type ListedRow = (Uuid, String, String, String, Option<i64>);
+type ListedRow = (Uuid, String, String, String, Option<i64>, Option<i64>);
 
 pub struct AccountsDouble {
     reader: Db,
@@ -64,7 +64,8 @@ impl AccountAdmin for AccountsDouble {
                 sqlx::query_as::<_, ListedRow>(
                     "SELECT a.id, a.display_name, a.role, a.state, \
                      (SELECT (extract(epoch FROM max(i.last_login_at)) * 1000000)::bigint \
-                      FROM identities i WHERE i.account_id = a.id) \
+                      FROM identities i WHERE i.account_id = a.id), \
+                     (extract(epoch FROM a.deletion_requested_at) * 1000000)::bigint \
                      FROM accounts a ORDER BY a.created_at, a.id LIMIT $1 OFFSET $2",
                 )
                 .bind(i64::from(page.limit))
@@ -75,7 +76,7 @@ impl AccountAdmin for AccountsDouble {
             .await
             .map_err(database)?;
         rows.into_iter()
-            .map(|(id, display_name, role, state, last_login)| {
+            .map(|(id, display_name, role, state, last_login, requested)| {
                 Ok(AccountInfo {
                     id,
                     display_name,
@@ -91,6 +92,7 @@ impl AccountAdmin for AccountsDouble {
                         other => return Err(failure(other)),
                     },
                     last_login: last_login.map(Timestamp::from_unix_micros),
+                    deletion_requested_at: requested.map(Timestamp::from_unix_micros),
                 })
             })
             .collect()
@@ -180,6 +182,14 @@ impl AccountAdmin for AccountsDouble {
         _tx: &mut DbTx,
         _account: Uuid,
     ) -> Result<(), AccountAdminError> {
+        Err(failure(NOT_CALLED))
+    }
+
+    async fn lock_deleting(
+        &self,
+        _tx: &mut DbTx,
+        _account: Uuid,
+    ) -> Result<bool, AccountAdminError> {
         Err(failure(NOT_CALLED))
     }
 }

@@ -11,7 +11,7 @@ use crate::error::AdminCallError;
 use crate::last_admin::{GuardRefusal, guard_removal, removes_admin};
 use crate::listing::{merge, page_limit};
 
-const SUBJECT_TYPE: &str = "account";
+pub(crate) const SUBJECT_TYPE: &str = "account";
 
 impl AdminServiceImpl {
     /// One page of accounts with their usage: one `list_accounts` call and one `views` call.

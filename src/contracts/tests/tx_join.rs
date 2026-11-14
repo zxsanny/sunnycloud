@@ -10,7 +10,7 @@ use std::path::Path;
 use contracts::{
     AccountAdmin, AccountGuard, AccountLifecycleHook, AccountState, BlobOwnerCleanup, BlobPlan,
     BlobRegistry, CommitEffect, Due, EntryOutcome, FeedHorizon, FeedStamp, GcQueue, GcReason,
-    PublishedEntry, QuotaLedger, RegisterState, Role, TouchedNodes, WrittenOrPlanned,
+    PublishedEntry, QuotaLedger, RegisterState, Role, TouchedNodes, VaultRoots, WrittenOrPlanned,
 };
 use sc_db::DbTx;
 use uuid::Uuid;
@@ -49,6 +49,7 @@ async fn joined_methods_part_two(
     effect: &dyn CommitEffect,
     entry: &PublishedEntry,
     outcomes: &[EntryOutcome],
+    roots: &dyn VaultRoots,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let account = Uuid::nil();
     stamp
@@ -58,6 +59,7 @@ async fn joined_methods_part_two(
     effect.on_begin(tx).await?;
     effect.on_entry(tx, entry).await?;
     effect.on_batch(tx, outcomes).await?;
+    roots.claim_root(tx, account, account, account).await?;
     Ok(())
 }
 
@@ -154,6 +156,7 @@ fn exactly_the_listed_methods_of_the_three_parts_take_a_transaction() {
         "AccountAdmin::begin_deletion",
         "AccountAdmin::finalize_deletion",
         "AccountAdmin::lock_active_admins",
+        "AccountAdmin::lock_deleting",
         "AccountAdmin::set_role",
         "AccountAdmin::set_state",
         "AccountGuard::ensure_active",
@@ -172,6 +175,7 @@ fn exactly_the_listed_methods_of_the_three_parts_take_a_transaction() {
         "QuotaLedger::adjust_used",
         "QuotaLedger::release_reservation",
         "QuotaLedger::reserve",
+        "VaultRoots::claim_root",
     ];
 
     // Act

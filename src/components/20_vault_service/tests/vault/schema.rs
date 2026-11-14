@@ -106,7 +106,14 @@ async fn table_has_the_six_columns_the_unique_keys_and_the_composite_foreign_key
 
     // Assert
     assert_eq!(columns, expected_columns());
-    assert_eq!(uniques, ["UNIQUE (account_id)", "UNIQUE (root_node_id)"]);
+    assert_eq!(
+        uniques,
+        [
+            "UNIQUE (account_id)",
+            "UNIQUE (id, account_id)",
+            "UNIQUE (root_node_id)"
+        ]
+    );
     assert_eq!(
         foreign_keys,
         [

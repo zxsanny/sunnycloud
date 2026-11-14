@@ -137,6 +137,7 @@ mod tests {
             account_delete_interval: Duration::from_millis(200),
             account_delete_alert_after: Duration::from_secs(20),
             account_delete_deadline: after,
+            account_delete_cycle_budget: Duration::from_millis(300),
             health_check_timeout: None,
             admin_list_page_size: None,
         }

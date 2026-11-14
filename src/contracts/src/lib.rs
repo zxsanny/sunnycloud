@@ -96,5 +96,6 @@ pub use tree::{
     PublishEntry, PublishOutcome, PublishResult, PublishedEntry, RestoreError, RestoreOutcome,
     RevisionMatch, RevisionRef, RevisionView, StoredResponse, Target, TreeCommit, TreeCommitError,
     TreeMaintenance, TreeReader, TreeReaderError, TreeRestore, TreeService, TreeServiceError,
+    VaultRootError, VaultRoots,
 };
 pub use vault::{CreatedVault, ETag, VaultError, VaultHeader, VaultService};

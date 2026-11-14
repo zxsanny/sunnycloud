@@ -3,7 +3,7 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c08 — `_docs/02_tasks/todo/B03-24_transfer_commit_upload.md` (contributor: E-14/c09 `B03-25_transfer_commit_batch.md`; response mapping decided by spike E-14/c01); keys assigned at Step 4
 **Consumer tasks**: E-13/c16, E-14/c12, E-14/c15, E-14/c16 (this batch); E-21/c02, E-21/c13 (11), E-22/c03 (composition root), E-23/E-26/E-27 through the HTTP API, resolved at Step 4
-**Version**: 1.5.1
+**Version**: 1.6.0
 **Status**: frozen for the response mapping (G-03-3 decided 2026-11-11); the producer task still passes review
 **Last Updated**: 2026-11-14
 
@@ -38,6 +38,8 @@ Outcome mapping to `Committed{node_id, revision_id, conflict_copy?}` (decided 20
 | `NoChange{existing_revision}` | the file | absent; `revision_id` = existing revision |
 
 Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410); 02 `NameInvalid` → `InvalidName`; 02 `ParentNotFound`, `NotAFolder` as they are. For `commit_upload` (AZ-3738): `EffectFailed(upload_session_gone)` from `BlobCommitEffect` → `UploadNotFound`; 02 `BlocklistMismatch` (blob ownership check) → `UploadNotFound` as well, because 03 publishes its own session's blob, so a missing blob row means abort or the reaper removed it with the session before 02 wrote the revision; 02 `NotFound` (the base revision's node vanished between the lookup and `publish`) → `Unexpected`.
+
+Vault file limit (v1.2, E-30/c01, AZ-3927): `BlobCommitEffect` and `StagedCommitEffect` first check, in `on_entry`, the entry 02 publishes: `PublishedEntry::vault` set (02's membership of the target: a new file's parent or the existing node) and `size` above `max_vault_file_bytes` fail that entry with `Entry(vault_file_too_large)` before the row is touched, so its savepoint rolls back and the session or staged row stays open. `commit_upload` answers it as `VaultFileTooLarge` (413 `vault_file_too_large`); in a batch it is the entry's `EffectFailed(vault_file_too_large)`. The check covers a commit into a vault folder the start did not name, an `Existing` target and the staged path (`upload_service.md` § Vault file limit checks the declared size at start). It reads no row.
 
 `commit_upload` details (AZ-3738):
 
@@ -100,6 +102,7 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
+| 1.6.0 | 2026-11-14 | v1.2 vault file limit at commit in both commit effects: `VaultFileTooLarge` (`commit_upload`) and `EffectFailed(vault_file_too_large)` (batch entry) | AZ-3927 |
 | 1.5.1 | 2026-11-14 | The batch runs `StagedCommitEffect`, not `BlobCommitEffect` (as in the `commit_batch` details); client error catalogue and retry rules in `client_protocol.md`; AC-69 statement order covered by IT-03-19 (AZ-3757) | AZ-3757, AZ-3762 |
 | 1.5.0 | 2026-11-14 | Polyglot heads sniffed as `text/html` (AZ-3758); receipt expiry by `ReceiptJanitor` (AZ-3756) | AZ-3756, AZ-3758 |
 | 1.4.0 | 2026-11-14 | `commit_batch` details: refusals before `publish`, request hash (entries in order sent, owner), stored response form, `NotFound` as `EffectFailed(not_found)`, staged-row effect and `NoChange`, metric labels | AZ-3754 |

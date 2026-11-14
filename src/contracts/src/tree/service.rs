@@ -32,6 +32,10 @@ pub enum TreeServiceError {
     IsRoot,
     #[error("edited since")]
     EditedSince { current_revision: Uuid },
+    /// A move into, out of or between vaults (v1.2, E-30/c01): the server cannot encrypt or decrypt, so a node
+    /// only moves between folders of the same membership.
+    #[error("vault boundary")]
+    VaultBoundary,
     #[error("invalid cursor")]
     InvalidCursor,
     /// The account is being deleted or disabled (`AccountGuard::ensure_active`), as on commit.

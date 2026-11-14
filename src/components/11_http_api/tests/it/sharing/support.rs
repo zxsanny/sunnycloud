@@ -201,6 +201,7 @@ pub fn shared_file() -> Result<ShareDerived, PublicShareError> {
             kind: NodeKind::File,
             revision: None,
             blob_ref: Some(BLOB_ID),
+            vault: false,
         },
     })
 }

@@ -163,6 +163,7 @@ fn transfer_config() -> TransferConfig {
         max_buffered_block_bytes: 1 << 30,
         session_reap_interval: Duration::from_secs(60),
         receipt_janitor_interval: Duration::from_secs(3600),
+        max_vault_file_bytes: 104_857_600,
     }
 }
 

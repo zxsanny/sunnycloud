@@ -3,7 +3,7 @@
 **Component**: 02_tree
 **Producer task**: E-13/c04 — `_docs/02_tasks/todo/B03-04_tree_folder_mutations.md` (contributor: E-13/c12 `B03-12_tree_revision_lookups.md` for `resolve_path` and `find_revisions`); keys assigned at Step 4
 **Consumer tasks**: E-13/c09, E-13/c11 (this batch); E-21/c13 (11 handlers), E-22/c10 (`admin restore`), resolved at Step 4
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft (frozen when the producer task passes review)
 **Last Updated**: 2026-11-14
 
@@ -17,13 +17,13 @@ Signatures: part 2 § 02 tree (`TreeService`). Behaviour per method:
 
 | Method | Behaviour | Errors |
 |---|---|---|
-| `create_folder(account, parent, name)` | Name rules of helper 06; unique per folder by `name_key`; case-preserving | `NameInvalid(reason)`, `NameConflict`, `ParentDeleted`, `NotFound` (missing or foreign parent), `NotAFolder` |
-| `update_node(account, id, name?, parent?)` | Rename and move; no `base_revision`; case-only rename keeps the id; a move takes the account advisory lock and runs the cycle check (depth about 30) | adds `Cycle`, `IsRoot` |
+| `create_folder(account, parent, name)` | Name rules of helper 06; unique per folder by `name_key`; case-preserving; the folder copies the parent's vault membership (`vault_id`) read under the parent lock (v1.2) | `NameInvalid(reason)`, `NameConflict`, `ParentDeleted`, `NotFound` (missing or foreign parent), `NotAFolder` |
+| `update_node(account, id, name?, parent?)` | Rename and move; no `base_revision`; case-only rename keeps the id; a move takes the account advisory lock and runs the cycle check (depth about 30); v1.2 (E-30/c01): a move is allowed only to a folder of the node's own vault membership or of the folder it leaves (inside one vault, or outside every vault; a vault root moves with its vault between folders outside every vault), else `VaultBoundary`; a move changes only parent and name, so a vault file's revisions, `client_meta` and blobs stay (AC-60) | adds `Cycle`, `VaultBoundary`, `IsRoot` |
 | `delete_node(account, id, base_revision?)` | Files: stale base refused with the current revision; tombstoned node: success (idempotent); folders: one tombstone plus `cascade_pending`, descendants marked later | `EditedSince{current_revision}`, `IsRoot`, `NotFound` |
 | `resolve_path(account, path)` | Node id of the live node at the root-relative path (`a/b.txt`, case-folded by `name_key`); every folder on the way must be live; `..`, empty, `.` segments, a leading or trailing `/` never resolve; a tombstoned last part is `NotFound` through the port. Inherent `PgTreeService::resolve_path_with_state` returns `(id, NodeState)`, the live node else the most recently tombstoned one (owner decision 2026-11-13, for restore) | `NotFound` |
 | `find_revisions(account, client_device, page)` | Revisions whose `client_meta.device` matches (`None`: every revision of the account), offset paged in revision id order through the port's `Page{offset, limit}`; limit 0 gives `MAX_REVISION_PAGE` (1000), a larger limit is cut to it; reads `revisions_client_device_idx` | `InvalidCursor` (offset beyond `i64::MAX`) |
 
-Stable codes (helper 02): `name_conflict` 409, `invalid_name` 422, `cycle` 409, `edited_since` 409, `parent_deleted` 410, `parent_not_found` 404, `not_a_folder` 422, `invalid_cursor` 422, `not_found` 404.
+Stable codes (helper 02): `name_conflict` 409, `invalid_name` 422, `cycle` 409, `vault_boundary` 409 (v1.2), `edited_since` 409, `parent_deleted` 410, `parent_not_found` 404, `not_a_folder` 422, `invalid_cursor` 422, `not_found` 404.
 
 ## Invariants
 
@@ -67,3 +67,4 @@ Stable codes (helper 02): `name_conflict` 409, `invalid_name` 422, `cycle` 409, 
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
 | 1.1.0 | 2026-11-13 | `resolve_path` rules and `resolve_path_with_state`; `find_revisions` offset paging; `TreeService` implemented by `PgTreeService` | AZ-3716 |
 | 1.2.0 | 2026-11-14 | Path rule and refusal sources of the operator restore (`PgTreeRestore`) | AZ-3715 |
+| 1.3.0 | 2026-11-14 | v1.2 vault membership: `create_folder` copies the parent's `vault_id`; a move across the vault boundary is `VaultBoundary` (409 `vault_boundary`); `VaultRoots::claim_root` on `PgTreeService` (part 2) | AZ-3927 |

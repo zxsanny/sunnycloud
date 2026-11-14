@@ -100,6 +100,7 @@ fn unset_keys_take_the_documented_defaults() {
         max_buffered_block_bytes: GIB,
         session_reap_interval: Duration::from_secs(60),
         receipt_janitor_interval: Duration::from_secs(3600),
+        max_vault_file_bytes: 104_857_600,
     };
 
     // Act

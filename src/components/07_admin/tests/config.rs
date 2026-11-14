@@ -37,6 +37,7 @@ fn no_admin_keys_give_the_documented_defaults() {
         Duration::from_secs(10 * 60)
     );
     assert_eq!(config.account_delete_deadline, Duration::from_secs(15 * 60));
+    assert_eq!(config.account_delete_cycle_budget, Duration::from_secs(5));
     assert_eq!(config.validate(), Vec::new());
 }
 
@@ -61,6 +62,7 @@ fn set_keys_replace_the_defaults() {
         ("SUNNYCLOUD_ACCOUNT_DELETE_INTERVAL", "200ms"),
         ("SUNNYCLOUD_HEALTH_CHECK_TIMEOUT", "300ms"),
         ("SUNNYCLOUD_ADMIN_LIST_PAGE_SIZE", "20"),
+        ("SUNNYCLOUD_ACCOUNT_DELETE_CYCLE_BUDGET", "300ms"),
     ];
 
     // Act
@@ -74,6 +76,10 @@ fn set_keys_replace_the_defaults() {
         Some(Duration::from_millis(300))
     );
     assert_eq!(config.admin_list_page_size, Some(20));
+    assert_eq!(
+        config.account_delete_cycle_budget,
+        Duration::from_millis(300)
+    );
 }
 
 #[test]
@@ -130,6 +136,7 @@ fn zero_counts_and_a_zero_timeout_are_refused_naming_each_key() {
     config.account_delete_batch_size = 0;
     config.admin_list_page_size = Some(0);
     config.health_check_timeout = Some(Duration::ZERO);
+    config.account_delete_cycle_budget = Duration::ZERO;
 
     // Act
     let problems = config.validate();
@@ -144,7 +151,8 @@ fn zero_counts_and_a_zero_timeout_are_refused_naming_each_key() {
         [
             "account_delete_batch_size",
             "admin_list_page_size",
-            "health_check_timeout"
+            "health_check_timeout",
+            "account_delete_cycle_budget"
         ]
     );
 }

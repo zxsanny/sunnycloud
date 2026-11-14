@@ -99,3 +99,7 @@ Then the functional assertions pass (error rate 0%, response values equal, permi
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | The epic row lists ST-06-1..8, but ST-06-4 and ST-06-5 are already on E-16/c05 and ST-06-6 on E-16/c07; this task runs them in the suite but does not re-author them | E-16 owner | resolved | Low |
+
+## Owner decision
+
+Owner decision 2026-11-14 (complexity budget, option A): ST-06-1/2/3/7/8 now; PT-06-1..3 written with functional assertions running in CI and timing assertions `NOT-RUN(HW-REF)` off the reference server.

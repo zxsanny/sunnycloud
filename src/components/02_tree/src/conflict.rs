@@ -145,6 +145,7 @@ impl PgTreeService {
             id: copy_node,
             account,
             parent_id,
+            vault_id: file.vault_id,
             name: file.name.as_str(),
             name_key: "",
             revision_id: superseded,
@@ -160,6 +161,7 @@ impl PgTreeService {
             revision_id: entry.revision.revision_id,
             counted: None,
             revived: Vec::new(),
+            vault: file.vault_id.is_some(),
         })
     }
 
@@ -204,6 +206,7 @@ impl PgTreeService {
             revision_id: entry.revision.revision_id,
             counted: file.counted().copied(),
             revived: ancestors.iter().map(|ancestor| ancestor.id).collect(),
+            vault: file.vault_id.is_some(),
         })
     }
 }

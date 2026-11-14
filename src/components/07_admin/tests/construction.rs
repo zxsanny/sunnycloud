@@ -49,14 +49,30 @@ fn same_object<T: ?Sized>(left: &Arc<T>, right: &Arc<T>) -> bool {
     )
 }
 
-#[test]
-fn purger_keeps_the_hooks_in_the_order_given() {
+/// The purger over `hooks` with the skeleton doubles, on a fresh database; the caller drops the database.
+async fn purger(hooks: Vec<Arc<dyn AccountLifecycleHook>>) -> (DeletionPurger, TestDb) {
+    let database = TestDb::clone_template().await;
+    let api = database.api().await;
+    let clock = clock_at_start();
+    let purger = DeletionPurger::new(
+        accounts(),
+        hooks,
+        config(),
+        AuditWriter::new(api.clone(), clock.clone()),
+        api,
+        clock,
+    );
+    (purger, database)
+}
+
+#[tokio::test]
+async fn purger_keeps_the_hooks_in_the_order_given() {
     // Arrange
     let hooks = hooks_in_order();
     let expected = hooks.clone();
 
     // Act
-    let purger = DeletionPurger::new(accounts(), hooks, config());
+    let (purger, database) = purger(hooks).await;
 
     // Assert
     assert_eq!(purger.hooks().len(), PRODUCTION_HOOK_ORDER.len());
@@ -67,22 +83,27 @@ fn purger_keeps_the_hooks_in_the_order_given() {
             PRODUCTION_HOOK_ORDER[position]
         );
     }
+    assert_eq!(purger.config(), &config());
+    drop(purger);
+    database.drop_db().await;
 }
 
-#[test]
-fn purger_does_not_sort_a_reversed_list() {
+#[tokio::test]
+async fn purger_does_not_sort_a_reversed_list() {
     // Arrange
     let mut hooks = hooks_in_order();
     hooks.reverse();
     let expected = hooks.clone();
 
     // Act
-    let purger = DeletionPurger::new(accounts(), hooks, config());
+    let (purger, database) = purger(hooks).await;
 
     // Assert
     for (position, hook) in purger.hooks().iter().enumerate() {
         assert!(same_object(hook, &expected[position]));
     }
+    drop(purger);
+    database.drop_db().await;
 }
 
 #[tokio::test]

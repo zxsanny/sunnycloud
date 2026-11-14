@@ -25,6 +25,7 @@ use crate::progress::{SessionProgress, SharedProgress};
 use crate::sniff::{HEAD_LEN, sniff};
 use crate::upload::PgUploadService;
 use crate::upload_metrics::{CommitKind, CommitResult, SessionResult};
+use crate::vault_limit::VAULT_FILE_TOO_LARGE;
 
 /// Unexpected outcomes of a commit: each means 02 or 03 broke its own contract, or a purge raced the commit.
 #[derive(Debug, Error)]
@@ -101,6 +102,7 @@ impl PgUploadService {
             record_expires_at: now
                 .checked_add(self.config.upload_session_ttl)
                 .ok_or_else(|| unexpected(CommitFault::ExpiryOverflow))?,
+            max_vault_file_bytes: self.config.max_vault_file_bytes,
         };
         let entry = PublishEntry {
             target,
@@ -279,6 +281,8 @@ fn entry_error(failure: EntryFailure) -> CommitServiceError {
         EntryFailure::NotAFolder => CommitServiceError::NotAFolder,
         EntryFailure::BlocklistMismatch => CommitServiceError::UploadNotFound,
         EntryFailure::NotFound => unexpected(CommitFault::TargetGone),
+        // The session stays open: the entry's savepoint rolled the effects back.
+        EntryFailure::EffectFailed(VAULT_FILE_TOO_LARGE) => CommitServiceError::VaultFileTooLarge,
         EntryFailure::EffectFailed(code) => unexpected(CommitFault::Effect(code)),
     }
 }

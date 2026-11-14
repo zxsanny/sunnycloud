@@ -12,6 +12,11 @@ fn expected() -> Vec<(TransferError, &'static str, u16)> {
         (TransferError::FreeSpaceFloor, "free_space_floor", 507),
         (TransferError::SizeTooLarge, "size_too_large", 413),
         (
+            TransferError::VaultFileTooLarge,
+            "vault_file_too_large",
+            413,
+        ),
+        (
             TransferError::SessionCapExceeded,
             "session_cap_exceeded",
             409,
@@ -73,7 +78,7 @@ fn every_variant_converts_to_its_code_and_status() {
 }
 
 #[test]
-fn the_table_lists_each_of_the_twenty_variants_once() {
+fn the_table_lists_each_of_the_twenty_one_variants_once() {
     // Arrange
     let table = expected();
 
@@ -82,9 +87,9 @@ fn the_table_lists_each_of_the_twenty_variants_once() {
     wires.sort_unstable();
     wires.dedup();
 
-    // Assert
-    assert_eq!(table.len(), 20);
-    assert_eq!(wires.len(), 20);
+    // Assert: the twenty of v1.0 and `VaultFileTooLarge` (v1.2, AZ-3927).
+    assert_eq!(table.len(), 21);
+    assert_eq!(wires.len(), 21);
 }
 
 #[test]

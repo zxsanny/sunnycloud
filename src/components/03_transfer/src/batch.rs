@@ -85,7 +85,12 @@ impl PgUploadService {
             refused: refused.clone(),
             now,
         };
-        let staged = StagedCommitEffect::new(Arc::clone(&self.registry), account, plans);
+        let staged = StagedCommitEffect::new(
+            Arc::clone(&self.registry),
+            account,
+            plans,
+            self.config.max_vault_file_bytes,
+        );
         let mut effects: Vec<Arc<dyn CommitEffect>> = vec![Arc::new(receipt), Arc::new(staged)];
         effects.extend(self.commit_effects.iter().cloned());
         let published = self

@@ -147,6 +147,8 @@ pub struct AccountInfo {
     pub role: Role,
     pub state: AccountStatus,
     pub last_login: Option<Timestamp>,
+    /// When the deletion was first requested; `None` unless the account is `deleting`.
+    pub deletion_requested_at: Option<Timestamp>,
 }
 
 /// A linked sign-in identity; `email` is present only when it was stored under the email rule.

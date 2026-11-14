@@ -36,6 +36,7 @@ fn folder() -> LiveFile {
         kind: NodeKind::Folder,
         revision: None,
         blob_ref: None,
+        vault: false,
     }
 }
 

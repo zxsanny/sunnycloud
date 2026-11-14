@@ -65,6 +65,7 @@ error_codes! {
     SessionCapExceeded => "session_cap_exceeded", 409, "Upload session cap exceeded";
     StagedCapReached => "staged_cap_reached", 409, "Staged file cap reached";
     LeaseLost => "lease_lost", 409, "Lease lost";
+    VaultBoundary => "vault_boundary", 409, "Move across a vault boundary";
 
     UploadSessionGone => "upload_session_gone", 410, "Upload session gone";
     ParentDeleted => "parent_deleted", 410, "Parent deleted";
@@ -74,6 +75,7 @@ error_codes! {
 
     SizeTooLarge => "size_too_large", 413, "Size too large";
     OutputTooLarge => "output_too_large", 413, "Output too large";
+    VaultFileTooLarge => "vault_file_too_large", 413, "Vault file above max_vault_file_bytes";
 
     RangeNotSatisfiable => "range_not_satisfiable", 416, "Range not satisfiable";
 

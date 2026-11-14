@@ -1,11 +1,13 @@
 //! `VaultService`: create, read and replace the opaque vault header. The header is never parsed; its ETag is the
 //! SHA-256 of the stored bytes, computed by the database over the stored column (`crate::vault_repo`).
 //!
-//! The root is checked through 02's `TreeReader`: the account's own root folder is `NotFound` (owner decision
-//! 2026-11-13: every file the account creates would sit in the vault), then one `list_children` call of limit 1
-//! makes an unknown, foreign or tombstoned node (also under a tombstoned ancestor) and a file `NotFound` and a folder
-//! with a live child `VaultExists`, so a vault starts on an empty folder. One vault per account and one vault per
-//! root are kept by the unique keys of `vaults`.
+//! One transaction creates a vault: the `vaults` row first (one vault per account and one per root are kept by its
+//! unique keys; an unknown or foreign root fails its composite foreign key), then 02's `VaultRoots::claim_root`
+//! (AZ-3927) locks the root folder, checks it and makes it the vault's first member. An unknown, foreign or
+//! tombstoned node (also under a tombstoned ancestor), a file and the account's own root folder (owner decision
+//! 2026-11-13: every file the account creates would sit in the vault) are `NotFound`; a folder with a live child
+//! is `VaultExists`, so a vault starts on an empty folder. The check and the claim share the root's row lock with
+//! every create and move under it, so no child can slip in between them (batch 58 warning, closed by AZ-3927).
 //!
 //! An unlock-failure report (E-30/c04) writes one `vault_failure` audit event, ids only, through
 //! `AuditWriter::record` (its own short transaction, fail closed) after a separate lookup of the vault in the
@@ -14,7 +16,7 @@
 use std::sync::Arc;
 
 use contracts::{
-    CreatedVault, ETag, TreeReader, TreeReaderError, VaultError, VaultHeader, VaultService,
+    CreatedVault, ETag, VaultError, VaultHeader, VaultRootError, VaultRoots, VaultService,
     async_trait,
 };
 use sc_audit::{AuditEvent, AuditEventKind, AuditWriter, SubjectRef};
@@ -32,24 +34,24 @@ const VAULT_SUBJECT: &str = "vault";
 /// The header service over `vaults`.
 pub struct PgVaultService {
     db: Db,
-    tree: Arc<dyn TreeReader>,
+    roots: Arc<dyn VaultRoots>,
     clock: Arc<dyn Clock>,
     audit: AuditWriter,
     max_header_bytes: u64,
 }
 
 impl PgVaultService {
-    /// Opens no connection. `config` is the validated vault section.
+    /// Opens no connection. `config` is the validated vault section; `roots` is 02's `PgTreeService`.
     pub fn new(
         db: Db,
-        tree: Arc<dyn TreeReader>,
+        roots: Arc<dyn VaultRoots>,
         clock: Arc<dyn Clock>,
         audit: AuditWriter,
         config: &VaultConfig,
     ) -> Self {
         PgVaultService {
             db,
-            tree,
+            roots,
             clock,
             audit,
             max_header_bytes: config.max_vault_header_bytes,
@@ -61,28 +63,6 @@ impl PgVaultService {
             Ok(())
         } else {
             Err(VaultError::HeaderTooLarge)
-        }
-    }
-
-    /// A live, empty folder of `account` other than its own root folder.
-    async fn check_root(&self, account: Uuid, root_node_id: Uuid) -> Result<(), VaultError> {
-        match self.tree.root_node(account).await {
-            Ok(root) if root.id == root_node_id => return Err(VaultError::NotFound),
-            Ok(_) => {}
-            Err(TreeReaderError::NotFound) => return Err(VaultError::NotFound),
-            Err(other) => return Err(unexpected(other)),
-        }
-        match self
-            .tree
-            .list_children(account, root_node_id, None, 1)
-            .await
-        {
-            Ok(page) if page.items.is_empty() => Ok(()),
-            Ok(_) => Err(VaultError::VaultExists),
-            Err(TreeReaderError::NotFound | TreeReaderError::NotAFolder) => {
-                Err(VaultError::NotFound)
-            }
-            Err(other) => Err(unexpected(other)),
         }
     }
 }
@@ -124,7 +104,6 @@ impl VaultService for PgVaultService {
         root_node_id: Uuid,
     ) -> Result<CreatedVault, VaultError> {
         self.check_size(header)?;
-        self.check_root(account, root_node_id).await?;
         let vault = NewVault {
             id: new_id(self.clock.as_ref()),
             account_id: account,
@@ -132,21 +111,35 @@ impl VaultService for PgVaultService {
             header,
             created_at: self.clock.now_utc(),
         };
+        let roots = self.roots.as_ref();
         let stored = self
             .db
             .run(Scope::Account(account), async |tx| {
-                vault_repo::insert(tx, &vault).await
+                let etag = match vault_repo::insert(tx, &vault).await {
+                    Ok(Some(etag)) => etag,
+                    Ok(None) => return Err(VaultError::VaultExists),
+                    // An unknown or foreign root: the composite foreign key refuses it.
+                    Err(DbError::ForeignKeyViolation) => return Err(VaultError::NotFound),
+                    Err(other) => return Err(unexpected(other)),
+                };
+                roots
+                    .claim_root(tx, account, root_node_id, vault.id)
+                    .await
+                    .map_err(|error| match error {
+                        VaultRootError::NotFound => VaultError::NotFound,
+                        VaultRootError::Taken => VaultError::VaultExists,
+                        VaultRootError::Unexpected(fault) => VaultError::Unexpected(fault),
+                    })?;
+                Ok(etag)
             })
             .await;
         match stored {
-            Ok(Some(etag)) => Ok(CreatedVault {
+            Ok(etag) => Ok(CreatedVault {
                 vault_id: vault.id,
                 etag: ETag(etag),
             }),
-            Ok(None) => Err(VaultError::VaultExists),
-            // The root was purged between the check and the insert: the composite foreign key refuses it.
-            Err(RunError::Closure(DbError::ForeignKeyViolation)) => Err(VaultError::NotFound),
-            Err(other) => Err(run_unexpected(other)),
+            Err(RunError::Closure(error)) => Err(error),
+            Err(RunError::Db(error)) => Err(unexpected(error)),
         }
     }
 

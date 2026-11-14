@@ -13,6 +13,9 @@ pub enum TransferError {
     FreeSpaceFloor,
     #[error("size too large")]
     SizeTooLarge,
+    /// v1.2: a file in a vault above `max_vault_file_bytes`.
+    #[error("vault file too large")]
+    VaultFileTooLarge,
     #[error("upload session cap exceeded")]
     SessionCapExceeded,
     #[error("staged file cap reached")]
@@ -57,6 +60,7 @@ impl TransferError {
             TransferError::QuotaExceeded => ErrorCode::QuotaExceeded,
             TransferError::FreeSpaceFloor => ErrorCode::FreeSpaceFloor,
             TransferError::SizeTooLarge => ErrorCode::SizeTooLarge,
+            TransferError::VaultFileTooLarge => ErrorCode::VaultFileTooLarge,
             TransferError::SessionCapExceeded => ErrorCode::SessionCapExceeded,
             TransferError::StagedCapReached => ErrorCode::StagedCapReached,
             TransferError::CommitIdReused => ErrorCode::CommitIdReused,

@@ -5,7 +5,8 @@
 //! `get_upload`, `abort_upload`, `stage_small`), `CommitService` (`commit_upload` with its `BlobCommitEffect` and
 //! head sniffer, `commit_batch` with its receipt and staged-row effects) and `DownloadService`
 //! (`open_revision_content`, `open_blob_content`), `ReservationSource`, the janitors `SessionReaper`,
-//! `ReceiptJanitor` and `IdleFlush`, and the account erase hook `PgTransferLifecycle`. The schema is
+//! `ReceiptJanitor` and `IdleFlush`, the account erase hook `PgTransferLifecycle`, and the vault file size limit
+//! at upload start and commit (v1.2, `vault_limit`). The schema is
 //! `src/migrations/*_create_transfer_tables.*.sql` and `*_add_upload_session_commit.*.sql`.
 
 mod batch;
@@ -36,6 +37,7 @@ mod sniff;
 mod stage;
 mod upload;
 mod upload_metrics;
+mod vault_limit;
 
 pub use checkpoint::CheckpointMark;
 pub use config::TransferConfig;

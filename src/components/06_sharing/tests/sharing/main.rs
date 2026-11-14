@@ -15,6 +15,8 @@ mod owner_manage;
 mod owner_support;
 mod rls;
 mod settings;
+mod share_vault;
+mod vault_support;
 mod visitor_content;
 mod visitor_content_timing;
 mod visitor_grant;

@@ -66,6 +66,9 @@ pub enum UploadError {
     NotAFolder,
     #[error("size too large")]
     SizeTooLarge,
+    /// v1.2: the parent is in a vault and the declared size is above `max_vault_file_bytes` (E-30/c01).
+    #[error("vault file too large")]
+    VaultFileTooLarge,
     #[error("quota exceeded")]
     QuotaExceeded,
     #[error("session cap reached")]

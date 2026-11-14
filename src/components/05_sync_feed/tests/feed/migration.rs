@@ -22,15 +22,22 @@ fn column(name: &str, data_type: &str, nullable: &str, default: Option<&str>) ->
     )
 }
 
-/// Reverts the feed migration and everything applied after it.
-async fn revert_feed(migrator: &Db) {
+/// Reverts every migration applied after the feed migration, so the feed migration is the newest one left.
+async fn revert_after_feed(migrator: &Db) {
     let status = Migrator::status(migrator).await.expect("migration status");
     let steps = status
         .applied
         .iter()
-        .filter(|version| **version >= FEED_VERSION)
+        .filter(|version| **version > FEED_VERSION)
         .count();
     Migrator::revert(migrator, u32::try_from(steps).expect("step count"))
+        .await
+        .expect("revert the migrations after the feed migration");
+}
+
+/// Reverts the feed migration itself; the migrations after it must already be reverted.
+async fn revert_feed(migrator: &Db) {
+    Migrator::revert(migrator, 1)
         .await
         .expect("revert the feed migration");
 }
@@ -81,6 +88,10 @@ async fn up_down_up_adds_and_removes_exactly_the_feed_objects() {
     let fixture = Fixture::new().await;
     let migrator = fixture.db.migrator().await;
     let mut conn = fixture.owner_conn().await;
+    let nodes_columns_all = columns(&mut conn, "nodes").await;
+    let nodes_indexes_all = indexes(&mut conn, "nodes").await;
+    // Later migrations may change `nodes` too; isolate the feed migration's own objects.
+    revert_after_feed(&migrator).await;
     let nodes_columns_with_feed = columns(&mut conn, "nodes").await;
     let nodes_indexes_with_feed = indexes(&mut conn, "nodes").await;
 
@@ -124,8 +135,8 @@ async fn up_down_up_adds_and_removes_exactly_the_feed_objects() {
         nodes_indexes_with_feed.len()
     );
     assert_eq!(feed_columns_after_up, feed_columns());
-    assert_eq!(nodes_columns_after_up, nodes_columns_with_feed);
-    assert_eq!(nodes_indexes_after_up, nodes_indexes_with_feed);
+    assert_eq!(nodes_columns_after_up, nodes_columns_all);
+    assert_eq!(nodes_indexes_after_up, nodes_indexes_all);
     conn.close().await.expect("close owner connection");
     drop(migrator);
     fixture.finish().await;

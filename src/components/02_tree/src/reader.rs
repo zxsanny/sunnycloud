@@ -154,11 +154,13 @@ impl PgTreeReader {
                     kind: NodeKind::Folder,
                     revision: None,
                     blob_ref: None,
+                    vault: row.vault,
                 },
                 (NodeKind::File, Some((revision, blob_id))) => LiveFile {
                     kind: NodeKind::File,
                     revision: Some(revision),
                     blob_ref: Some(blob_id),
+                    vault: row.vault,
                 },
                 // The pointer is cleared only on a tombstone whose revision was collected.
                 (NodeKind::File, None) => {

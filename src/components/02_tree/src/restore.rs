@@ -236,6 +236,8 @@ impl PgTreeRestore {
             id: new_id(self.tree.clock.as_ref()),
             account,
             parent_id: folder,
+            // A vault file stays a vault file wherever it is restored: no media job, no share (E-30/c01).
+            vault_id: file.vault_id,
             name: name.as_str(),
             name_key: key.as_str(),
             revision_id: picked.id,
@@ -290,6 +292,8 @@ impl PgTreeRestore {
                     id,
                     account,
                     parent_id: root,
+                    // The account's root folder is never a vault root, so `Restored` is in no vault.
+                    vault_id: None,
                     name: name.as_str(),
                     name_key: key.as_str(),
                     now,

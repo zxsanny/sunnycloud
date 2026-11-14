@@ -89,6 +89,9 @@ pub enum CommitServiceError {
     ParentNotFound,
     #[error("not a folder")]
     NotAFolder,
+    /// v1.2: the target is in a vault and the file is above `max_vault_file_bytes` (E-30/c01).
+    #[error("vault file too large")]
+    VaultFileTooLarge,
     #[error("account not active")]
     AccountNotActive,
     #[error("batch too large")]

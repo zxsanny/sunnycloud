@@ -125,11 +125,15 @@ Then a WARN line with the account id is written; and when the account is finaliz
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | The claim mechanism and the port that takes it: per-step claim through the proposed `AccountAdmin::lock_deleting` (a `contracts` change task in E-15, CC-1); no column (owner decision 2026-11-07, AZ-3814) | E-17 / E-15 owners | resolved | Medium |
-| KNOWN RISK: hooks run on their own connections; a hook inserting a row with a foreign key to `accounts` takes `FOR KEY SHARE` on the `deleting` row, which the step's `FOR UPDATE` blocks (self-deadlock). `FOR NO KEY UPDATE` avoids it. Owner asked; E-17/c06 must confirm no deadlock in IT-07-9 before the lock mode is final | E-17 / E-15 owners | open | Medium |
-| The per-cycle time budget has no named setting in 07 §7 (IT-07-11 sets 300 ms "in config") | E-17 owner | open | Low |
+| KNOWN RISK: hooks run on their own connections; a hook inserting a row with a foreign key to `accounts` takes `FOR KEY SHARE` on the `deleting` row, which the step's `FOR UPDATE` blocks (self-deadlock). `FOR NO KEY UPDATE` avoids it. Owner decision 2026-11-14: `FOR NO KEY UPDATE SKIP LOCKED`; IT-07-9 (`purger/drain.rs`) proves the insert does not wait, and its control proves it waits under `FOR UPDATE` | E-17 / E-15 owners | resolved | Medium |
+| The per-cycle time budget has no named setting in 07 §7 (IT-07-11 sets 300 ms "in config") | E-17 owner | resolved 2026-11-14: `account_delete_cycle_budget` (5 s) | Low |
 | Resolved by owner decision 2026-11-05: 20's erase hook runs before 02's, because `vaults.root_node_id` references 02's nodes; the production order is 06, 20, 02, 03, 08, then 05, 07a | Owner | resolved | High |
 
 ## Contract
 
 This task produces the behaviour sections of `_docs/02_document/contracts/07_admin/deletion_purger.md` (driving rules every hook implementer relies on).
 Consumers MUST read that file — not this task spec — to discover the interface.
+
+## Owner decision
+
+Owner decisions 2026-11-14 (complexity budget, option A): `lock_deleting` takes `FOR NO KEY UPDATE SKIP LOCKED` on the `deleting` row (one purger per account, hooks on their own connections can still insert rows referencing the account); IT-07-9 must prove no self-deadlock. New key `account_delete_cycle_budget`, default 5 s (tests 300 ms).

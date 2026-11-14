@@ -27,6 +27,8 @@ pub struct NodeRef {
 /// `parent_id` is `None` for the root. The file-only fields are `None` for a folder. `thumb_state` is filled
 /// from `ThumbnailStateSource` for the image and video items of a `TreeReader::list_children` page; it is
 /// `ThumbState::None` everywhere else (other reads, mutations, folders, other media types, no source wired).
+/// `vault` is the node's vault membership (v1.2, E-30/c01): `true` for a vault root and every node created under
+/// one; it never changes after the node is created.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeView {
     pub id: Uuid,
@@ -43,6 +45,7 @@ pub struct NodeView {
     pub updated_at: Timestamp,
     pub seq: i64,
     pub thumb_state: ThumbState,
+    pub vault: bool,
 }
 
 /// `blocklist` is filled only by `TreeReader::get_revision`. `client_meta` is JSON text. `blob_id` is the
@@ -89,13 +92,15 @@ pub enum NodeSelector {
     Root,
 }
 
-/// A live file or folder. For a folder `revision` and `blob_ref` are `None`.
+/// A live file or folder. For a folder `revision` and `blob_ref` are `None`. `vault` is the node's vault
+/// membership, as on `NodeView`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveFile {
     pub kind: NodeKind,
     pub revision: Option<RevisionView>,
     /// The id of the current revision's blob (not a `BlobRef`); 03 resolves its key material through 04.
     pub blob_ref: Option<Uuid>,
+    pub vault: bool,
 }
 
 /// Tombstoned, purged, of another account, or under a tombstoned ancestor: `Gone`, never an error.

@@ -70,6 +70,7 @@ const START_ERRORS: &[ErrorCode] = &[
     ErrorCode::ParentNotFound,
     ErrorCode::NotAFolder,
     ErrorCode::SizeTooLarge,
+    ErrorCode::VaultFileTooLarge,
     ErrorCode::QuotaExceeded,
     ErrorCode::SessionCapExceeded,
     ErrorCode::FreeSpaceFloor,
@@ -103,6 +104,7 @@ const COMMIT_ERRORS: &[ErrorCode] = &[
     ErrorCode::ParentDeleted,
     ErrorCode::ParentNotFound,
     ErrorCode::NotAFolder,
+    ErrorCode::VaultFileTooLarge,
     ErrorCode::AccountNotActive,
 ];
 const BATCH_ERRORS: &[ErrorCode] = &[

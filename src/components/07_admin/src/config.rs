@@ -17,6 +17,8 @@ pub struct AdminConfig {
     pub account_delete_interval: Duration,
     pub account_delete_alert_after: Duration,
     pub account_delete_deadline: Duration,
+    /// How long one purger cycle may keep starting steps (checked before each step).
+    pub account_delete_cycle_budget: Duration,
     pub health_check_timeout: Option<Duration>,
     pub admin_list_page_size: Option<u64>,
 }
@@ -30,6 +32,7 @@ impl AdminConfig {
                 .map_or(DEFAULT_DELETE_INTERVAL, |interval| interval.get()),
             account_delete_alert_after: settings.account_delete_alert_after.get(),
             account_delete_deadline: settings.account_delete_deadline.get(),
+            account_delete_cycle_budget: settings.account_delete_cycle_budget.get(),
             health_check_timeout: settings.health_check_timeout.map(|timeout| timeout.get()),
             admin_list_page_size: settings.admin_list_page_size,
         }
@@ -48,16 +51,23 @@ impl AdminConfig {
             check_count("admin_list_page_size", page_size, &mut problems);
         }
         if self.health_check_timeout == Some(Duration::ZERO) {
-            problems.push(KeyProblem::new(
-                "health_check_timeout",
-                Reason::OutOfRange {
-                    min: "1ms".to_owned(),
-                    max: "no ceiling".to_owned(),
-                },
-            ));
+            problems.push(below_one_millisecond("health_check_timeout"));
+        }
+        if self.account_delete_cycle_budget.is_zero() {
+            problems.push(below_one_millisecond("account_delete_cycle_budget"));
         }
         problems
     }
+}
+
+fn below_one_millisecond(key: &str) -> KeyProblem {
+    KeyProblem::new(
+        key,
+        Reason::OutOfRange {
+            min: "1ms".to_owned(),
+            max: "no ceiling".to_owned(),
+        },
+    )
 }
 
 fn check_count(key: &str, value: u64, problems: &mut Vec<KeyProblem>) {

@@ -90,6 +90,7 @@ mod tests {
             updated_at: Timestamp::from_unix_micros(0),
             seq: 1,
             thumb_state: ThumbState::None,
+            vault: false,
         }
     }
 

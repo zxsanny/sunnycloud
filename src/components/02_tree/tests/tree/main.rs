@@ -65,3 +65,6 @@ mod support;
 mod usage_concurrency;
 mod usage_deltas;
 mod usage_support;
+mod vault_membership;
+mod vault_moves;
+mod vault_support;

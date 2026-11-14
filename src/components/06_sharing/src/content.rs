@@ -148,6 +148,7 @@ mod tests {
                 created_at: NOW,
             }),
             blob_ref: None,
+            vault: false,
         })
     }
 

@@ -29,6 +29,7 @@ const EXPECTED: &[(u16, &[&str])] = &[
             "session_cap_exceeded",
             "staged_cap_reached",
             "lease_lost",
+            "vault_boundary",
         ],
     ),
     (
@@ -36,7 +37,10 @@ const EXPECTED: &[(u16, &[&str])] = &[
         &["upload_session_gone", "parent_deleted", "resync_required"],
     ),
     (411, &["length_required"]),
-    (413, &["size_too_large", "output_too_large"]),
+    (
+        413,
+        &["size_too_large", "output_too_large", "vault_file_too_large"],
+    ),
     (416, &["range_not_satisfiable"]),
     (
         422,

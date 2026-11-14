@@ -122,6 +122,9 @@ fn account_info(row: ListedAccount) -> Result<AccountInfo, IdentityError> {
         role,
         state,
         last_login: row.last_login_micros.map(Timestamp::from_unix_micros),
+        deletion_requested_at: row
+            .deletion_requested_micros
+            .map(Timestamp::from_unix_micros),
     })
 }
 
@@ -238,6 +241,13 @@ impl AccountAdmin for IdentityAccounts {
             .map_err(unexpected)?;
         Self::revoke_credentials(tx, account, now, RevokeReason::AccountDeleted).await?;
         device_grant_repo::deny_open_grants(tx, account)
+            .await
+            .map_err(unexpected)
+    }
+
+    /// Runs on the caller's transaction and never waits for a row another transaction holds.
+    async fn lock_deleting(&self, tx: &mut DbTx, account: Uuid) -> Result<bool, AccountAdminError> {
+        account_repo::lock_deleting(tx, account)
             .await
             .map_err(unexpected)
     }

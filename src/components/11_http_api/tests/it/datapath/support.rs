@@ -62,6 +62,7 @@ pub fn file_node(id: Uuid) -> NodeView {
         updated_at: CREATED,
         seq: 9,
         thumb_state: ThumbState::None,
+        vault: false,
     }
 }
 
@@ -81,6 +82,7 @@ pub fn folder_node(id: Uuid, parent: Option<Uuid>) -> NodeView {
         updated_at: CREATED,
         seq: 3,
         thumb_state: ThumbState::None,
+        vault: false,
     }
 }
 

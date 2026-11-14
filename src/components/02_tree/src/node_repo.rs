@@ -16,6 +16,8 @@ pub(crate) struct NodeRow {
     pub deleted: bool,
     pub current_revision_id: Option<Uuid>,
     pub current: Option<CurrentContent>,
+    /// The vault the node is in (E-30/c01); copied by every node created under it.
+    pub vault_id: Option<Uuid>,
 }
 
 /// The blob and size of a file's current revision: what the file counts in usage while its own node is live.
@@ -25,11 +27,12 @@ pub(crate) struct CurrentContent {
     pub size: i64,
 }
 
-/// A folder about to be inserted; `name_key` comes from `sc_names::name_key`.
+/// A folder about to be inserted; `name_key` comes from `sc_names::name_key`, `vault_id` from the parent.
 pub(crate) struct NewFolder<'a> {
     pub id: Uuid,
     pub account: Uuid,
     pub parent_id: Uuid,
+    pub vault_id: Option<Uuid>,
     pub name: &'a str,
     pub name_key: &'a str,
     pub now: Timestamp,
@@ -46,19 +49,19 @@ pub(crate) struct NodeChange<'a> {
 }
 
 const NODE_FOR_UPDATE: &str = "SELECT n.parent_id, n.kind, n.deleted_at IS NOT NULL, \
-    n.current_revision_id, r.blob_id, r.size \
+    n.current_revision_id, r.blob_id, r.size, n.vault_id \
     FROM nodes n LEFT JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id \
     WHERE n.id = $1 AND n.account_id = $2 FOR UPDATE OF n";
 
 const NODE_FOR_SHARE: &str = "SELECT n.parent_id, n.kind, n.deleted_at IS NOT NULL, \
-    n.current_revision_id, r.blob_id, r.size \
+    n.current_revision_id, r.blob_id, r.size, n.vault_id \
     FROM nodes n LEFT JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id \
     WHERE n.id = $1 AND n.account_id = $2 FOR SHARE OF n";
 
 const INSERT_FOLDER: &str = "INSERT INTO nodes (id, account_id, parent_id, kind, name, name_key, \
-    name_key_version, created_at, updated_at) VALUES ($1, $2, $3, 'folder', $4, $5, $6, \
+    name_key_version, created_at, updated_at, vault_id) VALUES ($1, $2, $3, 'folder', $4, $5, $6, \
     'epoch'::timestamptz + $7::bigint * interval '1 microsecond', \
-    'epoch'::timestamptz + $7::bigint * interval '1 microsecond')";
+    'epoch'::timestamptz + $7::bigint * interval '1 microsecond', $8)";
 
 const UPDATE_NODE: &str = "UPDATE nodes SET parent_id = $3, name = COALESCE($4, name), \
     name_key = COALESCE($5, name_key), \
@@ -80,11 +83,18 @@ const REACHES_NODE: &str = "WITH RECURSIVE chain (id, parent_id) AS ( \
     WHERE n.account_id = $3 AND c.id <> $2) \
     SELECT EXISTS (SELECT 1 FROM chain WHERE id = $2)";
 
+const VAULT_OF: &str = "SELECT vault_id FROM nodes WHERE id = $1 AND account_id = $2";
+
+const HAS_LIVE_CHILD: &str = "SELECT EXISTS (SELECT 1 FROM nodes \
+    WHERE account_id = $1 AND parent_id = $2 AND deleted_at IS NULL)";
+
+const SET_VAULT: &str = "UPDATE nodes SET vault_id = $3 WHERE id = $1 AND account_id = $2";
+
 const VIEW: &str = "SELECT n.parent_id, n.kind, n.name, n.deleted_at IS NOT NULL, n.current_revision_id, \
     r.size, r.content_hash, r.media_type, \
     (extract(epoch FROM r.client_mtime) * 1000000)::bigint, \
     (extract(epoch FROM n.created_at) * 1000000)::bigint, \
-    (extract(epoch FROM n.updated_at) * 1000000)::bigint, n.seq \
+    (extract(epoch FROM n.updated_at) * 1000000)::bigint, n.seq, n.vault_id IS NOT NULL AS in_vault \
     FROM nodes n LEFT JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id \
     WHERE n.id = $1 AND n.account_id = $2";
 
@@ -124,6 +134,7 @@ async fn lock(
             deleted: row.try_get(2)?,
             current_revision_id: row.try_get(3)?,
             current: current_content(&row, 4)?,
+            vault_id: row.try_get(6)?,
         })
     })
     .transpose()
@@ -150,6 +161,7 @@ pub(crate) async fn insert_folder(tx: &mut DbTx, folder: &NewFolder<'_>) -> Resu
         .bind(folder.name_key)
         .bind(sc_names::NAME_KEY_VERSION)
         .bind(folder.now.as_unix_micros())
+        .bind(folder.vault_id)
         .execute(tx.conn())
         .await?;
     Ok(())
@@ -199,6 +211,50 @@ pub(crate) async fn reaches(
         .await?)
 }
 
+/// The vault of a node; `None` for a node outside every vault or one that does not exist. A node's vault never
+/// changes, so no lock is needed.
+pub(crate) async fn vault_of(
+    tx: &mut DbTx,
+    account: Uuid,
+    id: Uuid,
+) -> Result<Option<Uuid>, DbError> {
+    Ok(sqlx::query_scalar::<_, Option<Uuid>>(VAULT_OF)
+        .bind(id)
+        .bind(account)
+        .fetch_optional(tx.conn())
+        .await?
+        .flatten())
+}
+
+/// Whether `folder` has a live child.
+pub(crate) async fn has_live_child(
+    tx: &mut DbTx,
+    account: Uuid,
+    folder: Uuid,
+) -> Result<bool, DbError> {
+    Ok(sqlx::query_scalar(HAS_LIVE_CHILD)
+        .bind(account)
+        .bind(folder)
+        .fetch_one(tx.conn())
+        .await?)
+}
+
+/// Makes `id` a member of `vault`; only a vault root is ever set this way (`crate::vault_root`).
+pub(crate) async fn set_vault(
+    tx: &mut DbTx,
+    account: Uuid,
+    id: Uuid,
+    vault: Uuid,
+) -> Result<(), DbError> {
+    sqlx::query(SET_VAULT)
+        .bind(id)
+        .bind(account)
+        .bind(vault)
+        .execute(tx.conn())
+        .await?;
+    Ok(())
+}
+
 pub(crate) async fn view(
     tx: &mut DbTx,
     account: Uuid,
@@ -235,6 +291,7 @@ pub(crate) fn node_view(id: Uuid, row: &PgRow) -> Result<NodeView, DbError> {
         updated_at: Timestamp::from_unix_micros(row.try_get(10)?),
         seq: row.try_get(11)?,
         thumb_state: ThumbState::None,
+        vault: row.try_get("in_vault")?,
     })
 }
 

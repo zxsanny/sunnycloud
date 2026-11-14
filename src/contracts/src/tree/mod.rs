@@ -5,6 +5,7 @@ mod maintenance;
 mod model;
 mod publish;
 mod service;
+mod vault_root;
 
 pub use effect::{Begin, CommitEffect, EffectError, EntryOutcome, PublishedEntry};
 pub use maintenance::{
@@ -20,3 +21,4 @@ pub use publish::{
     PublishResult, StoredResponse, Target, TreeCommit, TreeCommitError,
 };
 pub use service::{NodeOrPath, TreeReader, TreeReaderError, TreeService, TreeServiceError};
+pub use vault_root::{VaultRootError, VaultRoots};

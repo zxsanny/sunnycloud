@@ -198,11 +198,13 @@ async fn the_refusals_of_03_keep_their_codes() {
         UploadError::InvalidName,
         UploadError::ParentNotFound,
         UploadError::SizeTooLarge,
+        UploadError::VaultFileTooLarge,
         UploadError::QuotaExceeded,
         UploadError::SessionCapReached,
         UploadError::FreeSpaceFloor,
         UploadError::AccountNotActive,
     ];
+    let starts = errors.len();
     for error in errors {
         script.push(START, Err::<StartUploadOutcome, _>(error));
     }
@@ -220,7 +222,7 @@ async fn the_refusals_of_03_keep_their_codes() {
 
     // Act
     let mut answers = Vec::new();
-    for _ in 0..7 {
+    for _ in 0..starts {
         answers.push(
             stack
                 .as_member("POST", "/api/v1/uploads", &start_body())
@@ -253,6 +255,7 @@ async fn the_refusals_of_03_keep_their_codes() {
         (422, "invalid_name"),
         (404, "parent_not_found"),
         (413, "size_too_large"),
+        (413, "vault_file_too_large"),
         (507, "quota_exceeded"),
         (409, "session_cap_exceeded"),
         (507, "free_space_floor"),

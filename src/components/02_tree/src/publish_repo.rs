@@ -18,6 +18,7 @@ pub(crate) struct FileRow {
     pub current_revision_id: Option<Uuid>,
     pub current_hash: Option<Vec<u8>>,
     pub current: Option<CurrentContent>,
+    pub vault_id: Option<Uuid>,
 }
 
 impl FileRow {
@@ -28,11 +29,12 @@ impl FileRow {
 }
 
 /// A file node about to be inserted with `revision_id` as its current revision: a new file's first revision, or
-/// the superseded revision a conflict copy keeps.
+/// the superseded revision a conflict copy keeps. `vault_id` is the parent's.
 pub(crate) struct NewFile<'a> {
     pub id: Uuid,
     pub account: Uuid,
     pub parent_id: Uuid,
+    pub vault_id: Option<Uuid>,
     pub name: &'a str,
     pub name_key: &'a str,
     pub revision_id: Uuid,
@@ -40,7 +42,7 @@ pub(crate) struct NewFile<'a> {
 }
 
 const FILE_FOR_UPDATE: &str = "SELECT n.kind, n.deleted_at IS NOT NULL, n.current_revision_id, r.content_hash, \
-    n.parent_id, n.name, r.blob_id, r.size \
+    n.parent_id, n.name, r.blob_id, r.size, n.vault_id \
     FROM nodes n LEFT JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id \
     WHERE n.id = $1 AND n.account_id = $2 FOR UPDATE OF n";
 
@@ -48,10 +50,10 @@ const FILE_FOR_UPDATE: &str = "SELECT n.kind, n.deleted_at IS NOT NULL, n.curren
 // A taken name inserts nothing instead of failing, also when the other row is not committed yet (the insert waits
 // for it), so the entry's savepoint is never aborted by the name index.
 const INSERT_FILE: &str = "INSERT INTO nodes (id, account_id, parent_id, kind, name, name_key, \
-    name_key_version, current_revision_id, created_at, updated_at) \
+    name_key_version, current_revision_id, created_at, updated_at, vault_id) \
     VALUES ($1, $2, $3, 'file', $4, $5, $6, $7, \
     'epoch'::timestamptz + $8::bigint * interval '1 microsecond', \
-    'epoch'::timestamptz + $8::bigint * interval '1 microsecond') \
+    'epoch'::timestamptz + $8::bigint * interval '1 microsecond', $9) \
     ON CONFLICT (parent_id, name_key) WHERE deleted_at IS NULL DO NOTHING";
 
 const INSERT_REVISION: &str = "INSERT INTO revisions (id, account_id, node_id, blob_id, size, content_hash, \
@@ -88,6 +90,7 @@ pub(crate) async fn lock_file(
             parent_id: row.try_get(4)?,
             name: row.try_get(5)?,
             current: current_content(&row, 6)?,
+            vault_id: row.try_get(8)?,
         })
     })
     .transpose()
@@ -104,6 +107,7 @@ pub(crate) async fn insert_file(tx: &mut DbTx, file: &NewFile<'_>) -> Result<boo
         .bind(sc_names::NAME_KEY_VERSION)
         .bind(file.revision_id)
         .bind(file.now.as_unix_micros())
+        .bind(file.vault_id)
         .execute(tx.conn())
         .await?;
     Ok(done.rows_affected() == 1)

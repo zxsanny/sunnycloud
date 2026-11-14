@@ -166,6 +166,7 @@ settings_table! {
     account_delete_interval: Opt<Dur> = unset(A);
     account_delete_alert_after: Dur = dflt("10m", A);
     account_delete_deadline: Dur = dflt("15m", A).range("1m", "60m");
+    account_delete_cycle_budget: Dur = dflt("5s", A);
     health_check_timeout: Opt<Dur> = unset(A);
     admin_list_page_size: Opt<Count> = unset(A);
     default_quota: Size = dflt("100GiB", A);

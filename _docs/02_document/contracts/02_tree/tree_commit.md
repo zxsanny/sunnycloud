@@ -3,7 +3,7 @@
 **Component**: 02_tree
 **Producer task**: E-13/c05 — `_docs/02_tasks/todo/B03-05_tree_publish_core.md` (contributors: E-13/c06 conflict outcomes, E-13/c07 usage deltas, E-13/c08 blob ownership; contract-test plan from E-13/c01); keys assigned at Step 4
 **Consumer tasks**: E-14/c08, E-14/c09, E-14/c12, E-14/c15, E-13/c16 (this batch); E-18/c06 (08 media effect), E-22/c03 (composition root), resolved at Step 4
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft (frozen when the producer task passes review and E-13/c01 has completed the Test Cases)
 **Last Updated**: 2026-11-04
 
@@ -37,6 +37,8 @@ Signatures: part 2 (`TreeCommit::publish`, `PublishEntry`, `Target`, `NewRevisio
 | `CreatedAsCopy{node}` | `New`, name taken | new file gets the conflict-copy name; never `name_conflict` | +size |
 | `Revived` | `Existing` on a tombstoned file, or on a live file under a tombstoned ancestor | node and every tombstoned ancestor up to the root revived (a live folder can sit below a tombstoned one until the cascade marks it), `cascade_pending` cleared on them; an ancestor whose name was taken meanwhile gets a conflict-copy name. When the file's own name was taken, the outcome is `CreatedAsCopy{node}` instead (as `commit_service.md` states) | +new for a tombstoned file; +new − old (old blob queued `replaced`) for a live file under a tombstoned ancestor the cascade has not marked yet, which still counted in usage (AZ-3711) |
 | `NoChange{existing_revision}` | same content as current | nothing; effects still run | 0 |
+
+Vault membership (v1.2, E-30/c01, AZ-3927): a new file copies its parent's `vault_id` (read under the parent's `FOR SHARE` lock), a conflict copy copies the file's; the `PublishedEntry` every effect sees has `vault = entry.vault || the target is in a vault` (the locked file's, or a new file's parent's, `vault_id`), so 08 plans no job and 03 applies `max_vault_file_bytes` without any call to 20 and without trusting a client flag. No extra query: the column is read from rows the entry already locks.
 
 Conflict-copy names come from helper 06 (`stem (conflict copy YYYY-MM-DD HH-MM device).ext`, UTC from the injected clock, `device` = `CommitActor.device_label`, 255-byte limit, ` (2)` suffix).
 
@@ -92,4 +94,5 @@ Contract-test plan (completed 2026-11-11, AZ-3705): 02's real `publish` runs wit
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
 | 1.1.0 | 2026-11-13 | `Revived` walks every tombstoned ancestor to the root; a taken own name answers `CreatedAsCopy` (aligned with 03's `commit_service.md`); unmarked descendants of a revived ancestor come back live (owner) | AZ-3710 |
+| 1.3.0 | 2026-11-14 | v1.2 vault membership: `vault_id` copied on create and conflict copy; `PublishedEntry.vault` OR-ed with the target's membership | AZ-3927 |
 | 1.2.0 | 2026-11-13 | Usage deltas of every outcome, delete and cascade applied through `QuotaLedger`, replaced and deleted blobs queued (`PgTreeService::new` takes `Arc<dyn GcQueue>`, `PgTreeMaintenance::new` takes `Arc<dyn QuotaLedger>`) | AZ-3711 |

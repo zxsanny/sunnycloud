@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c03 — `_docs/02_tasks/todo/B01-12_contracts_part1.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c04 (part 2), E-00/c05 (part 3); other batches: E-10..E-22, E-30 (implementers and callers)
-**Version**: 1.5.1
+**Version**: 1.6.0
 **Status**: draft (frozen when the producer task is accepted)
 **Last Updated**: 2026-11-14
 
@@ -78,14 +78,14 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | `OperatorIdentityOps` (system scope) | `ensure_setup_token` | `()` -> `Option<RawToken>` (only while zero accounts) | `Unexpected` |
 | | `create_admin_invite` | `()` -> `InviteToken` | `Unexpected` |
 | | `reset_admin` | `account` -> `InviteToken` (operator invite with `target_account_id`; the admin's sessions and device tokens are revoked) | `NotFound` (unknown or deleting account), `NotAnAdmin`, `Unexpected` |
-| `AccountAdmin` | `list_accounts` | `filter, page` -> `Vec<AccountInfo>` | `Unexpected` |
+| `AccountAdmin` | `list_accounts` | `filter, page` -> `Vec<AccountInfo>` (`AccountInfo.deletion_requested_at: Option<Timestamp>`, set only for a `deleting` account) | `Unexpected` |
 | | `profile` (read-only, own short transaction in the account's scope; owner decision 2026-11-14, AZ-3819) | `account` -> `AccountProfile{display_name, identities: Vec<IdentityView{provider, email?}>}` (identities oldest first; no token, no provider subject) | `Unexpected` (also for an unknown account) |
 | | `lock_active_admins` | `tx: &mut DbTx` -> `Vec<Uuid>` (active admins, id order, locked for update; a lost lock race is retried once inside the call) | `Unexpected` |
 | | `set_role` | `tx: &mut DbTx, account, Role` -> `()` | `Unexpected` |
 | | `set_state` | `tx: &mut DbTx, account, AccountState{Active \| Disabled}` -> `()` (a disabled account's sessions and device tokens are revoked in the same transaction) | `Unexpected` |
 | | `begin_deletion` | `tx: &mut DbTx, account` -> `()` | `Unexpected` |
 | | `finalize_deletion` | `tx: &mut DbTx, account` -> `()` | `Unexpected` |
-| | `lock_deleting` (proposed, E-15 `contracts` change task, decided 2026-11-07) | `tx: &mut DbTx, account` -> `bool` (`SELECT ... FOR UPDATE SKIP LOCKED` on the account's `deleting` row; `false` when another purger holds it or the account is not `deleting`) | `Unexpected` |
+| | `lock_deleting` (CC-1, decided 2026-11-07; lock mode owner decision 2026-11-14) | `tx: &mut DbTx, account` -> `bool` (`SELECT ... FOR NO KEY UPDATE SKIP LOCKED` on the account's `deleting` row until the caller's transaction ends; `false` when another transaction holds it, the account is not `deleting` or is gone; `FOR KEY SHARE` stays free, so an erase hook on its own connection can insert a row referencing the account) | `Unexpected` |
 
 | DTO | Fields / variants |
 |---|---|
@@ -179,3 +179,4 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | 1.4.0 | 2026-11-13 | Device grant bound at lookup; `decide` answers `UnknownCode` for a grant the caller's account did not look up (owner, security fix) | AZ-4267 |
 | 1.5.0 | 2026-11-14 | `AccountAdmin::profile(account) -> AccountProfile{display_name, identities}` (read-only, owner decision 2026-11-14); `AccountDeletionService::request_as_operator(account)` (CC-2); `IdentityView` moved beside the 01 types (same public path). Additive | AZ-3819 |
 | 1.5.1 | 2026-11-14 | Documentation only: `lock_active_admins` retries one lost lock race inside the call (AZ-3818); the `DevSeed` refusal named `RefusedInProduction`, the existing variant (AZ-3822, open point 5). No signature change | AZ-3818, AZ-3822 |
+| 1.6.0 | 2026-11-14 | `AccountAdmin::lock_deleting(tx, account) -> bool` (CC-1, `FOR NO KEY UPDATE SKIP LOCKED`, owner decision 2026-11-14); `AccountInfo.deletion_requested_at` for the purger's alert and `account_deletion_seconds`. Additive for callers; every `AccountAdmin` implementer gains the method | AZ-3820 |

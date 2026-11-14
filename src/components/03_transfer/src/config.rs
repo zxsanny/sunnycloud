@@ -25,6 +25,9 @@ pub struct TransferConfig {
     pub max_buffered_block_bytes: u64,
     pub session_reap_interval: Duration,
     pub receipt_janitor_interval: Duration,
+    /// The largest file in a vault (v1.2, E-30/c01). The key belongs to 20's vault section, which refuses zero;
+    /// 03 applies it at upload start and at commit.
+    pub max_vault_file_bytes: u64,
 }
 
 impl TransferConfig {
@@ -45,6 +48,7 @@ impl TransferConfig {
             max_buffered_block_bytes: settings.max_buffered_block_bytes.bytes(),
             session_reap_interval: settings.session_reap_interval.get(),
             receipt_janitor_interval: settings.receipt_janitor_interval.get(),
+            max_vault_file_bytes: settings.max_vault_file_bytes.bytes(),
         }
     }
 

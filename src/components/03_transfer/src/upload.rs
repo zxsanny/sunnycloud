@@ -1,5 +1,6 @@
 //! `start_upload`: a large upload session over 2 MiB blocks (`upload_service.md` 1.2.0). Checks run in the
-//! contract's order, reading only: size, name, parent, then the `NothingToSend` rule (the committed key first,
+//! contract's order, reading only: size, name, parent (with the vault file limit when the parent is in a vault),
+//! then the `NothingToSend` rule (the committed key first,
 //! then the tree cases). One short transaction then reserves the quota (taking the quota row lock, which
 //! serialises the session cap of concurrent starts), checks the cap and inserts the `blobs` and
 //! `upload_sessions` rows. The file is created after COMMIT; when that fails a compensating short transaction
@@ -30,6 +31,7 @@ use crate::progress::{ProgressTable, SessionInfo};
 use crate::session_repo::{self, CLIENT_KEY_INDEX, KeyRow, NewSession};
 use crate::shortcut;
 use crate::upload_metrics::{Rejection, UploadMetrics};
+use crate::vault_limit::within_vault_limit;
 
 /// The longest `client_key` the session row stores (`upload_sessions_client_key_check`).
 const MAX_CLIENT_KEY_BYTES: usize = 256;
@@ -151,7 +153,11 @@ impl PgUploadService {
         }
         check_request(&request)?;
         let name = validate_name(&request.name).map_err(|_| UploadError::InvalidName)?;
-        shortcut::check_parent(self.tree.as_ref(), account, request.parent_id).await?;
+        let in_vault =
+            shortcut::check_parent(self.tree.as_ref(), account, request.parent_id).await?;
+        if in_vault && !within_vault_limit(size, self.config.max_vault_file_bytes) {
+            return Err(UploadError::VaultFileTooLarge);
+        }
         // Committed-key case of the `NothingToSend` rule and the resume by key, before the tree cases.
         let mut known = self.read_key(account, &request.client_key).await?;
         if let Some(outcome) = self.answer_from_key(known.as_ref(), size)? {

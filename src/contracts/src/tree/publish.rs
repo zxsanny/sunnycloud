@@ -46,7 +46,9 @@ pub struct NewRevision {
     pub import_hint: bool,
 }
 
-/// `vault` is false in v1.0.
+/// `vault` is the caller's flag; 02 publishes the entry with `vault = true` when it is set or when the target lies
+/// in a vault (the target node's, or for a new file its parent's, membership), so the caller never decides
+/// membership. 03 always passes `false`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishEntry {
     pub target: Target,

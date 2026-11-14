@@ -70,13 +70,14 @@ impl PgTreeService {
                 let parent = node_repo::lock_for_share(tx, account, parent_id)
                     .await
                     .map_err(unexpected)?;
-                usable_parent(parent)?;
+                let vault_id = usable_parent(parent)?;
                 let now = self.clock.now_utc();
                 let id = new_id(self.clock.as_ref());
                 let folder = NewFolder {
                     id,
                     account,
                     parent_id,
+                    vault_id,
                     name: name.as_str(),
                     name_key: key.as_str(),
                     now,
@@ -100,6 +101,7 @@ impl PgTreeService {
                     updated_at: now,
                     seq,
                     thumb_state: ThumbState::None,
+                    vault: vault_id.is_some(),
                 })
             }
         })
@@ -109,7 +111,7 @@ impl PgTreeService {
     }
 
     /// Rename, move, or both. A case-only rename keeps the node id; a move is refused when it would put the node
-    /// under itself. With no move and no new spelling (no name, or the exact stored name) the node is returned
+    /// under itself or across a vault boundary (`check_vault`). With no move and no new spelling (no name, or the exact stored name) the node is returned
     /// as it is: no write, no stamp, no notify.
     pub async fn update_node(
         &self,
@@ -155,7 +157,8 @@ impl PgTreeService {
                 };
                 let parent_id = match new_parent {
                     Some(target) => {
-                        check_move(tx, account, node_id, target).await?;
+                        let target_vault = check_move(tx, account, node_id, target).await?;
+                        check_vault(tx, account, &node, current_parent, target_vault).await?;
                         target
                     }
                     None => current_parent,
@@ -277,26 +280,52 @@ impl PgTreeService {
 }
 
 /// The target folder is locked like a create's parent, then the chain above it is walked for the moved node.
+/// Returns the target's vault.
 async fn check_move(
     tx: &mut DbTx,
     account: Uuid,
     node_id: Uuid,
     target: Uuid,
-) -> Result<(), TreeServiceError> {
+) -> Result<Option<Uuid>, TreeServiceError> {
     if target == node_id {
         return Err(TreeServiceError::Cycle);
     }
     let parent = node_repo::lock_for_share(tx, account, target)
         .await
         .map_err(unexpected)?;
-    usable_parent(parent)?;
+    let vault = usable_parent(parent)?;
     if node_repo::reaches(tx, account, target, node_id)
         .await
         .map_err(unexpected)?
     {
         return Err(TreeServiceError::Cycle);
     }
-    Ok(())
+    Ok(vault)
+}
+
+/// The move rule of E-30/c01: the server cannot encrypt or decrypt, so a node moves only to a folder of its own
+/// vault membership or of the folder it leaves. Inside one vault both are that vault, and outside every vault
+/// both are none; a vault root (in its vault, under a folder in none) moves between folders outside every vault.
+/// Into, out of or between vaults is `VaultBoundary`. Nothing of the node changes but its parent and name, so
+/// its revisions, `client_meta` and blobs stay as they are (AC-60).
+async fn check_vault(
+    tx: &mut DbTx,
+    account: Uuid,
+    node: &NodeRow,
+    current_parent: Uuid,
+    target_vault: Option<Uuid>,
+) -> Result<(), TreeServiceError> {
+    if target_vault == node.vault_id {
+        return Ok(());
+    }
+    let left = node_repo::vault_of(tx, account, current_parent)
+        .await
+        .map_err(unexpected)?;
+    if target_vault == left {
+        Ok(())
+    } else {
+        Err(TreeServiceError::VaultBoundary)
+    }
 }
 
 fn check_base(node: &NodeRow, base_revision: Option<Uuid>) -> Result<(), TreeServiceError> {
@@ -310,12 +339,13 @@ fn check_base(node: &NodeRow, base_revision: Option<Uuid>) -> Result<(), TreeSer
     }
 }
 
-fn usable_parent(parent: Option<NodeRow>) -> Result<(), TreeServiceError> {
+/// The parent's vault when the parent is a live folder.
+fn usable_parent(parent: Option<NodeRow>) -> Result<Option<Uuid>, TreeServiceError> {
     match parent {
         None => Err(TreeServiceError::NotFound),
         Some(parent) if parent.kind != NodeKind::Folder => Err(TreeServiceError::NotAFolder),
         Some(parent) if parent.deleted => Err(TreeServiceError::ParentDeleted),
-        Some(_) => Ok(()),
+        Some(parent) => Ok(parent.vault_id),
     }
 }
 
