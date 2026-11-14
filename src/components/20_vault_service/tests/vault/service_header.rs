@@ -222,20 +222,3 @@ async fn another_account_gets_not_found_on_get_and_replace_like_an_unknown_id() 
     assert_eq!(env.stored(vault_of_a).await, Some(b"H0".to_vec()));
     env.finish().await;
 }
-
-#[tokio::test]
-async fn report_unlock_failure_is_not_built_by_this_service_yet() {
-    // Arrange
-    let mut env = Env::new().await;
-    let (account, vault, _) = env.account_with_vault(b"H0").await;
-
-    // Act
-    let reported = env.service.report_unlock_failure(account, vault).await;
-
-    // Assert
-    assert!(
-        matches!(reported, Err(VaultError::Unexpected(_))),
-        "{reported:?}"
-    );
-    env.finish().await;
-}

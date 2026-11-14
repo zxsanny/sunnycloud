@@ -220,4 +220,4 @@ After: `contracts`, 04_blobstore, 03_transfer, 02_tree (ports), helpers. Paralle
 
 ## 15. Logging
 
-ERROR: output accept failed after retries, job reaped dead. WARN: lease lost, output rejected by sniffer or cap, auth failure on the internal listener (count only, no secret). INFO: job claimed/succeeded/dead (ids, kind, attempt, duration), reaper summary. Metrics: `jobs_queued`, `jobs_running`, `job_leases_expired_total`, `jobs_dead_total`, `job_duration_seconds{kind}`, `derived_bytes_total{kind}`.
+ERROR: output accept failed after retries, job reaped dead. WARN: lease lost, output rejected by sniffer or cap, auth failure on the internal listener (count only, no secret). INFO: job claimed/succeeded/dead (ids, kind, attempt, duration), reaper summary. Metrics: `jobs_queued`, `jobs_running`, `job_leases_expired_total`, `jobs_dead_total`, `job_duration_seconds{kind}`, `derived_bytes_total{kind}`, `worker_auth_failures_total` (refused worker bearers, no labels).

@@ -24,7 +24,7 @@ use crate::publish_support::{actor, tree_service};
 use crate::queue_support::{LEASE, config};
 
 /// Deterministic bytes that do not compress or repeat by block.
-fn content(len: usize, seed: u64) -> Vec<u8> {
+pub fn content(len: usize, seed: u64) -> Vec<u8> {
     let mut state = seed;
     (0..len)
         .map(|_| {
@@ -36,13 +36,13 @@ fn content(len: usize, seed: u64) -> Vec<u8> {
         .collect()
 }
 
-fn hashes(bytes: &[u8]) -> (Vec<Hash32>, FileHash) {
+pub fn hashes(bytes: &[u8]) -> (Vec<Hash32>, FileHash) {
     let blocks: Vec<Hash32> = bytes.chunks(BLOCK_SIZE).map(hash_block).collect();
     let file = rollup(&blocks);
     (blocks, file)
 }
 
-async fn read_all(input: WorkerInput) -> (u64, Vec<u8>) {
+pub async fn read_all(input: WorkerInput) -> (u64, Vec<u8>) {
     let WorkerInput { length, mut body } = input;
     let mut bytes = Vec::new();
     while let Some(chunk) = body.next().await {
@@ -61,7 +61,7 @@ fn label(result: &Result<WorkerInput, WorkerJobError>) -> &'static str {
 }
 
 /// Publishes `bytes` as `target` over a fresh committed blob; returns (node, revision).
-async fn publish(
+pub async fn publish(
     a: &Accept,
     service: &PgTreeService,
     target: Target,
@@ -109,7 +109,7 @@ async fn publish(
     }
 }
 
-fn new_at(root: Uuid, name: &str) -> Target {
+pub fn new_at(root: Uuid, name: &str) -> Target {
     Target::New {
         parent_id: root,
         name: name.to_owned(),

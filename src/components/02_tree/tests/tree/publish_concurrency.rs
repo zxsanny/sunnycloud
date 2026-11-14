@@ -57,7 +57,7 @@ async fn commit(service: &PgTreeService, account: Uuid, entry: PublishEntry) -> 
         .await
 }
 
-fn reader(tree: &Tree) -> PgFeedReader {
+pub fn reader(tree: &Tree) -> PgFeedReader {
     let config = FeedConfig {
         longpoll_wait_max: Duration::from_secs(30),
         longpoll_auth_recheck: Duration::from_secs(2),

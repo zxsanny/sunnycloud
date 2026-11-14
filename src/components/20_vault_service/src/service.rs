@@ -6,6 +6,10 @@
 //! makes an unknown, foreign or tombstoned node (also under a tombstoned ancestor) and a file `NotFound` and a folder
 //! with a live child `VaultExists`, so a vault starts on an empty folder. One vault per account and one vault per
 //! root are kept by the unique keys of `vaults`.
+//!
+//! An unlock-failure report (E-30/c04) writes one `vault_failure` audit event, ids only, through
+//! `AuditWriter::record` (its own short transaction, fail closed) after a separate lookup of the vault in the
+//! caller's account; an unknown or foreign vault writes nothing and is `NotFound`.
 
 use std::sync::Arc;
 
@@ -13,6 +17,7 @@ use contracts::{
     CreatedVault, ETag, TreeReader, TreeReaderError, VaultError, VaultHeader, VaultService,
     async_trait,
 };
+use sc_audit::{AuditEvent, AuditEventKind, AuditWriter, SubjectRef};
 use sc_clock::Clock;
 use sc_db::{Db, DbError, RunError, Scope};
 use sc_ids::new_id;
@@ -21,14 +26,15 @@ use uuid::Uuid;
 use crate::config::VaultConfig;
 use crate::vault_repo::{self, NewVault};
 
-/// Out of scope of the header service (E-30/c04, its own task); the port answers this until it is built.
-const UNLOCK_FAILURE_NOT_BUILT: &str = "report_unlock_failure is not implemented yet (E-30/c04)";
+/// `audit_log.subject_type` of a vault.
+const VAULT_SUBJECT: &str = "vault";
 
 /// The header service over `vaults`.
 pub struct PgVaultService {
     db: Db,
     tree: Arc<dyn TreeReader>,
     clock: Arc<dyn Clock>,
+    audit: AuditWriter,
     max_header_bytes: u64,
 }
 
@@ -38,12 +44,14 @@ impl PgVaultService {
         db: Db,
         tree: Arc<dyn TreeReader>,
         clock: Arc<dyn Clock>,
+        audit: AuditWriter,
         config: &VaultConfig,
     ) -> Self {
         PgVaultService {
             db,
             tree,
             clock,
+            audit,
             max_header_bytes: config.max_vault_header_bytes,
         }
     }
@@ -82,6 +90,19 @@ impl PgVaultService {
 /// `true` when a header of `len` bytes is at most `max` bytes.
 pub(crate) fn within_cap(len: usize, max: u64) -> bool {
     u64::try_from(len).is_ok_and(|len| len <= max)
+}
+
+/// The `vault_failure` event of a report: the account as actor, the vault as subject, no detail. The time is
+/// stamped by the writer.
+fn unlock_failure_event(account: Uuid, vault_id: Uuid) -> AuditEvent {
+    AuditEvent {
+        actor_account_id: Some(account),
+        subject: Some(SubjectRef {
+            subject_type: VAULT_SUBJECT,
+            id: vault_id,
+        }),
+        ..AuditEvent::new(AuditEventKind::VaultFailure)
+    }
 }
 
 fn unexpected(error: impl std::error::Error + Send + Sync + 'static) -> VaultError {
@@ -172,12 +193,22 @@ impl VaultService for PgVaultService {
             .map_err(run_unexpected)?
     }
 
-    async fn report_unlock_failure(
-        &self,
-        _account: Uuid,
-        _vault_id: Uuid,
-    ) -> Result<(), VaultError> {
-        Err(VaultError::Unexpected(UNLOCK_FAILURE_NOT_BUILT.into()))
+    async fn report_unlock_failure(&self, account: Uuid, vault_id: Uuid) -> Result<(), VaultError> {
+        // The lookup commits before the audit write: no transaction spans both.
+        let owned = self
+            .db
+            .run(Scope::Account(account), async |tx| {
+                vault_repo::exists(tx, account, vault_id).await
+            })
+            .await
+            .map_err(run_unexpected)?;
+        if !owned {
+            return Err(VaultError::NotFound);
+        }
+        self.audit
+            .record(unlock_failure_event(account, vault_id))
+            .await
+            .map_err(unexpected)
     }
 }
 
@@ -209,5 +240,31 @@ mod tests {
 
         // Assert
         assert!(empty);
+    }
+
+    #[test]
+    fn unlock_failure_event_names_the_account_and_the_vault_and_nothing_else() {
+        // Arrange
+        let account = Uuid::from_u128(1);
+        let vault = Uuid::from_u128(2);
+
+        // Act
+        let event = unlock_failure_event(account, vault);
+
+        // Assert
+        assert_eq!(
+            event,
+            AuditEvent {
+                event: AuditEventKind::VaultFailure,
+                actor_account_id: Some(account),
+                actor_session_id: None,
+                subject: Some(SubjectRef {
+                    subject_type: "vault",
+                    id: vault,
+                }),
+                ip: None,
+                detail: sc_audit::AuditDetail::new(),
+            }
+        );
     }
 }

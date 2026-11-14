@@ -365,12 +365,24 @@ impl ProgressTable {
         mark: CheckpointMark,
         checkpoint: &Checkpoint<'_>,
     ) -> Result<Arc<SharedProgress>, CheckpointError> {
+        self.load(upload_id, info, mark, checkpoint)
+            .map(|(entry, _)| entry)
+    }
+
+    /// As [`Self::get_or_load`]; the flag is `true` when this call created the entry.
+    pub(crate) fn load(
+        &self,
+        upload_id: Uuid,
+        info: SessionInfo,
+        mark: CheckpointMark,
+        checkpoint: &Checkpoint<'_>,
+    ) -> Result<(Arc<SharedProgress>, bool), CheckpointError> {
         if let Some(found) = self.get(upload_id) {
-            return Ok(found);
+            return Ok((found, false));
         }
         let mut sessions = self.write();
         if let Some(found) = sessions.get(&upload_id) {
-            return Ok(Arc::clone(found));
+            return Ok((Arc::clone(found), false));
         }
         let loaded = Arc::new(SharedProgress::new(
             info,
@@ -378,7 +390,7 @@ impl ProgressTable {
             mark,
         ));
         sessions.insert(upload_id, Arc::clone(&loaded));
-        Ok(loaded)
+        Ok((loaded, true))
     }
 
     /// The entry of a new session with nothing received. An existing entry for the id is replaced.

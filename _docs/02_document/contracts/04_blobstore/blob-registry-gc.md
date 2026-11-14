@@ -2,10 +2,10 @@
 
 **Component**: 04_blobstore
 **Producer task**: E-10/c09 — `_docs/02_tasks/todo/B02-09_blob_registry_gc_queue.md` (`BlobRegistry`, `BlobCatalog`, `GcQueue`); E-10/c10 — `B02-10_gc_sweeper.md` (`GcSweeper` and its calls into `BlobOwnerCleanup`) (both renamed to their AZ keys at Step 4)
-**Consumer tasks**: E-13 tree (GC scheduling in publish, delete, cascade and purge; reinstate in restore; ownership check by the composite foreign key on `revisions`, not through `BlobCatalog` (AZ-3712, 2026-11-13); implements `BlobOwnerCleanup` in E-13/c13), E-14 transfer (register rows, `get_ref` for downloads, row removal by the session reaper), E-18 media_jobs (derived rows, `Due::Now` scheduling, implements `BlobOwnerCleanup` in E-18/c10), E-17 / E-13 erase hooks (`pending_for_account`), E-22 (`admin gc-run`, scheduler)
-**Version**: 2.0.0
+**Consumer tasks**: E-13 tree (GC scheduling in publish, delete, cascade and purge; reinstate in restore; ownership check by the composite foreign key on `revisions`, not through `BlobCatalog` (AZ-3712, 2026-11-13); implements `BlobOwnerCleanup` in E-13/c13), E-14 transfer (register rows, `get_ref` for downloads, `get_uploading_plan` for the lazy load of an upload session after a restart (AZ-3736), row removal by the session reaper and `abort_upload`), E-18 media_jobs (derived rows, `Due::Now` scheduling, implements `BlobOwnerCleanup` in E-18/c10), E-17 / E-13 erase hooks (`pending_for_account`), E-22 (`admin gc-run`, scheduler)
+**Version**: 2.1.0
 **Status**: draft (frozen when E-10/c10 is accepted)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-14
 
 ## Purpose
 
@@ -20,6 +20,7 @@ The row lifecycle of a blob (`uploading` -> `committed` -> `gc_pending` -> remov
 | `BlobRegistry::reinstate_in_tx` | `tx, account_id, blob_id` -> `Reinstated \| BeyondRetention \| FileMissing` | typed | async, caller's tx |
 | `BlobRegistry::remove_row_in_tx` | `tx, account_id, blob_id` -> `()` | typed | async, caller's tx |
 | `BlobCatalog::get_ref` | `account_id, blob_id` -> `Option<BlobRef{blob_id, size, wrapped_key, master_key_id}>` | none | async |
+| `BlobCatalog::get_uploading_plan` | `account_id, blob_id` -> `Option<BlobPlan{blob_id, wrapped_key, master_key_id}>` | `Unexpected` | async |
 | `GcQueue::schedule_in_tx` | `tx, blob_id, reason, Due::AfterRetention \| Due::Now` -> `()` | typed | async, caller's tx |
 | `GcQueue::pending_for_account` | `account` -> `u64` | typed | async |
 | `GcSweeper::run_cycle` (`Janitor`) | `now` -> `GcStats{removed, remaining_due, budget_spent}` | typed | async |
@@ -30,7 +31,8 @@ The row lifecycle of a blob (`uploading` -> `committed` -> `gc_pending` -> remov
 ## Invariants
 
 - Registry methods run inside the caller's transaction and open none. A rolled-back caller transaction leaves no row and no state change.
-- `BlobRef` is defined by 04 only. `get_ref` is account-scoped: another account's blob id and an unknown id both return `None`. It is the only read of `blobs` on the request path.
+- `BlobRef` is defined by 04 only. `get_ref` is account-scoped: another account's blob id and an unknown id both return `None`. A row still `uploading` has no `BlobRef` (`None`).
+- `get_uploading_plan` (AZ-3736, additive) serves the key material of a blob still `uploading`, so 03 can rebuild its write handle with `BlobWriter::open_for_write` after a restart. Account-scoped like `get_ref`: another account's id, an unknown id and a row in any other state return `None`. The caller passes the plan to the writer only and never logs it. The trait gives it a default body that answers `Unexpected` (a catalog that does not serve upload plans), so existing implementers compile unchanged; 04's `BlobCatalog` overrides it. `get_ref` and `get_uploading_plan` are the only reads of `blobs` on the request path.
 - `schedule_in_tx` is the single writer of `blob_gc` and of `blobs.state = 'gc_pending'`; both change together or not at all. `due_at = now + retention` for `AfterRetention`, `due_at = now` for `Due::Now`. Scheduling a blob that is already queued keeps one row with the earliest `due_at`.
 - `pending_for_account` counts that account's queued blobs that are not yet removed, and nothing of other accounts.
 - `reinstate_in_tx` checks the file before its database statements: within retention it returns `Reinstated` (queue row removed, state back to `committed`); a row already removed after retention gives `BeyondRetention`; a row whose file is absent gives `FileMissing`.
@@ -56,6 +58,7 @@ The row lifecycle of a blob (`uploading` -> `committed` -> `gc_pending` -> remov
 |------|-------|----------|-------|
 | register-rollback | `register_in_tx(uploading)` then caller rollback | no row | IT-04-8 |
 | catalog-foreign | B asks `get_ref(B, A.blob_id)` | `None` | IT-04-8, ST-04-5 |
+| uploading-plan | `get_uploading_plan` for an own uploading, a foreign uploading, an own committed and an unknown id | the plan; `None` for the other three | AZ-3736 |
 | schedule-retention | retention 7 d, `AfterRetention` | `due_at = now + 7 d`, state `gc_pending` | IT-04-9 |
 | schedule-duplicate | same blob scheduled twice | one row, earliest `due_at` | IT-04-9 |
 | reinstate-states | within retention / removed / file absent | `Reinstated` / `BeyondRetention` / `FileMissing` | IT-04-8 |
@@ -69,3 +72,4 @@ The row lifecycle of a blob (`uploading` -> `committed` -> `gc_pending` -> remov
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B02) |
 | 2.0.0 | 2026-11-13 | `BlobRegistry` methods take the account and every statement is filtered by it (a blob named with another account behaves like an absent row); 04 implements the port as a trait; the sweeper passes the account of the row it locked | AZ-4264 |
+| 2.1.0 | 2026-11-14 | `BlobCatalog::get_uploading_plan` added (account-scoped plan of an `uploading` blob, default body `Unexpected`) for 03's lazy load after a restart | AZ-3736 |

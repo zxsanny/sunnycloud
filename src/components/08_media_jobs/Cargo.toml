@@ -41,4 +41,6 @@ sc_testdb = { path = "../../shared/testdb" }
 # The boundary-backed `AccountGuard` double (AZ-4250).
 sunnycloud-testkit = { path = "../testkit" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+# The capturing log subscriber of the worker authentication log test (same declaration as 02).
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 uuid = { workspace = true, features = ["v4"] }

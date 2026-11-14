@@ -89,7 +89,7 @@ pub enum BlobCatalogError {
     Unexpected(#[source] Fault),
 }
 
-/// The only read of `blobs` on the request path.
+/// The reads of `blobs` on the request path.
 #[async_trait]
 pub trait BlobCatalog: Send + Sync {
     /// Account-scoped: another account's blob id and an unknown id are both `None`.
@@ -98,6 +98,15 @@ pub trait BlobCatalog: Send + Sync {
         account: Uuid,
         blob_id: Uuid,
     ) -> Result<Option<BlobRef>, BlobCatalogError>;
+
+    /// The plan (key material) of a blob still `uploading`, so its writer can be reopened with
+    /// `BlobWriter::open_for_write` after a restart. Account-scoped like `get_ref`: another account's blob id, an
+    /// unknown id and a blob in any other state are all `None`.
+    async fn get_uploading_plan(
+        &self,
+        account: Uuid,
+        blob_id: Uuid,
+    ) -> Result<Option<BlobPlan>, BlobCatalogError>;
 }
 
 /// Why a blob is queued for removal (data model 6.2).

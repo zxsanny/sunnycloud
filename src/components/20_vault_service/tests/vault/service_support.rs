@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use contracts::{ETag, VaultService};
+use sc_audit::AuditWriter;
 use sc_db::Db;
 use sqlx::{Connection, PgConnection};
 use sunnycloud_tree::{PgTreeReader, TreeConfig};
@@ -39,10 +40,12 @@ pub fn tree_config() -> TreeConfig {
 /// A service over `db`, as the composition root builds it.
 pub fn service_on(db: &Db) -> Arc<PgVaultService> {
     let reader = Arc::new(PgTreeReader::new(db.clone(), &tree_config()));
+    let clock = sc_testdb::clock_at_start();
     Arc::new(PgVaultService::new(
         db.clone(),
         reader,
-        sc_testdb::clock_at_start(),
+        clock.clone(),
+        AuditWriter::new(db.clone(), clock),
         &vault_config(),
     ))
 }

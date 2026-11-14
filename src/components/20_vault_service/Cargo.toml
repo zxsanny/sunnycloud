@@ -11,6 +11,8 @@ workspace = true
 
 [dependencies]
 contracts = { path = "../../contracts" }
+# `vault_failure` events of unlock-failure reports (AZ-3924).
+sc_audit = { path = "../../shared/audit" }
 # Header timestamps (AZ-3923).
 sc_clock = { path = "../../shared/clock" }
 sc_config = { path = "../../shared/config" }
@@ -36,4 +38,6 @@ sunnycloud-testkit = { path = "../testkit" }
 # The tests read and write the tables with plain statements on the transaction's connection.
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+# The audit log lines of unlock-failure reports are captured with a test subscriber (AZ-3924).
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 uuid = { workspace = true, features = ["v4"] }

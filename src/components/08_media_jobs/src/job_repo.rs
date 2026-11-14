@@ -15,6 +15,7 @@ use sc_ids::FileHash;
 use sqlx::AssertSqlSafe;
 use uuid::Uuid;
 
+use crate::job_names::{kind_name, lane_name, parse_kind, skip_name};
 use crate::retry;
 
 macro_rules! at {
@@ -136,38 +137,15 @@ const REQUEUE_DEAD: &str = concat!(
      WHERE status = 'dead' AND ($2::uuid IS NULL OR account_id = $2) AND ($3::text IS NULL OR kind = $3)"
 );
 
+/// One row per worker id, replaced by each report; `seen_at` is the API clock's.
+const RECORD_STATUS: &str = concat!(
+    "INSERT INTO worker_status (worker_id, seen_at, image_age_days, decoder_ok) VALUES ($1, ",
+    at!("$2"),
+    ", $3, $4) ON CONFLICT ON CONSTRAINT worker_status_pkey DO UPDATE SET seen_at = EXCLUDED.seen_at, \
+     image_age_days = EXCLUDED.image_age_days, decoder_ok = EXCLUDED.decoder_ok"
+);
+
 pub(crate) const PURGE_BATCH: i64 = 1_000;
-
-pub(crate) fn kind_name(kind: JobKind) -> &'static str {
-    match kind {
-        JobKind::Stills => "stills",
-        JobKind::Poster => "poster",
-        JobKind::Transcode => "transcode",
-    }
-}
-
-pub(crate) fn lane_name(lane: Lane) -> &'static str {
-    match lane {
-        Lane::Image => "image",
-        Lane::Video => "video",
-    }
-}
-
-fn parse_kind(name: &str) -> Result<JobKind, DbError> {
-    match name {
-        "stills" => Ok(JobKind::Stills),
-        "poster" => Ok(JobKind::Poster),
-        "transcode" => Ok(JobKind::Transcode),
-        other => Err(DbError::Other(format!("unknown job kind {other:?}"))),
-    }
-}
-
-fn skip_name(outcome: SkipOutcome) -> &'static str {
-    match outcome {
-        SkipOutcome::SkippedCompliant => "skipped_compliant",
-        SkipOutcome::Obsolete => "obsolete",
-    }
-}
 
 pub(crate) fn micros(at: Timestamp) -> i64 {
     at.as_unix_micros()
@@ -468,6 +446,27 @@ pub(crate) async fn requeue_dead(
             .execute(tx.conn())
             .await?;
         Ok::<_, DbError>(done.rows_affected())
+    })
+    .await
+}
+
+/// System scope: `worker_status` is installation-level and has no account.
+pub(crate) async fn record_status(
+    db: &Db,
+    worker: &str,
+    seen_at: Timestamp,
+    image_age_days: i32,
+    decoder_ok: bool,
+) -> Result<(), RunError<DbError>> {
+    db.run_system("worker_status_record", async |tx| {
+        sqlx::query(RECORD_STATUS)
+            .bind(worker)
+            .bind(micros(seen_at))
+            .bind(image_age_days)
+            .bind(decoder_ok)
+            .execute(tx.conn())
+            .await?;
+        Ok::<_, DbError>(())
     })
     .await
 }

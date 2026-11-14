@@ -9,8 +9,8 @@
 use std::sync::Arc;
 
 use contracts::{
-    AccountGuard, AccountGuardError, BlobError, BlobPlan, BlobRegistry, BlobWriter, Fault,
-    QuotaLedger, QuotaLedgerError, RegisterState, StartUpload, StartUploadOutcome, Started,
+    AccountGuard, AccountGuardError, BlobCatalog, BlobError, BlobPlan, BlobRegistry, BlobWriter,
+    Fault, QuotaLedger, QuotaLedgerError, RegisterState, StartUpload, StartUploadOutcome, Started,
     TreeReader, UploadError, WrittenOrPlanned,
 };
 use sc_clock::{Clock, Timestamp};
@@ -46,31 +46,33 @@ pub enum StartFault {
     ExpiryOverflow,
 }
 
-/// The upload sessions of 03. `UploadService` itself is implemented once blocks, state and staging exist.
-/// `progress` holds the sessions started by this process (decision 12: one API process); `caps` the account
-/// and buffer in-flight caps.
+/// The upload sessions of 03. `UploadService` itself is implemented once staging exists. `progress` holds the
+/// sessions started or touched by this process (decision 12: one API process), loaded lazily from their checkpoint
+/// row; `caps` the account and buffer in-flight caps.
 pub struct PgUploadService {
     pub(crate) db: Db,
     pub(crate) config: TransferConfig,
     guard: Arc<dyn AccountGuard>,
     tree: Arc<dyn TreeReader>,
-    quota: Arc<dyn QuotaLedger>,
+    pub(crate) quota: Arc<dyn QuotaLedger>,
     pub(crate) writer: Arc<dyn BlobWriter>,
-    registry: Arc<dyn BlobRegistry>,
+    pub(crate) registry: Arc<dyn BlobRegistry>,
+    pub(crate) catalog: Arc<dyn BlobCatalog>,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) metrics: Option<UploadMetrics>,
     pub(crate) progress: ProgressTable,
     pub(crate) caps: InflightCaps,
 }
 
-/// The ports `start_upload` calls: the account guard (01), the tree reader (02), the quota ledger (07a) and the
-/// blob writer and registry (04).
+/// The ports of the upload sessions: the account guard (01), the tree reader (02), the quota ledger (07a) and the
+/// blob writer, registry and catalog (04; the catalog serves an uploading blob's plan to the lazy load).
 pub struct UploadPorts {
     pub guard: Arc<dyn AccountGuard>,
     pub tree: Arc<dyn TreeReader>,
     pub quota: Arc<dyn QuotaLedger>,
     pub writer: Arc<dyn BlobWriter>,
     pub registry: Arc<dyn BlobRegistry>,
+    pub catalog: Arc<dyn BlobCatalog>,
 }
 
 /// Why the session transaction did not create a session.
@@ -88,6 +90,7 @@ impl PgUploadService {
             quota,
             writer,
             registry,
+            catalog,
         } = ports;
         let caps = InflightCaps::new(
             config.max_inflight_blocks_per_account,
@@ -101,6 +104,7 @@ impl PgUploadService {
             quota,
             writer,
             registry,
+            catalog,
             clock,
             metrics: None,
             progress: ProgressTable::new(),
@@ -392,7 +396,7 @@ fn quota_error(error: QuotaLedgerError) -> UploadError {
     }
 }
 
-fn blob_error(error: BlobError) -> UploadError {
+pub(crate) fn blob_error(error: BlobError) -> UploadError {
     match error {
         BlobError::FreeSpaceFloor => UploadError::FreeSpaceFloor,
         BlobError::NoSpace => UploadError::StorageFull,

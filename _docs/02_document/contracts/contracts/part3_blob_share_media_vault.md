@@ -3,9 +3,9 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c05 — `_docs/02_tasks/todo/B01-14_contracts_part3.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: other batches: E-10, E-13, E-14, E-16, E-18, E-21, E-22, E-30
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: draft (frozen when the producer task is accepted; `VaultService` stays a v1.2 proposal, 20 §1)
-**Last Updated**: 2026-11-11
+**Last Updated**: 2026-11-14
 
 ## Purpose
 
@@ -35,6 +35,7 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 | | `reinstate_in_tx` | `tx: &mut DbTx, blob_id` -> `Reinstated \| BeyondRetention \| FileMissing` | `Unexpected` |
 | | `remove_row_in_tx` | `tx: &mut DbTx, blob_id` -> `()` | `Unexpected` |
 | `BlobCatalog` | `get_ref` | `account, blob_id` -> `Option<BlobRef>` (a foreign id is `None`) | none |
+| `BlobCatalog` | `get_uploading_plan` | `account, blob_id` -> `Option<BlobPlan>` (key material of an own blob still `uploading`; foreign, unknown or any other state is `None`); 03 reopens the writer after a restart | none |
 | `GcQueue` | `schedule_in_tx` | `tx: &mut DbTx, blob_id, GcReason{Replaced \| Deleted \| AccountDeleted \| DerivedRemoved}, Due{AfterRetention \| Now}` -> `()` | `Unexpected` |
 | | `pending_for_account` | `account` -> `u64` | none |
 | `Scrubber` | `start_run` | `ScrubMode{Full \| Due}, rate: Option<ByteRate>` -> `ScrubRun{started_at}` | `Unexpected` |
@@ -98,7 +99,7 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 
 ## Invariants
 
-- 04 is reached only through these ports; `BlobCatalog::get_ref` is the only request-path read of `blobs`, and `BlobReader` is the one decrypt path (downloads and the worker input alike).
+- 04 is reached only through these ports; `BlobCatalog::get_ref` is the only request-path read of a stored blob (`get_uploading_plan` serves only 03's resume of an `uploading` blob), and `BlobReader` is the one decrypt path (downloads and the worker input alike).
 - `GcQueue::schedule_in_tx` is the single writer of `blob_gc` and of `blobs.state = gc_pending`.
 - `WorkerAuthenticator` fails with one variant for every cause; the worker routes are never reachable with a user or device credential (AC-79).
 - `PublicShareService` returns one `NotFound` variant for every missing, expired or revoked link (AC-12).
@@ -140,3 +141,4 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
 | 1.1.0 | 2026-11-11 | `PublicShareService::authorize_derived` returns `ShareDerived{account_id, file}` instead of a bare `LiveFile`, so 11 can pass the owning account to 03 for the derived blob; owner-approved; 06 does not implement it yet, the callers are 11 (registered share thumbnail route) and the test doubles | owner-approved change |
 | 1.2.0 | 2026-11-13 | `DerivedBlob{blob, media_type}` returned by `DerivedOpener`; `open_derived_for` takes `account` (parent-approved, AZ-3844); `CreatedShare` `Debug` hides `url_path` | AZ-3844, AZ-3697 |
+| 1.4.0 | 2026-11-14 | `BlobCatalog::get_uploading_plan` (additive, required; parent-approved, AZ-3736) so 03 can reopen an upload's writer after a restart | AZ-3736 |

@@ -98,3 +98,9 @@ Then both return `UploadNotFound`
 ## Notes from AZ-3735 (2026-11-13)
 
 After a restart `put_block` cannot rebuild the write handle of a session this process did not start: 04's `BlobCatalog::get_ref` answers `None` for an `uploading` blob and no port serves an upload's key material, so the lazy load needs a port change (for example a catalog read of an uploading blob's key, account-scoped). The reaper and abort must also remove the in-memory progress entry.
+
+## Implementation notes (2026-11-14)
+
+- Port: `BlobCatalog::get_uploading_plan(account, blob_id) -> Result<Option<BlobPlan>, BlobCatalogError>` (additive, default body `Unexpected`; 04 implements it; `blob-registry-gc.md` 2.1.0). 03 takes it as `UploadPorts.catalog`.
+- The lazy load runs on the first `get_upload` or `put_block` for a session this process has no entry for; `abort_upload` needs no entry.
+- Measured resend (ManualClock, 8 MiB / 1 s checkpoints): IT-03-4 case A 8 MiB (4 cut in-flight blocks); case B 4 MiB (2 acked blocks after the last checkpoint), within the 16 MiB bound.

@@ -1,8 +1,9 @@
 //! `put_block` (`upload_service.md`): one block of a large upload session, in this order and without a
-//! database call on the way:
+//! database call on the way once the session is in memory:
 //!
-//! 1. the session from the progress table (absent, foreign or past `expires_at` is `UploadNotFound`), the index
-//!    and the declared length (`min(2 MiB, remaining)`);
+//! 1. the session from the progress table, loaded from its checkpoint row when this process has none (absent,
+//!    foreign or past `expires_at` is `UploadNotFound`), the index and the declared length
+//!    (`min(2 MiB, remaining)`);
 //! 2. the duplicate rules and the session's lane cap, then the account and buffer caps: a repeat of a received
 //!    block with its hash is acknowledged, another hash for a received or in-flight index is `BlockConflict`,
 //!    and a busy lane, account or buffer is `Overloaded`, all before any body byte is read;
@@ -46,7 +47,7 @@ impl PgUploadService {
         body: ByteStream,
         length: u64,
     ) -> Result<BlockAck, UploadError> {
-        let session = self.live_session(account, upload_id)?;
+        let session = self.live_session(account, upload_id).await?;
         let expected = expected_len(session.info().declared_size, index)
             .ok_or(UploadError::IndexOutOfRange)?;
         if length != expected {
@@ -89,24 +90,6 @@ impl PgUploadService {
         self.checkpoint_if_due(&session, upload_id, expected)
             .await?;
         Ok(BlockAck)
-    }
-
-    /// The session's entry when it belongs to `account` and has not expired; an expired entry is dropped.
-    fn live_session(
-        &self,
-        account: Uuid,
-        upload_id: Uuid,
-    ) -> Result<std::sync::Arc<SharedProgress>, UploadError> {
-        let session = self
-            .progress
-            .get(upload_id)
-            .filter(|session| session.info().account == account)
-            .ok_or(UploadError::UploadNotFound)?;
-        if self.clock.now_utc() >= session.expires_at() {
-            self.progress.remove(upload_id);
-            return Err(UploadError::UploadNotFound);
-        }
-        Ok(session)
     }
 
     async fn write_durable(
@@ -178,7 +161,7 @@ impl PgUploadService {
             .await
             .map_err(run_error)?;
         if written == 0 {
-            self.progress.remove(upload_id);
+            self.evict(upload_id);
             return Err(UploadError::UploadNotFound);
         }
         run.succeeded(CheckpointMark { at, expires_at });

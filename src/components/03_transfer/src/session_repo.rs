@@ -1,5 +1,6 @@
-//! The `upload_sessions` statements of `start_upload` and of the `put_block` checkpoint. Every statement names the account, so a row of another
-//! account is never read or written even in system scope. Timestamps travel as Unix microseconds.
+//! The `upload_sessions` statements of `start_upload`, the `put_block` checkpoint, the lazy load and
+//! `abort_upload`. Every statement names the account, so a row of another account is never read or written even
+//! in system scope. Timestamps travel as Unix microseconds.
 
 use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx};
@@ -41,6 +42,18 @@ const CHECKPOINT: &str = "UPDATE upload_sessions SET received = $3, block_hashes
      expires_at = 'epoch'::timestamptz + $6::bigint * interval '1 microsecond' \
      WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL \
      AND expires_at > 'epoch'::timestamptz + $5::bigint * interval '1 microsecond'";
+
+// An open session that has not expired: what the progress entry is rebuilt from after a restart.
+const OPEN_SESSION: &str = "SELECT blob_id, declared_size, block_count, received, block_hashes, \
+     (extract(epoch FROM expires_at) * 1000000)::bigint \
+     FROM upload_sessions WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL \
+     AND expires_at > 'epoch'::timestamptz + $3::bigint * interval '1 microsecond'";
+
+// Abort: an open, unexpired row only (an expired one is the reaper's); the deleter settles the reservation.
+const DELETE_OPEN_RETURNING: &str = "DELETE FROM upload_sessions \
+     WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL \
+     AND expires_at > 'epoch'::timestamptz + $3::bigint * interval '1 microsecond' \
+     RETURNING blob_id, reserved_bytes";
 
 /// The row a `client_key` names. `committed_revision_id` is `Some` once its commit created that revision.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,4 +175,56 @@ pub(crate) async fn checkpoint(tx: &mut DbTx, progress: &Progress<'_>) -> Result
         .execute(tx.conn())
         .await?;
     Ok(done.rows_affected())
+}
+
+/// An open session row as the lazy load reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct OpenRow {
+    pub blob_id: Uuid,
+    pub declared_size: i64,
+    pub block_count: i32,
+    pub received: Vec<u8>,
+    pub block_hashes: Vec<u8>,
+    pub expires_at: Timestamp,
+}
+
+/// The open, unexpired session `id` of `account`; `None` when absent, foreign, committed or expired at `now`.
+pub(crate) async fn open_session(
+    tx: &mut DbTx,
+    account: Uuid,
+    id: Uuid,
+    now: Timestamp,
+) -> Result<Option<OpenRow>, DbError> {
+    let row = sqlx::query(OPEN_SESSION)
+        .bind(id)
+        .bind(account)
+        .bind(now.as_unix_micros())
+        .fetch_optional(tx.conn())
+        .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    Ok(Some(OpenRow {
+        blob_id: row.try_get(0)?,
+        declared_size: row.try_get(1)?,
+        block_count: row.try_get(2)?,
+        received: row.try_get(3)?,
+        block_hashes: row.try_get(4)?,
+        expires_at: Timestamp::from_unix_micros(row.try_get(5)?),
+    }))
+}
+
+/// Deletes the open, unexpired session `id`; returns its `(blob_id, reserved_bytes)`, `None` when no row went.
+pub(crate) async fn delete_open_returning(
+    tx: &mut DbTx,
+    account: Uuid,
+    id: Uuid,
+    now: Timestamp,
+) -> Result<Option<(Uuid, i64)>, DbError> {
+    Ok(sqlx::query_as(DELETE_OPEN_RETURNING)
+        .bind(id)
+        .bind(account)
+        .bind(now.as_unix_micros())
+        .fetch_optional(tx.conn())
+        .await?)
 }

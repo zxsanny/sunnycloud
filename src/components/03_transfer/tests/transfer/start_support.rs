@@ -1,6 +1,7 @@
 //! `PgUploadService` on the real 02 reader, 04 writer and registry (a temporary volume) and 07a ledger, all on one
 //! test database. The account guard is the port backed at its boundary (the real one is wired by E-14/c15). File
-//! creation can be made to fail through a thin decorator that otherwise delegates to the real writer.
+//! creation can be made to fail through a thin decorator that otherwise delegates to the real writer. A restart
+//! is a new `PgUploadService` over the same ports (an empty progress table).
 
 use std::fs;
 use std::path::PathBuf;
@@ -15,7 +16,8 @@ use sc_ids::FileHash;
 use sc_names::{name_key, validate_name};
 use sqlx::PgConnection;
 use sunnycloud_blobstore::{
-    BlobRegistry, BlobstoreConfig, FileBlobReader, FileBlobWriter, MasterKeyring, SyncBarrier,
+    BlobCatalog, BlobRegistry, BlobstoreConfig, FileBlobReader, FileBlobWriter, MasterKeyring,
+    SyncBarrier,
 };
 use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
 use sunnycloud_testkit::StateGuard;
@@ -41,9 +43,19 @@ impl Drop for Scratch {
     }
 }
 
+/// The ports and settings a service instance is built from; shared by every instance of a rig.
+struct Parts {
+    config: TransferConfig,
+    tree: Arc<PgTreeReader>,
+    quota: Arc<PgQuotaLedger>,
+    registry: Arc<BlobRegistry>,
+    catalog: Arc<BlobCatalog>,
+}
+
 pub struct Rig {
     pub fixture: Fixture,
     pub service: Arc<PgUploadService>,
+    parts: Parts,
     pub writer: Arc<FaultyWriter>,
     pub reader: FileBlobReader,
     pub clock: Arc<ManualClock>,
@@ -93,24 +105,20 @@ impl Rig {
             .expect("writer");
         let writer = Arc::new(FaultyWriter::new(real));
         let registry = BlobRegistry::new(&blob_config, clock.clone()).expect("registry");
-        let tree = PgTreeReader::new(fixture.api.clone(), &tree_config());
-        let service = PgUploadService::new(
-            fixture.api.clone(),
+        let parts = Parts {
             config,
-            UploadPorts {
-                guard: Arc::new(StateGuard::default()),
-                tree: Arc::new(tree),
-                quota: Arc::new(PgQuotaLedger::new(QuotaConfig {
-                    default_quota_bytes: 10 * GIB,
-                })),
-                writer: writer.clone(),
-                registry: Arc::new(registry),
-            },
-            clock.clone(),
-        );
+            tree: Arc::new(PgTreeReader::new(fixture.api.clone(), &tree_config())),
+            quota: Arc::new(PgQuotaLedger::new(QuotaConfig {
+                default_quota_bytes: 10 * GIB,
+            })),
+            registry: Arc::new(registry),
+            catalog: Arc::new(BlobCatalog::new(fixture.api.clone())),
+        };
+        let service = instance(&fixture, &parts, &writer, &clock);
         Rig {
             fixture,
             service: Arc::new(service),
+            parts,
             writer,
             reader,
             clock,
@@ -119,6 +127,16 @@ impl Rig {
             volume,
             _scratch: scratch,
         }
+    }
+
+    /// A new instance over the same database, volume and ports: what a process restart leaves.
+    pub fn instance(&self) -> PgUploadService {
+        instance(&self.fixture, &self.parts, &self.writer, &self.clock)
+    }
+
+    /// Drops the current instance (its progress table) and serves from a new one.
+    pub fn restart(&mut self) {
+        self.service = Arc::new(self.instance());
     }
 
     pub async fn start(&self, request: StartUpload) -> Result<StartUploadOutcome, UploadError> {
@@ -185,13 +203,35 @@ impl Rig {
         let Rig {
             fixture,
             service,
+            parts,
             writer,
             reader,
             ..
         } = self;
-        drop((service, writer, reader));
+        drop((service, parts, writer, reader));
         fixture.finish().await;
     }
+}
+
+fn instance(
+    fixture: &Fixture,
+    parts: &Parts,
+    writer: &Arc<FaultyWriter>,
+    clock: &Arc<ManualClock>,
+) -> PgUploadService {
+    PgUploadService::new(
+        fixture.api.clone(),
+        parts.config.clone(),
+        UploadPorts {
+            guard: Arc::new(StateGuard::default()),
+            tree: parts.tree.clone(),
+            quota: parts.quota.clone(),
+            writer: writer.clone(),
+            registry: parts.registry.clone(),
+            catalog: parts.catalog.clone(),
+        },
+        clock.clone(),
+    )
 }
 
 /// A start of `size` bytes named `name` under `parent` with the key `key`, without a hash.

@@ -2202,6 +2202,7 @@ dependencies = [
  "sunnycloud-tree",
  "thiserror 2.0.21",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -4303,6 +4304,7 @@ name = "sunnycloud-vault-service"
 version = "0.1.0"
 dependencies = [
  "contracts",
+ "sc_audit",
  "sc_clock",
  "sc_config",
  "sc_db",
@@ -4315,6 +4317,7 @@ dependencies = [
  "sunnycloud-testkit",
  "sunnycloud-tree",
  "tokio",
+ "tracing",
  "uuid",
 ]
 

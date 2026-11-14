@@ -1,8 +1,8 @@
-//! `BlobCatalog`: the account-scoped lookup of a blob's key material.
+//! `BlobCatalog`: the account-scoped lookups of a blob's key material.
 
 mod catalog_repo;
 
-use contracts::{BlobCatalogError, BlobRef, async_trait};
+use contracts::{BlobCatalogError, BlobPlan, BlobRef, async_trait};
 use sc_db::Db;
 use uuid::Uuid;
 
@@ -36,6 +36,26 @@ impl contracts::BlobCatalog for BlobCatalog {
         Ok(row.map(|(size, wrapped_key, master_key_id)| BlobRef {
             blob_id,
             size,
+            wrapped_key,
+            master_key_id,
+        }))
+    }
+
+    /// Only a row still `uploading` answers; a committed, retained or foreign row is `None`.
+    async fn get_uploading_plan(
+        &self,
+        account: Uuid,
+        blob_id: Uuid,
+    ) -> Result<Option<BlobPlan>, BlobCatalogError> {
+        let ids = BlobIds {
+            blob_id: Some(blob_id),
+            account_id: Some(account),
+        };
+        let row = catalog_repo::get_uploading_plan(&self.db, account, blob_id)
+            .await
+            .map_err(|error| BlobCatalogError::Unexpected(run_fault(error, ids)))?;
+        Ok(row.map(|(wrapped_key, master_key_id)| BlobPlan {
+            blob_id,
             wrapped_key,
             master_key_id,
         }))

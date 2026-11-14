@@ -8,7 +8,7 @@ use sc_ids::FileHash;
 use sqlx::AssertSqlSafe;
 use uuid::Uuid;
 
-use crate::job_repo::kind_name;
+use crate::job_names::kind_name;
 
 /// The asked hashes that have a `thumb` row at the params version.
 const THUMB_READY: &str = "SELECT content_hash FROM derived WHERE account_id = $1 \

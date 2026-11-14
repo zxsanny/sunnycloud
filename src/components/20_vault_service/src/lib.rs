@@ -2,7 +2,8 @@
 //! helpers only; it never links `vault-core` and never parses the header.
 //!
 //! This crate holds the typed configuration section, the header service (`PgVaultService`: create, read and
-//! replace with a SHA-256 ETag) and the account lifecycle hook. The schema is
+//! replace with a SHA-256 ETag, and the unlock-failure report written to `audit_log` as `vault_failure`) and the
+//! account lifecycle hook. The schema is
 //! `src/migrations/*_create_vault_table.*.sql`: `vaults`, one row per account, removed with its root folder when
 //! 02 purges it (`*_cascade_vault_on_root_purge.*.sql`).
 

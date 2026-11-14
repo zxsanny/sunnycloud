@@ -125,6 +125,7 @@ A run's summary (verified, mismatched and missing counts, duration) is also writ
 | `auth_sessions_active` | gauge | | |
 | `auth_setup_token_pending` | gauge | | 1 until the first admin exists (AC-23) |
 | `share_access_total` | counter | `result` (`ok`, `not_found`, `password_wrong`) | Never per link |
+| `worker_auth_failures_total` | counter | | Refused bearers on the internal worker listener (08, AC-79); no secret logged |
 
 ### Process and database
 

@@ -5,7 +5,7 @@
 **Consumer tasks**: E-20/c03 (`WorkerApi` client), E-20/c06 (slot loop), E-20/c07 (heartbeat), E-20/c08 (status report), E-21/c07 (worker route auth), E-21/c15 (internal listener router); in batch E-18/c03, c05, c07, c08, c12, c13; pipelines AZ-3660, AZ-3661
 **Version**: 1.0.0
 **Status**: draft (open points 1-3 wait for E-18/c01)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-14
 
 ## Purpose
 
@@ -62,6 +62,8 @@ Every request carries `Authorization: Bearer <worker_api_token>` and `X-Worker-I
 ## Invariants
 
 - 403 means the secret is wrong. It is identical (status, body, headers other than `X-Request-Id` and `Date`) for every cause: no header, empty bearer, wrong secret, a user session, a device token, a cookie. The supervisor then stops claiming.
+- API side of the 403 (AZ-3843, `media_api::WorkerAuth`): only the SHA-256 digests of `worker_api_token` and `worker_api_token_next` are kept after load; the presented bearer is digested and compared in constant time with each. A missing header reaches the port as an empty bearer, which never matches. Each refusal increments `worker_auth_failures_total` and logs one WARN `worker authentication refused` with no field carrying the credential.
+- `status` upserts the one `worker_status` row of the `X-Worker-Id`; `seen_at` is the API clock's now (the body carries no time).
 - An authenticated worker that does not hold the job (not `running`, leased by another, or lease expired) gets 409 `lease_lost` and no job data; it stops quietly and posts nothing more for that job.
 - 404 `revision_obsolete` on input or output: the supervisor closes the job with outcome `obsolete` through `result`. A revision is obsolete only when it is collected (no longer `TreeReader::is_current_or_retained`, owner E-13 in 02) or foreign; a superseded or deleted revision still retained is served and the job is processed.
 - `ClaimedJob.content_hash` is lowercase hex, 64 characters, the encoding the HTTP surface uses for content hashes; 09 compares its BLAKE3 roll-up against it.
@@ -108,3 +110,4 @@ Every request carries `Authorization: Bearer <worker_api_token>` and `X-Worker-I
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
 | 1.0.1 | 2026-11-07 | Closed open points 1 to 3: hash hex; `Range` on input ignored; obsolete only when collected or foreign | AZ-3826 |
+| 1.0.2 | 2026-11-14 | Recorded the API side of the 403 (digests, counter `worker_auth_failures_total`, WARN without secret) and the `status` upsert on the API clock; no wire change | AZ-3843 |

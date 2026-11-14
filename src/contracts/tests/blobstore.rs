@@ -201,6 +201,15 @@ impl BlobCatalog for Double {
             master_key_id: 1,
         }))
     }
+
+    async fn get_uploading_plan(
+        &self,
+        _account: Uuid,
+        _blob_id: Uuid,
+    ) -> Result<Option<BlobPlan>, BlobCatalogError> {
+        self.0.record("get_uploading_plan");
+        Ok(None)
+    }
 }
 
 #[async_trait]

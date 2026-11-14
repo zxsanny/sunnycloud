@@ -3,8 +3,9 @@
 //! and the blob owner cleanup (AZ-3717, AZ-3925 AC-4); the cascade and purge janitors (AZ-3714); the conflict
 //! outcomes of `publish` (AZ-3710); the node and listing reads (AZ-3707); the blob ownership check of `publish`
 //! (AZ-3712); the revision lookups, path and device queries and live usage (AZ-3716); the usage deltas and queue
-//! writes of `publish`, delete and the cascade (AZ-3711); the thumbnail states of listing items (AZ-3718); on a
-//! real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
+//! writes of `publish`, delete and the cascade (AZ-3711); the thumbnail states of listing items (AZ-3718); the
+//! move-versus-edit race and the stamp-last move (AZ-3713); on a real PostgreSQL 18 (`DATABASE_URL`, a superuser
+//! URL).
 
 mod config;
 mod conflict_support;
@@ -35,6 +36,7 @@ mod publish_outcomes;
 mod publish_protocol;
 mod publish_revival;
 mod publish_support;
+mod race_move_edit;
 mod reader_listing;
 mod reader_lookups;
 mod reader_revisions;

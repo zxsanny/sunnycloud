@@ -1,6 +1,6 @@
-//! AC-2: the catalog is account scoped.
+//! AC-2: the catalog is account scoped. The plan of an uploading blob (AZ-3736) is served for that state only.
 
-use contracts::{BlobCatalog, BlobRef};
+use contracts::{BlobCatalog, BlobPlan, BlobRef};
 use uuid::Uuid;
 
 use crate::support::{Rig, WRAPPED_KEY, account, committed_blob};
@@ -73,5 +73,58 @@ async fn an_unfinished_upload_has_no_ref_and_a_retained_blob_keeps_one() {
     // Assert
     assert_eq!(unfinished, None);
     assert_eq!(kept.map(|found| found.blob_id), Some(retained));
+    rig.finish().await;
+}
+
+#[tokio::test]
+async fn get_uploading_plan_serves_only_an_own_uploading_blob() {
+    // Arrange
+    let rig = Rig::new().await;
+    let (a, b) = (account(&rig).await, account(&rig).await);
+    let committed = committed_blob(&rig, a).await;
+    let (own, foreign) = (Uuid::new_v4(), Uuid::new_v4());
+    let mut conn = rig.owner().await;
+    for (blob, owner) in [(own, a), (foreign, b)] {
+        sqlx::query(
+            "INSERT INTO blobs (id, account_id, state, wrapped_key, master_key_id, created_at) \
+             VALUES ($1, $2, 'uploading', $3, 3, 'epoch'::timestamptz)",
+        )
+        .bind(blob)
+        .bind(owner)
+        .bind(WRAPPED_KEY)
+        .execute(&mut conn)
+        .await
+        .expect("uploading row");
+    }
+    sqlx::Connection::close(conn).await.expect("close");
+
+    // Act
+    let mine = rig.catalog.get_uploading_plan(a, own).await.expect("own");
+    let theirs = rig
+        .catalog
+        .get_uploading_plan(a, foreign)
+        .await
+        .expect("foreign");
+    let done = rig
+        .catalog
+        .get_uploading_plan(a, committed)
+        .await
+        .expect("committed");
+    let unknown = rig
+        .catalog
+        .get_uploading_plan(a, Uuid::new_v4())
+        .await
+        .expect("unknown");
+
+    // Assert
+    assert_eq!(
+        mine,
+        Some(BlobPlan {
+            blob_id: own,
+            wrapped_key: WRAPPED_KEY.to_vec(),
+            master_key_id: 3,
+        })
+    );
+    assert_eq!((theirs, done, unknown), (None, None, None));
     rig.finish().await;
 }
