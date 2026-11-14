@@ -26,9 +26,7 @@ async fn entries_with_the_import_hint_are_bulk() {
 
     // Act
     for published in [&photo, &video] {
-        run(&q, &effect, q.account, published)
-            .await
-            .expect("the effect runs");
+        run(&q, &effect, published).await.expect("the effect runs");
     }
 
     // Assert
@@ -59,20 +57,16 @@ async fn the_entry_planned_with_more_than_the_threshold_queued_is_bulk_and_other
     let seventh = entry(&q, &Content::new(2, JPEG)).await;
     let other_queued = entry_of(&q, other_account, &Content::new(200, JPEG)).await;
     let other = entry_of(&q, other_account, &Content::new(3, JPEG)).await;
-    let other_effect = effect(&q, other_account, 1);
-    run(&q, &other_effect, other_account, &other_queued)
+    let other_effect = effect(&q, 1);
+    run(&q, &other_effect, &other_queued)
         .await
         .expect("the other account's first job");
 
     // Act
     let effect = current(&q);
-    run(&q, &effect, q.account, &sixth)
-        .await
-        .expect("sixth entry");
-    run(&q, &effect, q.account, &seventh)
-        .await
-        .expect("seventh entry");
-    run(&q, &other_effect, other_account, &other)
+    run(&q, &effect, &sixth).await.expect("sixth entry");
+    run(&q, &effect, &seventh).await.expect("seventh entry");
+    run(&q, &other_effect, &other)
         .await
         .expect("other account's entry");
 

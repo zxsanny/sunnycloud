@@ -179,7 +179,7 @@ async fn real_wiring(site: Site) -> (Wiring, Arc<IdentityAccounts>) {
     .expect("metrics");
     let metrics = Arc::new(JobMetrics::register(&registry).expect("job metrics"));
     let queue = Arc::new(JobQueue::new(api, clock, &media, metrics));
-    let effect = MediaEnqueueEffect::new(queue, JobPlanner::from_config(&media), account);
+    let effect = MediaEnqueueEffect::new(queue, JobPlanner::from_config(&media));
     let wiring = Wiring {
         guard: identity.clone(),
         effects: vec![Arc::new(effect)],

@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use contracts::{AccountDeletionService, AccountState, Actor, Role};
+use contracts::{AccountDeletionService, AccountState, Actor, AdminService, Role};
 use sc_clock::{Clock, SystemClock};
 use sc_observability::{BuildInfo, Metrics};
 use serde_json::Value;

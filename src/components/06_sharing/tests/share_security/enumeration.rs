@@ -8,7 +8,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::Duration;
 
-use contracts::{PublicShareError, ShareOpen};
+use contracts::{PublicShareError, PublicShareService, ShareOpen};
 use sc_ratelimit::LimitId;
 
 use crate::corpora::{Guess, token_corpus};

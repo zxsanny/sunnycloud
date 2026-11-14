@@ -3,7 +3,7 @@
 //! erase, every erased link after it) and AC-3 (`initialize` writes nothing). The hook runs as `sunnycloud`;
 //! fixtures and probes run as the schema owner.
 
-use contracts::{AccountLifecycleHook, ShareOpen, ShareService};
+use contracts::{AccountLifecycleHook, PublicShareService, ShareOpen, ShareService};
 use sc_db::Scope;
 use sc_ids::RawToken;
 use sqlx::{Connection, PgConnection};

@@ -29,4 +29,4 @@ pub use deletion_service::AccountDeletionServiceImpl;
 pub use dev_seed::{
     ADMIN_SUBJECT, DevSeedImpl, DevSeedPorts, DevSeedTarget, ProviderLogin, USER_SUBJECTS,
 };
-pub use error::{AdminCallError, admin_error_code, deletion_error_code};
+pub use error::{admin_error_code, deletion_error_code};

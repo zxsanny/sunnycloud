@@ -27,10 +27,11 @@ pub enum EffectError {
     Batch(ErrorCode),
 }
 
-/// The entry as published; `account_id` is not part of it (read it from the `CommitActor`). `vault` is set by 02:
-/// the entry's own flag or the target's vault membership.
+/// The entry as published. `account_id` is the committing account (`CommitActor::account_id`), so one effect
+/// instance serves every account. `vault` is set by 02: the entry's own flag or the target's vault membership.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishedEntry {
+    pub account_id: Uuid,
     pub node_id: Uuid,
     pub revision_id: Uuid,
     pub content_hash: FileHash,

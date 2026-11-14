@@ -66,8 +66,13 @@ pub(super) async fn set_quota(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// The report cannot fail: a contributor that failed is an item of it.
+/// A contributor that failed is an item of the report; the call itself fails only for a caller who may not
+/// administer.
 pub(super) async fn health(State(services): State<Services>, user: User) -> Answer {
-    let report = services.admin.health(&actor(&user)).await;
+    let report = services
+        .admin
+        .health(&actor(&user))
+        .await
+        .map_err(refused(user.request_id))?;
     Ok(Json(wire::health(&report)).into_response())
 }

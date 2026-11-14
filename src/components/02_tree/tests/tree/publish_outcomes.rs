@@ -203,8 +203,9 @@ async fn the_same_content_again_is_no_change_with_no_stamp_or_usage_and_on_batch
     tree.finish().await;
 }
 
+/// AZ-4311 AC-2: the entry carries the committing account.
 #[tokio::test]
-async fn the_effect_receives_node_revision_hash_media_type_size_import_hint_and_vault() {
+async fn the_effect_receives_account_node_revision_hash_media_type_size_import_hint_and_vault() {
     // Arrange
     let tree = Tree::new().await;
     let blob = tree.blobs(1).await[0];
@@ -230,6 +231,7 @@ async fn the_effect_receives_node_revision_hash_media_type_size_import_hint_and_
     // Assert
     let (_, node, revision) = only(&published(result));
     let expected = PublishedEntry {
+        account_id: tree.account,
         node_id: node,
         revision_id: revision,
         content_hash: hash_of(entry.revision.revision_id),

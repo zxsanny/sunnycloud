@@ -71,6 +71,7 @@ fn device(e: &DeviceGrantError) -> &'static str {
 
 fn admin(e: &AdminError) -> &'static str {
     match e {
+        AdminError::Forbidden => "Forbidden",
         AdminError::LastAdmin => "LastAdmin",
         AdminError::NotFound => "NotFound",
         AdminError::InvalidLimit => "InvalidLimit",
@@ -248,6 +249,7 @@ fn device_grant_variants_are_the_poll_lookup_decide_and_revoke_failures() {
 #[test]
 fn admin_and_quota_variants_match_the_contract_tables() {
     let admin_names = [
+        admin(&AdminError::Forbidden),
         admin(&AdminError::LastAdmin),
         admin(&AdminError::NotFound),
         admin(&AdminError::InvalidLimit),
@@ -280,7 +282,13 @@ fn admin_and_quota_variants_match_the_contract_tables() {
 
     assert_eq!(
         admin_names,
-        ["LastAdmin", "NotFound", "InvalidLimit", "Unexpected"]
+        [
+            "Forbidden",
+            "LastAdmin",
+            "NotFound",
+            "InvalidLimit",
+            "Unexpected"
+        ]
     );
     assert_eq!(
         deletion_names,

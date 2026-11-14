@@ -2,7 +2,7 @@
 //! `create` on the file, `list` (all and for the node) and `revoke` of the link all fail as if they did not exist;
 //! A's row, the link count and the audit log are unchanged, and a visitor still opens A's link.
 
-use contracts::{ShareError, ShareOpen, ShareService};
+use contracts::{PublicShareService, ShareError, ShareOpen, ShareService};
 use sqlx::{Connection, PgConnection};
 use uuid::Uuid;
 

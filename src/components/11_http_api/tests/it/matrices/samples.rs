@@ -85,7 +85,10 @@ pub fn prepare(script: &Script, owner: &str) -> bool {
             Ok::<_, AccountServiceError>(quota()),
         ),
         "AdminService::health" => {
-            script.push("AdminService::health", HealthReport { items: Vec::new() });
+            script.push(
+                "AdminService::health",
+                Ok::<HealthReport, AdminError>(HealthReport { items: Vec::new() }),
+            );
         }
         "AdminService::list_users" => script.push(
             "AdminService::list_users",

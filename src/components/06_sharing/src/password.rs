@@ -19,12 +19,11 @@ use crate::service::PgShareService;
 use crate::share_repo;
 
 impl PgShareService {
-    /// `PublicShareService::verify_password` (the port is implemented once its other operations exist): an
-    /// `AccessGrant` for this link expiring `share_grant_ttl` from now for the right password, `WrongPassword` for
-    /// any other, `NotFound` for every dead link and for a live link without a password (owner decision
-    /// 2026-11-14), `RateLimited` while `client_ip` has used up its invalid tokens or the link its wrong passwords
-    /// (AC-20). Neither the password nor the grant is logged.
-    pub async fn verify_password(
+    /// `PublicShareService::verify_password`: an `AccessGrant` for this link expiring `share_grant_ttl` from now for
+    /// the right password, `WrongPassword` for any other, `NotFound` for every dead link and for a live link without
+    /// a password (owner decision 2026-11-14), `RateLimited` while `client_ip` has used up its invalid tokens or the
+    /// link its wrong passwords (AC-20). Neither the password nor the grant is logged.
+    pub(crate) async fn verify_link_password(
         &self,
         token: &RawToken,
         password: &str,

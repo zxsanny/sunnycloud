@@ -7,7 +7,7 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 
-use contracts::{AccessGrant, PublicShareError, ShareOpen, ShareService};
+use contracts::{AccessGrant, PublicShareError, PublicShareService, ShareOpen, ShareService};
 use sqlx::Connection;
 use uuid::Uuid;
 

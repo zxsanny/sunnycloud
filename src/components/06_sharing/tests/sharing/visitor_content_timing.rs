@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use contracts::{PublicShareError, ShareError, ShareService};
+use contracts::{PublicShareError, PublicShareService, ShareError, ShareService};
 
 use crate::content_support::{Owner, content_of};
 use crate::harness::Harness;

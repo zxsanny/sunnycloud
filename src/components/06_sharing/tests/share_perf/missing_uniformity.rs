@@ -7,7 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use contracts::ShareOpen;
+use contracts::{PublicShareService, ShareOpen};
 use sc_ids::RawToken;
 use sqlx::Connection;
 

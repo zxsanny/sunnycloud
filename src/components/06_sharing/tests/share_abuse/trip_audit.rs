@@ -2,7 +2,7 @@
 //! event and one WARN line, however many calls are refused after it; the per-link trip names the link, the
 //! per-address trip a hash of the address; no captured line and no row holds a token or a password.
 
-use contracts::PublicShareError;
+use contracts::{PublicShareError, PublicShareService};
 use tracing::Level;
 
 use crate::logs::LogCapture;

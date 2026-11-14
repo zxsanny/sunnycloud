@@ -198,7 +198,7 @@ impl Real {
                 commit: commit.clone(),
                 reader: reader.clone(),
                 commit_effects: vec![
-                    Arc::new(MediaEnqueueEffect::new(queue.clone(), planner, account)),
+                    Arc::new(MediaEnqueueEffect::new(queue.clone(), planner)),
                     faults.clone(),
                 ],
                 quota: Arc::new(PgQuotaLedger::new(quota)),

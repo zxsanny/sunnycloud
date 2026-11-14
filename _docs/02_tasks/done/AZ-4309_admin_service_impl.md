@@ -24,3 +24,8 @@ AZ-3789 found that `ApiServices` cannot be assembled: 07's `AdminServiceImpl` ha
 **AC-1**: Given a user session and an admin device token, When each calls the four `AdminService` operations through the trait, Then each answers `AdminError::Forbidden`, nothing changes and no audit row is written (ST-07-1 through the trait).
 **AC-2**: Given an admin session, When `health` is called through the trait, Then it returns the aggregated `HealthReport` (a failing contributor is reported inside the report, not as an error).
 **AC-3**: Given 11's error table, When `AdminError::Forbidden` is mapped, Then it is 403 `forbidden`.
+
+## Implementation notes (batch 71)
+
+- The port's `health -> HealthReport` cannot express AC-1 (`Forbidden` on all four operations) nor the behavioural contract (`admin_service.md`: `health` errors `Forbidden`). `health` now returns `Result<HealthReport, AdminError>`; a contributor failure is still an item (AC-2). Return type changed, so contracts part 1 is 2.0.0; the one implementer (07), the one caller (11) and every double were updated in the same change.
+- One path: `impl AdminService for AdminServiceImpl` authorizes, then runs crate-private bodies; the inherent public methods and `AdminCallError` are removed. `admin_error_code(Forbidden)` = `forbidden` (403).

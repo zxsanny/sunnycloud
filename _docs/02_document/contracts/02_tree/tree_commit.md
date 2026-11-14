@@ -3,7 +3,7 @@
 **Component**: 02_tree
 **Producer task**: E-13/c05 — `_docs/02_tasks/todo/B03-05_tree_publish_core.md` (contributors: E-13/c06 conflict outcomes, E-13/c07 usage deltas, E-13/c08 blob ownership; contract-test plan from E-13/c01); keys assigned at Step 4
 **Consumer tasks**: E-14/c08, E-14/c09, E-14/c12, E-14/c15, E-13/c16 (this batch); E-18/c06 (08 media effect), E-22/c03 (composition root), resolved at Step 4
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: draft (frozen when the producer task passes review and E-13/c01 has completed the Test Cases)
 **Last Updated**: 2026-11-04
 
@@ -84,7 +84,7 @@ Contract-test plan (completed 2026-11-11, AZ-3705): 02's real `publish` runs wit
 
 - Decided 2026-11-12 (owner, AZ-3709): `Updated` = a commit whose `base_revision` is the current revision (a normal edit); `Replaced` = a commit without `base_revision` onto an existing live file.
 - Which of `BlocklistMismatch` and `NotFound` is the single foreign/unknown blob answer (02 risks (c)).
-- Decided 2026-11-12 (owner, AZ-3709): effects take the account id from `CommitActor`; `PublishedEntry` stays as it is (no contracts change).
+- Decided 2026-11-12 (owner, AZ-3709): effects take the account id from `CommitActor`. Superseded 2026-11-14 (owner, AZ-3789; AZ-4311): `PublishedEntry.account_id` is filled by `publish` from `CommitActor::account_id`, so one effect instance serves every account.
 - Part 2 open point 4: `StoredResponse` must be 03's serialised `BatchResult` (see `../03_transfer/commit_service.md`).
 - Reviving an ancestor before the cascade has marked its descendants clears `cascade_pending`, so unmarked descendants come back live (E-13/c06).
 
@@ -95,4 +95,5 @@ Contract-test plan (completed 2026-11-11, AZ-3705): 02's real `publish` runs wit
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
 | 1.1.0 | 2026-11-13 | `Revived` walks every tombstoned ancestor to the root; a taken own name answers `CreatedAsCopy` (aligned with 03's `commit_service.md`); unmarked descendants of a revived ancestor come back live (owner) | AZ-3710 |
 | 1.3.0 | 2026-11-14 | v1.2 vault membership: `vault_id` copied on create and conflict copy; `PublishedEntry.vault` OR-ed with the target's membership | AZ-3927 |
+| 1.4.0 | 2026-11-14 | `PublishedEntry.account_id` = `CommitActor::account_id` | AZ-4311 |
 | 1.2.0 | 2026-11-13 | Usage deltas of every outcome, delete and cascade applied through `QuotaLedger`, replaced and deleted blobs queued (`PgTreeService::new` takes `Arc<dyn GcQueue>`, `PgTreeMaintenance::new` takes `Arc<dyn QuotaLedger>`) | AZ-3711 |

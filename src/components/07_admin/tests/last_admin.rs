@@ -5,9 +5,9 @@
 mod support;
 
 use contracts::{
-    AccountDeletionService, AccountState, Actor, AdminError, DeletionError, PrincipalKind, Role,
+    AccountDeletionService, AccountState, Actor, AdminError, AdminService, DeletionError,
+    PrincipalKind, Role,
 };
-use sunnycloud_admin::AdminCallError;
 use support::account_data::deletion_requested_at;
 use support::harness::{START, admin_actor, principal};
 use support::seed::{
@@ -17,8 +17,8 @@ use support::seed::{
 use support::world::World;
 use uuid::Uuid;
 
-fn last_admin(result: Result<(), AdminCallError>) -> bool {
-    matches!(result, Err(AdminCallError::Failed(AdminError::LastAdmin)))
+fn last_admin(result: Result<(), AdminError>) -> bool {
+    matches!(result, Err(AdminError::LastAdmin))
 }
 
 #[tokio::test]

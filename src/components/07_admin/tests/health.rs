@@ -6,8 +6,9 @@ mod support;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use contracts::{Actor, HealthItem, HealthReport, HealthStatus, PrincipalKind, Role};
-use sunnycloud_admin::AdminCallError;
+use contracts::{
+    Actor, AdminError, AdminService, HealthItem, HealthReport, HealthStatus, PrincipalKind, Role,
+};
 use support::harness::{Harness, admin_actor, principal};
 use support::health_doubles::{TestContributor, as_ports, six};
 use tokio::time::Instant;
@@ -15,7 +16,7 @@ use uuid::Uuid;
 
 const TIMEOUT_300_MS: [(&str, &str); 1] = [("SUNNYCLOUD_HEALTH_CHECK_TIMEOUT", "300ms")];
 
-fn operator_report(report: Result<HealthReport, AdminCallError>) -> Vec<(String, HealthItem)> {
+fn operator_report(report: Result<HealthReport, AdminError>) -> Vec<(String, HealthItem)> {
     report.expect("the operator may read the health").items
 }
 
@@ -251,10 +252,7 @@ async fn a_user_session_and_an_admin_device_token_are_forbidden_and_no_check_run
         let result = harness.service.health(&caller).await;
 
         // Assert
-        assert!(
-            matches!(result, Err(AdminCallError::Forbidden)),
-            "{result:?}"
-        );
+        assert!(matches!(result, Err(AdminError::Forbidden)), "{result:?}");
     }
     for contributor in &contributors {
         assert_eq!(contributor.calls.load(Ordering::SeqCst), 0);

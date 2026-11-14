@@ -60,11 +60,11 @@ impl AdminService for Double {
         Ok(())
     }
 
-    async fn health(&self, _actor: &Actor) -> HealthReport {
+    async fn health(&self, _actor: &Actor) -> Result<HealthReport, AdminError> {
         self.0.record("health");
-        HealthReport {
+        Ok(HealthReport {
             items: vec![("database".to_owned(), HealthItem::ok())],
-        }
+        })
     }
 }
 
@@ -208,7 +208,7 @@ async fn admin_double_records_each_method_across_two_threads() {
             .set_quota(&Actor::Operator, id(), Some(1))
             .await
             .expect("set_quota");
-        other.health(&Actor::Operator).await
+        other.health(&Actor::Operator).await.expect("health")
     });
     a.await.expect("first task");
     let report = b.await.expect("second task");

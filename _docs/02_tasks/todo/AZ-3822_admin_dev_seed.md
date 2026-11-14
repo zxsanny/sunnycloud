@@ -65,7 +65,7 @@ Then it returns the refusal and the row counts of `accounts` and `nodes` are unc
 
 | AC Ref | Initial Data/Conditions | What to Test | Expected Behavior | NFR References |
 |--------|------------------------|-------------|-------------------|----------------|
-| AC-1 | Development, empty database | IT-07-14 | Ok; admin and user exist; §13.2 content present | |
+| AC-1 | Development, empty database | IT-07-14 | Ok; admin and user exist; §13.2 content present; one queued media job per user (08's shared effect in 03's commit effects, AZ-4311) | |
 | AC-2 | Seeded installation | IT-07-14 second call | No duplicates | |
 | AC-3 | Production | IT-07-14 | Refusal; 0 rows written | |
 
@@ -85,7 +85,7 @@ Then it returns the refusal and the row counts of `accounts` and `nodes` are unc
 |---------|----------------|--------|----------|
 | No port creates an account without a provider sign-in: `OperatorIdentityOps` returns invite tokens, whose redemption needs a sign-in (mock-idp in dev). How `seed` creates its accounts is not specified | E-15 / E-17 owners | resolved (owner decision 2026-11-14: setup token and invites redeemed by sign-ins; the provider step is 07's `ProviderLogin` port) | Medium |
 | The refusal has no variant name (contracts part 1 open point 5) | E-17 owner | resolved: the existing `DevSeedError::RefusedInProduction` (contracts part 1 1.5.1) | Low |
-| Queued media jobs: 08's `MediaEnqueueEffect` is built for one account, and 03's `UploadPorts::commit_effects` is a fixed list, so one `CommitService` cannot queue jobs for accounts the seed creates; the seed commits the photo and queues whatever the composition root's effects queue (none today). IT-07-14 does not assert a queued job | E-16 / E-22 owners (per-account effect slot in the composition root) | open | Medium |
+| Queued media jobs: 08's `MediaEnqueueEffect` was built for one account, and 03's `UploadPorts::commit_effects` is a fixed list, so one `CommitService` could not queue jobs for accounts the seed creates | E-16 / E-22 owners | resolved (owner decision 2026-11-14, AZ-4311: `PublishedEntry.account_id`, one shared effect in 03's commit effects; IT-07-14 asserts one queued stills job per user under its own account) | Medium |
 | `ProviderLogin` has no development implementation: mock-idp (`tests/mocks/idp`, E-31/c13) does not exist yet, so `admin dev-seed` (E-22/c09) cannot be composed; IT-07-14 drives 01's in-process provider | E-22 / E-31 owners | open | Medium |
 
 ## Owner decision

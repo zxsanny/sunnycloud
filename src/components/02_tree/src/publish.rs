@@ -186,6 +186,7 @@ impl PgTreeService {
         );
         self.apply_usage(tx, account, entry, &usage).await?;
         let published = PublishedEntry {
+            account_id: account,
             node_id: written.node_id,
             revision_id: written.revision_id,
             content_hash: entry.revision.content_hash,

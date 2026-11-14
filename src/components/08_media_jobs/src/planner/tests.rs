@@ -17,6 +17,7 @@ fn planner() -> JobPlanner {
 
 fn entry(media_type: Option<&str>) -> PublishedEntry {
     PublishedEntry {
+        account_id: Uuid::from_u128(3),
         node_id: Uuid::from_u128(1),
         revision_id: Uuid::from_u128(2),
         content_hash: FileHash::from_bytes([7; 32]),
@@ -28,11 +29,7 @@ fn entry(media_type: Option<&str>) -> PublishedEntry {
 }
 
 fn kinds(entry: &PublishedEntry) -> Vec<JobKind> {
-    planner()
-        .plan(Uuid::from_u128(3), entry)
-        .iter()
-        .map(|spec| spec.kind)
-        .collect()
+    planner().plan(entry).iter().map(|spec| spec.kind).collect()
 }
 
 #[test]
@@ -115,11 +112,14 @@ fn a_vault_file_and_an_empty_file_get_none() {
 #[test]
 fn a_spec_carries_the_account_revision_hash_and_params_version() {
     // Arrange
-    let entry = entry(Some("image/png"));
     let account = Uuid::from_u128(9);
+    let entry = PublishedEntry {
+        account_id: account,
+        ..entry(Some("image/png"))
+    };
 
     // Act
-    let specs = JobPlanner::new(4, THRESHOLD).plan(account, &entry);
+    let specs = JobPlanner::new(4, THRESHOLD).plan(&entry);
 
     // Assert
     assert_eq!(specs.len(), 1);

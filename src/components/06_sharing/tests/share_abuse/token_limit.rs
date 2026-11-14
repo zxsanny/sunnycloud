@@ -1,11 +1,11 @@
 //! AZ-3701 AC-1 (IT-06-8 invalid tokens, ST-06-3): `share_invalid_token_limit` unknown tokens per address per
-//! minute on `open`, `authorize_content` and `verify_password`, one counter for the three; past it the address gets
-//! `RateLimited` with a retry time on every token, a live one included, other addresses are not affected, and the
-//! address is free again one window later.
+//! minute on `open`, `authorize_content`, `authorize_derived` (AZ-4310 AC-3) and `verify_password`, one counter for
+//! the four; past it the address gets `RateLimited` with a retry time on every token, a live one included, other
+//! addresses are not affected, and the address is free again one window later.
 
 use std::time::Duration;
 
-use contracts::{PublicShareError, ShareOpen};
+use contracts::{PublicShareError, PublicShareService, ShareOpen};
 use sc_ratelimit::LimitId;
 
 use crate::rig::{IP1, IP2, Rig, unknown};
@@ -123,6 +123,49 @@ async fn the_content_and_password_routes_count_on_the_same_address_counter_as_op
         0,
         "no Argon2 for a limited address"
     );
+    rig.finish().await;
+}
+
+#[tokio::test]
+async fn the_derived_route_counts_unknown_tokens_on_the_same_address_counter_as_open() {
+    // Arrange
+    let rig = Rig::new().await;
+    let live = rig.link(None).await;
+    let limit = usize::try_from(rig.harness.config.invalid_token_limit).expect("fits");
+    let half = limit / 2;
+    for n in 0..half {
+        let answer = rig.shares.open(&unknown(n), IP1).await;
+        assert!(matches!(answer, Ok(ShareOpen::NotFound)), "{answer:?}");
+    }
+
+    // Act
+    let mut derived = Vec::new();
+    for n in half..limit {
+        derived.push(rig.shares.authorize_derived(&unknown(n), None, IP1).await);
+    }
+    let derived_over = rig.shares.authorize_derived(&live.token, None, IP1).await;
+    let open_over = rig.shares.open(&unknown(limit), IP1).await;
+    let elsewhere = rig.shares.authorize_derived(&live.token, None, IP2).await;
+
+    // Assert
+    assert_eq!(derived.len(), limit - half);
+    for answer in &derived {
+        assert!(
+            matches!(answer, Err(PublicShareError::NotFound)),
+            "{answer:?}"
+        );
+    }
+    assert!(matches!(
+        derived_over,
+        Err(PublicShareError::RateLimited { .. })
+    ));
+    assert!(matches!(
+        open_over,
+        Err(PublicShareError::RateLimited { .. })
+    ));
+    assert!(elsewhere.is_ok(), "{elsewhere:?}");
+    let counts = rig.harness.limiter.stats().get(LimitId::ShareTokenIp);
+    assert_eq!((counts.tripped, counts.limited), (1, 2));
     rig.finish().await;
 }
 

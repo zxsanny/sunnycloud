@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use contracts::PublicShareError;
+use contracts::{PublicShareError, PublicShareService};
 use sc_ids::RawToken;
 use sc_ratelimit::LimitId;
 use tokio::sync::Barrier;

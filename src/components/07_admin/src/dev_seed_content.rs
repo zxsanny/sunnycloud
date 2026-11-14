@@ -3,8 +3,8 @@
 
 use bytes::Bytes;
 use contracts::{
-    Actor, BatchCommit, BatchEntry, BatchEntryResult, ByteStream, CommitActor, DevSeedError,
-    StartUpload, StartUploadOutcome,
+    Actor, AdminService, BatchCommit, BatchEntry, BatchEntryResult, ByteStream, CommitActor,
+    DevSeedError, StartUpload, StartUploadOutcome,
 };
 use sc_ids::{hash_block, new_id};
 use uuid::Uuid;

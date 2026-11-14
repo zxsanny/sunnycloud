@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use contracts::PublicShareError;
+use contracts::{PublicShareError, PublicShareService};
 use sc_ids::sha256_token;
 use sqlx::{Connection, PgConnection};
 use sunnycloud_sharing::SHARE_TOKEN_PREFIX;

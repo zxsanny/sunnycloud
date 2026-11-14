@@ -1,10 +1,8 @@
-use contracts::{Actor, PrincipalKind, Role};
-
-use crate::error::AdminCallError;
+use contracts::{Actor, AdminError, PrincipalKind, Role};
 
 /// A signed-in admin passes only with a session principal of role admin: a device token never does, whatever
 /// its account's role. The operator is the trusted CLI.
-pub(crate) fn authorize(actor: &Actor) -> Result<(), AdminCallError> {
+pub(crate) fn authorize(actor: &Actor) -> Result<(), AdminError> {
     let permitted = match actor {
         Actor::Operator => true,
         Actor::Admin(principal) => {
@@ -14,7 +12,7 @@ pub(crate) fn authorize(actor: &Actor) -> Result<(), AdminCallError> {
     if permitted {
         Ok(())
     } else {
-        Err(AdminCallError::Forbidden)
+        Err(AdminError::Forbidden)
     }
 }
 
@@ -53,7 +51,7 @@ mod tests {
             // Assert
             assert_eq!(result.is_ok(), expected, "{actor:?}");
             if !expected {
-                assert!(matches!(result, Err(AdminCallError::Forbidden)));
+                assert!(matches!(result, Err(AdminError::Forbidden)));
             }
         }
     }

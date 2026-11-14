@@ -1,11 +1,12 @@
 //! IT-06-9 constant-work lookup and the confinement of system scope (AZ-3698 AC-4, AC-6): the statement log of
 //! `open` in the five not-found cases is the same (the lookup by `token_hash`, then the two primary-key target
-//! reads), and so is that of `authorize_content` (the lookup, then its one target read; AZ-3700), the system-scope
+//! reads), and so is that of `authorize_content` (the lookup, then its one target read; AZ-3700) and that of
+//! `authorize_derived`, which runs the same statements as `authorize_content` (AZ-4310 AC-3), the system-scope
 //! read is the one `run_system` call of the crate, and no visitor path reaches Argon2.
 
 use std::path::Path;
 
-use contracts::{PublicShareError, ShareOpen};
+use contracts::{PublicShareError, PublicShareService, ShareOpen};
 use sc_ids::RawToken;
 use sc_testdb::statements::StatementLog;
 use sunnycloud_sharing::PgShareService;
@@ -113,6 +114,56 @@ async fn the_not_found_cases_of_authorize_content_run_the_same_statements_as_eac
             "{answer:?}"
         );
         assert_eq!(statements, reference, "no audit write for a refused call");
+    }
+    drop(cases);
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn the_not_found_cases_of_authorize_derived_run_the_statements_of_authorize_content() {
+    // Arrange
+    let harness = Harness::new().await;
+    let cases = cases(&harness).await;
+    let log = StatementLog::install();
+    let (unknown, [empty, long, non_ascii]) = (unknown_token(), malformed_tokens());
+    let dead = [
+        &unknown,
+        &cases.expired,
+        &cases.revoked,
+        &cases.tombstoned,
+        &cases.purged,
+        &cases.expired_password,
+        &empty,
+        &long,
+        &non_ascii,
+    ];
+    log.take();
+    let content = cases
+        .shares
+        .authorize_content(&unknown, None, VISITOR, true)
+        .await;
+    let content_statements = log.take_data_statements();
+
+    // Act
+    let mut logged = Vec::new();
+    for token in dead {
+        log.take();
+        let answer = cases.shares.authorize_derived(token, None, VISITOR).await;
+        logged.push((answer, log.take_data_statements()));
+    }
+
+    // Assert
+    assert!(matches!(content, Err(PublicShareError::NotFound)));
+    assert_eq!(content_statements.len(), 2, "{content_statements:#?}");
+    for (answer, statements) in &logged {
+        assert!(
+            matches!(answer, Err(PublicShareError::NotFound)),
+            "{answer:?}"
+        );
+        assert_eq!(
+            statements, &content_statements,
+            "no audit write, no other read"
+        );
     }
     drop(cases);
     harness.finish().await;

@@ -3,7 +3,7 @@
 **Component**: 07_admin
 **Producer task**: E-17/c02 (construction), E-17/c03 (`list_users`, `update_user`, `set_quota`), E-17/c04 (last-admin rule), E-17/c07 (`health`) — `_docs/02_tasks/todo/B05-02_admin_crate_skeleton.md`, `B05-03_admin_user_management.md`, `B05-04_last_admin_guard.md`, `B05-07_admin_health_aggregation.md` (renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-21/c12 (admin handlers), E-22/c03 (composition root), E-22/c08 (`admin promote|demote`), E-22/c09 (`admin user list|set-quota`); in batch E-17/c08, E-17/c09, E-17/c10
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: draft (open points below)
 **Last Updated**: 2026-11-14
 
@@ -20,7 +20,7 @@ The admin operations behind the web admin page and the operator CLI: list users 
 | `list_users` | `(Actor, page) -> Vec<AdminUserView{account, role, state, last_login, used, limit}>` | `Forbidden` | async; one `AccountAdmin::list_accounts` and one `QuotaAdmin::views` call per page; page size `admin_list_page_size` |
 | `update_user` | `(Actor, account, role?, state?) -> ()` | `Forbidden`, `NotFound`, `LastAdmin` | async; one short transaction: `lock_active_admins`, guard, `set_role` and/or `set_state` |
 | `set_quota` | `(Actor, account, limit: Option<i64>) -> ()` | `Forbidden`, `NotFound`, `InvalidLimit` (from 07a) | async; `QuotaAdmin::set_limit`; `None` = installation default |
-| `health` | `(Actor) -> HealthReport{items: Vec<(name, HealthItem)>}` | `Forbidden` | async; each contributor check bounded by `health_check_timeout` |
+| `health` | `(Actor) -> Result<HealthReport{items: Vec<(name, HealthItem)>}, AdminError>` (a failing or timed-out contributor is an item, never an error) | `Forbidden` | async; each contributor check bounded by `health_check_timeout` |
 
 `Actor` = `Admin(Principal)` or `Operator`. `Admin(p)` passes only when `p` is a session principal with role admin (`Scope::Admin`); a device-token principal never passes. `Operator` is the trusted CLI.
 
@@ -52,7 +52,7 @@ The admin operations behind the web admin page and the operator CLI: list users 
 
 - `environment = production`: `RefusedInProduction` before any port call.
 - An installation with any account: `Ok`, nothing written (a second run adds nothing).
-- Otherwise: the admin signs up with the setup token, two users with admin invites, each through `SignInService::begin`, `ProviderLogin::authorize` and `complete` (owner decision 2026-11-14: no development-only account-creation port); per user four folders with Unicode and mixed-case names, a staged photo committed by `commit_batch` and one share link on it; a 1 GiB limit on the first user (`set_quota` as `Actor::Operator`, audited); an upload session left open for the second user. Media jobs are whatever the composition root's commit effects queue for the photo.
+- Otherwise: the admin signs up with the setup token, two users with admin invites, each through `SignInService::begin`, `ProviderLogin::authorize` and `complete` (owner decision 2026-11-14: no development-only account-creation port); per user four folders with Unicode and mixed-case names, a staged photo committed by `commit_batch` and one share link on it; a 1 GiB limit on the first user (`set_quota` as `Actor::Operator`, audited); an upload session left open for the second user. Media jobs are what the composition root's commit effects queue for the photo: 08's one shared `MediaEnqueueEffect` in 03's commit effects (AZ-4311) queues one stills job per user under that user's account.
 
 ## Invariants
 
@@ -82,13 +82,13 @@ The admin operations behind the web admin page and the operator CLI: list users 
 | concurrent-demotion | two admins demote each other, 100 rounds | exactly one passes | IT-07-4 |
 | mixed-removals | 200 concurrent pairs of deletions, disabling and demotions of two admins | an active admin always remains; refusals are `LastAdmin` | IT-07-5 |
 | delayed-lock | 200 ms after `lock_active_admins`, 100 rounds | the second waits; one passes | ST-07-3 |
-| dev-seed | development, empty database; second run; production | 3 accounts, 1 GiB limit, a share per user, an open upload; nothing added; `RefusedInProduction` with 0 rows | IT-07-14 |
+| dev-seed | development, empty database; second run; production | 3 accounts, 1 GiB limit, a share per user, an open upload, one queued stills job per user under its own account; nothing added; `RefusedInProduction` with 0 rows | IT-07-14 |
 | non-admin | user session, admin device token | `Forbidden` | ST-07-1 |
 | health-timeout | contributor sleeping 5 s, timeout 300 ms | `down` within 500 ms; others present | IT-07-6 |
 
 ## Open points
 
-1. `contracts` part 1 lists only `Unexpected` (or no error) for `list_users` and `health`; `Forbidden` on all four operations (`AdminError::Forbidden`) needs a minor `contracts` change, a proposed `contracts` change task in E-17 (E-17/c01 AC-4) and a dependency of E-17/c05 and E-17/c06.
+1. Resolved 2026-11-14 (AZ-4309, CC-3): `AdminError::Forbidden` on all four operations; `health` returns `Result<HealthReport, AdminError>` (contracts part 1 2.0.0). `AdminServiceImpl` implements `contracts::AdminService`; its inherent methods and `AdminCallError` are gone.
 2. Resolved 2026-11-07 (G-S6): a non-admin caller gets 403 `forbidden`; another account's id gets 404 `not_found`. ST-07-1, NFT-SEC-13 and E-31/c03 use this record.
 3. `HealthReport` has items only; whether it carries an overall status is not stated.
 4. `InvalidLimit` has no code in the shared status table; `health_check_timeout` and `admin_list_page_size` have no defaults.
@@ -101,4 +101,5 @@ The admin operations behind the web admin page and the operator CLI: list users 
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
 | 1.0.1 | 2026-11-07 | `Forbidden` status fixed at 403 (G-S6) (AZ-3814) | spike AZ-3814 |
 | 1.1.0 | 2026-11-14 | Last-admin guard implemented in `update_user` and both deletion requests; lock order stated; IT-07-3 to IT-07-5, ST-07-3 | AZ-3818 |
+| 1.3.0 | 2026-11-14 | `impl AdminService for AdminServiceImpl` (one path; authorization before every operation); `Forbidden` on all four operations and fallible `health` (CC-3); dev seed queues media jobs through the shared effect | AZ-4309, AZ-4311 |
 | 1.2.0 | 2026-11-14 | Dev seed construction and behaviour (`DevSeedImpl`, `DevSeedPorts`, `ProviderLogin`); IT-07-14 | AZ-3822 |

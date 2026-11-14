@@ -164,6 +164,7 @@ fn service_rows(id: CorrelationId) -> Vec<Row> {
         Code(ErrorCode::PasswordRequired) => PublicShareError::PasswordRequired,
         Code(ErrorCode::RateLimited) => PublicShareError::RateLimited { retry_after: delay() },
         Fault => PublicShareError::Unexpected(fault()),
+        Code(ErrorCode::Forbidden) => AdminError::Forbidden,
         Code(ErrorCode::LastAdmin) => AdminError::LastAdmin,
         Code(ErrorCode::NotFound) => AdminError::NotFound,
         Field("limit") => AdminError::InvalidLimit,

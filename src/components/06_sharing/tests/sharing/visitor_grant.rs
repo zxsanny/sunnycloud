@@ -6,7 +6,9 @@
 
 use std::time::{Duration, Instant};
 
-use contracts::{AccessGrant, CreatedShare, PublicShareError, ShareContent, ShareService};
+use contracts::{
+    AccessGrant, CreatedShare, PublicShareError, PublicShareService, ShareContent, ShareService,
+};
 use sc_ids::RawToken;
 use sqlx::Connection;
 use sunnycloud_sharing::PgShareService;

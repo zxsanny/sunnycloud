@@ -42,13 +42,20 @@ fn not_found_is_404_not_found() {
 #[test]
 fn forbidden_is_403_forbidden() {
     // Arrange
-    let error = DeletionError::Forbidden;
+    let from_admin = AdminError::Forbidden;
+    let from_deletion = DeletionError::Forbidden;
 
     // Act
-    let code = deletion_error_code(&error).expect("forbidden has a code");
+    let codes = [
+        admin_error_code(&from_admin),
+        deletion_error_code(&from_deletion),
+    ];
 
     // Assert
-    assert_eq!((code.as_str(), code.status()), ("forbidden", 403));
+    for code in codes {
+        let code = code.expect("forbidden has a code");
+        assert_eq!((code.as_str(), code.status()), ("forbidden", 403));
+    }
 }
 
 #[test]

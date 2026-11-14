@@ -3,7 +3,7 @@
 **Component**: 08_media_jobs
 **Producer task**: E-18/c06 — AZ-3841 (`_docs/02_tasks/done/AZ-3841_job_planner_enqueue_effect.md`)
 **Consumer tasks**: E-14/c08 (passes the effect to `publish`), E-14/c15 and E-13/c16 (integration passes with the real effect), E-22/c03 (effects list); pipeline AZ-3660
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: implemented in `src/components/08_media_jobs/src/enqueue_effect.rs` and `planner.rs`
 **Last Updated**: 2026-11-12
 
@@ -17,10 +17,10 @@ What 08's `CommitEffect` does inside 02's commit transaction, so the tree and tr
 |------|-----------|-------|
 | `JobPlanner::new` | `(params_version: u32, bulk_queue_threshold: u64) -> JobPlanner` | `Copy`, pure |
 | `JobPlanner::from_config` | `(&MediaConfig) -> JobPlanner` | `CURRENT_PARAMS_VERSION` (media-shared) and `bulk_queue_threshold` (`SUNNYCLOUD_BULK_QUEUE_THRESHOLD`, default 200) |
-| `JobPlanner::plan` | `(&self, account_id: Uuid, &PublishedEntry) -> Vec<JobSpec>` | pure |
+| `JobPlanner::plan` | `(&self, &PublishedEntry) -> Vec<JobSpec>` (jobs under `entry.account_id`) | pure |
 | `JobPlanner::count_limit` | `(&self) -> u64` | threshold + 1 (saturating) |
 | `JobPlanner::priority` | `(&self, import_hint: bool, queued: u64) -> Priority` | pure |
-| `MediaEnqueueEffect::new` | `(Arc<JobQueue>, JobPlanner, account_id: Uuid) -> MediaEnqueueEffect` | built per `publish` call; `account_id` is `CommitActor.account_id` |
+| `MediaEnqueueEffect::new` | `(Arc<JobQueue>, JobPlanner) -> MediaEnqueueEffect` | one instance for every account, registered by the composition root in 03's commit effects; each entry's account is `PublishedEntry::account_id` |
 
 | Hook | Behaviour | Result |
 |------|-----------|--------|
@@ -74,11 +74,12 @@ One priority per entry: a video's two jobs share it.
 
 ## Open points
 
-None. (Former point 1 decided 2026-11-12, AZ-3709: the account comes from `CommitActor`; `PublishedEntry` is unchanged.)
+None. (Former point 1 decided 2026-11-12, AZ-3709; superseded 2026-11-14 by the owner (AZ-3789, AZ-4311): the account comes from `PublishedEntry::account_id`, so one shared effect serves every account.)
 
 ## Change Log
 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
+| 1.2.0 | 2026-11-14 | `MediaEnqueueEffect::new` and `JobPlanner::plan` without an account: the account is read per entry (`PublishedEntry::account_id`); one shared instance in 03's commit effects (IT: `effect_shared.rs`, server `composition_root`) | AZ-4311 |
 | 1.1.0 | 2026-11-12 | Implemented: constructor signatures, DB failure → `Batch(Internal)`, one priority per entry, count skipped with the hint, no statement without a planned job; open point 1 closed | AZ-3841 |

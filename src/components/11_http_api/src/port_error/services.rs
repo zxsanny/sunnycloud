@@ -31,6 +31,7 @@ impl PortError for PublicShareError {
 impl PortError for AdminError {
     fn into_domain(self, request_id: CorrelationId) -> DomainError {
         match self {
+            Self::Forbidden => business(ErrorCode::Forbidden),
             Self::LastAdmin => business(ErrorCode::LastAdmin),
             Self::NotFound => not_found(),
             Self::InvalidLimit => invalid_field("limit", "out_of_range"),

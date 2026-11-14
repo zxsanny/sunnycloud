@@ -1,12 +1,10 @@
 use std::time::Duration;
 
-use contracts::{Actor, HealthContributor, HealthItem, HealthReport, HealthStatus};
+use contracts::{HealthContributor, HealthItem, HealthReport, HealthStatus};
 use sc_observability::log_error;
 use tokio::task::JoinSet;
 
-use crate::actor::authorize;
 use crate::admin_service::AdminServiceImpl;
-use crate::error::AdminCallError;
 
 /// Bound of one check when `health_check_timeout` is unset: neither the key table nor 07 gives a default, and
 /// the page must not wait on a hung check. Same value as the `/readyz` check bound of `sc_observability`.
@@ -19,8 +17,8 @@ impl AdminServiceImpl {
     /// Every registered contributor, in registration order, each run as its own task under
     /// `health_check_timeout`, so the call lasts as long as the slowest bounded check. A check that times out
     /// or panics is reported `down`; it never hides the others. Stateless: every call runs every check.
-    pub async fn health(&self, actor: &Actor) -> Result<HealthReport, AdminCallError> {
-        authorize(actor)?;
+    /// The body of `AdminService::health`, run after the caller is authorized.
+    pub(crate) async fn run_checks(&self) -> HealthReport {
         let timeout = self
             .config
             .health_check_timeout
@@ -41,7 +39,7 @@ impl AdminServiceImpl {
             }
         }
         let items = names.into_iter().zip(items).collect();
-        Ok(HealthReport { items })
+        HealthReport { items }
     }
 }
 

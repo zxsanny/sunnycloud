@@ -38,11 +38,8 @@ async fn a_deleting_account_is_refused_by_every_entry_point_with_nothing_written
     entry.revision.reserved_bytes = data.len() as i64;
     real.begin_deletion().await;
     let (rows, seq) = (real.rows().await, real.seq().await);
-    let media: Arc<dyn CommitEffect> = Arc::new(MediaEnqueueEffect::new(
-        real.queue.clone(),
-        real.planner,
-        real.account,
-    ));
+    let media: Arc<dyn CommitEffect> =
+        Arc::new(MediaEnqueueEffect::new(real.queue.clone(), real.planner));
 
     // Act
     let published = real

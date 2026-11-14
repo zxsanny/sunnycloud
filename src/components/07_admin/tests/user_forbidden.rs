@@ -1,9 +1,9 @@
-//! AC-6: only an admin session or the operator may administer users.
+//! AC-6: only an admin session or the operator may administer users. AZ-4309 AC-1 (ST-07-1 through the trait):
+//! the four `AdminService` operations answer `Forbidden` to a user session and an admin device token.
 
 mod support;
 
-use contracts::{AccountState, Actor, Page, PrincipalKind, Role};
-use sunnycloud_admin::AdminCallError;
+use contracts::{AccountState, Actor, AdminError, AdminService, Page, PrincipalKind, Role};
 use support::harness::{Harness, admin_actor, principal};
 use support::seed;
 use uuid::Uuid;
@@ -25,6 +25,7 @@ async fn scene() -> (Harness, Uuid) {
 async fn a_user_session_and_an_admin_device_token_are_forbidden_and_nothing_changes() {
     // Arrange
     let (harness, user) = scene().await;
+    let service: &dyn AdminService = &harness.service;
     let account = Uuid::new_v4();
     let callers = [
         Actor::Admin(principal(account, PrincipalKind::Session, Role::User)),
@@ -33,8 +34,7 @@ async fn a_user_session_and_an_admin_device_token_are_forbidden_and_nothing_chan
 
     for caller in callers {
         // Act
-        let list = harness
-            .service
+        let list = service
             .list_users(
                 &caller,
                 Page {
@@ -43,8 +43,7 @@ async fn a_user_session_and_an_admin_device_token_are_forbidden_and_nothing_chan
                 },
             )
             .await;
-        let update = harness
-            .service
+        let update = service
             .update_user(
                 &caller,
                 user,
@@ -52,18 +51,14 @@ async fn a_user_session_and_an_admin_device_token_are_forbidden_and_nothing_chan
                 Some(AccountState::Disabled),
             )
             .await;
-        let quota = harness
-            .service
-            .set_quota(&caller, user, Some(1 << 30))
-            .await;
+        let quota = service.set_quota(&caller, user, Some(1 << 30)).await;
+        let health = service.health(&caller).await;
 
         // Assert
-        assert!(matches!(list, Err(AdminCallError::Forbidden)), "{list:?}");
-        assert!(
-            matches!(update, Err(AdminCallError::Forbidden)),
-            "{update:?}"
-        );
-        assert!(matches!(quota, Err(AdminCallError::Forbidden)), "{quota:?}");
+        assert!(matches!(list, Err(AdminError::Forbidden)), "{list:?}");
+        assert!(matches!(update, Err(AdminError::Forbidden)), "{update:?}");
+        assert!(matches!(quota, Err(AdminError::Forbidden)), "{quota:?}");
+        assert!(matches!(health, Err(AdminError::Forbidden)), "{health:?}");
     }
     let mut conn = harness.fixture().await;
     assert_eq!(harness.port_calls(), [0; 5]);

@@ -1,6 +1,6 @@
 # Test Specification — 06_sharing
 
-Tier: component integration (`cargo test -p sharing`) at the public port boundary: `ShareService` (`create`, `list`, `revoke`), `PublicShareService` (`open`, `verify_password`, `authorize_content`), `AccountLifecycleHook`. Env class `C`; timing rows `C-REF`. System scenarios are referenced by ID, not restated. Byte streaming, headers and session-only scope are 03/11/01 (see AC-57 row).
+Tier: component integration (`cargo test -p sharing`) at the public port boundary: `ShareService` (`create`, `list`, `revoke`), `PublicShareService` (`open`, `verify_password`, `authorize_content`, `authorize_derived`; the suites call them through the port, AZ-4310), `AccountLifecycleHook`. Env class `C`; timing rows `C-REF`. System scenarios are referenced by ID, not restated. Byte streaming, headers and session-only scope are 03/11/01 (see AC-57 row).
 
 06 reads the tree only through `TreeReader` (`resolve_live_file`, `get_node`); the tests run it against the real 02 and real 05/07a on PostgreSQL 18 (no fake store). `AbuseLimiter` is the real helper 08 with millisecond windows. `AuditWriter` is real (rows read back with the API role's SELECT); a failing-audit decorator exists only for IT-06-11. Clock is the manual test clock; `share_default_ttl`, `share_lookup_cache` (200 ms), `share_grant_ttl`, limit windows are millisecond values unless a row asserts the production default.
 
@@ -8,8 +8,8 @@ Tier: component integration (`cargo test -p sharing`) at the public port boundar
 
 | AC ID | Acceptance Criterion (short) | Test IDs | Coverage |
 |-------|------------------------------|----------|----------|
-| AC-12 | Link opens <= 2 s, 7-day default, revocation <= 5 s, hashed tokens, uniform missing/expired/revoked | IT-06-1, IT-06-2, IT-06-6, IT-06-7, IT-06-9, PT-06-1, PT-06-2, ST-06-2, ST-06-3, AT-06-1 | Covered here + FT-N-09, FT-N-10, FT-P-36, FT-P-37, FT-P-38, NFT-SEC-16, NFT-SEC-17 |
-| AC-20 | Share password and invalid-token limits | IT-06-8, ST-06-3, ST-06-6 | Covered here + NFT-SEC-04, NFT-SEC-06 |
+| AC-12 | Link opens <= 2 s, 7-day default, revocation <= 5 s, hashed tokens, uniform missing/expired/revoked | IT-06-1, IT-06-2, IT-06-6, IT-06-7, IT-06-9, IT-06-13, PT-06-1, PT-06-2, ST-06-2, ST-06-3, AT-06-1 | Covered here + FT-N-09, FT-N-10, FT-P-36, FT-P-37, FT-P-38, NFT-SEC-16, NFT-SEC-17 |
+| AC-20 | Share password and invalid-token limits | IT-06-8, IT-06-13, ST-06-3, ST-06-6 | Covered here + NFT-SEC-04, NFT-SEC-06 |
 | AC-34 | Link survives save-in-place | IT-06-4, AT-06-3 | Covered here + FT-P-57 |
 | AC-47 | Served-type rules shared with 11 | IT-06-2 (media type from sniffed revision) | Covered here (decision input) + FT-N-11, FT-P-39, NFT-SEC-19 |
 | AC-57 | Create-share is session-only | — | Covered by system scenarios FT-N-24, NFT-SEC-07 (scope check is 01 `Authenticator::require` + 11; `ShareService` receives a plain `AccountId`) |
@@ -123,10 +123,18 @@ each trip writes ONE audit event (not one per rejected call); WARN log carries l
 ### IT-06-9: Constant-work lookup
 **Summary**: every not-found case runs the same statements.
 **Traces to**: AC-12
-**Description**: capture the statement log for `open` and `authorize_content` in six cases: unknown, expired, revoked, tombstoned, purged, live.
+**Description**: capture the statement log for `open`, `authorize_content` and `authorize_derived` in six cases: unknown, expired, revoked, tombstoned, purged, live; `authorize_derived` runs the statements of `authorize_content` (AZ-4310 AC-3).
 **Expected result**: the five NotFound cases show identical statement count and shape (one indexed read by `token_hash`, then the same resolve reads; padded where the branch ends early); the response values are equal; no Argon2 call in any of them.
 **Max execution time**: 5 s
 **Dependencies**: PostgreSQL
+
+### IT-06-13: Derived-file authorization
+**Summary**: `authorize_derived` answers as `authorize_content` does, for a thumbnail or preview.
+**Traces to**: AC-12, AC-20 (AZ-4310)
+**Description**: live plain and password links on a JPEG; unknown, malformed, expired, revoked, tombstoned, purged links, a link on a deleted file and a link row on a folder; grants of the link and of another link; `open` and `authorize_derived` with unknown tokens from one IP; the four operations through `Arc<dyn PublicShareService>`.
+**Expected result**: a live link returns the owning account and the `LiveFile` 02 resolves; every dead case answers one `NotFound`; a password link answers `PasswordRequired` without its own grant and the file with it; no `share_accessed` row; unknown tokens on `authorize_derived` count on the per-IP invalid-token counter shared with `open`; the four answer through the port.
+**Max execution time**: 10 s
+**Dependencies**: PostgreSQL, helper 08
 
 ### IT-06-10: Account erase hook
 **Summary**: links are deleted in batches and stop resolving.

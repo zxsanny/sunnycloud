@@ -174,7 +174,7 @@ async fn the_health_report_lists_each_item_with_its_status() {
     let stack = Stack::start().await;
     stack.script.push(
         "AdminService::health",
-        HealthReport {
+        Ok::<HealthReport, AdminError>(HealthReport {
             items: vec![
                 ("database".to_owned(), HealthItem::ok()),
                 (
@@ -182,7 +182,7 @@ async fn the_health_report_lists_each_item_with_its_status() {
                     HealthItem::new(HealthStatus::Degraded, "slow"),
                 ),
             ],
-        },
+        }),
     );
 
     // Act

@@ -30,7 +30,7 @@ use sunnycloud_tree::{
 
 use super::base::Shutdown;
 use super::failed;
-use super::lists::HealthContributors;
+use super::lists::{CommitEffects, HealthContributors, items};
 use super::media::MediaPlanning;
 use super::storage::Blobstore;
 use crate::command_config::ServeSettings;
@@ -276,15 +276,14 @@ async fn transfer(services: &ServiceContext) -> Result<Transfer, CliError> {
     let blobs = services.get::<Blobstore>().await?;
     let tree = services.get::<Tree>().await?;
     let metrics = services.get::<Metrics>().await?;
+    let effects = services.get::<CommitEffects>().await?;
     let config = TransferConfig::from_settings(&base.settings);
     let ports = UploadPorts {
         guard: identity.accounts.clone(),
         tree: tree.reader.clone(),
         commit: tree.service.clone(),
         reader: blobs.reader.clone(),
-        // 08's media effect belongs here once it reads the account from each commit; it cannot yet
-        // (`CommitEffect::on_entry` receives no account), so no effect is injected.
-        commit_effects: Vec::new(),
+        commit_effects: items(&effects.0),
         quota: quota.ledger.clone(),
         quota_admin: quota.admin.clone(),
         writer: blobs.writer.clone(),

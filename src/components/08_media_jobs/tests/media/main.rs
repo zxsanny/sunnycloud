@@ -20,6 +20,7 @@ mod derived_support;
 mod effect_plan;
 mod effect_priority;
 mod effect_rollback;
+mod effect_shared;
 mod effect_skip;
 mod effect_support;
 mod erase_hook;

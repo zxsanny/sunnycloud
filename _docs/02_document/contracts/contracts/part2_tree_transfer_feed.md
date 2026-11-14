@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c04 — `_docs/02_tasks/todo/B01-13_contracts_part2.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c05 (part 3); other batches: E-11..E-14, E-16..E-18, E-21, E-22, E-30
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: draft (frozen when the producer task is accepted)
 **Last Updated**: 2026-11-14
 
@@ -73,7 +73,7 @@ Per-entry failures of `publish` (an `EntryResult` value, not an error of the cal
 | `on_entry` | `(tx: &mut DbTx, entry: &PublishedEntry) -> Result<(), EffectError>` | `Entry` error rolls back that entry's savepoint only |
 | `on_batch` | `(tx: &mut DbTx, outcomes: &[EntryOutcome]) -> Result<(), EffectError>` | receives every entry outcome, failed ones included |
 
-`EffectError` = `Entry(ErrorCode)` or `Batch(ErrorCode)` (whole transaction rolls back). `PublishedEntry` = `node_id, revision_id, content_hash, media_type?, size, import_hint, vault` (`vault` set by 02 from the entry's flag or the target's membership). `EntryOutcome` = the entry's `EntryResult` paired with its index. Effects do no I/O, read only rows they own and add no statement after the feed stamp.
+`EffectError` = `Entry(ErrorCode)` or `Batch(ErrorCode)` (whole transaction rolls back). `PublishedEntry` = `account_id, node_id, revision_id, content_hash, media_type?, size, import_hint, vault` (`account_id` = `CommitActor::account_id`, so one effect instance serves every account; `vault` set by 02 from the entry's flag or the target's membership). `EntryOutcome` = the entry's `EntryResult` paired with its index. Effects do no I/O, read only rows they own and add no statement after the feed stamp.
 
 ### 03 transfer
 
@@ -143,7 +143,7 @@ All methods take the resolved account id first (from 11's authentication), never
 
 1. 03 lists `media_type` inside `BlobRef`; 04 (the owner) says the media type is not part of `BlobRef`. This contract follows 04 and adds `media_type?` as a separate `open_blob_content` parameter.
 2. `LiveFile.blob_ref` is the blob id (02 §2), not a `BlobRef` struct, although AZ-3652's DTO table uses the same word.
-3. 08 describes `on_batch(tx, &[PublishedEntry])` and an input `CommitContext{account_id, ...}`; 02 (owner) defines `on_batch(tx, &[EntryOutcome])` and `PublishedEntry` without `account_id`. 08's job key needs the account id: either `PublishedEntry` gains `account_id` or the effect reads it from `CommitActor`. Owner of the commit transaction (E-13) to decide.
+3. Resolved 2026-11-14 (owner, AZ-3789; added AZ-4311): `PublishedEntry` carries `account_id`, filled by 02 from `CommitActor::account_id`, so 08's one shared effect reads the account per entry. `on_batch` keeps `&[EntryOutcome]`.
 4. `StoredResponse` (the receipt's stored batch response replayed by `Begin::Replay`) has no specified type; it must be the serialised `BatchResult` of 03.
 5. `ChangeFeed` "also takes a shutdown signal" (05 §2) without saying how; this contract leaves it to construction by 12 (not a method).
 6. `NodeView`, `RevisionView` and `ListingPage` field lists are derived from data_model §5 and 05's `ChangeItem`; 02 does not list them. E-13 may add fields additively.
@@ -156,4 +156,5 @@ All methods take the resolved account id first (from 11's authentication), never
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
 | 1.1.0 | 2026-11-11 | `DownloadError::RangeNotSatisfiable` becomes `RangeNotSatisfiable { total_size: i64 }` so 11 can answer `Content-Range: bytes */<total>`; owner-approved; the only matching caller (11 `port_error`) and its tests updated, 03 does not construct it yet (AZ-3755) | owner-approved change |
 | 1.2.0 | 2026-11-14 | `EditedSince` removed from `CommitServiceError` and `EntryError` (commits never answer it: a stale base becomes a conflict copy, an unknown or foreign base is ignored; `commit_service.md`); 11 and 03 updated, `edited_since` stays a `delete_node` error | AZ-3738 |
+| 1.4.0 | 2026-11-14 | `PublishedEntry.account_id` (the committing account, filled by 02's `publish`; owner decision 2026-11-14). Additive field; every construction updated | AZ-4311 |
 | 1.3.0 | 2026-11-14 | Vault membership (v1.2, additive): `NodeView::vault`, `LiveFile::vault`, `TreeServiceError::VaultBoundary` (409 `vault_boundary`), port `VaultRoots::claim_root` (joins 20's transaction), `UploadError::VaultFileTooLarge` and `CommitServiceError::VaultFileTooLarge` (413 `vault_file_too_large`, owner decision 2026-11-14); `PublishEntry::vault` is OR-ed with the target's membership by 02 | AZ-3927 |

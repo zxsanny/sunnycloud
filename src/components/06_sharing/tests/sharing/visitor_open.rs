@@ -2,7 +2,7 @@
 //! link shows nothing before unlock, and every dead case, the expiry boundary and every malformed token give the
 //! one `NotFound`.
 
-use contracts::{ShareOpen, ShareService};
+use contracts::{PublicShareService, ShareOpen, ShareService};
 use sqlx::Connection;
 use sunnycloud_sharing::PgShareService;
 use uuid::Uuid;

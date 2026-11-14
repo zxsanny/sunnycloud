@@ -3,7 +3,6 @@
 
 use contracts::PublishedEntry;
 use media_shared::policy::{CURRENT_PARAMS_VERSION, JobSpec, supported_kinds_for};
-use uuid::Uuid;
 
 use crate::config::MediaConfig;
 use crate::job_queue::Priority;
@@ -31,9 +30,9 @@ impl JobPlanner {
         self.params_version
     }
 
-    /// One job per kind of `supported_kinds_for`; none for a vault file, an empty file or an entry without a
-    /// media type.
-    pub fn plan(&self, account_id: Uuid, entry: &PublishedEntry) -> Vec<JobSpec> {
+    /// One job per kind of `supported_kinds_for`, under the entry's account; none for a vault file, an empty file
+    /// or an entry without a media type.
+    pub fn plan(&self, entry: &PublishedEntry) -> Vec<JobSpec> {
         let media_type = match entry.media_type.as_deref() {
             Some(media_type) if !entry.vault && entry.size > 0 => media_type,
             _ => return Vec::new(),
@@ -41,7 +40,7 @@ impl JobPlanner {
         supported_kinds_for(media_type)
             .into_iter()
             .map(|kind| JobSpec {
-                account_id,
+                account_id: entry.account_id,
                 revision_id: entry.revision_id,
                 kind,
                 content_hash: entry.content_hash,

@@ -1,18 +1,22 @@
 //! The dev seed over the real components on a real PostgreSQL 18 and a scratch blob volume: 01's sign-in,
 //! invites, operator ops, authenticator and account admin with the in-process identity provider (01's test
 //! provider, standing in for mock-idp); 02's tree service and reader; 03's upload and commit service over 04's
-//! writer, reader, registry and catalog; 06's share service; 07a's quota admin and ledger; 05's stamp, and the
-//! account-creation hooks of 07a, 05 and 02 that the sign-up runs. Probes use the schema owner.
+//! writer, reader, registry and catalog, with 08's media enqueue effect in 03's commit-effect slot as the
+//! composition root registers it (one instance for every account, AZ-4311); 06's share service; 07a's quota admin
+//! and ledger; 05's stamp, and the account-creation hooks of 07a, 05 and 02 that the sign-up runs. Probes use the
+//! schema owner.
 
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use contracts::{AccountLifecycleHook, CallbackParams, Fault, async_trait};
+use contracts::{AccountLifecycleHook, CallbackParams, CommitEffect, Fault, async_trait};
+use media_api::{JobMetrics, JobPlanner, JobQueue, MediaConfig, MediaEnqueueEffect};
 use sc_audit::AuditWriter;
 use sc_clock::Clock;
 use sc_config::{Environment, Secret};
+use sc_observability::{BuildInfo, Metrics};
 use sc_ratelimit::{AbuseLimiter, LimitId, LimitSpec, LimitTable};
 use sqlx::PgConnection;
 use sunnycloud_admin::{
@@ -96,6 +100,27 @@ fn blobstore_config(dir: &std::path::Path) -> BlobstoreConfig {
         master_key_ring: None,
         master_key_current: None,
     }
+}
+
+/// 08's media enqueue effect over the job queue of the test database, built as the composition root builds it.
+fn media_effect(
+    settings: &sc_config::ApiSettings,
+    api: &sc_db::Db,
+    clock: &Arc<dyn Clock>,
+) -> Arc<dyn CommitEffect> {
+    let config = MediaConfig::from_settings(settings);
+    let registry = Metrics::new(BuildInfo {
+        version: "test",
+        commit: "test",
+        test_clock: true,
+    })
+    .expect("metrics");
+    let metrics = Arc::new(JobMetrics::register(&registry).expect("job metrics"));
+    let queue = Arc::new(JobQueue::new(api.clone(), clock.clone(), &config, metrics));
+    Arc::new(MediaEnqueueEffect::new(
+        queue,
+        JobPlanner::from_config(&config),
+    ))
 }
 
 impl SeedWorld {
@@ -189,6 +214,7 @@ impl SeedWorld {
             &identity_config,
             audit.clone(),
         ));
+        let media = media_effect(&settings, &api, &clock);
         let upload = Arc::new(PgUploadService::new(
             api.clone(),
             TransferConfig::from_settings(&settings),
@@ -197,7 +223,7 @@ impl SeedWorld {
                 tree: tree_reader.clone(),
                 commit: tree.clone(),
                 reader,
-                commit_effects: Vec::new(),
+                commit_effects: vec![media],
                 quota: Arc::new(PgQuotaLedger::new(quota_config)),
                 quota_admin: quota.clone(),
                 writer,

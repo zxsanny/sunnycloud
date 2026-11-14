@@ -2,7 +2,7 @@
 
 mod support;
 
-use contracts::{AccountStatus, AdminUserView, Page, Role};
+use contracts::{AccountStatus, AdminService, AdminUserView, Page, Role};
 use sc_clock::Timestamp;
 use sqlx::PgConnection;
 use support::harness::{Harness, START, admin_actor};

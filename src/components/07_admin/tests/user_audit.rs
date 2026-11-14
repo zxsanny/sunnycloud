@@ -2,7 +2,7 @@
 
 mod support;
 
-use contracts::{AccountState, Role};
+use contracts::{AccountState, AdminService, Role};
 use support::harness::{Harness, admin_actor, principal};
 use support::seed;
 use uuid::Uuid;

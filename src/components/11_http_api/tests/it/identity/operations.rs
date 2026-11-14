@@ -379,9 +379,9 @@ fn operations() -> Vec<Operation> {
             |s| {
                 s.push(
                     "AdminService::health",
-                    HealthReport {
+                    Ok::<HealthReport, AdminError>(HealthReport {
                         items: vec![("database".to_owned(), HealthItem::ok())],
-                    },
+                    }),
                 )
             },
         ),

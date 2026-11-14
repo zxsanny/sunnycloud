@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use contracts::{AccessGrant, ShareOpen};
+use contracts::{AccessGrant, PublicShareService, ShareOpen};
 use sunnycloud_sharing::PgShareService;
 use tokio::time::MissedTickBehavior;
 

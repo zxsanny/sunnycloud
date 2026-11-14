@@ -3,13 +3,14 @@
 //! no row holds) reads a fixed dummy target instead of its own, so the five not-found cases run the same statements
 //! and differ from each other only in values (AC-12, IT-06-9). No password is checked here, so no Argon2 runs.
 //! The address is checked against the invalid-token limit before the lookup, and every `NotFound` counts on it
-//! (`abuse`), so the not-found cases also do the same limiter work.
+//! (`abuse`), so the not-found cases also do the same limiter work. The `PublicShareService` implementation here is
+//! the one public entry of the four visitor operations.
 
 use std::net::IpAddr;
 
 use contracts::{
-    LiveFileLookup, NodeKind, NodeSelector, NodeState, NodeView, PublicShareError, ShareOpen,
-    TreeReaderError,
+    AccessGrant, LiveFileLookup, NodeKind, NodeSelector, NodeState, NodeView, PublicShareError,
+    PublicShareService, ShareContent, ShareDerived, ShareOpen, TreeReaderError, async_trait,
 };
 use sc_clock::Timestamp;
 use sc_db::{DbError, RunError};
@@ -35,11 +36,11 @@ pub(crate) enum Target {
 }
 
 impl PgShareService {
-    /// `PublicShareService::open` (the port is implemented once its other operations exist): `Available` with the
-    /// name, the current revision's size and media type and the expiry; `PasswordRequired` for a live password
-    /// link on a live file, with no file data; `NotFound` for everything else, counted against `client_ip`'s
-    /// invalid tokens; `RateLimited` before any read while that address is limited (AC-20).
-    pub async fn open(
+    /// `PublicShareService::open`: `Available` with the name, the current revision's size and media type and the
+    /// expiry; `PasswordRequired` for a live password link on a live file, with no file data; `NotFound` for
+    /// everything else, counted against `client_ip`'s invalid tokens; `RateLimited` before any read while that
+    /// address is limited (AC-20).
+    pub(crate) async fn open_link(
         &self,
         token: &RawToken,
         client_ip: IpAddr,
@@ -61,6 +62,48 @@ impl PgShareService {
             self.count_invalid_token(ip).await;
         }
         Ok(answer)
+    }
+}
+
+/// The port is the one public path of the visitor operations; each method is its module's implementation (`open`
+/// here, `verify_password` in `password`, `authorize_content` and `authorize_derived` in `content`).
+#[async_trait]
+impl PublicShareService for PgShareService {
+    async fn open(
+        &self,
+        token: &RawToken,
+        client_ip: IpAddr,
+    ) -> Result<ShareOpen, PublicShareError> {
+        self.open_link(token, client_ip).await
+    }
+
+    async fn verify_password(
+        &self,
+        token: &RawToken,
+        password: &str,
+        client_ip: IpAddr,
+    ) -> Result<AccessGrant, PublicShareError> {
+        self.verify_link_password(token, password, client_ip).await
+    }
+
+    async fn authorize_content(
+        &self,
+        token: &RawToken,
+        grant: Option<&AccessGrant>,
+        client_ip: IpAddr,
+        starts_download: bool,
+    ) -> Result<ShareContent, PublicShareError> {
+        self.authorize_link_content(token, grant, client_ip, starts_download)
+            .await
+    }
+
+    async fn authorize_derived(
+        &self,
+        token: &RawToken,
+        grant: Option<&AccessGrant>,
+        client_ip: IpAddr,
+    ) -> Result<ShareDerived, PublicShareError> {
+        self.authorize_link_derived(token, grant, client_ip).await
     }
 }
 

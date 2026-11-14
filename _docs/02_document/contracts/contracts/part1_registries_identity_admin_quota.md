@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c03 — `_docs/02_tasks/todo/B01-12_contracts_part1.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c04 (part 2), E-00/c05 (part 3); other batches: E-10..E-22, E-30 (implementers and callers)
-**Version**: 1.6.0
+**Version**: 2.0.0
 **Status**: draft (frozen when the producer task is accepted)
 **Last Updated**: 2026-11-14
 
@@ -105,17 +105,17 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 
 | Port | Method | Input -> Output | Errors |
 |---|---|---|---|
-| `AdminService` | `list_users` | `Actor, page` -> `Vec<AdminUserView{account, role, state, last_login, used, limit}>` | `Unexpected` |
-| | `update_user` | `Actor, account, role?, state?` -> `()` | `LastAdmin`, `NotFound` |
-| | `set_quota` | `Actor, account, limit: Option<i64>` -> `()` | `NotFound`, `InvalidLimit` |
-| | `health` | `Actor` -> `HealthReport{items: Vec<(name, HealthItem)>}` | none |
+| `AdminService` | `list_users` | `Actor, page` -> `Vec<AdminUserView{account, role, state, last_login, used, limit}>` | `Forbidden`, `Unexpected` |
+| | `update_user` | `Actor, account, role?, state?` -> `()` | `Forbidden`, `LastAdmin`, `NotFound` |
+| | `set_quota` | `Actor, account, limit: Option<i64>` -> `()` | `Forbidden`, `NotFound`, `InvalidLimit` |
+| | `health` | `Actor` -> `Result<HealthReport{items: Vec<(name, HealthItem)>}, AdminError>` (a failing contributor is an item) | `Forbidden` |
 | `AccountService` | `view` | `&Principal` -> `AccountView{id, display_name, role, identities, quota, root_node_id}` | `Unexpected` |
 | | `quota_view` | `&Principal` -> `QuotaView` | `Unexpected` |
 | `AccountDeletionService` | `request` | `&Principal, confirmation` -> `DeletionAccepted{deadline: Timestamp}` (confirmation = the caller's own account id as lowercase hyphenated UUID text, exact equality) | `Forbidden` (device token), `LastAdmin`, `ConfirmationMismatch` |
 | | `request_as_operator` (CC-2, decided 2026-11-07, added AZ-3819) | `account` -> `DeletionAccepted{deadline: Timestamp}` (no confirmation; last-admin guard applies) | `LastAdmin` |
 | `DevSeed` | `seed` | `()` -> `()` (an installation that already has an account is left unchanged) | `RefusedInProduction` when `environment = production`, before any write |
 
-`Actor` = `Admin(Principal)` or `Operator` (CLI). Every mutating call writes an `admin_action` audit row inside the provider.
+`Actor` = `Admin(Principal)` or `Operator` (CLI). Every mutating call writes an `admin_action` audit row inside the provider. `AdminError::Forbidden` (CC-3, G-S6): an `Actor::Admin` principal that is not an admin session, answered by all four operations before anything is read or written.
 
 ### 07a quota
 
@@ -180,3 +180,4 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | 1.5.0 | 2026-11-14 | `AccountAdmin::profile(account) -> AccountProfile{display_name, identities}` (read-only, owner decision 2026-11-14); `AccountDeletionService::request_as_operator(account)` (CC-2); `IdentityView` moved beside the 01 types (same public path). Additive | AZ-3819 |
 | 1.5.1 | 2026-11-14 | Documentation only: `lock_active_admins` retries one lost lock race inside the call (AZ-3818); the `DevSeed` refusal named `RefusedInProduction`, the existing variant (AZ-3822, open point 5). No signature change | AZ-3818, AZ-3822 |
 | 1.6.0 | 2026-11-14 | `AccountAdmin::lock_deleting(tx, account) -> bool` (CC-1, `FOR NO KEY UPDATE SKIP LOCKED`, owner decision 2026-11-14); `AccountInfo.deletion_requested_at` for the purger's alert and `account_deletion_seconds`. Additive for callers; every `AccountAdmin` implementer gains the method | AZ-3820 |
+| 2.0.0 | 2026-11-14 | `AdminError::Forbidden` (CC-3) on all four `AdminService` operations; `health` returns `Result<HealthReport, AdminError>` so it can answer `Forbidden` (return type changed: the one implementer, 07, and the one caller, 11, plus every double updated in the same change; a contributor failure is still an item, never an error) | AZ-4309 |

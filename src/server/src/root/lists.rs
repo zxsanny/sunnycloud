@@ -4,8 +4,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use contracts::{AccountLifecycleHook, BlobOwnerCleanup, DoctorCheck, Janitor};
-use media_api::{DerivedJanitor, JobReaper};
+use contracts::{AccountLifecycleHook, BlobOwnerCleanup, CommitEffect, DoctorCheck, Janitor};
+use media_api::{DerivedJanitor, JobReaper, MediaEnqueueEffect};
 use sc_audit::AuditWriter;
 use sc_clock::Clock;
 use sc_db::Db;
@@ -40,7 +40,7 @@ impl<T: ?Sized> Registered<T> {
     }
 }
 
-fn items<T: ?Sized>(list: &[Registered<T>]) -> Vec<Arc<T>> {
+pub(super) fn items<T: ?Sized>(list: &[Registered<T>]) -> Vec<Arc<T>> {
     list.iter().map(|entry| Arc::clone(&entry.item)).collect()
 }
 
@@ -48,6 +48,10 @@ fn items<T: ?Sized>(list: &[Registered<T>]) -> Vec<Arc<T>> {
 /// 03, 08, and 05, 07a last because the tree's batches still use the feed and the quota row (07 §4). Given to
 /// 07's `DeletionPurger` and to 01's account creation.
 pub struct AccountHooks(pub Vec<Registered<dyn AccountLifecycleHook>>);
+
+/// The commit effects 03 adds to its own on every commit: 08's media effect, one instance for every account (it
+/// reads the account from each published entry).
+pub struct CommitEffects(pub Vec<Registered<dyn CommitEffect>>);
 
 /// 02, then 08; given to 04's GC sweeper.
 pub struct BlobCleanups(pub Vec<Registered<dyn BlobOwnerCleanup>>);
@@ -74,6 +78,14 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
                 .register_hooks(items(&hooks))
                 .map_err(|error| failed("the account hook list", error))?;
             Ok(Arc::new(AccountHooks(hooks)))
+        })
+        .register::<CommitEffects, _, _>(|services| async move {
+            let planning = services.get::<MediaPlanning>().await?;
+            let media = MediaEnqueueEffect::new(planning.queue.clone(), planning.planner);
+            Ok(Arc::new(CommitEffects(vec![Registered::new(
+                "08",
+                Arc::new(media),
+            )])))
         })
         .register::<BlobCleanups, _, _>(|services| async move {
             let tree = services.get::<Tree>().await?;

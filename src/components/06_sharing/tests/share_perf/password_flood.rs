@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use contracts::{PublicShareError, ShareOpen};
+use contracts::{PublicShareError, PublicShareService, ShareOpen};
 use sc_clock::ManualClock;
 use sunnycloud_sharing::PgShareService;
 

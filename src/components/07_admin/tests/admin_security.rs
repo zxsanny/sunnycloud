@@ -7,11 +7,11 @@
 mod support;
 
 use contracts::{
-    AccountDeletionService, AccountState, Actor, AdminError, Authenticator, DeletionError,
-    HealthStatus, Page, Principal, PrincipalKind, Role,
+    AccountDeletionService, AccountState, Actor, AdminError, AdminService, Authenticator,
+    DeletionError, HealthStatus, Page, Principal, PrincipalKind, Role,
 };
 use sqlx::PgConnection;
-use sunnycloud_admin::{AdminCallError, admin_error_code};
+use sunnycloud_admin::admin_error_code;
 use support::account_data::deletion_requested_at;
 use support::harness::START;
 use support::health_doubles::{TestContributor, as_ports};
@@ -84,18 +84,16 @@ async fn standing(
     )
 }
 
-fn forbidden<T: std::fmt::Debug>(result: &Result<T, AdminCallError>) -> bool {
-    matches!(result, Err(AdminCallError::Forbidden))
+fn forbidden<T: std::fmt::Debug>(result: &Result<T, AdminError>) -> bool {
+    matches!(result, Err(AdminError::Forbidden))
 }
 
 /// The error's variant, wire code and text, which a caller could tell apart.
 fn not_found_shape(
-    result: Result<(), AdminCallError>,
+    result: Result<(), AdminError>,
 ) -> Option<(Option<sc_error::ErrorCode>, String)> {
     match result {
-        Err(AdminCallError::Failed(error @ AdminError::NotFound)) => {
-            Some((admin_error_code(&error), error.to_string()))
-        }
+        Err(error @ AdminError::NotFound) => Some((admin_error_code(&error), error.to_string())),
         _ => None,
     }
 }
@@ -215,10 +213,7 @@ async fn at_07_2_the_only_active_admin_survives_every_admin_account_and_operator
 
     // Assert
     for update in &updates {
-        assert!(
-            matches!(update, Err(AdminCallError::Failed(AdminError::LastAdmin))),
-            "{update:?}"
-        );
+        assert!(matches!(update, Err(AdminError::LastAdmin)), "{update:?}");
     }
     for deletion in &deletions {
         assert!(

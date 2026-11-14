@@ -9,8 +9,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use contracts::{
-    AccountDeletionService, Authenticator, AuthenticatorError, Credential, Janitor, ShareOpen,
-    ShareService,
+    AccountDeletionService, Authenticator, AuthenticatorError, Credential, Janitor,
+    PublicShareService, ShareOpen, ShareService,
 };
 use sc_clock::{Clock, SystemClock};
 use sqlx::{Connection, PgConnection};

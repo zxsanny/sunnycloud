@@ -51,6 +51,10 @@ pub struct DeletionAccepted {
 
 #[derive(Debug, Error)]
 pub enum AdminError {
+    /// The caller may not administer: an `Actor::Admin` principal that is not an admin session (a user session
+    /// or any device token). Answered by all four operations before anything is read or written (CC-3, G-S6).
+    #[error("forbidden")]
+    Forbidden,
     #[error("last admin")]
     LastAdmin,
     #[error("not found")]
@@ -82,8 +86,8 @@ pub trait AdminService: Send + Sync {
         limit: Option<i64>,
     ) -> Result<(), AdminError>;
 
-    /// A contributor that fails or times out is reported as an item, so this cannot fail.
-    async fn health(&self, actor: &Actor) -> HealthReport;
+    /// A contributor that fails or times out is reported as an item; the only failure is `Forbidden`.
+    async fn health(&self, actor: &Actor) -> Result<HealthReport, AdminError>;
 }
 
 #[derive(Debug, Error)]

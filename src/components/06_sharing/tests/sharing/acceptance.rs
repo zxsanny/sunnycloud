@@ -6,7 +6,7 @@
 
 use std::time::{Duration, Instant};
 
-use contracts::{PublicShareError, ShareOpen, ShareService};
+use contracts::{PublicShareError, PublicShareService, ShareOpen, ShareService};
 use sc_clock::Clock;
 use sunnycloud_sharing::ShareConfig;
 

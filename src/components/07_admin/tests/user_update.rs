@@ -5,7 +5,7 @@ mod support;
 
 use std::sync::atomic::Ordering;
 
-use contracts::{AccountState, AdminError, Role};
+use contracts::{AccountState, AdminError, AdminService, Role};
 use support::harness::{Harness, admin_actor};
 use support::seed;
 use uuid::Uuid;
@@ -120,12 +120,7 @@ async fn a_failed_audit_write_rolls_back_the_state_change_and_the_revocations() 
 
     // Assert
     let mut conn = harness.fixture().await;
-    assert!(matches!(
-        result,
-        Err(sunnycloud_admin::AdminCallError::Failed(
-            AdminError::Unexpected(_)
-        ))
-    ));
+    assert!(matches!(result, Err(AdminError::Unexpected(_))));
     assert_eq!(
         seed::role_and_state(&mut conn, user).await,
         ("user".into(), "active".into())

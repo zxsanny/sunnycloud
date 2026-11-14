@@ -24,3 +24,9 @@ Owner decision 2026-11-14 (AZ-3789): 08's media enqueue effect reads the account
 **AC-1**: Given one shared `MediaEnqueueEffect`, When two accounts each commit a JPEG, Then each gets exactly one job under its own account.
 **AC-2**: Given 02's publish, When an entry is published, Then `PublishedEntry.account_id` equals the actor's account.
 **AC-3**: Given the composition root, When 03's commit effects are listed, Then they hold the one shared media effect.
+
+## Implementation notes (batch 71)
+
+- `JobPlanner::plan` also drops its account parameter and plans under `entry.account_id` (one source of the account).
+- Composition root: late list `CommitEffects` (`src/server/src/root/lists.rs`, owner "08") holds the one `MediaEnqueueEffect`; 03's `UploadPorts::commit_effects` is that list.
+- 03's `src/vault_limit.rs` unit test builds a `PublishedEntry`; it gained the field (one line, outside the worker's owned paths, required for the build).

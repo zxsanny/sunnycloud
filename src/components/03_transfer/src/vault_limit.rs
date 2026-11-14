@@ -35,6 +35,7 @@ mod tests {
 
     fn entry(vault: bool, size: i64) -> PublishedEntry {
         PublishedEntry {
+            account_id: Uuid::nil(),
             node_id: Uuid::nil(),
             revision_id: Uuid::nil(),
             content_hash: FileHash::from_bytes([1; 32]),

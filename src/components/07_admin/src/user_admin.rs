@@ -5,22 +5,17 @@ use sc_audit::{AuditDetail, AuditEvent, AuditEventKind, SubjectRef};
 use sc_db::{RunError, Scope};
 use uuid::Uuid;
 
-use crate::actor::authorize;
 use crate::admin_service::AdminServiceImpl;
-use crate::error::AdminCallError;
 use crate::last_admin::{GuardRefusal, guard_removal, removes_admin};
 use crate::listing::{merge, page_limit};
 
 pub(crate) const SUBJECT_TYPE: &str = "account";
 
+/// The bodies of `AdminService::list_users`, `update_user` and `set_quota` (`crate::admin_service`), run after the
+/// caller is authorized.
 impl AdminServiceImpl {
     /// One page of accounts with their usage: one `list_accounts` call and one `views` call.
-    pub async fn list_users(
-        &self,
-        actor: &Actor,
-        page: Page,
-    ) -> Result<Vec<AdminUserView>, AdminCallError> {
-        authorize(actor)?;
+    pub(crate) async fn users_page(&self, page: Page) -> Result<Vec<AdminUserView>, AdminError> {
         let limit = page_limit(page.limit, self.config.admin_list_page_size);
         if limit == 0 {
             return Ok(Vec::new());
@@ -48,14 +43,13 @@ impl AdminServiceImpl {
     /// A demotion or a disabling first passes the last-admin guard in the same transaction. Disabling revokes
     /// the account's credentials inside `AccountAdmin::set_state`, so the revocation rolls back with the audit
     /// row.
-    pub async fn update_user(
+    pub(crate) async fn apply_update(
         &self,
         actor: &Actor,
         account: Uuid,
         role: Option<Role>,
         state: Option<AccountState>,
-    ) -> Result<(), AdminCallError> {
-        authorize(actor)?;
+    ) -> Result<(), AdminError> {
         self.require_known(account).await?;
         if role.is_none() && state.is_none() {
             return Ok(());
@@ -97,19 +91,17 @@ impl AdminServiceImpl {
         result.map_err(|error| match error {
             RunError::Closure(error) => error,
             RunError::Db(error) => unexpected(error),
-        })?;
-        Ok(())
+        })
     }
 
     /// `None` restores the installation default. 07a commits the limit in its own transaction, so the audit
     /// row follows it in another; a failed audit write is reported after the limit has changed.
-    pub async fn set_quota(
+    pub(crate) async fn apply_quota(
         &self,
         actor: &Actor,
         account: Uuid,
         limit: Option<i64>,
-    ) -> Result<(), AdminCallError> {
-        authorize(actor)?;
+    ) -> Result<(), AdminError> {
         self.quota
             .set_limit(account, limit)
             .await
@@ -126,8 +118,7 @@ impl AdminServiceImpl {
         self.audit
             .record(admin_action(actor, account, action))
             .await
-            .map_err(unexpected)?;
-        Ok(())
+            .map_err(unexpected)
     }
 
     /// 01 reports an unknown account to `set_role` and `set_state` only as an untyped failure; 07a's `view` is

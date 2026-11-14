@@ -7,7 +7,7 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 
-use contracts::{PublicShareError, ShareOpen, ShareService};
+use contracts::{PublicShareError, PublicShareService, ShareOpen, ShareService};
 use sc_db::Scope;
 use sqlx::Connection;
 use sunnycloud_sharing::SHARE_TOKEN_PREFIX;

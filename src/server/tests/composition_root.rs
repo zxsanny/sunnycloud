@@ -1,6 +1,7 @@
 //! AZ-3789: the composition root built for `serve` against PostgreSQL 18 and a blob volume. AC-2 (late lists in
 //! their documented order), AC-3 (one limiter, one scheduler), AC-4 (only what a command needs, each service
-//! once), AC-6 (no vault item in a default build; the crate-graph half is in `crate_graph`).
+//! once), AC-6 (no vault item in a default build; the crate-graph half is in `crate_graph`). AZ-4311 AC-3 (03's
+//! commit effects hold the one shared media effect).
 
 mod janitor_support;
 mod root_support;
@@ -19,7 +20,7 @@ use sc_ratelimit::AbuseLimiter;
 use sunnycloud_blobstore::MasterKeyring;
 use sunnycloud_server::janitor::Scheduler;
 use sunnycloud_server::root::{
-    AccountHooks, Admin, BlobCleanups, Blobstore, DatabaseReady, DoctorChecks, Feed,
+    AccountHooks, Admin, BlobCleanups, Blobstore, CommitEffects, DatabaseReady, DoctorChecks, Feed,
     HealthContributors, Identity, Janitors, Media, MediaPlanning, Quota, ReadinessChecks, Sharing,
     Transfer, Tree,
 };
@@ -103,6 +104,38 @@ async fn cleanup_list_is_02_then_08() {
             ("08", address(&media.lifecycle))
         ]
     );
+    root.finish().await;
+}
+
+/// AZ-4311 AC-3: one 08 media effect for every account, and 03 is built with that instance.
+#[tokio::test]
+async fn transfer_commit_effects_hold_the_one_shared_media_effect() {
+    // Arrange
+    let root = Root::new().await;
+    let effects = root
+        .services
+        .get::<CommitEffects>()
+        .await
+        .expect("commit effects");
+    let media = Arc::clone(&effects.0[0].item);
+    let before = Arc::strong_count(&media);
+
+    // Act
+    root.services.get::<Transfer>().await.expect("03");
+
+    // Assert
+    let owners: Vec<_> = effects.0.iter().map(|entry| entry.owner).collect();
+    assert_eq!(owners, ["08"]);
+    assert!(
+        Arc::strong_count(&media) > before,
+        "03 holds the list's media effect"
+    );
+    let again = root
+        .services
+        .get::<CommitEffects>()
+        .await
+        .expect("commit effects");
+    assert!(Arc::ptr_eq(&effects, &again));
     root.finish().await;
 }
 

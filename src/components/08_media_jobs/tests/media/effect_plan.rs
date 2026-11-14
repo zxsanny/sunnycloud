@@ -87,9 +87,7 @@ async fn each_type_gets_the_jobs_of_the_matrix_in_its_own_transaction() {
 
     // Act
     for (_, published, _) in &entries {
-        run(&q, &effect, q.account, published)
-            .await
-            .expect("the effect runs");
+        run(&q, &effect, published).await.expect("the effect runs");
     }
 
     // Assert

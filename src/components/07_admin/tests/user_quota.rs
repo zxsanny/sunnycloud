@@ -2,8 +2,7 @@
 
 mod support;
 
-use contracts::{AdminError, QuotaAdmin};
-use sunnycloud_admin::AdminCallError;
+use contracts::{AdminError, AdminService, QuotaAdmin};
 use support::harness::{Harness, admin_actor};
 use support::quota_double::DEFAULT_LIMIT;
 use support::seed;
@@ -71,10 +70,7 @@ async fn an_out_of_range_limit_is_invalid_and_changes_nothing() {
     // Assert
     let mut conn = harness.fixture().await;
     for result in [negative, too_large] {
-        assert!(matches!(
-            result,
-            Err(AdminCallError::Failed(AdminError::InvalidLimit))
-        ));
+        assert!(matches!(result, Err(AdminError::InvalidLimit)));
     }
     assert_eq!(seed::limit_of(&mut conn, user).await, Some(GIB));
     assert_eq!(seed::row_count(&mut conn, "audit_log").await, audit_before);

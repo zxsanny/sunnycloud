@@ -5,8 +5,8 @@
 //! once the purge has removed the row. The file changes go through the real 02.
 
 use contracts::{
-    AccessGrant, CreatedShare, PublicShareError, PublishOutcome, ShareContent, ShareOpen,
-    ShareService,
+    AccessGrant, CreatedShare, PublicShareError, PublicShareService, PublishOutcome, ShareContent,
+    ShareOpen, ShareService,
 };
 use sc_clock::Clock;
 use sc_ids::RawToken;

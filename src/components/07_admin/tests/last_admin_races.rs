@@ -8,10 +8,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use contracts::{
-    AccountDeletionService, AccountState, AdminError, DeletionError, PrincipalKind, Role,
+    AccountDeletionService, AccountState, AdminError, AdminService, DeletionError, PrincipalKind,
+    Role,
 };
 use sqlx::PgConnection;
-use sunnycloud_admin::AdminCallError;
 use support::delayed_accounts::DelayedAccounts;
 use support::harness::{admin_actor, principal};
 use support::seed::{admin, role_and_state};
@@ -32,11 +32,11 @@ enum Outcome {
     Refused,
 }
 
-fn admin_outcome(result: Result<(), AdminCallError>) -> Outcome {
+fn admin_outcome(result: Result<(), AdminError>) -> Outcome {
     match result {
         Ok(()) => Outcome::Passed,
-        Err(AdminCallError::Failed(AdminError::LastAdmin)) => Outcome::LastAdmin,
-        Err(AdminCallError::Failed(AdminError::Unexpected(_))) => Outcome::Refused,
+        Err(AdminError::LastAdmin) => Outcome::LastAdmin,
+        Err(AdminError::Unexpected(_)) => Outcome::Refused,
         Err(error) => panic!("unexpected admin failure: {error:?}"),
     }
 }

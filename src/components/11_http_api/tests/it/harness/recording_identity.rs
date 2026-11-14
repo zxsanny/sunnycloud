@@ -340,15 +340,9 @@ impl AdminService for RecordingAdmin {
         self.next("AdminService::set_quota")
     }
 
-    async fn health(&self, actor: &Actor) -> HealthReport {
+    async fn health(&self, actor: &Actor) -> Result<HealthReport, AdminError> {
         self.0
             .record(format!("AdminService::health {}", actor_text(actor)));
-        let key = "AdminService::health";
-        self.0.take(key).unwrap_or_else(|| HealthReport {
-            items: vec![(
-                key.to_owned(),
-                HealthItem::new(HealthStatus::Down, "unscripted port call"),
-            )],
-        })
+        self.next("AdminService::health")
     }
 }

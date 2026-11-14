@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use contracts::{CreatedShare, PublicShareError, ShareService};
+use contracts::{CreatedShare, PublicShareError, PublicShareService, ShareService};
 use sc_clock::Clock;
 use sc_config::Secret;
 use sunnycloud_sharing::{GRANT_KEY_KEY, PgShareService};

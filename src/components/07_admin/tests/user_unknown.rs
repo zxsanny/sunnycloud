@@ -2,8 +2,7 @@
 
 mod support;
 
-use contracts::{AccountState, AdminError, Role};
-use sunnycloud_admin::AdminCallError;
+use contracts::{AccountState, AdminError, AdminService, Role};
 use support::harness::{Harness, admin_actor};
 use support::seed;
 use uuid::Uuid;
@@ -37,7 +36,7 @@ async fn update_and_set_quota_on_unknown_accounts_are_not_found_and_write_nothin
         // Assert
         for result in [role, state, quota] {
             assert!(
-                matches!(result, Err(AdminCallError::Failed(AdminError::NotFound))),
+                matches!(result, Err(AdminError::NotFound)),
                 "{unknown}: {result:?}"
             );
         }

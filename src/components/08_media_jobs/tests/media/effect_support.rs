@@ -37,28 +37,20 @@ impl Job {
     }
 }
 
-/// The effect of `account` at `params_version` with threshold 5. It holds the queue's pool: drop it before
-/// `Queue::finish`.
-pub fn effect(q: &Queue, account: Uuid, params_version: u32) -> MediaEnqueueEffect {
-    MediaEnqueueEffect::new(
-        q.queue.clone(),
-        JobPlanner::new(params_version, THRESHOLD),
-        account,
-    )
+/// The effect at `params_version` with threshold 5; it serves every account. It holds the queue's pool: drop it
+/// before `Queue::finish`.
+pub fn effect(q: &Queue, params_version: u32) -> MediaEnqueueEffect {
+    MediaEnqueueEffect::new(q.queue.clone(), JobPlanner::new(params_version, THRESHOLD))
 }
 
-/// The effect of the default account with the current params version and threshold 5.
+/// The effect with the current params version and threshold 5.
 pub fn current(q: &Queue) -> MediaEnqueueEffect {
-    effect(q, q.account, CURRENT_PARAMS_VERSION)
+    effect(q, CURRENT_PARAMS_VERSION)
 }
 
-/// The effect of the default account with the configured threshold (200), so no entry turns bulk by count.
+/// The effect with the configured threshold (200), so no entry turns bulk by count.
 pub fn configured(q: &Queue) -> MediaEnqueueEffect {
-    MediaEnqueueEffect::new(
-        q.queue.clone(),
-        JobPlanner::from_config(&config()),
-        q.account,
-    )
+    MediaEnqueueEffect::new(q.queue.clone(), JobPlanner::from_config(&config()))
 }
 
 /// What the published entry of a revision carries; `vault` and `import_hint` are set by the caller.
@@ -109,6 +101,7 @@ pub async fn entry_of(q: &Queue, account: Uuid, content: &Content) -> PublishedE
     .expect("insert revision");
     conn.close().await.expect("close owner connection");
     PublishedEntry {
+        account_id: account,
         node_id: node,
         revision_id,
         content_hash: content.hash,
@@ -127,12 +120,11 @@ pub async fn entry(q: &Queue, content: &Content) -> PublishedEntry {
 pub async fn run(
     q: &Queue,
     effect: &MediaEnqueueEffect,
-    account: Uuid,
     entry: &PublishedEntry,
 ) -> Result<(), RunError<EffectError>> {
     q.fixture
         .api
-        .run(Scope::Account(account), async |tx| {
+        .run(Scope::Account(entry.account_id), async |tx| {
             effect.on_entry(tx, entry).await
         })
         .await

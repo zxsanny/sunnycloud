@@ -16,9 +16,7 @@ async fn the_same_entry_twice_and_a_second_revision_of_the_content_leave_one_job
 
     // Act
     for published in [&first, &first, &second_revision] {
-        run(&q, &effect, q.account, published)
-            .await
-            .expect("the effect runs");
+        run(&q, &effect, published).await.expect("the effect runs");
     }
 
     // Assert
@@ -40,7 +38,7 @@ async fn a_stills_job_is_enqueued_when_only_the_thumb_exists() {
     let published = entry(&q, &content).await;
 
     // Act
-    run(&q, &current(&q), q.account, &published)
+    run(&q, &current(&q), &published)
         .await
         .expect("the effect runs");
 
@@ -62,7 +60,7 @@ async fn nothing_is_enqueued_when_every_output_exists() {
     let published = entry(&q, &content).await;
 
     // Act
-    run(&q, &current(&q), q.account, &published)
+    run(&q, &current(&q), &published)
         .await
         .expect("the effect runs");
 
@@ -80,7 +78,7 @@ async fn a_video_whose_poster_thumb_exists_gets_only_the_transcode_job() {
     let published = entry(&q, &content).await;
 
     // Act
-    run(&q, &current(&q), q.account, &published)
+    run(&q, &current(&q), &published)
         .await
         .expect("the effect runs");
 
@@ -100,12 +98,12 @@ async fn a_new_params_version_enqueues_a_new_job_for_the_same_content() {
     add_derived(&q, &content.hash, "thumb").await;
     add_derived(&q, &content.hash, "preview").await;
     let published = entry(&q, &content).await;
-    run(&q, &current(&q), q.account, &published)
+    run(&q, &current(&q), &published)
         .await
         .expect("the effect runs at version 1");
 
     // Act
-    run(&q, &effect(&q, q.account, 2), q.account, &published)
+    run(&q, &effect(&q, 2), &published)
         .await
         .expect("the effect runs at version 2");
 

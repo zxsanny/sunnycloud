@@ -1,9 +1,10 @@
 //! The AC-20 abuse counters of sharing on the shared `AbuseLimiter` (built once by 12; 06 never builds one):
 //!
 //! - invalid tokens per client address (`ShareTokenIp`, `share_invalid_token_limit` per minute): checked before
-//!   the lookup of `open`, `authorize_content` and `verify_password`; every `NotFound` answer of the three counts
-//!   (an unknown token is an invalid token whatever the route), so the not-found cases stay alike, and a limited
-//!   address is refused on every token, a live one included, so the limit cannot confirm a guess;
+//!   the lookup of `open`, `authorize_content`, `authorize_derived` and `verify_password`; every `NotFound` answer
+//!   of the four counts (an unknown token is an invalid token whatever the route), so the not-found cases stay
+//!   alike, and a limited address is refused on every token, a live one included, so the limit cannot confirm a
+//!   guess;
 //! - wrong passwords per link (`SharePasswordLink`, `share_wrong_password_limit` per
 //!   `share_wrong_password_window`): a password attempt takes one token of the link's bucket before the PHC read and
 //!   Argon2 (an atomic reservation, so parallel attempts from any number of addresses cannot all pass a read-only

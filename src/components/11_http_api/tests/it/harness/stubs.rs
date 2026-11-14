@@ -291,16 +291,12 @@ impl AdminService for AdminStub {
             .unwrap_or_else(|| Err(AdminError::Unexpected(unscripted(key))))
     }
 
-    /// The report has no error channel, so an unscripted call reports a down item naming the call.
-    async fn health(&self, actor: &Actor) -> HealthReport {
+    async fn health(&self, actor: &Actor) -> Result<HealthReport, AdminError> {
         let _actor = actor;
         let key = "AdminService::health";
-        self.0.take(key).unwrap_or_else(|| HealthReport {
-            items: vec![(
-                key.to_owned(),
-                HealthItem::new(HealthStatus::Down, "unscripted port call"),
-            )],
-        })
+        self.0
+            .take(key)
+            .unwrap_or_else(|| Err(AdminError::Unexpected(unscripted(key))))
     }
 }
 
