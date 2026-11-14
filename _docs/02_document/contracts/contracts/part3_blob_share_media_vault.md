@@ -141,4 +141,5 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
 | 1.1.0 | 2026-11-11 | `PublicShareService::authorize_derived` returns `ShareDerived{account_id, file}` instead of a bare `LiveFile`, so 11 can pass the owning account to 03 for the derived blob; owner-approved; 06 does not implement it yet, the callers are 11 (registered share thumbnail route) and the test doubles | owner-approved change |
 | 1.2.0 | 2026-11-13 | `DerivedBlob{blob, media_type}` returned by `DerivedOpener`; `open_derived_for` takes `account` (parent-approved, AZ-3844); `CreatedShare` `Debug` hides `url_path` | AZ-3844, AZ-3697 |
+| 1.3.0 | 2026-11-13 | `VaultHeader.root_node_id` (additive; `get_header` also returns the vault root; parent-approved, AZ-3923) | AZ-3923 |
 | 1.4.0 | 2026-11-14 | `BlobCatalog::get_uploading_plan` (additive, required; parent-approved, AZ-3736) so 03 can reopen an upload's writer after a restart | AZ-3736 |
