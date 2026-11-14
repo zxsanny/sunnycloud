@@ -3,9 +3,9 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c10 — `_docs/02_tasks/todo/B03-26_transfer_download.md`; key assigned at Step 4
 **Consumer tasks**: E-14/c13, E-14/c14, E-14/c16 (this batch); E-21/c10, E-21/c13, E-21/c14 (11 content, share and derived routes), resolved at Step 4
-**Version**: 1.0.1
+**Version**: 1.1.0
 **Status**: draft (frozen when the producer task passes review)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-14
 
 ## Purpose
 
@@ -31,6 +31,14 @@ Signatures: part 2 (`DownloadService`, `Download`). Behaviour:
 | HEAD | same call, body dropped by 11 |
 | Sniffed type image/jpeg, png, gif, webp, avif, video/mp4, webm | `Inline` |
 | Any other type or no type | `Attachment` (file name never consulted) |
+
+Implementation details (AZ-3755):
+
+- Both methods are on `PgUploadService`. `Revision`: `get_revision`, then the node's current revision through `resolve_live_file`; a revision that is not the current one of a live file needs `retained_ok`. `suggested_name` is the node's name; `open_blob_content` has none (empty string; owner decision 2026-11-14), and 11 falls back to its own name. Key material and size come from `BlobCatalog::get_ref(account, blob)`: for `open_blob_content` an absent row (foreign or unknown blob) is `NotFound`, whatever key material the `BlobRef` carries.
+- ETag = the blob id as text, unquoted (11 quotes it). The tags arrive as written: `If-None-Match` is a weak comparison over a list or `*` and is checked first; `If-Range` matches only the strong current tag (a weak tag or a date gives `Full`).
+- Range: 11 hands over one `start-end` or `start-` range (open end `u64::MAX`) and drops other forms before 03; 03 clamps the end to the content, and a start at or past the end (any range on empty content) is `RangeNotSatisfiable`.
+- `NotModified` reads nothing and has an empty body. Reader errors: `BlobMissing`, `Corrupt` (first chunk) -> `ContentUnavailable` (04's reader marks the blob); `RangeNotSatisfiable` -> `RangeNotSatisfiable`; any other -> `Storage`.
+- Metric `download_bytes_total`: the bytes each body hands out, counted as they are read.
 
 ## Invariants
 
@@ -61,11 +69,12 @@ Signatures: part 2 (`DownloadService`, `Download`). Behaviour:
 
 ## Open items
 
-- Source of `suggested_name` for `open_blob_content` (its `BlobRef` carries no name).
+- A suffix range (`bytes=-4096`, AZ-3755 AC-1) cannot reach 03: `ByteRange` holds two ends and 11 ignores the form, so it is served `Full`. Serving it `Partial` needs a `contracts` change (a suffix variant or the total size known to 11).
 - G-10 is still an owner item in `tests/spec-gaps.md`, while 03 decides inline by sniffed type.
 
 ## Change Log
 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
+| 1.1.0 | 2026-11-14 | Implemented: lookups, validators, range clamp, empty `suggested_name` for blobs (owner), error mapping, metric; suffix range open item | AZ-3755 |
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |

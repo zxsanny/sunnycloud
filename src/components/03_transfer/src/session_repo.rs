@@ -1,5 +1,5 @@
 //! The `upload_sessions` statements of `start_upload`, the `put_block` checkpoint, the lazy load,
-//! `abort_upload`, `stage_small` and the commit effect. Every statement names the account, so a row of another account is never read or written even
+//! `abort_upload`, `stage_small`, the commit effects and the staged rows of `commit_batch`. Every statement names the account, so a row of another account is never read or written even
 //! in system scope. Timestamps travel as Unix microseconds.
 
 use sc_clock::Timestamp;
@@ -67,6 +67,13 @@ const DELETE_OPEN_RETURNING: &str = "DELETE FROM upload_sessions \
      WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL \
      AND expires_at > 'epoch'::timestamptz + $3::bigint * interval '1 microsecond' \
      RETURNING blob_id, reserved_bytes";
+
+// `commit_batch`: the open, unexpired staged rows (see COUNT_STAGED) a batch names by key.
+const STAGED_BY_KEYS: &str = "SELECT id, client_key, blob_id, declared_size, reserved_bytes, \
+     substring(block_hashes FROM 1 FOR 32) \
+     FROM upload_sessions WHERE account_id = $1 AND client_key = ANY($2) \
+     AND committed_revision_id IS NULL AND block_count <= 1 AND received <> '\\x00'::bytea \
+     AND expires_at > 'epoch'::timestamptz + $3::bigint * interval '1 microsecond'";
 
 // The commit effect's lock: an open row only, so an aborted, reaped or already committed session gives no row.
 const LOCK_OPEN: &str = "SELECT 1 FROM upload_sessions \
@@ -180,6 +187,45 @@ pub(crate) async fn staged_by_key(
         first_hash: row.try_get(3)?,
         committed: row.try_get(4)?,
     }))
+}
+
+/// A staged row as `commit_batch` publishes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StagedRow {
+    pub id: Uuid,
+    pub client_key: String,
+    pub blob_id: Uuid,
+    pub declared_size: i64,
+    pub reserved_bytes: i64,
+    /// The hash of its only block; empty for a zero-byte file.
+    pub first_hash: Vec<u8>,
+}
+
+/// The open staged rows among `keys` that have not expired at `now`.
+pub(crate) async fn staged_by_keys(
+    tx: &mut DbTx,
+    account: Uuid,
+    keys: &[String],
+    now: Timestamp,
+) -> Result<Vec<StagedRow>, DbError> {
+    let rows = sqlx::query(STAGED_BY_KEYS)
+        .bind(account)
+        .bind(keys)
+        .bind(now.as_unix_micros())
+        .fetch_all(tx.conn())
+        .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(StagedRow {
+                id: row.try_get(0)?,
+                client_key: row.try_get(1)?,
+                blob_id: row.try_get(2)?,
+                declared_size: row.try_get(3)?,
+                reserved_bytes: row.try_get(4)?,
+                first_hash: row.try_get(5)?,
+            })
+        })
+        .collect()
 }
 
 pub(crate) async fn count_open_large(tx: &mut DbTx, account: Uuid) -> Result<i64, DbError> {

@@ -1,8 +1,8 @@
-# authorize_content: current revision, 1 s cache and the download-start audit rule
+# authorize_content: current revision, no cache and the download-start audit rule
 
 **Task**: AZ-3700_share_authorize_content
 **Name**: Share content authorization
-**Description**: Re-check the link and its file on every visitor content request with a cache of at most 1 s, return the file's current revision so edits keep the link alive, follow renames and moves, answer missing within 5 s of revoke or delete, and audit one access per download start
+**Description**: Re-check the link and its file on every visitor content request with no cache (owner decision 2026-11-14), return the file's current revision so edits keep the link alive, follow renames and moves, answer missing within 5 s of revoke or delete, and audit one access per download start
 **Complexity**: 3 points
 **Dependencies**: AZ-3695_sharing_gaps_grant_key_spike, AZ-3698_share_lookup_open_uniform, AZ-3784_sc_audit, AZ-3708_tree_folder_mutations, AZ-3709_tree_publish_core, AZ-3710_tree_conflict_rules, AZ-3714_tree_cascade_purge_janitors
 **Component**: 06 sharing
@@ -17,15 +17,15 @@
 ## Outcome
 
 - `PublicShareService::authorize_content(token, grant?, ip, starts_download)` returns `ShareContent{account_id, node_id, revision_id}` with the current revision, or `NotFound` / `PasswordRequired`.
-- Lookup and target results are cached for at most `share_lookup_cache` (1 s), invalidated by age only; `open` uses the same bound.
+- Nothing is cached (owner decision 2026-11-14): every `open` and `authorize_content` re-reads the link and its target, so the bound is 0 s, within `share_lookup_cache`.
 - `share_accessed` is audited once per call with `starts_download = true`.
 
 ## Scope
 
 ### Included
 - `authorize_content`: the lookup of E-16/c04, then `TreeReader::resolve_live_file` for the current revision; a gone or folder target is `NotFound`; a password link without a grant is `PasswordRequired` (grant acceptance is added by E-16/c05).
-- The result cache shared by `open` and `authorize_content`, no entry older than `share_lookup_cache`.
-- `share_accessed` audit with ids only when `starts_download` is true; audit write failure logged at ERROR and not visible in the result, for create, revoke and access.
+- No result cache (owner decision 2026-11-14); `share_lookup_cache` stays an upper bound that the implementation meets with 0 s.
+- `share_accessed` audit with ids only when `starts_download` is true and the call is allowed; its write failure is logged at ERROR and not visible in the result. `share_created` and `share_revoked` stay fail closed (06 description §5, `sc_audit` contract, E-07): see Flagged concerns.
 
 ### Excluded
 - Streaming, Range and serving headers (E-14, E-21/c14); deciding `starts_download` from the Range header (11).
@@ -80,7 +80,7 @@ Then each call returns its normal result and an ERROR is logged for each failed 
 
 | AC Ref | What to Test | Required Outcome |
 |--------|-------------|-----------------|
-| AC-5 | Cache entry age with the manual clock | No entry older than `share_lookup_cache` served |
+| AC-5 | Cache entry age with the manual clock | Not applicable after the owner decision (no cache); the next call after a revoke, expiry or delete answers `NotFound` (blackbox AC-5, AC-77) |
 | AC-2 | Audit decision | Event only when `starts_download` is true |
 
 ## Blackbox Tests
@@ -105,13 +105,15 @@ Then each call returns its normal result and an ERROR is logged for each failed 
 
 **Risk 1: Stale cache serves a deleted file**
 - *Risk*: a cache keyed too broadly keeps a deleted target alive past 5 s.
-- *Mitigation*: entries expire by age at `share_lookup_cache` (1 s); AC-77 and AC-5 measure it.
+- *Mitigation*: no cache at all (owner decision 2026-11-14); AC-77 and AC-5 check that the next call already answers `NotFound`.
 
 ## Flagged concerns
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | The expiry boundary depends on E-16/c01 (G-06-3); decided 2026-11-07 as `expires_at > now` live | E-16 owner | resolved | Low |
+| AC-6 asks that create and revoke also answer normally when their audit write fails, but the 06 description §5, the `sc_audit` contract (only `share_accessed`, `scrub_mismatch`, `scrub_summary` are best effort) and E-07 make `share_created` and `share_revoked` fail closed. Implemented: access best effort, create and revoke fail closed (tested as such) | E-16 / E-07 owners | open (implemented per the higher-level contract) | Medium |
+| Grants are verified from E-16/c05 on; until then a presented grant counts as absent, so a password link answers `PasswordRequired` with or without one | E-16 owner | by design until c05 | Low |
 
 ## Owner decision
 

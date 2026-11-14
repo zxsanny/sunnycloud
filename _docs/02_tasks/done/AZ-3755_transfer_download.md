@@ -109,7 +109,8 @@ Then the result is `ContentUnavailable`, no server-class error occurs, and the b
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| Where `suggested_name` comes from for `open_blob_content` (its `BlobRef` carries no name) is not stated | E-14 owner | open | Low |
+| Where `suggested_name` comes from for `open_blob_content` (its `BlobRef` carries no name) is not stated (resolved 2026-11-14 by the owner decision below: none) | E-14 owner | resolved | Low |
+| AC-1 `bytes=-4096` (suffix range) cannot reach 03: `ByteRange` holds two ends and 11 drops the form, so it is served Full; the test covers the last 4096 bytes as `start-` instead | E-14 owner (`contracts` change) | open | Low |
 | G-10 is still listed as an owner item in `tests/spec-gaps.md` while 03 decides inline by sniffed type | Owner | open | Low |
 
 ## Contract

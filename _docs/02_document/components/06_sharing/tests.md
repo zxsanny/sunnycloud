@@ -69,7 +69,7 @@ grant is stateless: no grant table row appears; revoking L1 makes the grant usel
 **Input data**: calls with `starts_download = true` (no Range or range from 0), `= false` (range from byte 1,000), 5 calls in a row.
 **Expected result**:
 ```
-ShareContent{account_id, node_id, revision_id = r1}, after the edit revision_id = r2 within share_lookup_cache; the link row is untouched (same id, same token)
+ShareContent{account_id, node_id, revision_id = r1}, after the edit revision_id = r2 on the next call (no cache, owner decision 2026-11-14); the link row is untouched (same id, same token)
 exactly one share_accessed audit event per call with starts_download = true; 0 for false; event detail holds ids only
 no-password link without a grant -> ok; password link without grant -> PasswordRequired
 ```

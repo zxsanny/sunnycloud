@@ -23,7 +23,7 @@ use crate::error::{SharingError, TxError};
 use crate::secret::{hash_password, new_share_token};
 use crate::share_repo::{self, ListedLink, NewLink};
 
-const SHARE_LINK: &str = "share_link";
+pub(crate) const SHARE_LINK: &str = "share_link";
 /// The public page of a link (16 web app, `/s/<token>`).
 const URL_PATH_PREFIX: &str = "/s/";
 
@@ -32,7 +32,7 @@ pub struct PgShareService {
     pub(crate) db: Db,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) tree: Arc<dyn TreeReader>,
-    audit: AuditWriter,
+    pub(crate) audit: AuditWriter,
     default_ttl: Duration,
     max_ttl: Duration,
     password_params: Params,

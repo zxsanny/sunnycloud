@@ -113,7 +113,7 @@ Then all 500 are committed once and the resend returns the stored response with 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | Pipeline AZ-3656 AC-4 oversized batch: 422 `batch_too_large` for more entries than `batch_max_entries`; a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer (resolved 2026-11-07, G-11-1) | E-21, E-14 owner | resolved | Low |
-| How `request_hash` canonicalises the request (entry order, optional fields) is not stated | E-14 owner | open | Low |
+| How `request_hash` canonicalises the request (entry order, optional fields) is not stated (resolved 2026-11-14 by the owner decision below; form in `commit_service.md` 1.4.0) | E-14 owner | resolved | Low |
 
 ## Owner decision
 

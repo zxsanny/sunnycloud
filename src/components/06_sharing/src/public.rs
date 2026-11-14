@@ -18,8 +18,8 @@ use crate::lookup_repo::{self, LinkRow};
 use crate::service::PgShareService;
 
 /// The target read for a link that is not live: an account and a node that no row has, read by primary key
-/// through the same two `TreeReader` calls as a live link's target.
-const DUMMY_TARGET: (Uuid, Uuid) = (Uuid::nil(), Uuid::nil());
+/// through the same `TreeReader` calls as a live link's target.
+pub(crate) const DUMMY_TARGET: (Uuid, Uuid) = (Uuid::nil(), Uuid::nil());
 
 /// What the two target reads found, reduced to what a visitor may see.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,7 +116,7 @@ pub(crate) fn decide(link: Option<&LinkRow>, target: Target) -> ShareOpen {
     }
 }
 
-fn run_unexpected(error: RunError<DbError>) -> PublicShareError {
+pub(crate) fn run_unexpected(error: RunError<DbError>) -> PublicShareError {
     match error {
         RunError::Closure(inner) | RunError::Db(inner) => {
             PublicShareError::Unexpected(Box::new(inner))
@@ -136,6 +136,7 @@ mod tests {
 
     fn row(expires_at: Timestamp, revoked: bool, has_password: bool) -> LinkRow {
         LinkRow {
+            id: Uuid::from_u128(8),
             account_id: Uuid::from_u128(1),
             node_id: Uuid::from_u128(2),
             has_password,

@@ -65,7 +65,8 @@ pub struct PgUploadService {
     pub(crate) registry: Arc<dyn BlobRegistry>,
     pub(crate) catalog: Arc<dyn BlobCatalog>,
     pub(crate) clock: Arc<dyn Clock>,
-    pub(crate) metrics: Option<UploadMetrics>,
+    /// Shared with the download bodies that count their bytes.
+    pub(crate) metrics: Option<Arc<UploadMetrics>>,
     pub(crate) progress: ProgressTable,
     pub(crate) caps: InflightCaps,
 }
@@ -135,7 +136,7 @@ impl PgUploadService {
 
     /// Registers the upload series of [`UploadMetrics`]; `Duplicate` when already registered.
     pub fn with_metrics(mut self, metrics: &Metrics) -> Result<Self, ObsError> {
-        self.metrics = Some(UploadMetrics::register(metrics)?);
+        self.metrics = Some(Arc::new(UploadMetrics::register(metrics)?));
         Ok(self)
     }
 

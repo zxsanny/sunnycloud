@@ -24,7 +24,7 @@ use crate::commit_effect::{BlobCommitEffect, SESSION_GONE};
 use crate::progress::{SessionProgress, SharedProgress};
 use crate::sniff::{HEAD_LEN, sniff};
 use crate::upload::PgUploadService;
-use crate::upload_metrics::{CommitResult, SessionResult};
+use crate::upload_metrics::{CommitKind, CommitResult, SessionResult};
 
 /// Unexpected outcomes of a commit: each means 02 or 03 broke its own contract, or a purge raced the commit.
 #[derive(Debug, Error)]
@@ -63,7 +63,7 @@ impl PgUploadService {
                 Err(CommitServiceError::Unexpected(_)) => CommitResult::Failed,
                 Err(_) => CommitResult::Refused,
             };
-            metrics.block_list_commit(outcome, elapsed);
+            metrics.commit(CommitKind::BlockList, outcome, elapsed);
         }
         result
     }
@@ -80,7 +80,14 @@ impl PgUploadService {
             .await
             .map_err(session_error)?;
         let checked = self.check(&session, &request.blocklist).await?;
-        let target = self.target(account, &request).await?;
+        let target = self
+            .target(
+                account,
+                request.parent_id,
+                &request.name,
+                request.base_revision,
+            )
+            .await?;
         let now = self.clock.now_utc();
         let info = session.info();
         let revision_id = sc_ids::new_id(self.clock.as_ref());
@@ -153,16 +160,18 @@ impl PgUploadService {
 
     /// `Existing` on the node of `base_revision`; without one, or when the account has no such revision (an
     /// unknown or foreign base is ignored, as by `start_upload`), `New{parent_id, name}`.
-    async fn target(
+    pub(crate) async fn target(
         &self,
         account: Uuid,
-        request: &CommitUpload,
+        parent_id: Uuid,
+        name: &str,
+        base_revision: Option<Uuid>,
     ) -> Result<Target, CommitServiceError> {
         let new = || Target::New {
-            parent_id: request.parent_id,
-            name: request.name.clone(),
+            parent_id,
+            name: name.to_owned(),
         };
-        let Some(base) = request.base_revision else {
+        let Some(base) = base_revision else {
             return Ok(new());
         };
         match self.tree.get_revision(account, base).await {
@@ -274,9 +283,10 @@ fn entry_error(failure: EntryFailure) -> CommitServiceError {
     }
 }
 
-fn publish_error(error: TreeCommitError) -> CommitServiceError {
+pub(crate) fn publish_error(error: TreeCommitError) -> CommitServiceError {
     match error {
         TreeCommitError::AccountNotActive => CommitServiceError::AccountNotActive,
+        TreeCommitError::CommitIdReused => CommitServiceError::CommitIdReused,
         TreeCommitError::Unexpected(fault) => CommitServiceError::Unexpected(fault),
         other => unexpected(other),
     }
@@ -290,7 +300,9 @@ fn session_error(error: UploadError) -> CommitServiceError {
     }
 }
 
-fn unexpected(error: impl std::error::Error + Send + Sync + 'static) -> CommitServiceError {
+pub(crate) fn unexpected(
+    error: impl std::error::Error + Send + Sync + 'static,
+) -> CommitServiceError {
     CommitServiceError::Unexpected(Box::new(error))
 }
 

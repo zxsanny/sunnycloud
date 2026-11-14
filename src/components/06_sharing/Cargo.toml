@@ -33,6 +33,12 @@ uuid = { workspace = true }
 [dev-dependencies]
 # The real tree reader (02) the link create resolves its file through (component dev-dependency, ADR-015).
 sunnycloud-tree = { path = "../02_tree" }
+# 02's mutations, publish and tombstone purge the visitor content tests run through (AZ-3700), with the 07a ledger,
+# the 04 GC queue, the 05 feed ports and the `AccountGuard` double they need (ADR-015, as 20's tests do).
+sunnycloud-quota = { path = "../07a_quota" }
+sunnycloud-blobstore = { path = "../04_blobstore" }
+sunnycloud-sync-feed = { path = "../05_sync_feed" }
+sunnycloud-testkit = { path = "../testkit" }
 # The AbuseLimiter the later suites build per test.
 sc_ratelimit = { path = "../../shared/ratelimit" }
 # Per-test PostgreSQL databases.

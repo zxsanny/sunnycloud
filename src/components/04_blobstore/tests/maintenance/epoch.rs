@@ -97,3 +97,27 @@ async fn a_volume_that_is_not_there_is_an_error_not_a_fresh_volume() {
     assert!(write.is_err());
     rig.finish().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn concurrent_writes_on_one_marker_all_succeed_and_leave_a_complete_value() {
+    // Arrange
+    let rig = Rig::new().await;
+    let marker = std::sync::Arc::new(marker(&rig));
+    let mut writes = tokio::task::JoinSet::new();
+
+    // Act
+    for epoch in 0..32_i64 {
+        let marker = std::sync::Arc::clone(&marker);
+        writes.spawn(async move { marker.write(epoch).await });
+    }
+    let results = writes.join_all().await;
+    let value = marker.read().await.expect("read after the writes");
+
+    // Assert
+    assert!(results.iter().all(Result::is_ok), "{results:?}");
+    assert!(
+        value.is_some_and(|epoch| (0..32).contains(&epoch)),
+        "{value:?}"
+    );
+    rig.finish().await;
+}

@@ -14,6 +14,7 @@ use sc_db::Db;
 use sc_ratelimit::{AbuseLimiter, LimitId, LimitSpec, LimitTable, Subject, Verdict};
 pub use sc_testdb::{API, MIGRATOR, START, TestDb};
 use sqlx::PgConnection;
+use sunnycloud_blobstore::BlobstoreConfig;
 use sunnycloud_sharing::{PgShareService, ShareConfig};
 use sunnycloud_tree::{PgTreeReader, TreeConfig};
 use uuid::Uuid;
@@ -38,6 +39,8 @@ pub struct Harness {
     pub clock: Arc<ManualClock>,
     pub config: ShareConfig,
     pub tree_config: TreeConfig,
+    /// The blob section of the same settings: the GC queue of 02's mutations in the content tests reads it.
+    pub blob_config: BlobstoreConfig,
     pub limiter: AbuseLimiter,
 }
 
@@ -55,6 +58,7 @@ impl Harness {
             loaded.unwrap_or_else(|error| panic!("the harness settings do not load: {error}"));
         let config = ShareConfig::from_settings(&settings);
         let tree_config = TreeConfig::from_settings(&settings);
+        let blob_config = BlobstoreConfig::from_settings(&settings);
         let limiter = limiter(&config, clock.clone());
         Harness {
             db,
@@ -62,6 +66,7 @@ impl Harness {
             clock,
             config,
             tree_config,
+            blob_config,
             limiter,
         }
     }
@@ -73,8 +78,17 @@ impl Harness {
 
     /// The owner service with `config`, over the real tree reader and audit writer on the API role.
     pub fn shares_with(&self, config: &ShareConfig) -> PgShareService {
+        self.shares_on(config, self.audit_writer())
+    }
+
+    /// The real audit writer on the API role; its clones share the failure counter.
+    pub fn audit_writer(&self) -> AuditWriter {
+        AuditWriter::new(self.api.clone(), self.clock.clone())
+    }
+
+    /// The owner service with `config` and `audit`, over the real tree reader.
+    pub fn shares_on(&self, config: &ShareConfig, audit: AuditWriter) -> PgShareService {
         let tree = Arc::new(PgTreeReader::new(self.api.clone(), &self.tree_config));
-        let audit = AuditWriter::new(self.api.clone(), self.clock.clone());
         PgShareService::new(self.api.clone(), self.clock.clone(), tree, audit, config)
             .expect("the harness sharing section is valid")
     }

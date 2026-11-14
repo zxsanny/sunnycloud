@@ -1,7 +1,8 @@
 //! The upload series of `deployment/observability.md` § Transfer: `upload_sessions_active`,
 //! `upload_sessions_total{result}`, `upload_rejections_total{reason}`, `blocks_received_total` and
-//! `block_bytes_received_total`, and the commit series `commits_total{kind, result}` and
-//! `commit_duration_seconds{kind}`. A process without a registry leaves them out and records nothing.
+//! `block_bytes_received_total`, the commit series `commits_total{kind, result}` and
+//! `commit_duration_seconds{kind}`, and `download_bytes_total`. A process without a registry leaves them out and
+//! records nothing.
 
 use std::time::Duration;
 
@@ -45,10 +46,11 @@ impl LabelSet for SessionResult {
     }
 }
 
-/// The `kind` label of the commit series; `single` and `batch` come with the batch commit.
+/// The `kind` label of the commit series.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CommitKind {
     BlockList,
+    Batch,
 }
 
 impl LabelSet for CommitKind {
@@ -57,6 +59,7 @@ impl LabelSet for CommitKind {
     fn value(&self, _index: usize) -> &'static str {
         match self {
             CommitKind::BlockList => "block_list",
+            CommitKind::Batch => "batch",
         }
     }
 }
@@ -96,6 +99,7 @@ pub(crate) struct UploadMetrics {
     block_bytes: Counter<NoLabels>,
     commits: Counter<CommitLabels>,
     commit_duration: Histogram<CommitKind>,
+    download_bytes: Counter<NoLabels>,
 }
 
 impl UploadMetrics {
@@ -108,6 +112,7 @@ impl UploadMetrics {
             block_bytes: metrics.counter("block_bytes_received_total")?,
             commits: metrics.counter("commits_total")?,
             commit_duration: metrics.histogram("commit_duration_seconds")?,
+            download_bytes: metrics.counter("download_bytes_total")?,
         })
     }
 
@@ -135,11 +140,14 @@ impl UploadMetrics {
         self.block_bytes.inc_by(NoLabels, bytes);
     }
 
-    /// One `commit_upload` call and how long it took.
-    pub(crate) fn block_list_commit(&self, result: CommitResult, elapsed: Duration) {
-        self.commits
-            .inc(CommitLabels(CommitKind::BlockList, result));
-        self.commit_duration
-            .observe(CommitKind::BlockList, elapsed.as_secs_f64());
+    /// One `commit_upload` or `commit_batch` call and how long it took.
+    pub(crate) fn commit(&self, kind: CommitKind, result: CommitResult, elapsed: Duration) {
+        self.commits.inc(CommitLabels(kind, result));
+        self.commit_duration.observe(kind, elapsed.as_secs_f64());
+    }
+
+    /// Content bytes handed to a download body.
+    pub(crate) fn downloaded(&self, bytes: u64) {
+        self.download_bytes.inc_by(NoLabels, bytes);
     }
 }

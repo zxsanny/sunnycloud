@@ -3,7 +3,7 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c08 — `_docs/02_tasks/todo/B03-24_transfer_commit_upload.md` (contributor: E-14/c09 `B03-25_transfer_commit_batch.md`; response mapping decided by spike E-14/c01); keys assigned at Step 4
 **Consumer tasks**: E-13/c16, E-14/c12, E-14/c15, E-14/c16 (this batch); E-21/c02, E-21/c13 (11), E-22/c03 (composition root), E-23/E-26/E-27 through the HTTP API, resolved at Step 4
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: frozen for the response mapping (G-03-3 decided 2026-11-11); the producer task still passes review
 **Last Updated**: 2026-11-14
 
@@ -48,6 +48,17 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 - Sniffed types (03's own sniffer, owner decision 2026-11-14; JPEG, WebP and MP4 follow 08's output-check rules): `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `image/avif`, `image/heic`, `video/mp4`, `video/quicktime`, `video/webm`, `video/x-matroska`, `text/html`, `application/pdf`; anything else has no type.
 - Metrics: `commits_total{kind = block_list, result = committed | refused | failed}` (refused = a typed error, failed = `Unexpected`), `commit_duration_seconds{kind = block_list}` for every call, `upload_sessions_total{result = committed}`.
 
+`commit_batch` details (AZ-3754):
+
+- More entries than `batch_max_entries` is `BatchTooLarge` before anything is read.
+- Outside any transaction: the staged rows the entries name (`client_key` = the staged key's text; open, unexpired, at most one block, every block received), read in one short transaction behind the account guard (`AccountNotActive`); per entry the uploading blob's key material (04 `get_uploading_plan`), the sniffed head (<= 64 KiB) and the target as for `commit_upload`. An entry with no such row, a key named a second time in the batch, or a blob no longer uploading or missing on disk (a concurrent identical batch committed it) is `UploadNotFound` without reaching `publish`; it is stored in the receipt like every other outcome.
+- `NewRevision`: `size` = the row's declared size, `reserved_bytes` = the row's `reserved_bytes`, file hash = roll-up of the row's single block hash (no block for a zero-byte file), the sniffed type, and the entry's `client_mtime`, `client_meta`, `import_hint`.
+- `request_hash` (owner decision 2026-11-14): BLAKE3 over the entry count and the BLAKE3 hash of each entry's encoding, in the order sent (a reordered batch is a different request). An entry encodes every field: staged key, parent id, length-prefixed name, tagged `base_revision`, `client_mtime` (microseconds), length-prefixed `client_meta`, `import_hint`. The commit id is the receipt key, not part of the hash.
+- Stored response (`commit_receipts.response`, jsonb, also the bytes of `Begin::Replay`): an array in entry order of `{"node_id", "revision_id", "conflict_copy"}` or `{"error": "<entry error>"}`; `EffectFailed` carries `{"error": "effect_failed", "code": "<wire code>"}`.
+- Entry outcomes: the mapping above; 02 `BlocklistMismatch` and `EffectFailed(upload_session_gone)` are `UploadNotFound`; 02 `NotFound` (the base revision's node vanished between the lookup and `publish`) has no `EntryError` of its own and is `EffectFailed(not_found)`.
+- Staged-row effect (`StagedCommitEffect`, `on_entry`): locks the entry's staged row `FOR UPDATE`, marks the blob committed and deletes the row; no open row is `Entry(upload_session_gone)`. The entry is found by its planned revision id; a `NoChange` entry (it carries the file's existing revision) is found by its node and content hash, the first such row still open in entry order: its row and blob row are deleted and the file discarded after COMMIT (best effort, logged).
+- Metrics: `commits_total{kind = batch, result}` and `commit_duration_seconds{kind = batch}` for every call (`committed` also when some entries failed).
+
 ## Invariants
 
 - Commit time does not depend on file size: no file bytes are read beyond the head (AC-4).
@@ -82,7 +93,6 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 
 ## Open items
 
-- `request_hash` canonical form (entry order, optional fields).
 - `batch_too_large` (more entries than `batch_max_entries`) is 422 (resolved 2026-11-07, G-11-1); a body over the 4 MiB `Batch` class is a separate 413 from the HTTP layer.
 
 ## Change Log
@@ -90,6 +100,7 @@ Entry-error mapping: 02 `ParentDeleted` → `ParentGone` (`parent_deleted` 410);
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
+| 1.4.0 | 2026-11-14 | `commit_batch` details: refusals before `publish`, request hash (entries in order sent, owner), stored response form, `NotFound` as `EffectFailed(not_found)`, staged-row effect and `NoChange`, metric labels | AZ-3754 |
 | 1.3.0 | 2026-11-14 | `commit_upload` details: blocklist check order, unknown base ignored, ownership failure as `UploadNotFound`, `NoChange` cleanup, sniffed types, metric labels | AZ-3738 |
 | 1.2.0 | 2026-11-13 | Committed key kept until `upload_session_ttl` for lost-commit recovery (owner) | AZ-3949 |
 | 1.1.0 | 2026-11-11 | G-03-3 decided: fields per `PublishOutcome`; `CreatedAsCopy` repeats the node id in `conflict_copy`; `EditedSince` removed from commit | AZ-3731 |

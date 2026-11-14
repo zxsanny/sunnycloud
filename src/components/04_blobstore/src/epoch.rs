@@ -16,8 +16,11 @@ use crate::volume_file::replace_file;
 
 const EPOCH_FILE: &str = ".epoch";
 
+/// Writes are serialised: `replace_file` uses one temp name, so two concurrent writers would race on it (the
+/// second rename finds no temp file). One marker serves the one API process.
 pub struct FileEpochMarker {
     root: PathBuf,
+    writing: tokio::sync::Mutex<()>,
 }
 
 impl FileEpochMarker {
@@ -30,7 +33,10 @@ impl FileEpochMarker {
             .ok_or_else(|| {
                 blob_error_from_io(io::Error::from(ErrorKind::InvalidInput), BlobIds::default())
             })?;
-        Ok(FileEpochMarker { root: root.into() })
+        Ok(FileEpochMarker {
+            root: root.into(),
+            writing: tokio::sync::Mutex::new(()),
+        })
     }
 }
 
@@ -53,6 +59,7 @@ fn marker_error(error: &io::Error) -> EpochMarkerError {
 #[async_trait]
 impl EpochMarker for FileEpochMarker {
     async fn write(&self, epoch: i64) -> Result<(), EpochMarkerError> {
+        let _writing = self.writing.lock().await;
         let root = self.root.clone();
         tokio::task::spawn_blocking(move || replace_file(&root, EPOCH_FILE, &encode(epoch)))
             .await

@@ -1,8 +1,11 @@
-//! `UploadService` for [`PgUploadService`]: each method is the inherent one of the same name.
+//! `UploadService`, `CommitService` and `DownloadService` for [`PgUploadService`]: each method is the inherent
+//! one of the same name.
 
 use contracts::{
-    BlockAck, ByteStream, Staged, StartUpload, StartUploadOutcome, UploadError, UploadService,
-    UploadState, async_trait,
+    BatchCommit, BatchResult, BlobRef, BlockAck, ByteStream, CommitActor, CommitService,
+    CommitServiceError, CommitUpload, Committed, Download, DownloadError, DownloadOptions,
+    DownloadService, RevisionOrCurrent, Staged, StartUpload, StartUploadOutcome, UploadError,
+    UploadService, UploadState, async_trait,
 };
 use sc_ids::Hash32;
 use uuid::Uuid;
@@ -49,5 +52,46 @@ impl UploadService for PgUploadService {
         length: u64,
     ) -> Result<Staged, UploadError> {
         PgUploadService::stage_small(self, account, staged_key, expected_hash, body, length).await
+    }
+}
+
+#[async_trait]
+impl CommitService for PgUploadService {
+    async fn commit_upload(
+        &self,
+        actor: CommitActor,
+        request: CommitUpload,
+    ) -> Result<Committed, CommitServiceError> {
+        PgUploadService::commit_upload(self, actor, request).await
+    }
+
+    async fn commit_batch(
+        &self,
+        actor: CommitActor,
+        request: BatchCommit,
+    ) -> Result<BatchResult, CommitServiceError> {
+        PgUploadService::commit_batch(self, actor, request).await
+    }
+}
+
+#[async_trait]
+impl DownloadService for PgUploadService {
+    async fn open_revision_content(
+        &self,
+        account: Uuid,
+        target: RevisionOrCurrent,
+        options: DownloadOptions,
+    ) -> Result<Download, DownloadError> {
+        PgUploadService::open_revision_content(self, account, target, options).await
+    }
+
+    async fn open_blob_content(
+        &self,
+        account: Uuid,
+        blob: BlobRef,
+        media_type: Option<String>,
+        options: DownloadOptions,
+    ) -> Result<Download, DownloadError> {
+        PgUploadService::open_blob_content(self, account, blob, media_type, options).await
     }
 }

@@ -8,7 +8,7 @@ use sc_db::{Db, DbError, RunError};
 use sc_ids::TokenHash;
 use uuid::Uuid;
 
-const BY_TOKEN_HASH: &str = "SELECT account_id, node_id, password_hash IS NOT NULL, \
+const BY_TOKEN_HASH: &str = "SELECT id, account_id, node_id, password_hash IS NOT NULL, \
     (extract(epoch FROM expires_at) * 1000000)::bigint, revoked_at IS NOT NULL \
     FROM share_links WHERE token_hash = $1";
 
@@ -18,6 +18,7 @@ const OP: &str = "share_lookup";
 /// A link as stored, without its token hash or password hash.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LinkRow {
+    pub id: Uuid,
     pub account_id: Uuid,
     pub node_id: Uuid,
     pub has_password: bool,
@@ -25,7 +26,7 @@ pub(crate) struct LinkRow {
     pub revoked: bool,
 }
 
-type RowTuple = (Uuid, Uuid, bool, i64, bool);
+type RowTuple = (Uuid, Uuid, Uuid, bool, i64, bool);
 
 /// The link whose token hash is exactly `hash`, of any account, in any state.
 pub(crate) async fn by_token_hash(
@@ -42,7 +43,8 @@ pub(crate) async fn by_token_hash(
         })
         .await?;
     Ok(row.map(
-        |(account_id, node_id, has_password, expires_at, revoked)| LinkRow {
+        |(id, account_id, node_id, has_password, expires_at, revoked)| LinkRow {
+            id,
             account_id,
             node_id,
             has_password,

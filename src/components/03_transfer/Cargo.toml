@@ -21,6 +21,8 @@ sc_observability = { path = "../../shared/observability" }
 # `stage_small` hands its verified body to the writer as a one-piece stream; the versions `contracts` uses.
 bytes = { workspace = true }
 futures-core = { version = "0.3", default-features = false }
+# The stored response of a batch commit (`commit_receipts.response`, jsonb); the workspace version.
+serde_json = { workspace = true }
 # The repository modules run their statements on the transaction's connection; same features as sc_db.
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 thiserror = { workspace = true }
