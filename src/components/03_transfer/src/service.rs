@@ -1,11 +1,11 @@
-//! `UploadService`, `CommitService` and `DownloadService` for [`PgUploadService`]: each method is the inherent
+//! `UploadService`, `CommitService`, `DownloadService` and `ReservationSource` for [`PgUploadService`]: each method is the inherent
 //! one of the same name.
 
 use contracts::{
     BatchCommit, BatchResult, BlobRef, BlockAck, ByteStream, CommitActor, CommitService,
     CommitServiceError, CommitUpload, Committed, Download, DownloadError, DownloadOptions,
-    DownloadService, RevisionOrCurrent, Staged, StartUpload, StartUploadOutcome, UploadError,
-    UploadService, UploadState, async_trait,
+    DownloadService, ReservationError, ReservationSource, RevisionOrCurrent, Staged, StartUpload,
+    StartUploadOutcome, UploadError, UploadService, UploadState, async_trait,
 };
 use sc_ids::Hash32;
 use uuid::Uuid;
@@ -93,5 +93,12 @@ impl DownloadService for PgUploadService {
         options: DownloadOptions,
     ) -> Result<Download, DownloadError> {
         PgUploadService::open_blob_content(self, account, blob, media_type, options).await
+    }
+}
+
+#[async_trait]
+impl ReservationSource for PgUploadService {
+    async fn open_reserved_bytes(&self, account: Uuid) -> Result<i64, ReservationError> {
+        PgUploadService::open_reserved_bytes(self, account).await
     }
 }

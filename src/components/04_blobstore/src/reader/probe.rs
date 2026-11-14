@@ -14,6 +14,7 @@ mod idle {
         pub fn chunk_read(&self, _sealed_bytes: usize) {}
         pub fn slot_reserved(&self) {}
         pub fn slot_released(&self) {}
+        pub fn window_widened(&self, _window: usize) {}
     }
 }
 
@@ -29,6 +30,7 @@ mod hooked {
         chunk_bytes: AtomicU64,
         in_flight: watch::Sender<usize>,
         high_water: AtomicUsize,
+        widest: AtomicUsize,
     }
 
     impl Default for ReadProbe {
@@ -38,6 +40,7 @@ mod hooked {
                 chunk_bytes: AtomicU64::new(0),
                 in_flight: watch::channel(0).0,
                 high_water: AtomicUsize::new(0),
+                widest: AtomicUsize::new(0),
             }
         }
     }
@@ -62,6 +65,10 @@ mod hooked {
             self.in_flight.send_modify(|count| *count -= 1);
         }
 
+        pub(crate) fn window_widened(&self, window: usize) {
+            self.widest.fetch_max(window, Ordering::SeqCst);
+        }
+
         /// Chunk reads from the file since the reader was built (the 64-byte header is not a chunk).
         pub fn chunk_reads(&self) -> u64 {
             self.chunk_reads.load(Ordering::SeqCst)
@@ -80,6 +87,11 @@ mod hooked {
         /// The most chunks that were ever read ahead and waiting at once.
         pub fn high_water(&self) -> usize {
             self.high_water.load(Ordering::SeqCst)
+        }
+
+        /// The widest read-ahead window any stream of this reader reached; 0 while none widened past one chunk.
+        pub fn widest_window(&self) -> usize {
+            self.widest.load(Ordering::SeqCst)
         }
     }
 }

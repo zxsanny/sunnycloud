@@ -159,7 +159,7 @@ impl Rig {
     }
 }
 
-fn config(volume: &Path, key_file: &Path, settings: &Settings) -> BlobstoreConfig {
+pub fn config(volume: &Path, key_file: &Path, settings: &Settings) -> BlobstoreConfig {
     BlobstoreConfig {
         blob_root: Some(volume.to_string_lossy().into_owned()),
         retention: Duration::from_secs(7 * 86_400),

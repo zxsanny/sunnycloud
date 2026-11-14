@@ -105,4 +105,6 @@ Then reserved bytes return to 0, 0 revisions and 0 nodes exist for it
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| None | — | — | — |
+| `janitor_repo.rs` (the accounts with expired rows, old receipts) calls `run_system`; needs the reviewed allowlist line `src/components/03_transfer/src/janitor_repo.rs` | Parent (allowlist owner) | open | Medium |
+| `ProgressTable::flush_idle` lives on the service as `IdleFlush` (the table has no database handle) | E-14 | recorded | Low |
+| One expiry rule (`now >= expires_at`) applied at the key too: an expired row under a `client_key`/`staged_key` is reaped by the next start or stage (batch 60 warning settled); abort takes the account advisory lock first (batch 61 abort/commit deadlock settled) | E-14 | resolved | Low |

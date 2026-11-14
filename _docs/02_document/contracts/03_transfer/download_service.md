@@ -3,7 +3,7 @@
 **Component**: 03_transfer
 **Producer task**: E-14/c10 — `_docs/02_tasks/todo/B03-26_transfer_download.md`; key assigned at Step 4
 **Consumer tasks**: E-14/c13, E-14/c14, E-14/c16 (this batch); E-21/c10, E-21/c13, E-21/c14 (11 content, share and derived routes), resolved at Step 4
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: draft (frozen when the producer task passes review)
 **Last Updated**: 2026-11-14
 
@@ -76,5 +76,6 @@ Implementation details (AZ-3755):
 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
+| 1.2.0 | 2026-11-14 | A head that starts like a binary type but carries `<script`, `<html`, `<iframe`, `<svg`, `<body` or `<!doctype html` anywhere in its 64 KiB (the DS-17 GIF89a/HTML polyglot) is sniffed as `text/html`, so it is an `Attachment` (ST-03-4 found it served `Inline` as `image/gif`) | AZ-3758 |
 | 1.1.0 | 2026-11-14 | Implemented: lookups, validators, range clamp, empty `suggested_name` for blobs (owner), error mapping, metric; suffix range open item | AZ-3755 |
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |

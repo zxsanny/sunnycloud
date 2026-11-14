@@ -28,11 +28,12 @@ impl LabelSet for Rejection {
     }
 }
 
-/// The `result` label of `upload_sessions_total`; `expired` comes with the reaper.
+/// The `result` label of `upload_sessions_total`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionResult {
     Aborted,
     Committed,
+    Expired,
 }
 
 impl LabelSet for SessionResult {
@@ -42,6 +43,7 @@ impl LabelSet for SessionResult {
         match self {
             SessionResult::Aborted => "aborted",
             SessionResult::Committed => "committed",
+            SessionResult::Expired => "expired",
         }
     }
 }

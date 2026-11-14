@@ -1,6 +1,6 @@
 //! The port doubles of the `start_upload` and `put_block` tests, each at its boundary: a writer decorator that
-//! delegates to the real 04 writer, can make file creation fail, counts block writes and can hold or fail the
-//! group fdatasync wait; a ledger decorator that delegates to the real 07a ledger and can make `reserve` fail.
+//! delegates to the real 04 writer, can make file creation fail, counts block writes, can hold or fail the
+//! group fdatasync wait and can hold `discard` (the reaper tests look at the database while a discard waits); a ledger decorator that delegates to the real 07a ledger and can make `reserve` fail.
 //! The registry is the real 04 one, through the port; the account guard is `sunnycloud_testkit::StateGuard`.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -44,6 +44,10 @@ pub struct FaultyWriter {
     parked: AtomicUsize,
     parked_changed: Notify,
     gate: Semaphore,
+    hold_discards: AtomicBool,
+    discards_parked: AtomicUsize,
+    discards_changed: Notify,
+    discard_gate: Semaphore,
 }
 
 impl FaultyWriter {
@@ -57,7 +61,33 @@ impl FaultyWriter {
             parked: AtomicUsize::new(0),
             parked_changed: Notify::new(),
             gate: Semaphore::new(0),
+            hold_discards: AtomicBool::new(false),
+            discards_parked: AtomicUsize::new(0),
+            discards_changed: Notify::new(),
+            discard_gate: Semaphore::new(0),
         }
+    }
+
+    /// Holds every later `discard` until [`FaultyWriter::release_discards`].
+    pub fn hold_discards(&self) {
+        self.hold_discards.store(true, Ordering::SeqCst);
+    }
+
+    /// Returns once `count` calls are held in `discard`.
+    pub async fn wait_discards_parked(&self, count: usize) {
+        loop {
+            let changed = self.discards_changed.notified();
+            if self.discards_parked.load(Ordering::SeqCst) >= count {
+                return;
+            }
+            changed.await;
+        }
+    }
+
+    /// Lets every held and later `discard` go on to the real one.
+    pub fn release_discards(&self) {
+        self.hold_discards.store(false, Ordering::SeqCst);
+        self.discard_gate.add_permits(Semaphore::MAX_PERMITS / 2);
     }
 
     pub fn set(&self, fault: CreateFault) {
@@ -169,6 +199,16 @@ impl BlobWriter for FaultyWriter {
     }
 
     async fn discard(&self, blob_id: Uuid) -> Result<(), BlobError> {
+        if self.hold_discards.load(Ordering::SeqCst) {
+            self.discards_parked.fetch_add(1, Ordering::SeqCst);
+            self.discards_changed.notify_waiters();
+            drop(
+                self.discard_gate
+                    .acquire()
+                    .await
+                    .expect("the gate is never closed"),
+            );
+        }
         self.inner.discard(blob_id).await
     }
 }

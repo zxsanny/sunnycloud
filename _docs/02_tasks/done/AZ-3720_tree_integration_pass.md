@@ -104,4 +104,5 @@ Then the real source is called once per page and ready thumbnails show `ready`
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| None | — | — | — |
+| AC-5 account creation: 01 creates an account only inside `IdentitySignIn::complete` (invite redemption after a live OIDC/GitHub provider exchange; providers are built from config, no injectable client). The tests create the account as 01's `create` does minus the identity and invite rows: 01's `INSERT INTO accounts` text, then the real `initialize` of 07a, 05 and 02 in one system-scope transaction; the move to `deleting` is the real `begin_deletion`. | E-13/c16 (AZ-3720) | Implemented as described; full sign-in path covered by 01's own `account_creation` tests | Low |
+| 03's `BlobCommitEffect`, `ReceiptEffect` and `StagedCommitEffect` are crate-private; they are driven through `PgUploadService::commit_upload` / `commit_batch`. Failures are injected by an extra effect in 03's composition-root effect slot (`UploadPorts::commit_effects`, after 08's), which replaces no port. | E-13/c16 (AZ-3720) | Implemented | Low |

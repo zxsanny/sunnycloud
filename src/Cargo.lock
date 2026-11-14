@@ -4289,7 +4289,12 @@ dependencies = [
 name = "sunnycloud-tree"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "contracts",
+ "futures-util",
+ "media-api",
+ "media-shared",
+ "sc_audit",
  "sc_clock",
  "sc_config",
  "sc_db",
@@ -4300,9 +4305,11 @@ dependencies = [
  "sc_testdb",
  "sqlx",
  "sunnycloud-blobstore",
+ "sunnycloud-identity",
  "sunnycloud-quota",
  "sunnycloud-sync-feed",
  "sunnycloud-testkit",
+ "sunnycloud-transfer",
  "sunnycloud-vault-service",
  "thiserror 2.0.21",
  "tokio",

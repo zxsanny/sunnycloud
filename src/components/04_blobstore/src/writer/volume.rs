@@ -4,7 +4,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, ErrorKind};
 use std::os::unix::fs::{FileExt, OpenOptionsExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use contracts::BlobError;
 use rustix::fs::{FallocateFlags, fallocate, statvfs};
@@ -48,47 +48,49 @@ pub(super) fn admit(available: u64, needed: u64, reserve: u64) -> Result<(), Blo
     }
 }
 
-/// Creates the file, writes the header, reserves `len` bytes when asked, and syncs the directory entry once.
-/// A failure after the file exists removes it; a file that already existed is never touched.
+/// Creates the file, writes the header and reserves `len` bytes when asked; returns it with its folder. The new
+/// name is not durable until `sync_new_file`. A failure after the file exists removes it; a file that already
+/// existed is never touched.
 pub(super) fn create_blob_file(
     root: &Path,
     blob_id: Uuid,
     header: &Header,
     len: u64,
     preallocate: bool,
-) -> io::Result<File> {
+) -> io::Result<(File, PathBuf)> {
     let path = blob_path(root, blob_id);
-    let folder = path.parent().ok_or(ErrorKind::InvalidInput)?;
-    create_folders(root, folder)?;
+    let folder = path.parent().ok_or(ErrorKind::InvalidInput)?.to_path_buf();
+    create_folders(root, &folder)?;
     let file = OpenOptions::new()
         .create_new(true)
         .read(true)
         .write(true)
         .mode(0o600)
         .open(&path)?;
-    match prepare(&file, folder, header, len, preallocate) {
-        Ok(()) => Ok(file),
-        Err(error) => {
-            if let Err(removal) = fs::remove_file(&path) {
-                log_error!("partial blob file not removed", err = &removal);
-            }
-            Err(error)
-        }
-    }
+    removing_on_failure(&path, prepare(&file, header, len, preallocate))?;
+    Ok((file, folder))
 }
 
-fn prepare(
-    file: &File,
-    folder: &Path,
-    header: &Header,
-    len: u64,
-    preallocate: bool,
-) -> io::Result<()> {
+/// Syncs the directory entry of a file `create_blob_file` made, once; a failure removes the file.
+pub(super) fn sync_new_file(root: &Path, blob_id: Uuid, folder: &Path) -> io::Result<()> {
+    removing_on_failure(&blob_path(root, blob_id), sync_folder(folder))
+}
+
+fn removing_on_failure(path: &Path, outcome: io::Result<()>) -> io::Result<()> {
+    if outcome.is_err()
+        && let Err(removal) = fs::remove_file(path)
+    {
+        log_error!("partial blob file not removed", err = &removal);
+    }
+    outcome
+}
+
+fn prepare(file: &File, header: &Header, len: u64, preallocate: bool) -> io::Result<()> {
     file.write_all_at(&header.encode(), 0)?;
     if preallocate {
         fallocate(file, FallocateFlags::empty(), 0, len).map_err(io::Error::from)?;
     }
-    sync_folder(folder)
+    Ok(())
 }
 
 /// `blobs/<xx>/<yy>` below `root`; a folder this call creates is made durable in its parent, so the file's own

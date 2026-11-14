@@ -23,7 +23,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::blocks::expected_len;
-use crate::checkpoint::{CheckpointMark, CheckpointPolicy};
+use crate::checkpoint::{CheckpointMark, CheckpointPolicy, rolled_expiry};
 use crate::progress::{BlockStart, SharedProgress};
 use crate::session_repo::{self, Progress};
 use crate::upload::{PgUploadService, run_error, unexpected};
@@ -127,11 +127,7 @@ impl PgUploadService {
         let Some(taken) = session.checkpoint().record(bytes, at, policy) else {
             return Ok(());
         };
-        let run = CheckpointRun {
-            session,
-            taken,
-            open: true,
-        };
+        let run = CheckpointRun::new(session, taken);
         let (received, block_hashes) = {
             let progress = session.lock();
             (
@@ -140,8 +136,7 @@ impl PgUploadService {
             )
         };
         let now = self.clock.now_utc();
-        let expires_at = now
-            .checked_add(self.config.upload_session_ttl)
+        let expires_at = rolled_expiry(now, self.config.upload_session_ttl)
             .ok_or_else(|| UploadError::Unexpected(Box::new(BlockFault::ExpiryOverflow)))?;
         let account = session.info().account;
         let row = Progress {
@@ -240,14 +235,23 @@ impl Drop for Lane<'_> {
 }
 
 /// A running checkpoint: when it does not succeed (failure or a dropped request) its bytes count again.
-struct CheckpointRun<'a> {
+pub(crate) struct CheckpointRun<'a> {
     session: &'a SharedProgress,
     taken: u64,
     open: bool,
 }
 
-impl CheckpointRun<'_> {
-    fn succeeded(mut self, mark: CheckpointMark) {
+impl<'a> CheckpointRun<'a> {
+    /// A checkpoint marked running on `session`, covering `taken` unsaved bytes.
+    pub(crate) fn new(session: &'a SharedProgress, taken: u64) -> Self {
+        CheckpointRun {
+            session,
+            taken,
+            open: true,
+        }
+    }
+
+    pub(crate) fn succeeded(mut self, mark: CheckpointMark) {
         self.open = false;
         self.session.checkpoint().succeeded(mark);
     }

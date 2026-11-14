@@ -118,3 +118,7 @@ Then 100% are `argon2id` PHC strings with the configured memory, iterations and 
 | `verify_password` on a live link that has no password: outcome not stated | E-16 owner | open | Low |
 | Argon2id parameters and `share_password_max_concurrency` have no stated defaults (see E-16/c02) | E-16 owner | open | Medium |
 | This task follows E-16/c06 so that the grant check lands in an existing `authorize_content`; the epic lists the rows in the other order | E-16 owner | resolved | Low |
+
+## Owner decision
+
+Owner decision 2026-11-14 (complexity budget, option A): verification uses the parameters stored in each link's PHC string (share create's parameters); `share_password_max_concurrency` default 4; `verify_password` on a live link without a password answers `NotFound`.

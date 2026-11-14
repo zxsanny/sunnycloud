@@ -100,3 +100,7 @@ Then the second waits on the lock and exactly one passes in every round
 
 This task implements the last-admin rule of `_docs/02_document/contracts/07_admin/admin_service.md` and `_docs/02_document/contracts/07_admin/account_services.md`.
 Consumers MUST read those files — not this task spec — to discover the interface.
+
+## Owner decision
+
+Owner decision 2026-11-14 (complexity budget, option A): `SELECT … FOR UPDATE` over the active admin rows in the same short transaction, then the guard, then the change; a lock conflict is retried once; no new table and no separate lock.

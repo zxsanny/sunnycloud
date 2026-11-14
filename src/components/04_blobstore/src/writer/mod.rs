@@ -13,9 +13,9 @@ pub(crate) use volume::{free_floor, volume_space};
 
 use std::io::{self, ErrorKind};
 use std::path::PathBuf;
-use std::sync::Arc;
 #[cfg(feature = "sync-hook")]
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use bytes::Bytes;
 use contracts::{
@@ -47,6 +47,10 @@ pub struct FileBlobWriter {
     io: Arc<Semaphore>,
     /// Makes the check-then-write of one block index atomic within this writer; the process holds one writer.
     blocks: Arc<BlockLocks>,
+    /// Makes the free-space check and the creation of the file it admits, with its reserved space, one step
+    /// within this writer (owner decision 2026-11-14), so concurrent creations each see the space the one before
+    /// reserved. It never covers a block write or a sync.
+    admission: Arc<Mutex<()>>,
     /// Counts the block writes in flight for the scrub's pause; absent in a process that has no scrub gauge.
     activity: Option<ActivityGauge>,
     #[cfg(feature = "sync-hook")]
@@ -83,6 +87,7 @@ impl FileBlobWriter {
             barrier,
             io: Arc::new(Semaphore::new(threads.clamp(1, Semaphore::MAX_PERMITS))),
             blocks: Arc::new(BlockLocks::new()),
+            admission: Arc::default(),
             activity: None,
             #[cfg(feature = "sync-hook")]
             directory_syncs: AtomicU64::new(0),
@@ -139,7 +144,9 @@ impl FileBlobWriter {
         })
     }
 
-    /// Floor check, then the file: header, reserved space, directory sync. The returned blob holds the open file.
+    /// Floor check and the file with its header and reserved space under the admission lock, then the directory
+    /// sync. The returned blob holds the open file. Without preallocation the file takes its space only as blocks
+    /// arrive, so the floor is checked against the free space of this moment and not held for the file.
     async fn create_blob(
         &self,
         plan: &BlobPlan,
@@ -152,17 +159,22 @@ impl FileBlobWriter {
         let (reserve, reserve_percent) = (self.reserve, self.reserve_percent);
         let preallocate = preallocate && self.preallocate;
         let blob_id = plan.blob_id;
+        let admission = Arc::clone(&self.admission);
         let blob = self
             .blocking(move || {
                 let ids = blob_ids(blob_id);
+                let io_failure = |error| blob_error_from_io(error, ids);
                 let needed = layout.file_len();
-                let space =
-                    volume::volume_space(&root).map_err(|error| blob_error_from_io(error, ids))?;
-                let floor = volume::free_floor(reserve, reserve_percent, space.total);
-                volume::admit(space.available, needed, floor)?;
                 let header = Header::generate().map_err(|error| format_failure(error, ids))?;
-                let file = volume::create_blob_file(&root, blob_id, &header, needed, preallocate)
-                    .map_err(|error| blob_error_from_io(error, ids))?;
+                let (file, folder) = {
+                    let _admitting = admission.lock().unwrap_or_else(PoisonError::into_inner);
+                    let space = volume::volume_space(&root).map_err(io_failure)?;
+                    let floor = volume::free_floor(reserve, reserve_percent, space.total);
+                    volume::admit(space.available, needed, floor)?;
+                    volume::create_blob_file(&root, blob_id, &header, needed, preallocate)
+                        .map_err(io_failure)?
+                };
+                volume::sync_new_file(&root, blob_id, &folder).map_err(io_failure)?;
                 Ok(OpenBlob::new(
                     Arc::new(file),
                     &key,

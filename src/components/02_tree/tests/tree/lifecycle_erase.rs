@@ -8,23 +8,23 @@ use crate::lifecycle_support::{Erase, NODES, REVISIONS};
 use crate::support::START;
 use sc_testdb::statements::StatementLog;
 
-const LIMIT: u32 = 50;
+pub const LIMIT: u32 = 50;
 /// More batches than 1,000 nodes and 600 revisions need at 50 rows each; a run past it is a stuck erase.
-const MAX_BATCHES: usize = 200;
+pub const MAX_BATCHES: usize = 200;
 
 /// The state after one batch, read as the superuser.
-struct Probe {
-    nodes: i64,
-    revisions: i64,
-    queued: i64,
-    root: bool,
+pub struct Probe {
+    pub nodes: i64,
+    pub revisions: i64,
+    pub queued: i64,
+    pub root: bool,
     /// Revisions still present whose blob has a `blob_gc` row.
-    queued_survivors: i64,
+    pub queued_survivors: i64,
     /// Blobs whose revision is gone but which are not queued `account_deleted`, due now.
-    unqueued_orphans: i64,
+    pub unqueued_orphans: i64,
 }
 
-async fn probe(erase: &Erase) -> Probe {
+pub async fn probe(erase: &Erase) -> Probe {
     let account = erase.tree.account;
     let tree = &erase.tree;
     Probe {

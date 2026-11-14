@@ -96,3 +96,9 @@ Then each account has at most 8 sessions, the others get `SessionCapReached` or 
 |---------|----------------|--------|----------|
 | `declared_size = 0` on the large path has no named error (see E-14/c04) | E-14 owner | open | Low |
 | ST-04-8 (04's own rewrite rule) is open (E-10/c01); AC-2 checks only that 03 never calls a rewrite | Owner via E-10 | open | Low |
+| Observed (AZ-3758): `declared_size = 0` on the large path answers `Unexpected` (03 `StartFault::DeclaredSize`); 11 must refuse it as `invalid_request` | E-14 owner | recorded | Low |
+| Observed (AZ-3758): at 03's boundary a multi-range or overlapping header cannot be expressed; 11 hands it over as no range and 03 answers one `Full` stream | E-21 | recorded | Low |
+| AC-3 bound: 1000 open `bytes=0-` streams hold about 1.1 GB (verified first chunk + 16 read-ahead chunks of 64 KiB each, filled before the first poll); 64 MiB / 1000 streams is one chunk each, so AC-3 cannot hold with 04's reader as built (`tests/range_memory.rs`, failing) | Owner: AC-3 figure or 04 read-ahead start (E-10) | open | High |
+| AC-5 floor under concurrent starts: 04 checks the floor per `create_file` against the free bytes of that moment, so 10 concurrent 300 MiB starts with 1 GiB above the floor admitted 6 and crossed the floor by about 1.1 GiB (`the_free_space_floor_holds_against_concurrent_starts`, failing); one-after-another starts hold it | Owner via E-10 (04 admission) | open | High |
+| AC-5 sizes: a 50 GiB declaration does not fit the runner's 28 GiB temporary volume, so 04 refuses it (`StorageFull`, compensated) and the cap/quota counts are checked at 1 GiB; the floor tests share the runner volume instead of a dedicated one | Environment (dedicated volume) | recorded | Low |
+| AC-4: the GIF89a/HTML polyglot was served `Inline` as `image/gif`; fixed in 03's sniffer (a binary head carrying script-capable markup is `text/html`) | E-14 | resolved | High |

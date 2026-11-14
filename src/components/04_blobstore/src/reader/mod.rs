@@ -1,9 +1,10 @@
 //! The `BlobReader` port: the one decrypt path of the crate.
 //!
 //! The reader keeps no open files and no keys. Each `open` reads the header, unwraps the data key once, and reads
-//! and authenticates the first chunk of the range before it returns; later chunks are read by a task that stays at
-//! most `blob_read_ahead_chunks` chunks ahead of the consumer. No plaintext leaves this module before the tag of
-//! its chunk has verified.
+//! and authenticates the first chunk of the range before it returns; later chunks are read by a task that starts
+//! when that chunk is taken, one chunk ahead of the consumer, and widens its window up to `blob_read_ahead_chunks`
+//! only while the consumer keeps pace (owner decision 2026-11-14), so an idle stream holds one chunk. No plaintext
+//! leaves this module before the tag of its chunk has verified.
 
 pub(crate) mod file;
 mod finding;
@@ -20,6 +21,7 @@ use contracts::{BlobError, BlobReader, ByteRange, PlaintextStream, async_trait};
 use sc_audit::AuditWriter;
 use sc_clock::Clock;
 use sc_db::Db;
+use tokio::runtime::Handle;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
@@ -35,7 +37,7 @@ use finding::Findings;
 pub use probe::ReadProbe;
 #[cfg(not(feature = "sync-hook"))]
 pub(crate) use probe::ReadProbe;
-use stream::{ChunkStream, ReadAhead, join_failure};
+use stream::{ChunkStream, Pending, ReadAhead, join_failure};
 
 const MAX_HEAD: u32 = CHUNK_SIZE as u32;
 
@@ -52,7 +54,7 @@ pub struct FileBlobReader {
 }
 
 impl FileBlobReader {
-    /// `config.blob_root` is required. The window is `blob_read_ahead_chunks`, at least one chunk.
+    /// `config.blob_root` is required. The widest read-ahead window is `blob_read_ahead_chunks`, at least one chunk.
     pub fn new(
         config: &BlobstoreConfig,
         keyring: Arc<MasterKeyring>,
@@ -190,8 +192,8 @@ impl BlobReader for FileBlobReader {
         head = head.slice(span.skip..);
         head.truncate(usize::try_from(span.len).unwrap_or(usize::MAX));
         let remaining = span.len - head.len() as u64;
-        let rx = (span.last_chunk > span.first_chunk).then(|| {
-            ReadAhead {
+        let ahead = (span.last_chunk > span.first_chunk).then(|| Pending {
+            task: ReadAhead {
                 blob,
                 findings: Arc::clone(&self.findings),
                 probe: Arc::clone(&self.probe),
@@ -199,12 +201,13 @@ impl BlobReader for FileBlobReader {
                 first: span.first_chunk + 1,
                 last: span.last_chunk,
                 remaining,
-            }
-            .start(self.window)
+            },
+            runtime: Handle::current(),
+            max_window: self.window,
         });
         Ok(Box::pin(ChunkStream::new(
             head,
-            rx,
+            ahead,
             remaining,
             blob_id,
             Arc::clone(&self.probe),

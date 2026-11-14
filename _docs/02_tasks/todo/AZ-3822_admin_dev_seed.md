@@ -85,3 +85,7 @@ Then it returns the refusal and the row counts of `accounts` and `nodes` are unc
 |---------|----------------|--------|----------|
 | No port creates an account without a provider sign-in: `OperatorIdentityOps` returns invite tokens, whose redemption needs a sign-in (mock-idp in dev). How `seed` creates its accounts is not specified | E-15 / E-17 owners | open | Medium |
 | The refusal has no variant name (contracts part 1 open point 5) | E-17 owner | open | Low |
+
+## Owner decision
+
+Owner decision 2026-11-14: the seed creates its accounts through the normal path — operator invites redeemed by sign-ins against the development mock identity provider; no development-only account-creation port.

@@ -228,8 +228,8 @@ impl PgUploadService {
     }
 
     /// A committed key within its TTL answers its revision whatever the name holds now; an open session with the
-    /// same declared size is resumed, another size is `ClientKeyMismatch`. An expired committed row, or no row,
-    /// starts a session.
+    /// same declared size is resumed, another size is `ClientKeyMismatch`. An expired row (committed, open or
+    /// staged), or no row, starts a session; the session transaction reaps the expired row first.
     fn answer_from_key(
         &self,
         row: Option<&KeyRow>,
@@ -238,11 +238,11 @@ impl PgUploadService {
         let Some(row) = row else {
             return Ok(None);
         };
+        if session_repo::is_expired(row.expires_at, self.clock.now_utc()) {
+            return Ok(None);
+        }
         match row.committed_revision_id {
-            Some(revision) if row.expires_at > self.clock.now_utc() => {
-                Ok(Some(StartUploadOutcome::NothingToSend { revision }))
-            }
-            Some(_) => Ok(None),
+            Some(revision) => Ok(Some(StartUploadOutcome::NothingToSend { revision })),
             None if row.declared_size != declared_size => Err(UploadError::ClientKeyMismatch),
             None => Ok(Some(StartUploadOutcome::Started(self.started(
                 row.id,
@@ -279,15 +279,18 @@ impl PgUploadService {
             now,
             expires_at,
         };
-        let stale_committed = known.is_some_and(|row| row.committed_revision_id.is_some());
+        // A row under the key that did not answer is expired (`answer_from_key`); the deleter settles it.
+        let stale = known.is_some();
         let result = self
             .db
             .run(Scope::Account(account), async |tx| {
                 self.ensure_active(tx, account).await.map_err(stop)?;
-                if stale_committed {
-                    session_repo::delete_expired_committed(tx, account, &request.client_key, now)
+                let mut reaped = Vec::new();
+                if stale {
+                    reaped = self
+                        .reap_in_tx(tx, account, Some(&request.client_key), now, 1)
                         .await
-                        .map_err(|error| stop(unexpected(error)))?;
+                        .map_err(|fault| stop(UploadError::Unexpected(fault)))?;
                 }
                 self.quota
                     .reserve(tx, account, request.declared_size)
@@ -308,11 +311,17 @@ impl PgUploadService {
                     )
                     .await
                     .map_err(|error| stop(UploadError::Unexpected(Box::new(error))))?;
-                session_repo::insert(tx, &session).await.map_err(key_taken)
+                session_repo::insert(tx, &session)
+                    .await
+                    .map_err(key_taken)?;
+                Ok(reaped)
             })
             .await;
         match result {
-            Ok(()) => Ok(self.started(session.id, (0..as_u32(block_count)).collect(), expires_at)),
+            Ok(reaped) => {
+                self.reaped(account, &reaped).await;
+                Ok(self.started(session.id, (0..as_u32(block_count)).collect(), expires_at))
+            }
             Err(RunError::Closure(outcome)) => Err(outcome),
             Err(RunError::Db(error)) => Err(stop(unexpected(error))),
         }

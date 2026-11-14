@@ -15,7 +15,8 @@ use sc_ids::FileHash;
 use sc_names::{name_key, validate_name};
 use sqlx::PgConnection;
 use sunnycloud_blobstore::{
-    BlobCatalog, BlobRegistry, FileBlobReader, FileBlobWriter, GcQueue, MasterKeyring, SyncBarrier,
+    BlobCatalog, BlobRegistry, BlobstoreConfig, FileBlobReader, FileBlobWriter, GcQueue,
+    MasterKeyring, SyncBarrier,
 };
 use sunnycloud_quota::{PgQuotaAdmin, PgQuotaLedger, QuotaConfig};
 use sunnycloud_sync_feed::{InProcessNotifier, PgFeedStamp};
@@ -79,15 +80,22 @@ impl Rig {
 
     /// As [`Rig::new`] with another transfer section.
     pub async fn with_config(config: TransferConfig) -> Rig {
-        Rig::build(config, 0).await
+        Rig::build(config, 0, false).await
+    }
+
+    /// As [`Rig::with_config`] with a free-space floor of `free_reserve` bytes and 04's preallocation as given.
+    /// Used by the `volume_floor` test binary only.
+    #[allow(dead_code)]
+    pub async fn with_volume(config: TransferConfig, free_reserve: u64, preallocate: bool) -> Rig {
+        Rig::build(config, free_reserve, preallocate).await
     }
 
     /// As [`Rig::new`] on a volume whose free-space floor is its whole size: the real 04 writer refuses every file.
     pub async fn below_floor() -> Rig {
-        Rig::build(transfer_config(), u64::MAX).await
+        Rig::build(transfer_config(), u64::MAX, false).await
     }
 
-    async fn build(config: TransferConfig, free_reserve: u64) -> Rig {
+    async fn build(config: TransferConfig, free_reserve: u64, preallocate: bool) -> Rig {
         let fixture = Fixture::new().await;
         let clock = sc_testdb::clock_at_start();
         let account = Uuid::new_v4();
@@ -100,7 +108,10 @@ impl Rig {
         let scratch = Scratch(dir.clone());
         let key_file = dir.join("master.key");
         fs::write(&key_file, [0x11u8; 32]).expect("key file");
-        let blob_config = blob_config(&volume, &key_file, free_reserve);
+        let blob_config = BlobstoreConfig {
+            blob_preallocate: preallocate,
+            ..blob_config(&volume, &key_file, free_reserve)
+        };
         let audit = AuditWriter::new(fixture.api.clone(), clock.clone());
         let keyring = Arc::new(MasterKeyring::new(
             blob_config.clone(),

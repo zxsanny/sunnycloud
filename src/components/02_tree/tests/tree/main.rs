@@ -4,7 +4,7 @@
 //! outcomes of `publish` (AZ-3710); the node and listing reads (AZ-3707); the blob ownership check of `publish`
 //! (AZ-3712); the revision lookups, path and device queries and live usage (AZ-3716); the usage deltas and queue
 //! writes of `publish`, delete and the cascade (AZ-3711); the thumbnail states of listing items (AZ-3718); the
-//! move-versus-edit race and the stamp-last move (AZ-3713); the operator restore (AZ-3715); on a real PostgreSQL 18 (`DATABASE_URL`, a superuser
+//! move-versus-edit race and the stamp-last move (AZ-3713); the operator restore (AZ-3715); the integration pass with the real 01, 03 and 08 counterparts (AZ-3720); on a real PostgreSQL 18 (`DATABASE_URL`, a superuser
 //! URL).
 
 mod acceptance_stale_edit;
@@ -44,6 +44,14 @@ mod reader_lookups;
 mod reader_revisions;
 mod reader_support;
 mod reader_thumbs;
+mod real_account_repo;
+mod real_dangling;
+mod real_effects;
+mod real_erase;
+mod real_guard;
+mod real_ports;
+mod real_support;
+mod real_thumbs;
 mod restore_effects;
 mod restore_placement;
 mod restore_support;

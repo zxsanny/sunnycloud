@@ -107,7 +107,7 @@ The internal worker fetch uses this same reader (08 calls `open` with no range);
 
 - `write_block` does `pwrite` on the blocking pool, then registers the file in the **group-commit barrier**. The barrier is leader/follower: the first waiter starts a flush at once (after the optional `sync_coalesce_delay`, default 0), runs `fdatasync` on every dirty file in the group, then releases all waiters; writers arriving during a flush join the next one. No artificial 1 s wait, so a 4-lane 2 MiB window keeps throughput near line rate while sync cost is amortised across lanes and sessions.
 - A block is acked to the client only after `await_durable` returns. The caller (03) then sets its bit in memory and checkpoints the bitmap to the DB later (every 8 MiB or 1 s); a block acked but not checkpointed is re-requested after a crash (at most 8 MiB, inside AC-3).
-- Space is preallocated at create (`blob.preallocate`, default on) so a running upload cannot hit `ENOSPC`; reads of never-written extents yield zeros, which is exactly why the bitmap moves only after the sync. The directory entry is fsynced once at file create.
+- Space is preallocated at create (`blob.preallocate`, default on) so a running upload cannot hit `ENOSPC`; the free-space check and the creation with its preallocation run under one writer lock (owner decision 2026-11-14), so concurrent creations cannot all pass the floor before any allocates. With preallocation off the floor is a point-in-time check only; reads of never-written extents yield zeros, which is exactly why the bitmap moves only after the sync. The directory entry is fsynced once at file create.
 - `write_complete` (small and derived blobs) writes the whole object, syncs once, then returns; the row is inserted by the caller afterwards (crash window leaves an orphan, swept after `orphan_age`).
 - Nothing in 04 holds a DB transaction across a sync, a read, an unlink or a directory walk.
 
@@ -134,7 +134,7 @@ Estimates: one `blobs` row about 150 B; 2.5 M revisions plus derived about 5 M r
 | `SUNNYCLOUD_SCRUB_INTERVAL` / `SUNNYCLOUD_SCRUB_CYCLE_BUDGET` / `SUNNYCLOUD_SCRUB_MAX_RATE` / `SUNNYCLOUD_SCRUB_PAUSE_ACTIVE_STREAMS` | 7d / 30m / 50MiB/s / 8 | interval = target coverage period; the pause threshold counts active block writes and downloads (API process only) |
 | `SUNNYCLOUD_BLOB_SYNC_COALESCE_DELAY` | 0ms | max wait before a flush starts |
 | `SUNNYCLOUD_BLOB_PREALLOCATE` | true | |
-| `SUNNYCLOUD_BLOB_READ_AHEAD_CHUNKS` | 16 | download read-ahead (1 MiB) |
+| `SUNNYCLOUD_BLOB_READ_AHEAD_CHUNKS` | 16 | widest download read-ahead window (1 MiB); a stream starts at one chunk ahead after its first chunk is taken and doubles only while the consumer keeps pace (owner decision 2026-11-14) |
 | `SUNNYCLOUD_BLOB_IO_THREADS` | 2 x cores | blocking pool for pread/pwrite/AEAD |
 | `SUNNYCLOUD_BLOB_ROOT` | blob mount in the api container | the only path 04 touches |
 | `SUNNYCLOUD_MASTER_KEY_FILE` / `SUNNYCLOUD_MASTER_KEY_RING` / `SUNNYCLOUD_MASTER_KEY_CURRENT` | `/run/secrets/master_key` (id 1) / empty / highest id | ring `id=path,...` for rotation; secrets only from files |

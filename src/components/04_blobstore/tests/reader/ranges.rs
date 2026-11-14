@@ -1,5 +1,5 @@
 //! AC-2: ranges and `read_head` equal the source slices and read at most two chunks per 4 KiB. AC-3: unsatisfiable
-//! input is typed and returns no bytes. The read-ahead window never exceeds `blob_read_ahead_chunks`.
+//! input is typed and returns no bytes. The read-ahead window is in `window.rs`.
 
 use contracts::BlobError;
 
@@ -129,29 +129,5 @@ async fn unsatisfiable_ranges_and_an_oversized_head_are_typed_and_read_nothing()
     .await;
     assert!(matches!(negative, Err(BlobError::OutOfRange)));
     assert_eq!(probe.chunk_reads(), 0);
-    rig.finish().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn the_read_ahead_window_never_holds_more_chunks_than_the_configuration_allows() {
-    // Arrange
-    let window = 4;
-    let rig = Rig::with_window(window).await;
-    let source = data(0xA9, SIZE);
-    let blob = rig.store(&source).await;
-    let probe = rig.reader.probe();
-    let mut ahead = probe.read_ahead();
-
-    // Act
-    let stream = rig.open(&blob, None).await.expect("open");
-    ahead
-        .wait_for(|queued| *queued == window as usize)
-        .await
-        .expect("window fills");
-    let consumed = consume(stream).await;
-
-    // Assert
-    assert!(consumed.bytes == *source);
-    assert_eq!(probe.high_water(), window as usize);
     rig.finish().await;
 }

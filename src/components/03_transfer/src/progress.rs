@@ -410,6 +410,14 @@ impl ProgressTable {
         created
     }
 
+    /// Every entry with its upload id, as the idle flush walks them.
+    pub(crate) fn entries(&self) -> Vec<(Uuid, Arc<SharedProgress>)> {
+        self.read()
+            .iter()
+            .map(|(id, session)| (*id, Arc::clone(session)))
+            .collect()
+    }
+
     /// Drops the entry; `false` when there was none.
     pub fn remove(&self, upload_id: Uuid) -> bool {
         self.write().remove(&upload_id).is_some()

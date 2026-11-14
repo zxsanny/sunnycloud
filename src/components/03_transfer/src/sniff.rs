@@ -58,8 +58,36 @@ const HTML_TAGS: [&[u8]; 17] = [
     b"<!--",
 ];
 
-/// The media type the head's bytes show, `None` when they show none of the recognised types.
+/// Markup a browser would run, searched anywhere in a head that starts like a binary type (a polyglot).
+const POLYGLOT_MARKUP: [&[u8]; 6] = [
+    b"<script",
+    b"<html",
+    b"<iframe",
+    b"<svg",
+    b"<body",
+    b"<!doctype html",
+];
+
+/// The media type the head's bytes show, `None` when they show none of the recognised types. A head that starts
+/// like a binary type but also carries [`POLYGLOT_MARKUP`] (a GIF89a/HTML or JPEG/HTML polyglot, DS-17) is typed
+/// as HTML, so it is never served inline.
 pub(crate) fn sniff(head: &[u8]) -> Option<&'static str> {
+    let found = binary_type(head);
+    if found.is_some() && carries_markup(head) {
+        return Some(HTML);
+    }
+    found.or_else(|| is_html(head).then_some(HTML))
+}
+
+fn carries_markup(head: &[u8]) -> bool {
+    POLYGLOT_MARKUP.iter().any(|tag| {
+        head.windows(tag.len())
+            .any(|window| window.eq_ignore_ascii_case(tag))
+    })
+}
+
+/// The binary types, recognised by their magic numbers.
+fn binary_type(head: &[u8]) -> Option<&'static str> {
     if head.starts_with(&[0xff, 0xd8, 0xff]) {
         Some(JPEG)
     } else if head.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -72,12 +100,8 @@ pub(crate) fn sniff(head: &[u8]) -> Option<&'static str> {
         Some(PDF)
     } else if let Some(found) = iso_media(head) {
         Some(found)
-    } else if let Some(found) = matroska(head) {
-        Some(found)
-    } else if is_html(head) {
-        Some(HTML)
     } else {
-        None
+        matroska(head)
     }
 }
 
@@ -257,6 +281,22 @@ mod tests {
 
         // Assert
         assert_eq!(types, [None, None, None, None, None]);
+    }
+
+    #[test]
+    fn a_binary_head_carrying_markup_is_html() {
+        // Arrange: the DS-17 GIF89a/HTML polyglot, a JPEG with a script, and an image with plain metadata text.
+        let gif_polyglot: &[u8] =
+            b"GIF89a/*\x00\x00\x00\x00*/=1;<HTML><body><script>alert(1)</script>";
+        let jpeg_script: &[u8] = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00<ScRiPt>alert(1)</script>";
+        let plain: &[u8] =
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00<x:xmpmeta xmlns:x='adobe:ns:meta/'>";
+
+        // Act
+        let types = [sniff(gif_polyglot), sniff(jpeg_script), sniff(plain)];
+
+        // Assert
+        assert_eq!(types, [Some(HTML), Some(HTML), Some(GIF)]);
     }
 
     #[test]

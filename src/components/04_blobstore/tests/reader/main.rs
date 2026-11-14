@@ -7,3 +7,4 @@ mod ranges;
 mod roundtrip;
 mod support;
 mod tamper;
+mod window;

@@ -5,7 +5,8 @@
 //! the file for writing and builds the entry from `received` and `block_hashes`: blocks acknowledged after the
 //! last checkpoint are needed again.
 //!
-//! `abort_upload` is one short transaction: the account guard, `DELETE … RETURNING blob_id, reserved_bytes`,
+//! `abort_upload` is one short transaction: the account guard, the account advisory lock (taken before any row,
+//! as 02's `publish` and the reaper do), `DELETE … RETURNING blob_id, reserved_bytes`,
 //! `QuotaLedger::release_reservation` for exactly that amount and `BlobRegistry::remove_row_in_tx`. Whoever
 //! deletes the row settles the reservation, so a repeat (or an abort racing the reaper or a commit) finds no row,
 //! answers `UploadNotFound` and releases nothing. The file is discarded and the entry evicted after COMMIT.
@@ -55,6 +56,10 @@ impl PgUploadService {
             .db
             .run(Scope::Account(account), async |tx| {
                 self.ensure_active(tx, account).await?;
+                // The lock order of 02's `publish` and the reaper: an abort racing a commit waits, never deadlocks.
+                tx.advisory_lock_account(account)
+                    .await
+                    .map_err(unexpected)?;
                 let (blob_id, reserved) =
                     session_repo::delete_open_returning(tx, account, upload_id, now)
                         .await
@@ -107,7 +112,7 @@ impl PgUploadService {
             Some(_) => return Err(UploadError::UploadNotFound),
             None => self.load(account, upload_id).await?,
         };
-        if self.clock.now_utc() >= session.expires_at() {
+        if session_repo::is_expired(session.expires_at(), self.clock.now_utc()) {
             self.evict(upload_id);
             return Err(UploadError::UploadNotFound);
         }

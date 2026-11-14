@@ -1,5 +1,6 @@
 //! The `upload_sessions` statements of `start_upload`, the `put_block` checkpoint, the lazy load,
-//! `abort_upload`, `stage_small`, the commit effects and the staged rows of `commit_batch`. Every statement names the account, so a row of another account is never read or written even
+//! `abort_upload`, `stage_small`, the commit effects, the staged rows of `commit_batch`, the reaper and
+//! `ReservationSource`. Every statement names the account, so a row of another account is never read or written even
 //! in system scope. Timestamps travel as Unix microseconds.
 
 use sc_clock::Timestamp;
@@ -15,9 +16,20 @@ const BY_KEY: &str = "SELECT id, declared_size, block_count, received, \
      (extract(epoch FROM expires_at) * 1000000)::bigint, committed_revision_id \
      FROM upload_sessions WHERE account_id = $1 AND client_key = $2";
 
-const DELETE_EXPIRED_COMMITTED: &str = "DELETE FROM upload_sessions \
-     WHERE account_id = $1 AND client_key = $2 AND committed_revision_id IS NOT NULL \
-     AND expires_at <= 'epoch'::timestamptz + $3::bigint * interval '1 microsecond'";
+// The reaper's claim: rows of the account past `expires_at` (open, staged or committed), of one key when `$3` is
+// set, at most `$4`. The lock waits for a running checkpoint and re-checks the expiry it rolled. A committed row
+// holds no reservation and its blob is the revision's; an open row returns what its deleter settles.
+const DELETE_EXPIRED: &str = "DELETE FROM upload_sessions WHERE account_id = $1 AND id IN ( \
+     SELECT id FROM upload_sessions WHERE account_id = $1 \
+     AND expires_at <= 'epoch'::timestamptz + $2::bigint * interval '1 microsecond' \
+     AND ($3::text IS NULL OR client_key = $3) \
+     ORDER BY expires_at LIMIT $4 FOR UPDATE) \
+     RETURNING id, blob_id, reserved_bytes, committed_revision_id IS NULL, \
+     (block_count > 1 OR received = '\\x00'::bytea)";
+
+// Every row of the account counts, expired ones too: their reservation stays in 07a until the reaper releases it.
+const OPEN_RESERVED: &str = "SELECT coalesce(sum(reserved_bytes), 0)::bigint FROM upload_sessions \
+     WHERE account_id = $1";
 
 // Open large-path sessions: not committed, and either more than one block (a staged row has 0 or 1) or one
 // block not yet received (a staged row is inserted with its block received). A one-block large session whose
@@ -35,7 +47,8 @@ const COUNT_STAGED: &str = "SELECT count(*) FROM upload_sessions \
 // What a repeated `stage_small` compares: the first block hash only (a staged row has at most one), so a large
 // session's hash array is never read in full.
 const STAGED_BY_KEY: &str = "SELECT declared_size, block_count, received, \
-     substring(block_hashes FROM 1 FOR 32), committed_revision_id IS NOT NULL \
+     substring(block_hashes FROM 1 FOR 32), committed_revision_id IS NOT NULL, \
+     (extract(epoch FROM expires_at) * 1000000)::bigint \
      FROM upload_sessions WHERE account_id = $1 AND client_key = $2";
 
 const INSERT: &str = "INSERT INTO upload_sessions (id, account_id, blob_id, client_key, declared_size, \
@@ -132,21 +145,57 @@ pub(crate) async fn by_key(
     }))
 }
 
-/// Removes the key's committed row once it is past `expires_at`, as the reaper would (its blob is the revision's
-/// and stays). Returns the rows removed, 0 or 1.
-pub(crate) async fn delete_expired_committed(
+/// The one expiry rule of a session or staged row: gone once `now` reaches `expires_at` (`last_checkpoint_at +
+/// upload_session_ttl`). The statements apply the same comparison with the caller's `now`.
+pub(crate) fn is_expired(expires_at: Timestamp, now: Timestamp) -> bool {
+    now >= expires_at
+}
+
+/// A row the reaper deleted. `open` rows held `reserved_bytes` and their `uploading` blob row; `large` tells a
+/// large-path session from a staged row as the session cap does (a one-block session with its block counts as
+/// staged).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ExpiredRow {
+    pub id: Uuid,
+    pub blob_id: Uuid,
+    pub reserved_bytes: i64,
+    pub open: bool,
+    pub large: bool,
+}
+
+/// Deletes up to `limit` rows of `account` (of `client_key` alone when given) expired at `now`.
+pub(crate) async fn delete_expired(
     tx: &mut DbTx,
     account: Uuid,
-    client_key: &str,
+    client_key: Option<&str>,
     now: Timestamp,
-) -> Result<u64, DbError> {
-    let done = sqlx::query(DELETE_EXPIRED_COMMITTED)
+    limit: i64,
+) -> Result<Vec<ExpiredRow>, DbError> {
+    let rows: Vec<(Uuid, Uuid, i64, bool, bool)> = sqlx::query_as(DELETE_EXPIRED)
         .bind(account)
-        .bind(client_key)
         .bind(now.as_unix_micros())
-        .execute(tx.conn())
+        .bind(client_key)
+        .bind(limit)
+        .fetch_all(tx.conn())
         .await?;
-    Ok(done.rows_affected())
+    Ok(rows
+        .into_iter()
+        .map(|(id, blob_id, reserved_bytes, open, large)| ExpiredRow {
+            id,
+            blob_id,
+            reserved_bytes,
+            open,
+            large,
+        })
+        .collect())
+}
+
+/// The bytes the account's session and staged rows hold reserved.
+pub(crate) async fn open_reserved(tx: &mut DbTx, account: Uuid) -> Result<i64, DbError> {
+    Ok(sqlx::query_scalar(OPEN_RESERVED)
+        .bind(account)
+        .fetch_one(tx.conn())
+        .await?)
 }
 
 pub(crate) async fn count_staged(tx: &mut DbTx, account: Uuid) -> Result<i64, DbError> {
@@ -165,6 +214,7 @@ pub(crate) struct StagedKeyRow {
     /// The first 32 bytes of `block_hashes`; empty for a row without blocks.
     pub first_hash: Vec<u8>,
     pub committed: bool,
+    pub expires_at: Timestamp,
 }
 
 pub(crate) async fn staged_by_key(
@@ -186,6 +236,7 @@ pub(crate) async fn staged_by_key(
         received: row.try_get(2)?,
         first_hash: row.try_get(3)?,
         committed: row.try_get(4)?,
+        expires_at: Timestamp::from_unix_micros(row.try_get(5)?),
     }))
 }
 

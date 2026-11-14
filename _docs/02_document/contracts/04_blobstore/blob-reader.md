@@ -22,7 +22,8 @@ The caller passes the key material from `BlobCatalog::get_ref` (see `blob-regist
 
 ## Invariants
 
-- The first chunk of the requested range is read and authenticated before `open` returns. Later chunks are read as the stream is polled, with read-ahead bounded by `blob_read_ahead_chunks` (default 16 chunks).
+- The first chunk of the requested range is read and authenticated before `open` returns. Later chunks are read as the stream is polled. Read-ahead grows (owner decision 2026-11-14): nothing more is read until the first chunk is taken, so a stream nobody polls holds one chunk; the window then starts at one chunk ahead and doubles, up to `blob_read_ahead_chunks` (default 16 chunks), each time the consumer polls and finds no chunk ready (it keeps pace with the disk). A slow or stalled consumer stays at one chunk ahead, so it holds at most two chunks (the one it took and the next). The window counts chunks being read as well as queued ones.
+- 1000 open, unpolled streams hold about 64 MiB (one 64 KiB chunk each), not `1 + blob_read_ahead_chunks` chunks each (AZ-3758 AC-3).
 - A chunk whose tag fails yields `Err(Corrupt)` and the stream ends. The stream never yields a complete-looking short body: a consumer always sees the error.
 - Tampering of any kind (bit flip, truncation, appended bytes, swapped or foreign chunk, changed header, dropped final chunk, another blob's wrapped key) yields `Corrupt` or `KeyUnavailable`, never plaintext.
 - A 4 KiB range reads at most 2 chunks. A range with `start == size`, `end > size` or `start > end` is `RangeNotSatisfiable`.

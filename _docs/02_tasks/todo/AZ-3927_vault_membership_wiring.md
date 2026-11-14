@@ -121,3 +121,7 @@ Then 02, 03 and 06 have no dependency on 20, and the commit and share paths make
 | The work changes code in 02, 03 and 06 directories although the task sits in E-30; owners may prefer that E-30/c01 AC-4 creates the changes as E-13, E-14, E-16 v1.2 tasks instead | E-13 / E-14 / E-16 / E-30 owners | open | Medium |
 | The error code and status of "vault file over the limit" at upload start are not in the `sc_error` table | E-14 / E-02 owners | open | Medium |
 | No server rule stops a camera-backup commit under a vault root; AC-14's "camera backup does not write into the vault" relies on the clients (FT-P-45 step 3, NFT-SEC-43 step 4) | E-27 / E-30 owners | open | Low |
+
+## Owner decision
+
+Owner decision 2026-11-14: one task across 02, 03 and 06 (no split); the upload-start refusal above `max_vault_file_bytes` gets the new code `vault_file_too_large`, HTTP 413.

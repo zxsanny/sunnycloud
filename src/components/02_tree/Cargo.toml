@@ -37,6 +37,17 @@ sunnycloud-quota = { path = "../07a_quota" }
 sunnycloud-blobstore = { path = "../04_blobstore" }
 # The vault erase hook (20) that runs before the tree's in the account purge (AZ-3925 AC-4).
 sunnycloud-vault-service = { path = "../20_vault_service" }
+# The integration pass (AZ-3720): the real 01 guard and account admin, the real 03 commit effects through
+# `PgUploadService`, the real 08 media effect, thumbnail source and output store; 04's keyring takes the audit
+# writer, and the claim names its lane from `media-shared`.
+sunnycloud-identity = { path = "../01_identity" }
+sunnycloud-transfer = { path = "../03_transfer" }
+media-api = { path = "../08_media_jobs" }
+media-shared = { path = "../../media-shared" }
+sc_audit = { path = "../../shared/audit" }
+# Request bodies of `stage_small`, `put_block` and `accept_output` (`ByteStream`); the declarations of 03 and 08.
+bytes = { workspace = true }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 # The statement-order test reads sqlx's statement events.
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }

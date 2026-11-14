@@ -1,8 +1,8 @@
 //! `stage_small` (`upload_service.md`): a whole file of 0 to 2 MiB in one idempotent request, in this order:
 //!
 //! 1. one short transaction: the account guard, then the row `(account, staged_key)` names: an identical staged
-//!    row answers `Staged` with nothing read or written, any other row is `ClientKeyMismatch`; then the staged-row
-//!    cap (`StagedCapReached`);
+//!    row answers `Staged` with nothing read or written, any other row is `ClientKeyMismatch`, an expired row is
+//!    reaped (`crate::reaper`) and the key staged anew; then the staged-row cap (`StagedCapReached`);
 //! 2. the account in-flight cap (`Overloaded`, shared with `put_block`) and the free room of the quota
 //!    (`QuotaAdmin::view`), before any body byte is read;
 //! 3. the body is read in full and checked for length and BLAKE3 before any write;
@@ -94,7 +94,8 @@ impl PgUploadService {
         }
     }
 
-    /// Steps 1 and the staged cap: `true` when an identical staged row already answers the request.
+    /// Steps 1 and the staged cap: `true` when an identical staged row already answers the request. An expired
+    /// row under the key answers nothing: it is reaped here (its reservation released) and the key staged anew.
     async fn precheck(
         &self,
         account: Uuid,
@@ -102,23 +103,34 @@ impl PgUploadService {
         size: i64,
         claimed: &[u8],
     ) -> Result<bool, UploadError> {
-        self.db
+        let now = self.clock.now_utc();
+        let (answered, reaped) = self
+            .db
             .run(Scope::Account(account), async |tx| {
                 self.ensure_active(tx, account).await?;
                 let row = session_repo::staged_by_key(tx, account, key)
                     .await
                     .map_err(unexpected)?;
+                let mut reaped = Vec::new();
                 if let Some(row) = row {
-                    return same_row(&row, size, claimed).map(|()| true);
+                    if !session_repo::is_expired(row.expires_at, now) {
+                        return same_row(&row, size, claimed).map(|()| (true, reaped));
+                    }
+                    reaped = self
+                        .reap_in_tx(tx, account, Some(key), now, 1)
+                        .await
+                        .map_err(UploadError::Unexpected)?;
                 }
                 let staged = session_repo::count_staged(tx, account)
                     .await
                     .map_err(unexpected)?;
                 self.below_staged_cap(staged)?;
-                Ok(false)
+                Ok((false, reaped))
             })
             .await
-            .map_err(run_error)
+            .map_err(run_error)?;
+        self.reaped(account, &reaped).await;
+        Ok(answered)
     }
 
     async fn read_staged_key(

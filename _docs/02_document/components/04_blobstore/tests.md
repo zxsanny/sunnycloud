@@ -87,7 +87,7 @@ directory entry fsynced once at create_file (hook counter == 1 per file)
 **Summary**: `create_file` refuses below the floor; preallocation prevents `ENOSPC` during an upload.
 **Traces to**: AC-39
 **Description**: 64 MiB loop volume, `blob_free_reserve = 8 MiB`; create 20 MiB blob with `preallocate = true`, then fill the rest of the volume with a filler file and write all blocks; a 60 MiB request; `BlobHealth::probe`.
-**Expected result**: 60 MiB -> `FreeSpaceFloor` (no file); preallocated blob: every `write_block` succeeds although the filler used all other space; probe reports `below_floor = true` and `free_bytes` within 1 MiB of `statvfs`.
+**Expected result**: 60 MiB -> `FreeSpaceFloor` (no file); concurrent preallocated creates on one writer never take free space below the floor (`tests/writer_floor`, run against the scratch volume with the floor set 100 MiB below its free space); preallocated blob: every `write_block` succeeds although the filler used all other space; probe reports `below_floor = true` and `free_bytes` within 1 MiB of `statvfs`.
 **Max execution time**: 10 s; **Dependencies**: loop volume (needs root, `C` with privileged runner)
 
 ### IT-04-8: Registry, catalog and reinstate
@@ -186,7 +186,7 @@ row inserted by a racing writer after listing but before delete: file kept (re-c
 **Summary**: the reader used by downloads and the internal worker fetch returns the exact plaintext with bounded memory.
 **Traces to**: AC-72
 **Input data**: DS-25 (1 GiB dense), no range, consumed in 1 MiB reads.
-**Expected result**: BLAKE3 of the stream == generator manifest hash; peak RSS growth <= 32 MiB (read-ahead 16 chunks x 64 KiB x lanes); there is no second decrypt path (crate exposes only `BlobReader::open`).
+**Expected result**: BLAKE3 of the stream == generator manifest hash; peak RSS growth <= 32 MiB (read-ahead at most 16 chunks x 64 KiB x lanes; the window starts at one chunk and widens only while the consumer keeps pace, `tests/reader/window.rs`); there is no second decrypt path (crate exposes only `BlobReader::open`).
 **Max execution time**: 30 s; **Dependencies**: PostgreSQL, DS-25. Env C-REF for the throughput part.
 
 ## Performance Tests
