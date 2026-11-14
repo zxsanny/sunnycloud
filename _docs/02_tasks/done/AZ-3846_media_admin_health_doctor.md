@@ -93,9 +93,9 @@ Then all six metrics are present, the dead counter rose by 1, the duration and d
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| The doctor needs `worker_status_interval` (three intervals), which the helper key table lists as a worker-only key | E-18 / E-01 owners | open | Low |
-| No threshold is given for dead jobs or queue depth in the health item (IT-07-6 shows "dead jobs (down)" only as an example) | E-18 owner | open | Low |
-| The `DoctorCheck` tags of this check are not stated | E-18 / E-22 owners | open | Low |
+| The doctor needs `worker_status_interval` (three intervals), which the helper key table lists as a worker-only key | E-18 / E-01 owners | proposal (AZ-3846): `MediaConfig` reads the key and refuses zero; the `sc_config` readers of the key become `AW` (E-01 change, not made here); until then the API holds the 30 s default | Low |
+| No threshold is given for dead jobs or queue depth in the health item (IT-07-6 shows "dead jobs (down)" only as an example) | E-18 owner | proposal (AZ-3846): no threshold; the item follows the doctor level only (AC-3), the counts are in its detail; dead jobs already make "no worker" Fail | Low |
+| The `DoctorCheck` tags of this check are not stated | E-18 / E-22 owners | proposal (AZ-3846): no tag (as 04's retention check): a restore does not change worker presence, and no worker runs before the stack starts | Low |
 
 ## Contract
 

@@ -1,9 +1,10 @@
-//! The `upload_sessions` statements of `start_upload`, the `put_block` checkpoint, the lazy load and
-//! `abort_upload`. Every statement names the account, so a row of another account is never read or written even
+//! The `upload_sessions` statements of `start_upload`, the `put_block` checkpoint, the lazy load,
+//! `abort_upload` and `stage_small`. Every statement names the account, so a row of another account is never read or written even
 //! in system scope. Timestamps travel as Unix microseconds.
 
 use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx};
+use sc_ids::Hash32;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -24,6 +25,18 @@ const DELETE_EXPIRED_COMMITTED: &str = "DELETE FROM upload_sessions \
 const COUNT_OPEN_LARGE: &str = "SELECT count(*) FROM upload_sessions \
      WHERE account_id = $1 AND committed_revision_id IS NULL \
      AND (block_count > 1 OR received = '\\x00'::bytea)";
+
+// Staged rows: open, at most one block and every block received (the complement of COUNT_OPEN_LARGE among open
+// rows; see there for the one-block large session counted here until it commits).
+const COUNT_STAGED: &str = "SELECT count(*) FROM upload_sessions \
+     WHERE account_id = $1 AND committed_revision_id IS NULL \
+     AND block_count <= 1 AND received <> '\\x00'::bytea";
+
+// What a repeated `stage_small` compares: the first block hash only (a staged row has at most one), so a large
+// session's hash array is never read in full.
+const STAGED_BY_KEY: &str = "SELECT declared_size, block_count, received, \
+     substring(block_hashes FROM 1 FOR 32), committed_revision_id IS NOT NULL \
+     FROM upload_sessions WHERE account_id = $1 AND client_key = $2";
 
 const INSERT: &str = "INSERT INTO upload_sessions (id, account_id, blob_id, client_key, declared_size, \
      block_count, reserved_bytes, received, block_hashes, created_at, last_checkpoint_at, expires_at) \
@@ -66,7 +79,8 @@ pub(crate) struct KeyRow {
     pub committed_revision_id: Option<Uuid>,
 }
 
-/// A new open session; `reserved_bytes` equals `declared_size` and nothing is received.
+/// A new session row; `reserved_bytes` equals `declared_size`. [`insert`] writes it with nothing received,
+/// [`insert_staged`] with its only block (if any) received.
 pub(crate) struct NewSession<'a> {
     pub id: Uuid,
     pub account: Uuid,
@@ -118,6 +132,46 @@ pub(crate) async fn delete_expired_committed(
     Ok(done.rows_affected())
 }
 
+pub(crate) async fn count_staged(tx: &mut DbTx, account: Uuid) -> Result<i64, DbError> {
+    Ok(sqlx::query_scalar(COUNT_STAGED)
+        .bind(account)
+        .fetch_one(tx.conn())
+        .await?)
+}
+
+/// The row a `staged_key` names as a repeated `stage_small` compares it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StagedKeyRow {
+    pub declared_size: i64,
+    pub block_count: i32,
+    pub received: Vec<u8>,
+    /// The first 32 bytes of `block_hashes`; empty for a row without blocks.
+    pub first_hash: Vec<u8>,
+    pub committed: bool,
+}
+
+pub(crate) async fn staged_by_key(
+    tx: &mut DbTx,
+    account: Uuid,
+    client_key: &str,
+) -> Result<Option<StagedKeyRow>, DbError> {
+    let row = sqlx::query(STAGED_BY_KEY)
+        .bind(account)
+        .bind(client_key)
+        .fetch_optional(tx.conn())
+        .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    Ok(Some(StagedKeyRow {
+        declared_size: row.try_get(0)?,
+        block_count: row.try_get(1)?,
+        received: row.try_get(2)?,
+        first_hash: row.try_get(3)?,
+        committed: row.try_get(4)?,
+    }))
+}
+
 pub(crate) async fn count_open_large(tx: &mut DbTx, account: Uuid) -> Result<i64, DbError> {
     Ok(sqlx::query_scalar(COUNT_OPEN_LARGE)
         .bind(account)
@@ -127,6 +181,33 @@ pub(crate) async fn count_open_large(tx: &mut DbTx, account: Uuid) -> Result<i64
 
 pub(crate) async fn insert(tx: &mut DbTx, session: &NewSession<'_>) -> Result<(), DbError> {
     let blocks = usize::try_from(session.block_count).unwrap_or(0);
+    insert_row(
+        tx,
+        session,
+        &vec![0u8; blocks.div_ceil(8)],
+        &vec![0u8; blocks * 32],
+    )
+    .await
+}
+
+/// A staged row: `hash` is the hash of its only block, `None` for a zero-byte file (no block).
+pub(crate) async fn insert_staged(
+    tx: &mut DbTx,
+    session: &NewSession<'_>,
+    hash: Option<&Hash32>,
+) -> Result<(), DbError> {
+    match hash {
+        Some(hash) => insert_row(tx, session, &[1], hash.as_bytes()).await,
+        None => insert_row(tx, session, &[], &[]).await,
+    }
+}
+
+async fn insert_row(
+    tx: &mut DbTx,
+    session: &NewSession<'_>,
+    received: &[u8],
+    block_hashes: &[u8],
+) -> Result<(), DbError> {
     sqlx::query(INSERT)
         .bind(session.id)
         .bind(session.account)
@@ -134,8 +215,8 @@ pub(crate) async fn insert(tx: &mut DbTx, session: &NewSession<'_>) -> Result<()
         .bind(session.client_key)
         .bind(session.declared_size)
         .bind(session.block_count)
-        .bind(vec![0u8; blocks.div_ceil(8)])
-        .bind(vec![0u8; blocks * 32])
+        .bind(received)
+        .bind(block_hashes)
         .bind(session.now.as_unix_micros())
         .bind(session.expires_at.as_unix_micros())
         .execute(tx.conn())

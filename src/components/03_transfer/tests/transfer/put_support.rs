@@ -160,26 +160,31 @@ impl Rig {
         std::fs::read(sunnycloud_blobstore::blob_path(&self.volume, blob)).expect("blob file")
     }
 
-    /// The plaintext of the blob, read back through the real 04 reader.
+    /// The plaintext of the session's blob, read back through the real 04 reader.
     pub async fn read_back(&self, upload: &Upload) -> Vec<u8> {
+        self.read_blob(upload.blob, upload.data.len()).await
+    }
+
+    /// The plaintext of a blob of `len` bytes, read back through the real 04 reader.
+    pub async fn read_blob(&self, blob: Uuid, len: usize) -> Vec<u8> {
         use contracts::BlobReader;
         let mut conn = self.owner().await;
         let (wrapped_key, master_key_id): (Vec<u8>, i16) = sqlx::query_as(
             "SELECT wrapped_key, master_key_id FROM blobs WHERE id = $1 AND account_id = $2",
         )
-        .bind(upload.blob)
+        .bind(blob)
         .bind(self.account)
         .fetch_one(&mut conn)
         .await
         .expect("blob key");
         crate::start_support::close(conn).await;
-        let size = i64::try_from(upload.data.len()).expect("size");
+        let size = i64::try_from(len).expect("size");
         let mut stream = self
             .reader
-            .open(upload.blob, &wrapped_key, master_key_id, size, None)
+            .open(blob, &wrapped_key, master_key_id, size, None)
             .await
             .expect("open blob");
-        let mut plain = Vec::with_capacity(upload.data.len());
+        let mut plain = Vec::with_capacity(len);
         while let Some(chunk) = std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await {
             plain.extend_from_slice(&chunk.expect("authentic chunk"));
         }

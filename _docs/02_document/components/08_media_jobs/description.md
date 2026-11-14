@@ -24,11 +24,11 @@ The API-side crate `media-api` holds everything else in this document, including
 | `DerivedOpener` | `open_derived(account, node, kind)` and `open_derived_for(live_file, kind)`, both return a `BlobRef` (defined in 04) | 11 (thumbnail and transcode routes; 11 streams the `BlobRef` through 03's `DownloadService`), 11 for the public share thumbnail after 06 authorised the token |
 | `WorkerAuthenticator` | `authenticate(bearer)` | 11 (internal listener) |
 | `WorkerJobs` | `claim`, `extend_lease`, `release`, `complete_skipped`, `fail`, `open_input`, `accept_output`, `record_status` | 11 (internal routes) |
-| `AccountLifecycleHook` | `initialize(tx, account)` (no-op), `erase_batch(account, limit) -> EraseProgress{remaining}`: deletes the account's `jobs`, then its `derived` rows with `GcQueue Due::Now` | 07 `DeletionPurger` drives it; registered by 12 |
-| `MediaAdmin` | `requeue_dead(filter)`, `stats()` | 12 (`admin media-requeue`, `admin media-stats`) |
-| `BlobOwnerCleanup` (derived rows) | `remove_owner_rows(tx, blob_id)` | 04 (GC) |
+| `AccountLifecycleHook` (impl `MediaLifecycle`) | `initialize(tx, account)` (no-op), `erase_batch(account, limit) -> EraseProgress{remaining}`: deletes up to `limit` of the account's `jobs`, then with the rest of `limit` its `derived` rows with `GcQueue Due::Now`; `remaining` = jobs plus derived rows left | 07 `DeletionPurger` drives it; registered by 12 |
+| `MediaAdmin` (impl `MediaAdminService`, also the scrape probe of the queue gauges) | `requeue_dead(filter)`, `stats()` | 12 (`admin media-requeue`, `admin media-stats`) |
+| `BlobOwnerCleanup` (derived rows; impl `MediaLifecycle`) | `remove_owner_rows(tx, blob_id)` | 04 (GC) |
 | `Janitor` x2 (`JobReaper`, `DerivedJanitor`) | `name()`, `run_cycle(now)` | 12 scheduler |
-| `HealthContributor`, `DoctorCheck` | dead jobs, queue depth, worker status (section 4) | 07, 12 |
+| `HealthContributor` (`media`), `DoctorCheck` (`media_worker`, no tags), both impl `MediaHealth` | worker status levels; dead jobs and queue depth in the health detail (section 4) | 07, 12 |
 
 **Requires**
 | Port | Provider | Used for |
@@ -92,10 +92,10 @@ As built (AZ-3842, 2026-11-13): the holder check accepts a running job under a l
 `authenticate(bearer: &str) -> Result<WorkerIdentity, WorkerAuthError>`: SHA-256 of the presented secret compared in constant time with the loaded digests of `worker_api_token` and, during rotation, `worker_api_token_next`. Failure is `Forbidden` for every cause (no header, wrong secret, user session token, device token) so nothing distinguishes them.
 
 ### Worker status
-`record_status(worker_id, WorkerStatus{decoder_ok, image_age_days})` upserts `worker_status(worker_id PK, seen_at, image_age_days, decoder_ok)`; `seen_at` is the API clock. The supervisor sends it every `worker_status_interval` (30 s). 08's `DoctorCheck` reads the table: no row seen within three intervals is Warn ("no worker"; Fail when jobs are queued or dead); `decoder_ok = false` is Fail; `image_age_days` above 14 is Warn (weekly rebuild rule, AC-63). `JobReaper` deletes rows not seen for `job_terminal_ttl`. This is the only worker-level heartbeat; there is no direct transport from the supervisor to the CLI.
+`record_status(worker_id, WorkerStatus{decoder_ok, image_age_days})` upserts `worker_status(worker_id PK, seen_at, image_age_days, decoder_ok)`; `seen_at` is the API clock. The supervisor sends it every `worker_status_interval` (30 s; `MediaConfig` reads the key, whose `sc_config` readers must include the API for a non-default value to reach it, AZ-3846 proposal). 08's `DoctorCheck` reads the table: no row seen within three intervals is Warn ("no worker"; Fail when jobs are queued or dead); `decoder_ok = false` is Fail; `image_age_days` above 14 is Warn (weekly rebuild rule, AC-63). The admin health item is `Degraded` on Warn and `Down` on Fail, its detail the cause plus queue depth and dead jobs (no threshold of their own). `JobReaper` deletes rows not seen for `job_terminal_ttl`. This is the only worker-level heartbeat; there is no direct transport from the supervisor to the CLI.
 
 ### Maintenance (bounded `run_cycle`, scheduled by 12)
-`JobReaper` (reap + purge terminal jobs + purge stale `worker_status`); `DerivedJanitor` (derived rows whose `(account_id, content_hash)` has no remaining revision: delete the row and `GcQueue Due::Now`; runs after retention purge); `BlobOwnerCleanup::remove_owner_rows` for derived rows hit by GC (called by 04).
+`JobReaper` (reap + purge terminal jobs + purge stale `worker_status`); `DerivedJanitor` (derived rows whose `(account_id, content_hash)` has no remaining revision: delete the row and `GcQueue Due::Now`, batches of 100 in system scope; runs after retention purge); `BlobOwnerCleanup::remove_owner_rows` for derived rows hit by GC (called by 04). The erase and the janitor lock the derived row first (`SKIP LOCKED`), then the blob row through the queue. Contract: `contracts/08_media_jobs/maintenance_ports.md`.
 
 ## 5. External API Specification
 
@@ -220,4 +220,4 @@ After: `contracts`, 04_blobstore, 03_transfer, 02_tree (ports), helpers. Paralle
 
 ## 15. Logging
 
-ERROR: output accept failed after retries, job reaped dead. WARN: lease lost, output rejected by sniffer or cap, auth failure on the internal listener (count only, no secret). INFO: job claimed/succeeded/dead (ids, kind, attempt, duration), reaper summary. Metrics: `jobs_queued`, `jobs_running`, `job_leases_expired_total`, `jobs_dead_total`, `job_duration_seconds{kind}`, `derived_bytes_total{kind}`, `worker_auth_failures_total` (refused worker bearers, no labels).
+ERROR: output accept failed after retries, job reaped dead. WARN: lease lost, output rejected by sniffer or cap, auth failure on the internal listener (count only, no secret). INFO: job claimed/succeeded/dead (ids, kind, attempt, duration), reaper summary. Metrics: `jobs_queued`, `jobs_running` (set from the table before each scrape), `job_leases_expired_total`, `jobs_dead_total`, `job_duration_seconds{kind}` (enqueue to `succeeded` or `dead`), `derived_bytes_total{kind}` (accepted output bytes), `kind` = job kind (`stills`, `poster`, `transcode`), `worker_auth_failures_total` (refused worker bearers, no labels); contract `contracts/08_media_jobs/media_admin_health.md`.

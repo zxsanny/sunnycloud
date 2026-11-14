@@ -72,6 +72,7 @@ mod tests {
             job_terminal_ttl: second,
             job_reap_interval: second,
             derived_janitor_interval: second,
+            worker_status_interval: second,
             derived_max_thumb: 1,
             derived_max_preview: 1,
             derived_max_transcode: 1,

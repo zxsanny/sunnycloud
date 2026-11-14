@@ -66,6 +66,20 @@ mod tests {
     }
 
     #[test]
+    fn a_staged_file_has_no_block_when_empty_and_one_up_to_two_mib() {
+        // Arrange
+        let cases = [(0, 0), (1, 1), (2 * MIB - 1, 1), (2 * MIB, 1)];
+
+        for (size, expected) in cases {
+            // Act
+            let blocks = block_count(size).expect("block count");
+
+            // Assert
+            assert_eq!(blocks, expected, "size {size}");
+        }
+    }
+
+    #[test]
     fn expected_length_is_two_mib_or_what_remains() {
         // Arrange
         let two = 2 * MIB as u64;

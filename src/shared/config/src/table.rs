@@ -217,7 +217,7 @@ settings_table! {
     worker_scratch_interactive: Opt<Text> = unset(W);
     worker_scratch_general: Opt<Text> = unset(W);
     worker_claim_poll_interval: Dur = dflt("500ms", W);
-    worker_status_interval: Dur = dflt("30s", W);
+    worker_status_interval: Dur = dflt("30s", AW);
     decoder_silence_timeout: Dur = dflt("20s", W);
     decoder_cancel_grace: Dur = dflt("5s", W);
     worker_max_input_photo: Size = dflt("256MiB", W);

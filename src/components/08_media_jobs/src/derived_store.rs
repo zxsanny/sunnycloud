@@ -24,6 +24,7 @@ use uuid::Uuid;
 use crate::config::MediaConfig;
 use crate::derived_opener::output_kind;
 use crate::derived_repo::{self, NewDerived};
+use crate::job_metrics::{JobMetrics, KindLabel};
 use crate::job_output_repo;
 use crate::job_repo::{self, HeldJob};
 use crate::output_rules::{self, Dimensions, OutputCaps};
@@ -44,6 +45,7 @@ pub struct DerivedStore {
     tree: Arc<dyn TreeReader>,
     blobs: BlobPorts,
     caps: OutputCaps,
+    metrics: Arc<JobMetrics>,
 }
 
 /// Why the row transaction rolled back.
@@ -82,6 +84,7 @@ impl DerivedStore {
         tree: Arc<dyn TreeReader>,
         blobs: BlobPorts,
         config: &MediaConfig,
+        metrics: Arc<JobMetrics>,
     ) -> Self {
         DerivedStore {
             db,
@@ -89,6 +92,7 @@ impl DerivedStore {
             tree,
             blobs,
             caps: OutputCaps::from_config(config),
+            metrics,
         }
     }
 
@@ -277,6 +281,7 @@ impl DerivedStore {
     ) -> Result<AcceptOutcome, WorkerJobError> {
         let job = admitted.job;
         let blob_id = written.plan.blob_id;
+        let size = written.size;
         let now = self.clock.now_utc();
         let row = NewDerived {
             account: job.account,
@@ -310,8 +315,9 @@ impl DerivedStore {
                         .gc
                         .schedule_in_tx(tx, blob_id, GcReason::DerivedRemoved, Due::Now)
                         .await?;
-                    return Ok(AcceptOutcome::AlreadyPresent);
+                    return Ok((AcceptOutcome::AlreadyPresent, None));
                 }
+                let mut closed = None;
                 if running {
                     let present = derived_repo::kinds_present(
                         tx,
@@ -321,14 +327,26 @@ impl DerivedStore {
                     )
                     .await?;
                     if output_rules::all_outputs_present(job.kind, &present) {
-                        job_output_repo::close_derived(tx, job.account, job_id, now).await?;
+                        closed =
+                            job_output_repo::close_derived(tx, job.account, job_id, now).await?;
                     }
                 }
-                Ok(AcceptOutcome::Accepted)
+                Ok((AcceptOutcome::Accepted, closed))
             })
             .await;
         match result {
-            Ok(outcome) => Ok(outcome),
+            Ok((outcome, closed)) => {
+                if outcome == AcceptOutcome::Accepted {
+                    let bytes = u64::try_from(size).unwrap_or(0);
+                    self.metrics
+                        .derived_bytes
+                        .inc_by(KindLabel(job.kind), bytes);
+                }
+                if let Some(closed) = closed {
+                    self.metrics.succeeded(closed);
+                }
+                Ok(outcome)
+            }
             Err(RunError::Closure(failure)) => {
                 self.discard(blob_id).await;
                 Err(match failure {

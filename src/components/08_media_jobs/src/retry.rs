@@ -15,6 +15,13 @@ pub(crate) fn add(now: Timestamp, by: Duration) -> Timestamp {
     now.checked_add(by).unwrap_or(FAR_FUTURE)
 }
 
+/// Earliest instant: a cut-off that does not fit selects nothing older than it.
+const FAR_PAST: Timestamp = Timestamp::from_unix_micros(i64::MIN);
+
+pub(crate) fn sub(now: Timestamp, by: Duration) -> Timestamp {
+    now.checked_sub(by).unwrap_or(FAR_PAST)
+}
+
 /// The base delay doubled for every attempt after the first: attempt 1 waits `base`, attempt 2 `2 * base`.
 pub(crate) fn retry_delay(base: Duration, attempts: u32) -> Duration {
     let doublings = attempts.saturating_sub(1).min(31);

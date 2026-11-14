@@ -26,6 +26,8 @@ pub struct Queue {
     pub queue: Arc<JobQueue>,
     pub clock: Arc<ManualClock>,
     pub metrics: Arc<JobMetrics>,
+    /// The registry the job metrics are in, for scrapes.
+    pub registry: Metrics,
     pub account: Uuid,
     pub revision: Uuid,
 }
@@ -67,17 +69,13 @@ impl Queue {
 
     pub async fn with_fixture(fixture: Fixture) -> Queue {
         let clock = Arc::new(ManualClock::new(START));
-        let metrics = Arc::new(
-            JobMetrics::register(
-                &Metrics::new(BuildInfo {
-                    version: "test",
-                    commit: "test",
-                    test_clock: true,
-                })
-                .expect("metrics"),
-            )
-            .expect("job metrics"),
-        );
+        let registry = Metrics::new(BuildInfo {
+            version: "test",
+            commit: "test",
+            test_clock: true,
+        })
+        .expect("metrics");
+        let metrics = Arc::new(JobMetrics::register(&registry).expect("job metrics"));
         let queue = Arc::new(JobQueue::new(
             fixture.api.clone(),
             clock.clone(),
@@ -93,6 +91,7 @@ impl Queue {
             queue,
             clock,
             metrics,
+            registry,
             account,
             revision,
         }
@@ -215,8 +214,13 @@ impl Queue {
     }
 
     pub async fn finish(self) {
-        let Queue { fixture, queue, .. } = self;
-        drop(queue);
+        let Queue {
+            fixture,
+            queue,
+            registry,
+            ..
+        } = self;
+        drop((queue, registry));
         fixture.finish().await;
     }
 }

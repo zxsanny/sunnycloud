@@ -3,7 +3,8 @@
 //! the wire codes of the 08 errors, the enqueue, claim, lease, failure and maintenance statements, and the job
 //! planning effect at commit (AZ-3841), also inside the real 02 `publish`, and the thumbnail states and derived
 //! lookups (AZ-3844), the acceptance of worker outputs and the worker input (AZ-3842), and the worker
-//! authentication and the `WorkerJobs` facade (AZ-3843).
+//! authentication and the `WorkerJobs` facade (AZ-3843), the erase hook, blob owner cleanup and janitors
+//! (AZ-3845), and the operator port, worker presence and media metrics (AZ-3846).
 
 mod accept_doubles;
 mod accept_input;
@@ -11,6 +12,7 @@ mod accept_once;
 mod accept_refuse;
 mod accept_store;
 mod accept_support;
+mod admin_health;
 mod blob_support;
 mod config;
 mod derived_open;
@@ -20,8 +22,12 @@ mod effect_priority;
 mod effect_rollback;
 mod effect_skip;
 mod effect_support;
+mod erase_hook;
 mod errors;
+mod janitors;
 mod keys;
+mod maint_support;
+mod metrics_scrape;
 mod migration;
 mod plans;
 mod publish_support;

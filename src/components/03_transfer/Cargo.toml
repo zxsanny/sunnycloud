@@ -18,6 +18,9 @@ sc_error = { path = "../../shared/error" }
 sc_ids = { path = "../../shared/ids_hashing" }
 sc_names = { path = "../../shared/names" }
 sc_observability = { path = "../../shared/observability" }
+# `stage_small` hands its verified body to the writer as a one-piece stream; the versions `contracts` uses.
+bytes = { workspace = true }
+futures-core = { version = "0.3", default-features = false }
 # The repository modules run their statements on the transaction's connection; same features as sc_db.
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 thiserror = { workspace = true }
@@ -31,10 +34,6 @@ sunnycloud-blobstore = { path = "../04_blobstore" }
 sunnycloud-quota = { path = "../07a_quota" }
 # The audit writer the real 04 keyring takes.
 sc_audit = { path = "../../shared/audit" }
-# The fault-injecting BlobWriter decorator of the tests takes `Bytes` blocks.
-bytes = { workspace = true }
-# The request bodies of the put_block tests are hand-written streams; the version `contracts` uses.
-futures-core = { version = "0.3", default-features = false }
 # Per-test PostgreSQL databases.
 sc_testdb = { path = "../../shared/testdb" }
 # The boundary-backed `AccountGuard` double (AZ-4250).

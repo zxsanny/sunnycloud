@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::job_queue::{JobQueue, Priority};
 use crate::planner::JobPlanner;
-use crate::{derived_repo, job_repo};
+use crate::{derived_repo, enqueue_repo};
 
 /// Built per `publish` call for the committing account (`CommitActor::account_id`; `PublishedEntry` carries none).
 pub struct MediaEnqueueEffect {
@@ -70,7 +70,7 @@ impl MediaEnqueueEffect {
             return Ok(self.planner.priority(true, 0));
         }
         let queued =
-            job_repo::count_queued(tx, self.account_id, self.planner.count_limit()).await?;
+            enqueue_repo::count_queued(tx, self.account_id, self.planner.count_limit()).await?;
         Ok(self.planner.priority(false, queued))
     }
 }

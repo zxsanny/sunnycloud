@@ -1,7 +1,7 @@
 //! `PgUploadService` on the real 02 reader, 04 writer and registry (a temporary volume) and 07a ledger, all on one
 //! test database. The account guard is the port backed at its boundary (the real one is wired by E-14/c15). File
-//! creation can be made to fail through a thin decorator that otherwise delegates to the real writer. A restart
-//! is a new `PgUploadService` over the same ports (an empty progress table).
+//! creation and the quota reservation can be made to fail through thin decorators that otherwise delegate to the
+//! real writer and ledger. A restart is a new `PgUploadService` over the same ports (an empty progress table).
 
 use std::fs;
 use std::path::PathBuf;
@@ -19,13 +19,13 @@ use sunnycloud_blobstore::{
     BlobCatalog, BlobRegistry, BlobstoreConfig, FileBlobReader, FileBlobWriter, MasterKeyring,
     SyncBarrier,
 };
-use sunnycloud_quota::{PgQuotaLedger, QuotaConfig};
+use sunnycloud_quota::{PgQuotaAdmin, PgQuotaLedger, QuotaConfig};
 use sunnycloud_testkit::StateGuard;
 use sunnycloud_transfer::{PgUploadService, TransferConfig, UploadPorts};
 use sunnycloud_tree::{PgTreeReader, TreeConfig};
 use uuid::Uuid;
 
-use crate::start_ports::FaultyWriter;
+use crate::start_ports::{FaultyLedger, FaultyWriter};
 use crate::support::{Fixture, account};
 
 pub const MIB: i64 = 1 << 20;
@@ -47,7 +47,8 @@ impl Drop for Scratch {
 struct Parts {
     config: TransferConfig,
     tree: Arc<PgTreeReader>,
-    quota: Arc<PgQuotaLedger>,
+    quota: Arc<FaultyLedger>,
+    quota_admin: Arc<PgQuotaAdmin>,
     registry: Arc<BlobRegistry>,
     catalog: Arc<BlobCatalog>,
 }
@@ -57,6 +58,7 @@ pub struct Rig {
     pub service: Arc<PgUploadService>,
     parts: Parts,
     pub writer: Arc<FaultyWriter>,
+    pub ledger: Arc<FaultyLedger>,
     pub reader: FileBlobReader,
     pub clock: Arc<ManualClock>,
     pub account: Uuid,
@@ -73,6 +75,15 @@ impl Rig {
 
     /// As [`Rig::new`] with another transfer section.
     pub async fn with_config(config: TransferConfig) -> Rig {
+        Rig::build(config, 0).await
+    }
+
+    /// As [`Rig::new`] on a volume whose free-space floor is its whole size: the real 04 writer refuses every file.
+    pub async fn below_floor() -> Rig {
+        Rig::build(transfer_config(), u64::MAX).await
+    }
+
+    async fn build(config: TransferConfig, free_reserve: u64) -> Rig {
         let fixture = Fixture::new().await;
         let clock = sc_testdb::clock_at_start();
         let account = Uuid::new_v4();
@@ -85,7 +96,7 @@ impl Rig {
         let scratch = Scratch(dir.clone());
         let key_file = dir.join("master.key");
         fs::write(&key_file, [0x11u8; 32]).expect("key file");
-        let blob_config = blob_config(&volume, &key_file);
+        let blob_config = blob_config(&volume, &key_file, free_reserve);
         let audit = AuditWriter::new(fixture.api.clone(), clock.clone());
         let keyring = Arc::new(MasterKeyring::new(
             blob_config.clone(),
@@ -105,12 +116,15 @@ impl Rig {
             .expect("writer");
         let writer = Arc::new(FaultyWriter::new(real));
         let registry = BlobRegistry::new(&blob_config, clock.clone()).expect("registry");
+        let quota = QuotaConfig {
+            default_quota_bytes: 10 * GIB,
+        };
+        let ledger = Arc::new(FaultyLedger::new(PgQuotaLedger::new(quota)));
         let parts = Parts {
             config,
             tree: Arc::new(PgTreeReader::new(fixture.api.clone(), &tree_config())),
-            quota: Arc::new(PgQuotaLedger::new(QuotaConfig {
-                default_quota_bytes: 10 * GIB,
-            })),
+            quota: ledger.clone(),
+            quota_admin: Arc::new(PgQuotaAdmin::new(fixture.api.clone(), quota)),
             registry: Arc::new(registry),
             catalog: Arc::new(BlobCatalog::new(fixture.api.clone())),
         };
@@ -120,6 +134,7 @@ impl Rig {
             service: Arc::new(service),
             parts,
             writer,
+            ledger,
             reader,
             clock,
             account,
@@ -205,10 +220,11 @@ impl Rig {
             service,
             parts,
             writer,
+            ledger,
             reader,
             ..
         } = self;
-        drop((service, parts, writer, reader));
+        drop((service, parts, writer, ledger, reader));
         fixture.finish().await;
     }
 }
@@ -226,6 +242,7 @@ fn instance(
             guard: Arc::new(StateGuard::default()),
             tree: parts.tree.clone(),
             quota: parts.quota.clone(),
+            quota_admin: parts.quota_admin.clone(),
             writer: writer.clone(),
             registry: parts.registry.clone(),
             catalog: parts.catalog.clone(),
@@ -433,14 +450,18 @@ fn tree_config() -> TreeConfig {
     }
 }
 
-fn blob_config(volume: &std::path::Path, key_file: &std::path::Path) -> BlobstoreConfig {
+fn blob_config(
+    volume: &std::path::Path,
+    key_file: &std::path::Path,
+    free_reserve: u64,
+) -> BlobstoreConfig {
     BlobstoreConfig {
         blob_root: Some(volume.to_string_lossy().into_owned()),
         retention: Duration::from_secs(7 * 86_400),
         orphan_sweep_age: Duration::from_secs(86_400),
         orphan_mode: "report".to_owned(),
         orphan_sweep_interval: Duration::from_secs(3600),
-        blob_free_reserve: 0,
+        blob_free_reserve: free_reserve,
         blob_free_reserve_percent: 100,
         gc_interval: Duration::from_secs(60),
         gc_batch: 100,

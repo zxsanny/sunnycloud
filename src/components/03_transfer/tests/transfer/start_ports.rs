@@ -1,15 +1,18 @@
 //! The port doubles of the `start_upload` and `put_block` tests, each at its boundary: a writer decorator that
 //! delegates to the real 04 writer, can make file creation fail, counts block writes and can hold or fail the
-//! group fdatasync wait. The registry is the real 04 one, through the port; the account guard is
-//! `sunnycloud_testkit::StateGuard`.
+//! group fdatasync wait; a ledger decorator that delegates to the real 07a ledger and can make `reserve` fail.
+//! The registry is the real 04 one, through the port; the account guard is `sunnycloud_testkit::StateGuard`.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use contracts::{
-    BlobError, BlobHandle, BlobPlan, BlobWriter, ByteStream, DurableToken, WrittenBlob, async_trait,
+    BlobError, BlobHandle, BlobPlan, BlobWriter, ByteStream, DurableToken, QuotaLedger,
+    QuotaLedgerError, Reserved, WrittenBlob, async_trait,
 };
+use sc_db::DbTx;
 use sunnycloud_blobstore::FileBlobWriter;
+use sunnycloud_quota::PgQuotaLedger;
 use tokio::sync::{Notify, Semaphore};
 use uuid::Uuid;
 
@@ -37,6 +40,7 @@ pub struct FaultyWriter {
     fault: Mutex<CreateFault>,
     durable: Mutex<DurableFault>,
     writes: AtomicUsize,
+    completes: AtomicUsize,
     parked: AtomicUsize,
     parked_changed: Notify,
     gate: Semaphore,
@@ -49,6 +53,7 @@ impl FaultyWriter {
             fault: Mutex::new(CreateFault::None),
             durable: Mutex::new(DurableFault::None),
             writes: AtomicUsize::new(0),
+            completes: AtomicUsize::new(0),
             parked: AtomicUsize::new(0),
             parked_changed: Notify::new(),
             gate: Semaphore::new(0),
@@ -66,6 +71,11 @@ impl FaultyWriter {
     /// `write_block` calls so far.
     pub fn writes(&self) -> usize {
         self.writes.load(Ordering::SeqCst)
+    }
+
+    /// Successful `write_complete` calls so far: files written whole.
+    pub fn completes(&self) -> usize {
+        self.completes.load(Ordering::SeqCst)
     }
 
     /// Returns once `count` calls are held in `await_durable` (in all, since the writer was built).
@@ -153,10 +163,67 @@ impl BlobWriter for FaultyWriter {
         size: i64,
         body: ByteStream,
     ) -> Result<WrittenBlob, BlobError> {
-        self.inner.write_complete(account, size, body).await
+        let written = self.inner.write_complete(account, size, body).await?;
+        self.completes.fetch_add(1, Ordering::SeqCst);
+        Ok(written)
     }
 
     async fn discard(&self, blob_id: Uuid) -> Result<(), BlobError> {
         self.inner.discard(blob_id).await
+    }
+}
+
+/// Delegates to the real ledger; while `fail_reserve` is set, `reserve` fails with `Unexpected` and changes
+/// nothing.
+pub struct FaultyLedger {
+    inner: PgQuotaLedger,
+    fail_reserve: AtomicBool,
+}
+
+impl FaultyLedger {
+    pub fn new(inner: PgQuotaLedger) -> Self {
+        FaultyLedger {
+            inner,
+            fail_reserve: AtomicBool::new(false),
+        }
+    }
+
+    pub fn fail_reserve(&self, fail: bool) {
+        self.fail_reserve.store(fail, Ordering::SeqCst);
+    }
+}
+
+#[async_trait]
+impl QuotaLedger for FaultyLedger {
+    async fn reserve(
+        &self,
+        tx: &mut DbTx,
+        account: Uuid,
+        bytes: i64,
+    ) -> Result<Reserved, QuotaLedgerError> {
+        if self.fail_reserve.load(Ordering::SeqCst) {
+            return Err(QuotaLedgerError::Unexpected(Box::new(
+                std::io::Error::other("injected"),
+            )));
+        }
+        self.inner.reserve(tx, account, bytes).await
+    }
+
+    async fn release_reservation(
+        &self,
+        tx: &mut DbTx,
+        account: Uuid,
+        bytes: i64,
+    ) -> Result<(), QuotaLedgerError> {
+        self.inner.release_reservation(tx, account, bytes).await
+    }
+
+    async fn adjust_used(
+        &self,
+        tx: &mut DbTx,
+        account: Uuid,
+        delta: i64,
+    ) -> Result<(), QuotaLedgerError> {
+        self.inner.adjust_used(tx, account, delta).await
     }
 }

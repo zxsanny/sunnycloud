@@ -47,6 +47,7 @@ fn unset_keys_take_the_defaults() {
     assert_eq!(config.job_terminal_ttl, Duration::from_secs(14 * 86_400));
     assert_eq!(config.job_reap_interval, Duration::from_secs(60));
     assert_eq!(config.derived_janitor_interval, Duration::from_secs(3600));
+    assert_eq!(config.worker_status_interval, Duration::from_secs(30));
     assert_eq!(config.derived_max_thumb, 5 * MIB);
     assert_eq!(config.derived_max_preview, 20 * MIB);
     assert_eq!(config.derived_max_transcode, 10 * GIB);
@@ -158,6 +159,7 @@ fn validation_refuses_zero_durations_zero_caps_an_attempt_count_out_of_range_and
         job_terminal_ttl: Duration::ZERO,
         job_reap_interval: Duration::ZERO,
         derived_janitor_interval: Duration::ZERO,
+        worker_status_interval: Duration::ZERO,
         derived_max_thumb: 0,
         derived_max_preview: 0,
         derived_max_transcode: 0,
@@ -183,6 +185,7 @@ fn validation_refuses_zero_durations_zero_caps_an_attempt_count_out_of_range_and
             "job_terminal_ttl",
             "job_reap_interval",
             "derived_janitor_interval",
+            "worker_status_interval",
             "job_attempts",
             "derived_max_thumb",
             "derived_max_preview",

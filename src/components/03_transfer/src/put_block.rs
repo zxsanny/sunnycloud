@@ -171,7 +171,10 @@ impl PgUploadService {
 
 /// Reads the whole body; it must hold exactly `expected` bytes. A body that ends early, runs on or fails
 /// while being sent is `LengthMismatch`.
-async fn read_block(mut body: ByteStream, expected: u64) -> Result<Vec<u8>, UploadError> {
+pub(crate) async fn read_block(
+    mut body: ByteStream,
+    expected: u64,
+) -> Result<Vec<u8>, UploadError> {
     let capacity = usize::try_from(expected).map_err(|_| UploadError::LengthMismatch)?;
     let mut block = Vec::with_capacity(capacity);
     while let Some(chunk) = std::future::poll_fn(|cx| body.as_mut().poll_next(cx)).await {

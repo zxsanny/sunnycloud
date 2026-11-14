@@ -12,9 +12,11 @@ use sc_observability::NoLabels;
 use uuid::Uuid;
 
 use crate::config::MediaConfig;
+use crate::enqueue_repo;
 use crate::error::JobQueueError;
+use crate::job_fail_repo::{FailPlan, Failed};
 use crate::job_metrics::JobMetrics;
-use crate::job_repo::{self, FailPlan, Failed, Lease, Next, PURGE_BATCH};
+use crate::job_repo::{self, Lease, Next, PURGE_BATCH};
 use crate::retry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,7 +88,7 @@ impl JobQueue {
         };
         let now = self.clock.now_utc();
         let inserted =
-            job_repo::enqueue(tx, new_id(self.clock.as_ref()), &spec, priority, now).await?;
+            enqueue_repo::enqueue(tx, new_id(self.clock.as_ref()), &spec, priority, now).await?;
         Ok(if inserted {
             EnqueueOutcome::Enqueued
         } else {
@@ -112,8 +114,11 @@ impl JobQueue {
         loop {
             match job_repo::claim(&self.db, lane, &lease).await? {
                 Next::Empty => return Ok(None),
-                Next::Exhausted { was_running } => {
-                    self.metrics.dead.inc(NoLabels);
+                Next::Exhausted {
+                    was_running,
+                    closed,
+                } => {
+                    self.metrics.died(closed);
                     if was_running {
                         self.metrics.leases_expired.inc(NoLabels);
                     }
@@ -157,8 +162,10 @@ impl JobQueue {
         outcome: SkipOutcome,
     ) -> Result<(), JobQueueError> {
         let now = self.clock.now_utc();
-        let held = job_repo::complete_skipped(&self.db, job_id, worker_id, now, outcome).await?;
-        held.then_some(()).ok_or(JobQueueError::LeaseLost)
+        let closed = job_repo::complete_skipped(&self.db, job_id, worker_id, now, outcome).await?;
+        let closed = closed.ok_or(JobQueueError::LeaseLost)?;
+        self.metrics.succeeded(closed);
+        Ok(())
     }
 
     /// `Dead` for a permanent failure or when this was the last attempt; otherwise back to `queued` after the
@@ -182,8 +189,8 @@ impl JobQueue {
         match job_repo::fail(&self.db, job_id, &plan).await? {
             Failed::LeaseLost => Err(JobQueueError::LeaseLost),
             Failed::Requeued => Ok(FailResult::Requeued),
-            Failed::Dead => {
-                self.metrics.dead.inc(NoLabels);
+            Failed::Dead(closed) => {
+                self.metrics.died(closed);
                 Ok(FailResult::Dead)
             }
         }
@@ -192,10 +199,14 @@ impl JobQueue {
     /// Marks `dead` the running jobs whose lease expired with their attempts used up. Expired leases with
     /// attempts left stay claimable and are counted when a claim takes them over.
     pub async fn reap(&self, now: Timestamp) -> Result<ReapStats, JobQueueError> {
-        let dead = job_repo::reap(&self.db, now, self.max_attempts).await?;
-        self.metrics.leases_expired.inc_by(NoLabels, dead);
-        self.metrics.dead.inc_by(NoLabels, dead);
-        Ok(ReapStats { dead })
+        let closed = job_repo::reap(&self.db, now, self.max_attempts).await?;
+        for job in &closed {
+            self.metrics.leases_expired.inc(NoLabels);
+            self.metrics.died(*job);
+        }
+        Ok(ReapStats {
+            dead: u64::try_from(closed.len()).unwrap_or(u64::MAX),
+        })
     }
 
     /// Deletes terminal jobs finished before `before`, one short batch per transaction, until none is left.

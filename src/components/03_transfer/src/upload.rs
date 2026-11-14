@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use contracts::{
     AccountGuard, AccountGuardError, BlobCatalog, BlobError, BlobPlan, BlobRegistry, BlobWriter,
-    Fault, QuotaLedger, QuotaLedgerError, RegisterState, StartUpload, StartUploadOutcome, Started,
-    TreeReader, UploadError, WrittenOrPlanned,
+    Fault, QuotaAdmin, QuotaLedger, QuotaLedgerError, RegisterState, StartUpload,
+    StartUploadOutcome, Started, TreeReader, UploadError, WrittenOrPlanned,
 };
 use sc_clock::{Clock, Timestamp};
 use sc_db::{Db, DbError, DbTx, RunError, Scope};
@@ -46,7 +46,7 @@ pub enum StartFault {
     ExpiryOverflow,
 }
 
-/// The upload sessions of 03. `UploadService` itself is implemented once staging exists. `progress` holds the
+/// The upload sessions and staged uploads of 03 (`UploadService`, in `service`). `progress` holds the
 /// sessions started or touched by this process (decision 12: one API process), loaded lazily from their checkpoint
 /// row; `caps` the account and buffer in-flight caps.
 pub struct PgUploadService {
@@ -55,6 +55,7 @@ pub struct PgUploadService {
     guard: Arc<dyn AccountGuard>,
     tree: Arc<dyn TreeReader>,
     pub(crate) quota: Arc<dyn QuotaLedger>,
+    pub(crate) quota_admin: Arc<dyn QuotaAdmin>,
     pub(crate) writer: Arc<dyn BlobWriter>,
     pub(crate) registry: Arc<dyn BlobRegistry>,
     pub(crate) catalog: Arc<dyn BlobCatalog>,
@@ -64,19 +65,21 @@ pub struct PgUploadService {
     pub(crate) caps: InflightCaps,
 }
 
-/// The ports of the upload sessions: the account guard (01), the tree reader (02), the quota ledger (07a) and the
-/// blob writer, registry and catalog (04; the catalog serves an uploading blob's plan to the lazy load).
+/// The ports of the upload sessions: the account guard (01), the tree reader (02), the quota ledger and its view
+/// (07a; `stage_small` pre-checks the free room with `QuotaAdmin::view`) and the blob writer, registry and catalog
+/// (04; the catalog serves an uploading blob's plan to the lazy load).
 pub struct UploadPorts {
     pub guard: Arc<dyn AccountGuard>,
     pub tree: Arc<dyn TreeReader>,
     pub quota: Arc<dyn QuotaLedger>,
+    pub quota_admin: Arc<dyn QuotaAdmin>,
     pub writer: Arc<dyn BlobWriter>,
     pub registry: Arc<dyn BlobRegistry>,
     pub catalog: Arc<dyn BlobCatalog>,
 }
 
-/// Why the session transaction did not create a session.
-enum TxOutcome {
+/// Why the session (or staged row) transaction did not create its row.
+pub(crate) enum TxOutcome {
     Refused(UploadError),
     /// A concurrent start with the same key committed first; the key is read again.
     KeyTaken,
@@ -88,6 +91,7 @@ impl PgUploadService {
             guard,
             tree,
             quota,
+            quota_admin,
             writer,
             registry,
             catalog,
@@ -102,6 +106,7 @@ impl PgUploadService {
             guard,
             tree,
             quota,
+            quota_admin,
             writer,
             registry,
             catalog,
@@ -344,7 +349,7 @@ impl PgUploadService {
     }
 
     /// Counts and logs a quota, cap or floor refusal (ids only); every other error passes through as it is.
-    fn refused(&self, account: Uuid, error: UploadError) -> UploadError {
+    pub(crate) fn refused(&self, account: Uuid, error: UploadError) -> UploadError {
         let reason = match error {
             UploadError::QuotaExceeded => Rejection::Quota,
             UploadError::SessionCapReached => Rejection::SessionCap,
@@ -354,7 +359,7 @@ impl PgUploadService {
         if let Some(metrics) = &self.metrics {
             metrics.rejected(reason);
         }
-        log_warn!("upload start refused", account_id = account, err = &error);
+        log_warn!("upload refused", account_id = account, err = &error);
         error
     }
 }
@@ -375,12 +380,12 @@ fn check_request(request: &StartUpload) -> Result<(), UploadError> {
     Ok(())
 }
 
-fn stop(error: UploadError) -> TxOutcome {
+pub(crate) fn stop(error: UploadError) -> TxOutcome {
     TxOutcome::Refused(error)
 }
 
 /// The session insert lost the key to a concurrent start; any other failure is unexpected.
-fn key_taken(error: DbError) -> TxOutcome {
+pub(crate) fn key_taken(error: DbError) -> TxOutcome {
     match error {
         DbError::UniqueViolation {
             constraint: Some(ref constraint),
@@ -389,7 +394,7 @@ fn key_taken(error: DbError) -> TxOutcome {
     }
 }
 
-fn quota_error(error: QuotaLedgerError) -> UploadError {
+pub(crate) fn quota_error(error: QuotaLedgerError) -> UploadError {
     match error {
         QuotaLedgerError::QuotaExceeded { .. } => UploadError::QuotaExceeded,
         other => UploadError::Unexpected(Box::new(other)),

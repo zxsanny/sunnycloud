@@ -1,22 +1,24 @@
-//! The statements of the job queue. Enqueue runs on the caller's account-scoped transaction; every other
-//! operation runs in system scope in one short transaction of its own, because a claim has no account yet
-//! and the reaper, the purge and the requeue cross accounts.
+//! The system-scope transactions of 08 and the statements of the job queue they run. Enqueue runs on the
+//! caller's account-scoped transaction (`enqueue_repo`); every operation here runs in system scope in one short
+//! transaction of its own, because a claim has no account yet and the reaper, the purges, the derived janitor,
+//! the requeue, the queue counts and the worker status cross accounts. Each is the only `run_system` call site of
+//! its operation (`scripts/ci/run-system-allowlist.txt`); statements of other files run on the transaction it opens.
 //!
 //! Times are bound as microseconds of the API clock (`scripts/ci/check-no-sql-now.sh`). A lease is live while
 //! `available_at > now`; the instant of expiry itself is already expired and claimable.
 
-use std::time::Duration;
-
-use media_shared::policy::JobSpec;
-use media_shared::types::{ClaimedJob, Disposition, JobKind, Lane, SkipOutcome};
+use contracts::{Fault, GcQueue, GcReason};
+use media_shared::types::{ClaimedJob, JobKind, Lane, SkipOutcome};
 use sc_clock::Timestamp;
-use sc_db::{Db, DbError, DbTx, RunError};
+use sc_db::{Db, DbError, RunError};
 use sc_ids::FileHash;
 use sqlx::AssertSqlSafe;
 use uuid::Uuid;
 
+use crate::admin_repo::{self, JobCountRow, WorkerFacts};
+use crate::job_fail_repo::{self, FailPlan, Failed};
 use crate::job_names::{kind_name, lane_name, parse_kind, skip_name};
-use crate::retry;
+use crate::maintenance_repo;
 
 macro_rules! at {
     ($param:literal) => {
@@ -29,18 +31,27 @@ macro_rules! at {
 }
 pub(crate) use at;
 
-const ENQUEUE: &str = concat!(
-    "INSERT INTO jobs (id, account_id, revision_id, kind, content_hash, params_version, priority, status, \
-     available_at, created_at) VALUES ($1, $2, $3, $4, $5, $6::bigint, $7, 'queued', ",
-    at!("$8"),
-    ", ",
-    at!("$8"),
-    ") ON CONFLICT ON CONSTRAINT jobs_key DO NOTHING"
-);
+/// The `RETURNING` columns of a job that just became terminal, read by [`closed`].
+macro_rules! closed_columns {
+    () => {
+        "jobs.kind, extract(epoch FROM jobs.finished_at - jobs.created_at)::float8"
+    };
+}
+pub(crate) use closed_columns;
 
-/// The account's queued jobs, at most `$2`, on `jobs_queued_idx`.
-const COUNT_QUEUED: &str = "SELECT count(*) FROM (SELECT 1 FROM jobs WHERE account_id = $1 AND status = 'queued' \
-     LIMIT $2::bigint) AS queued";
+/// A job that just became `succeeded` or `dead`: its kind and the seconds from its enqueue to its close.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Closed {
+    pub kind: JobKind,
+    pub seconds: f64,
+}
+
+pub(crate) fn closed((kind, seconds): (String, f64)) -> Result<Closed, DbError> {
+    Ok(Closed {
+        kind: parse_kind(&kind)?,
+        seconds,
+    })
+}
 
 /// One statement: the next candidate of the lane in claim-index order is locked with `SKIP LOCKED`, and the
 /// update either leases it or, when its attempts are exhausted (an expired lease of the last attempt), marks it
@@ -63,7 +74,7 @@ const CLAIM: &str = concat!(
      last_error = CASE WHEN next.exhausted THEN COALESCE(jobs.last_error, 'lease_expired') ELSE jobs.last_error END \
      FROM next WHERE jobs.id = next.id \
      RETURNING jobs.id, jobs.kind, jobs.content_hash, jobs.params_version, jobs.attempts, next.exhausted, \
-     next.was = 'running'"
+     next.was = 'running', extract(epoch FROM jobs.finished_at - jobs.created_at)::float8"
 );
 
 const EXTEND: &str = concat!(
@@ -85,13 +96,9 @@ const SKIP: &str = concat!(
     "UPDATE jobs SET status = 'succeeded', outcome = $4, finished_at = ",
     at!("$3"),
     " WHERE id = $1 AND status = 'running' AND leased_by = $2 AND available_at > ",
-    at!("$3")
-);
-
-const LOCK_HOLDER: &str = concat!(
-    "SELECT attempts FROM jobs WHERE id = $1 AND status = 'running' AND leased_by = $2 AND available_at > ",
     at!("$3"),
-    " FOR UPDATE"
+    " RETURNING ",
+    closed_columns!()
 );
 
 /// The job running under the worker's live lease; with `$4`, also one closed `derived` while it held it (an output
@@ -103,24 +110,14 @@ const HELD: &str = concat!(
     ") OR ($4 AND status = 'succeeded' AND outcome = 'derived'))"
 );
 
-const MARK_DEAD: &str = concat!(
-    "UPDATE jobs SET status = 'dead', finished_at = ",
-    at!("$2"),
-    ", last_error = $3 WHERE id = $1"
-);
-
-const REQUEUE_FAILED: &str = concat!(
-    "UPDATE jobs SET status = 'queued', available_at = ",
-    at!("$2"),
-    ", leased_by = NULL, last_error = $3 WHERE id = $1"
-);
-
 const REAP: &str = concat!(
     "UPDATE jobs SET status = 'dead', finished_at = ",
     at!("$1"),
     ", last_error = COALESCE(last_error, 'lease_expired') \
      WHERE status = 'running' AND attempts >= $2::bigint AND available_at <= ",
-    at!("$1")
+    at!("$1"),
+    " RETURNING ",
+    closed_columns!()
 );
 
 const PURGE: &str = concat!(
@@ -151,50 +148,19 @@ pub(crate) fn micros(at: Timestamp) -> i64 {
     at.as_unix_micros()
 }
 
-fn overflow(what: &str) -> DbError {
+pub(crate) fn overflow(what: &str) -> DbError {
     DbError::Other(format!("stored {what} is out of range"))
 }
 
-pub(crate) async fn enqueue(
-    tx: &mut DbTx,
-    id: Uuid,
-    spec: &JobSpec,
-    priority: i16,
-    now: Timestamp,
-) -> Result<bool, DbError> {
-    let done = sqlx::query(ENQUEUE)
-        .bind(id)
-        .bind(spec.account_id)
-        .bind(spec.revision_id)
-        .bind(kind_name(spec.kind))
-        .bind(spec.content_hash.as_bytes().as_slice())
-        .bind(i64::from(spec.params_version))
-        .bind(priority)
-        .bind(micros(now))
-        .execute(tx.conn())
-        .await?;
-    Ok(done.rows_affected() == 1)
-}
-
-/// The number of queued jobs of `account`, counted up to `limit`.
-pub(crate) async fn count_queued(tx: &mut DbTx, account: Uuid, limit: u64) -> Result<u64, DbError> {
-    let limit = i64::try_from(limit).unwrap_or(i64::MAX);
-    let count: i64 = sqlx::query_scalar(COUNT_QUEUED)
-        .bind(account)
-        .bind(limit)
-        .fetch_one(tx.conn())
-        .await?;
-    u64::try_from(count).map_err(|_| overflow("queued count"))
-}
-
-/// id, kind, content hash, params_version, attempts, exhausted, was running.
-type ClaimRow = (Uuid, String, Vec<u8>, i16, i16, bool, bool);
+/// id, kind, content hash, params_version, attempts, exhausted, was running, seconds since enqueue when closed.
+type ClaimRow = (Uuid, String, Vec<u8>, i16, i16, bool, bool, Option<f64>);
 
 pub(crate) enum Next {
     Empty,
     /// The candidate's attempts were used up: it was marked dead, nothing is leased.
     Exhausted {
         was_running: bool,
+        closed: Closed,
     },
     Leased {
         job: ClaimedJob,
@@ -224,11 +190,16 @@ pub(crate) async fn claim(
             .bind(micros(lease.until))
             .fetch_optional(tx.conn())
             .await?;
-        let Some((id, kind, hash, params_version, attempts, exhausted, was_running)) = row else {
+        let Some((id, kind, hash, params_version, attempts, exhausted, was_running, seconds)) = row
+        else {
             return Ok(Next::Empty);
         };
         if exhausted {
-            return Ok(Next::Exhausted { was_running });
+            let seconds = seconds.ok_or_else(|| overflow("finished_at"))?;
+            return Ok(Next::Exhausted {
+                was_running,
+                closed: closed((kind, seconds))?,
+            });
         }
         let hash = <[u8; 32]>::try_from(hash).map_err(|_| overflow("content hash"))?;
         Ok::<_, DbError>(Next::Leased {
@@ -291,16 +262,16 @@ pub(crate) async fn complete_skipped(
     worker: &str,
     now: Timestamp,
     outcome: SkipOutcome,
-) -> Result<bool, RunError<DbError>> {
+) -> Result<Option<Closed>, RunError<DbError>> {
     db.run_system("job_complete_skipped", async |tx| {
-        let done = sqlx::query(SKIP)
+        let row: Option<(String, f64)> = sqlx::query_as(SKIP)
             .bind(job)
             .bind(worker)
             .bind(micros(now))
             .bind(skip_name(outcome))
-            .execute(tx.conn())
+            .fetch_optional(tx.conn())
             .await?;
-        Ok::<_, DbError>(done.rows_affected() == 1)
+        row.map(closed).transpose()
     })
     .await
 }
@@ -349,57 +320,13 @@ pub(crate) async fn held(
     .await
 }
 
-pub(crate) enum Failed {
-    LeaseLost,
-    Dead,
-    Requeued,
-}
-
-pub(crate) struct FailPlan<'a> {
-    pub worker: &'a str,
-    pub now: Timestamp,
-    pub disposition: Disposition,
-    pub max_attempts: i64,
-    pub backoff: Duration,
-    pub error: &'a str,
-}
-
-/// The holder row is locked and read, then closed `dead` or put back to `queued` with its backoff, in one
-/// transaction.
 pub(crate) async fn fail(
     db: &Db,
     job: Uuid,
     plan: &FailPlan<'_>,
 ) -> Result<Failed, RunError<DbError>> {
     db.run_system("job_fail", async |tx| {
-        let attempts: Option<i16> = sqlx::query_scalar(LOCK_HOLDER)
-            .bind(job)
-            .bind(plan.worker)
-            .bind(micros(plan.now))
-            .fetch_optional(tx.conn())
-            .await?;
-        let Some(attempts) = attempts else {
-            return Ok(Failed::LeaseLost);
-        };
-        let attempts = u32::try_from(attempts).map_err(|_| overflow("attempts"))?;
-        let dead = retry::is_dead(plan.disposition, i64::from(attempts), plan.max_attempts);
-        if dead {
-            sqlx::query(MARK_DEAD)
-                .bind(job)
-                .bind(micros(plan.now))
-                .bind(plan.error)
-                .execute(tx.conn())
-                .await?;
-            return Ok(Failed::Dead);
-        }
-        let retry_at = retry::add(plan.now, retry::retry_delay(plan.backoff, attempts));
-        sqlx::query(REQUEUE_FAILED)
-            .bind(job)
-            .bind(micros(retry_at))
-            .bind(plan.error)
-            .execute(tx.conn())
-            .await?;
-        Ok::<_, DbError>(Failed::Requeued)
+        job_fail_repo::fail_in(tx, job, plan).await
     })
     .await
 }
@@ -408,14 +335,14 @@ pub(crate) async fn reap(
     db: &Db,
     now: Timestamp,
     max_attempts: i64,
-) -> Result<u64, RunError<DbError>> {
+) -> Result<Vec<Closed>, RunError<DbError>> {
     db.run_system("job_reap", async |tx| {
-        let done = sqlx::query(REAP)
+        let rows: Vec<(String, f64)> = sqlx::query_as(REAP)
             .bind(micros(now))
             .bind(max_attempts)
-            .execute(tx.conn())
+            .fetch_all(tx.conn())
             .await?;
-        Ok::<_, DbError>(done.rows_affected())
+        rows.into_iter().map(closed).collect()
     })
     .await
 }
@@ -467,6 +394,48 @@ pub(crate) async fn record_status(
             .execute(tx.conn())
             .await?;
         Ok::<_, DbError>(())
+    })
+    .await
+}
+
+/// The `JobReaper`: `worker_status` rows not seen since `before` are deleted.
+pub(crate) async fn purge_worker_status(
+    db: &Db,
+    before: Timestamp,
+) -> Result<u64, RunError<DbError>> {
+    db.run_system("worker_status_purge", async |tx| {
+        maintenance_repo::purge_worker_status(tx, before).await
+    })
+    .await
+}
+
+/// One batch of the `DerivedJanitor`, across accounts: up to `limit` derived rows whose content has no revision
+/// left, their blobs queued `Due::Now` and the rows deleted in one transaction. Returns the rows deleted.
+pub(crate) async fn remove_orphan_derived(
+    db: &Db,
+    limit: u32,
+    gc: &dyn GcQueue,
+) -> Result<u64, RunError<Fault>> {
+    db.run_system("derived_janitor", async |tx| {
+        let blobs = maintenance_repo::lock_orphans(tx, limit).await?;
+        maintenance_repo::queue_and_delete(tx, gc, &blobs, GcReason::DerivedRemoved).await
+    })
+    .await
+}
+
+/// `MediaAdmin::stats` and the queue gauges: job counts per lane and status over every account.
+pub(crate) async fn job_counts(db: &Db) -> Result<Vec<JobCountRow>, RunError<DbError>> {
+    db.run_system("job_counts", async |tx| admin_repo::job_counts(tx).await)
+        .await
+}
+
+/// The doctor check and the health item: the worker rows seen since `since` and the queued and dead jobs.
+pub(crate) async fn worker_facts(
+    db: &Db,
+    since: Timestamp,
+) -> Result<WorkerFacts, RunError<DbError>> {
+    db.run_system("worker_facts", async |tx| {
+        admin_repo::worker_facts(tx, since).await
     })
     .await
 }

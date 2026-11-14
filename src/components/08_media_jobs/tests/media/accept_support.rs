@@ -105,6 +105,7 @@ impl Accept {
             tree(real_tree.clone()),
             ports,
             &media,
+            q.metrics.clone(),
         ));
         Accept {
             q,

@@ -16,6 +16,10 @@ pub struct MediaConfig {
     pub job_terminal_ttl: Duration,
     pub job_reap_interval: Duration,
     pub derived_janitor_interval: Duration,
+    /// The supervisor's report cadence; a worker not seen for three of them is absent (doctor, health item).
+    /// `sc_config` binds this key for the worker only, so the API reads its default (30 s) until the key's
+    /// readers include the API (open with the E-01 owner).
+    pub worker_status_interval: Duration,
     pub derived_max_thumb: u64,
     pub derived_max_preview: u64,
     pub derived_max_transcode: u64,
@@ -34,6 +38,7 @@ impl MediaConfig {
             job_terminal_ttl: settings.job_terminal_ttl.get(),
             job_reap_interval: settings.job_reap_interval.get(),
             derived_janitor_interval: settings.derived_janitor_interval.get(),
+            worker_status_interval: settings.worker_status_interval.get(),
             derived_max_thumb: settings.derived_max_thumb.bytes(),
             derived_max_preview: settings.derived_max_preview.bytes(),
             derived_max_transcode: settings.derived_max_transcode.bytes(),
@@ -54,6 +59,7 @@ impl MediaConfig {
             ("job_terminal_ttl", self.job_terminal_ttl),
             ("job_reap_interval", self.job_reap_interval),
             ("derived_janitor_interval", self.derived_janitor_interval),
+            ("worker_status_interval", self.worker_status_interval),
         ] {
             if value.is_zero() {
                 problems.push(out_of_range(key, "1ms", "no ceiling"));

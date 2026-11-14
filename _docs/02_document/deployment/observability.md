@@ -75,14 +75,14 @@ All names below are written without their prefix; the exported names carry the p
 
 | Metric | Type | Labels | Use |
 |--------|------|--------|-----|
-| `jobs_queued` | gauge | `kind` (`thumbnail`, `transcode`) | Queue depth |
+| `jobs_queued`, `jobs_running` | gauge | | Queue depth and jobs in progress, set at scrape from the `jobs` table (08) |
 | `jobs_oldest_age_seconds` | gauge | `kind` | "Is it stuck?" |
 | `jobs_total` | counter | `kind`, `result` (`done`, `failed`, `retried`, `timed_out`, `skipped_compliant`) | AC-11 |
-| `job_duration_seconds` | histogram | `kind` | |
+| `job_duration_seconds` | histogram | `kind` (job kind: `stills`, `poster`, `transcode`) | Enqueue to succeeded or dead |
 | `thumbnail_ready_seconds` | histogram | | Upload completion to thumbnail (AC-10) |
 | `job_leases_expired_total` | counter | | Crashed or stalled workers |
 | `decoder_kills_total` | counter | `reason` (`stall`, `timeout`, `memory`) | AC-45 |
-| `derived_bytes_total`, `original_bytes_total` | counter | `kind` | Ratio for AC-44 |
+| `derived_bytes_total`, `original_bytes_total` | counter | `kind` (job kind) | Ratio for AC-44 |
 | `worker_selfcheck_ok` | gauge | | 1 when the decoder proved isolation at start (AC-25) |
 | `worker_decoder_build_timestamp_seconds` | gauge | | Age of the decoder image (AC-63) |
 

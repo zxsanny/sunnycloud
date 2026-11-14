@@ -4,7 +4,7 @@ use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx};
 use uuid::Uuid;
 
-use crate::job_repo::{at, micros};
+use crate::job_repo::{Closed, at, closed, closed_columns, micros};
 
 /// The holder check of `job_repo::HELD` (closed `derived` allowed) again, now with the row locked: concurrent posts for one job
 /// run their transactions one after the other. The column is true while the job is running.
@@ -18,7 +18,8 @@ const LOCK_FOR_OUTPUT: &str = concat!(
 const CLOSE_DERIVED: &str = concat!(
     "UPDATE jobs SET status = 'succeeded', outcome = 'derived', finished_at = ",
     at!("$3"),
-    " WHERE id = $1 AND account_id = $2 AND status = 'running'"
+    " WHERE id = $1 AND account_id = $2 AND status = 'running' RETURNING ",
+    closed_columns!()
 );
 
 /// `None` when the worker no longer holds the job; otherwise whether it is still running.
@@ -38,17 +39,18 @@ pub(crate) async fn lock_for_output(
         .await?)
 }
 
+/// `None` when the job was no longer running.
 pub(crate) async fn close_derived(
     tx: &mut DbTx,
     account: Uuid,
     job: Uuid,
     now: Timestamp,
-) -> Result<(), DbError> {
-    sqlx::query(CLOSE_DERIVED)
+) -> Result<Option<Closed>, DbError> {
+    let row: Option<(String, f64)> = sqlx::query_as(CLOSE_DERIVED)
         .bind(job)
         .bind(account)
         .bind(micros(now))
-        .execute(tx.conn())
+        .fetch_optional(tx.conn())
         .await?;
-    Ok(())
+    row.map(closed).transpose()
 }

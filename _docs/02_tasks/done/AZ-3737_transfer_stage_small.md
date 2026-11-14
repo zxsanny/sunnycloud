@@ -98,5 +98,5 @@ Then the file is discarded, 0 rows remain and reserved bytes are unchanged
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| The error for a body above 2 MiB is not named (IT-03-5 says "LengthMismatch or size error") | E-14 owner | open | Low |
-| `AccountNotActive` for staging needs the `AccountGuard` port, which 03's Ports table does not list (see E-14/c04) | E-14 owner, E-00 | open | Medium |
+| The error for a body above 2 MiB is not named (IT-03-5 says "LengthMismatch or size error") | E-14 owner | open — proposal (AZ-3737 implementation): `LengthMismatch`, refused before the key lookup with no body byte read; it is the only answer in both the contract's `stage_small` error list and IT-03-5, so no contract change is needed (alternative: `SizeTooLarge`, 413, would add an error to the list) | Low |
+| `AccountNotActive` for staging needs the `AccountGuard` port, which 03's Ports table does not list (see E-14/c04) | E-14 owner, E-00 | resolved by the owner decision of 2026-11-13 (03 takes `Arc<dyn AccountGuard>`, `upload_service.md` open items); `stage_small` runs `ensure_active` in both of its transactions | Medium |

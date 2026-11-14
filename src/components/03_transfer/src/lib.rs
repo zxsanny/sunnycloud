@@ -1,8 +1,8 @@
 //! 03 transfer: upload sessions, commit receipts and downloads. Depends on `contracts` and the helpers only.
 //!
 //! This crate holds the typed configuration section, the typed errors with their stable codes, the in-memory
-//! progress table, `start_upload`, `put_block`, `get_upload` and `abort_upload` ([`PgUploadService`]); the other
-//! operations are implemented by later tasks. The schema is `src/migrations/*_create_transfer_tables.*.sql` and `*_add_upload_session_commit.*.sql`.
+//! progress table and `UploadService` ([`PgUploadService`]: `start_upload`, `put_block`, `get_upload`,
+//! `abort_upload` and `stage_small`); the other operations are implemented by later tasks. The schema is `src/migrations/*_create_transfer_tables.*.sql` and `*_add_upload_session_commit.*.sql`.
 
 mod blocks;
 mod caps;
@@ -12,8 +12,10 @@ mod error;
 mod progress;
 mod put_block;
 mod resume;
+mod service;
 mod session_repo;
 mod shortcut;
+mod stage;
 mod upload;
 mod upload_metrics;
 
