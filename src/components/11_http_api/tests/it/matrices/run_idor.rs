@@ -15,8 +15,8 @@ use crate::auth::support::MEMBER_ACCOUNT;
 use crate::worker::support::Reply;
 
 /// Pairs whose uniform answer is not 404, because the port's outcome for an id the caller does not own is
-/// another one: 03 maps `UploadNotFound` to 410 and keys staged uploads per account, a commit or delete names
-/// a base revision that is never current (409), a batch fails per entry inside a 200, 06 lists none of the
+/// another one: 03 maps `UploadNotFound` to 410 and keys staged uploads per account, a delete names a base
+/// revision that is never current (409), a commit ignores a base revision the caller has none of (200), a batch fails per entry inside a 200, 06 lists none of the
 /// caller's links on another node, and 01's `SessionService::revoke` has no not-found outcome.
 pub const UNIFORM_NOT_404: [(&str, &str, u16); 12] = [
     ("UploadService::get_upload", "upload_id", 410),
@@ -24,7 +24,7 @@ pub const UNIFORM_NOT_404: [(&str, &str, u16); 12] = [
     ("UploadService::put_block", "upload_id", 410),
     ("UploadService::stage_small", "staged_key", 200),
     ("CommitService::commit_upload", "upload_id", 410),
-    ("CommitService::commit_upload", "base_revision", 409),
+    ("CommitService::commit_upload", "base_revision", 200),
     ("CommitService::commit_batch", "staged_key", 200),
     ("CommitService::commit_batch", "parent_id", 200),
     ("CommitService::commit_batch", "base_revision", 200),

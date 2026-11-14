@@ -29,9 +29,9 @@ const URL_PATH_PREFIX: &str = "/s/";
 
 /// The owner side of share links over `share_links`.
 pub struct PgShareService {
-    db: Db,
-    clock: Arc<dyn Clock>,
-    tree: Arc<dyn TreeReader>,
+    pub(crate) db: Db,
+    pub(crate) clock: Arc<dyn Clock>,
+    pub(crate) tree: Arc<dyn TreeReader>,
     audit: AuditWriter,
     default_ttl: Duration,
     max_ttl: Duration,
@@ -57,6 +57,14 @@ impl PgShareService {
             max_ttl: config.max_ttl,
             password_params: config.password_params()?,
         })
+    }
+
+    /// The Argon2id PHC string of `password`, computed on tokio's blocking pool.
+    async fn hash_off_worker(&self, password: &str) -> Result<String, SharingError> {
+        let (params, password) = (self.password_params.clone(), password.to_owned());
+        tokio::task::spawn_blocking(move || hash_password(&params, &password))
+            .await
+            .map_err(SharingError::HashTask)?
     }
 
     /// `TargetNotFound` for every gone case, `TargetNotShareable` for a folder.
@@ -138,11 +146,12 @@ impl ShareService for PgShareService {
         let created_at = self.clock.now_utc();
         let expires_at = expiry(created_at, expires_in, self.default_ttl, self.max_ttl)?;
         self.check_target(account, node_id).await?;
-        // Argon2 runs before the transaction opens: no transaction waits on the hash.
-        let password_hash = password
-            .map(|text| hash_password(&self.password_params, text))
-            .transpose()
-            .map_err(unexpected)?;
+        // Argon2 runs before the transaction opens, on the blocking pool: no transaction and no async worker
+        // waits on the hash.
+        let password_hash = match password {
+            Some(text) => Some(self.hash_off_worker(text).await.map_err(unexpected)?),
+            None => None,
+        };
         let token = new_share_token().map_err(unexpected)?;
         let token_hash = sha256_token(token.expose());
         let link = NewLink {

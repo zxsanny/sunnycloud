@@ -9,9 +9,10 @@
 use std::sync::Arc;
 
 use contracts::{
-    AccountGuard, AccountGuardError, BlobCatalog, BlobError, BlobPlan, BlobRegistry, BlobWriter,
-    Fault, QuotaAdmin, QuotaLedger, QuotaLedgerError, RegisterState, StartUpload,
-    StartUploadOutcome, Started, TreeReader, UploadError, WrittenOrPlanned,
+    AccountGuard, AccountGuardError, BlobCatalog, BlobError, BlobPlan, BlobReader, BlobRegistry,
+    BlobWriter, CommitEffect, Fault, QuotaAdmin, QuotaLedger, QuotaLedgerError, RegisterState,
+    StartUpload, StartUploadOutcome, Started, TreeCommit, TreeReader, UploadError,
+    WrittenOrPlanned,
 };
 use sc_clock::{Clock, Timestamp};
 use sc_db::{Db, DbError, DbTx, RunError, Scope};
@@ -46,14 +47,18 @@ pub enum StartFault {
     ExpiryOverflow,
 }
 
-/// The upload sessions and staged uploads of 03 (`UploadService`, in `service`). `progress` holds the
+/// The upload sessions, staged uploads and commits of 03 (`UploadService`, in `service`; `commit_upload`, in
+/// `commit`). `progress` holds the
 /// sessions started or touched by this process (decision 12: one API process), loaded lazily from their checkpoint
 /// row; `caps` the account and buffer in-flight caps.
 pub struct PgUploadService {
     pub(crate) db: Db,
     pub(crate) config: TransferConfig,
     guard: Arc<dyn AccountGuard>,
-    tree: Arc<dyn TreeReader>,
+    pub(crate) tree: Arc<dyn TreeReader>,
+    pub(crate) commit: Arc<dyn TreeCommit>,
+    pub(crate) reader: Arc<dyn BlobReader>,
+    pub(crate) commit_effects: Vec<Arc<dyn CommitEffect>>,
     pub(crate) quota: Arc<dyn QuotaLedger>,
     pub(crate) quota_admin: Arc<dyn QuotaAdmin>,
     pub(crate) writer: Arc<dyn BlobWriter>,
@@ -65,12 +70,17 @@ pub struct PgUploadService {
     pub(crate) caps: InflightCaps,
 }
 
-/// The ports of the upload sessions: the account guard (01), the tree reader (02), the quota ledger and its view
-/// (07a; `stage_small` pre-checks the free room with `QuotaAdmin::view`) and the blob writer, registry and catalog
-/// (04; the catalog serves an uploading blob's plan to the lazy load).
+/// The ports of the upload sessions and commits: the account guard (01), the tree reader and `TreeCommit` (02),
+/// the quota ledger and its view (07a; `stage_small` pre-checks the free room with `QuotaAdmin::view`), the blob
+/// writer, reader, registry and catalog (04; the catalog serves an uploading blob's plan to the lazy load, the
+/// reader the head commit sniffs) and the commit effects the composition root injects (08's media effect), run
+/// after 03's own.
 pub struct UploadPorts {
     pub guard: Arc<dyn AccountGuard>,
     pub tree: Arc<dyn TreeReader>,
+    pub commit: Arc<dyn TreeCommit>,
+    pub reader: Arc<dyn BlobReader>,
+    pub commit_effects: Vec<Arc<dyn CommitEffect>>,
     pub quota: Arc<dyn QuotaLedger>,
     pub quota_admin: Arc<dyn QuotaAdmin>,
     pub writer: Arc<dyn BlobWriter>,
@@ -90,6 +100,9 @@ impl PgUploadService {
         let UploadPorts {
             guard,
             tree,
+            commit,
+            reader,
+            commit_effects,
             quota,
             quota_admin,
             writer,
@@ -105,6 +118,9 @@ impl PgUploadService {
             config,
             guard,
             tree,
+            commit,
+            reader,
+            commit_effects,
             quota,
             quota_admin,
             writer,

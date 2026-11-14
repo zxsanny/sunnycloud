@@ -1,9 +1,14 @@
 //! Transfer skeleton (AZ-3733): settings, typed errors, the progress table and the `upload_sessions` and
 //! `commit_receipts` migration; `start_upload` (AZ-3734); `put_block` (AZ-3735); `get_upload`, the lazy load and
-//! `abort_upload` (AZ-3736); `stage_small` (AZ-3737). All on a real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
+//! `abort_upload` (AZ-3736); `stage_small` (AZ-3737); `commit_upload` (AZ-3738). All on a real PostgreSQL 18 (`DATABASE_URL`, a superuser URL).
 
 mod abort;
 mod access;
+mod commit_ports;
+mod commit_resume;
+mod commit_support;
+mod commit_target;
+mod commit_upload;
 mod config;
 mod errors;
 mod migration;
@@ -14,6 +19,7 @@ mod put_lanes;
 mod put_support;
 mod put_verify;
 mod resume;
+mod rig_config;
 mod rls;
 mod stage_refusals;
 mod stage_small;

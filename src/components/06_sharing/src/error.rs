@@ -11,6 +11,9 @@ pub enum SharingError {
     /// Argon2id refused to hash a link password; the password is never part of the message.
     #[error("link password hashing failed: {0}")]
     PasswordHash(argon2::password_hash::Error),
+    /// The blocking task that hashes a link password panicked or was cancelled.
+    #[error("link password hashing did not finish")]
+    HashTask(#[source] tokio::task::JoinError),
     /// The clock plus a lifetime leaves the representable range.
     #[error("the link lifetime is out of the clock's range")]
     TimeOutOfRange,

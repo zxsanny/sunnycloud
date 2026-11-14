@@ -66,7 +66,7 @@ fn cut_body(
 }
 
 /// Sends `blocks` dealt round-robin to four concurrent lanes, each lane one block at a time; a busy lane retries.
-async fn send_lanes(rig: &Rig, upload: &Upload, blocks: &[u32]) {
+pub async fn send_lanes(rig: &Rig, upload: &Upload, blocks: &[u32]) {
     let data = Arc::new(upload.data.clone());
     let mut tasks = Vec::new();
     for lane in 0..LANES {

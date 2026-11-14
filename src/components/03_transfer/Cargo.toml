@@ -27,11 +27,13 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-# The real tree reader (02), blob writer and registry (04) and quota ledger (07a) of `start_upload` (component
-# dev-dependencies, ADR-015).
+# The real tree reader and `publish` (02), blob writer, reader, registry and GC queue (04) and quota ledger (07a)
+# of the upload and commit tests (component dev-dependencies, ADR-015).
 sunnycloud-tree = { path = "../02_tree" }
 sunnycloud-blobstore = { path = "../04_blobstore" }
 sunnycloud-quota = { path = "../07a_quota" }
+# The real feed stamp and notifier (05) that 02's `publish` calls last in `commit_upload` tests.
+sunnycloud-sync-feed = { path = "../05_sync_feed" }
 # The audit writer the real 04 keyring takes.
 sc_audit = { path = "../../shared/audit" }
 # Per-test PostgreSQL databases.

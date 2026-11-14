@@ -25,6 +25,8 @@ async-trait = "0.1"
 # The repository modules run their statements on the transaction's connection; same features as sc_db.
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "tls-none", "uuid"] }
 thiserror = { workspace = true }
+# Argon2 runs on the blocking pool, off the async workers (owner decision 2026-11-14).
+tokio = { workspace = true, features = ["rt"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 uuid = { workspace = true }
 

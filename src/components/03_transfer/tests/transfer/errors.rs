@@ -32,7 +32,6 @@ fn expected() -> Vec<(TransferError, &'static str, u16)> {
         ),
         (TransferError::BlockConflict, "block_conflict", 409),
         (TransferError::NeedBlocks(vec![3, 5]), "need_blocks", 409),
-        (TransferError::EditedSince, "edited_since", 409),
         (
             TransferError::ContentUnavailable,
             "content_unavailable",
@@ -74,7 +73,7 @@ fn every_variant_converts_to_its_code_and_status() {
 }
 
 #[test]
-fn the_table_lists_each_of_the_twenty_one_variants_once() {
+fn the_table_lists_each_of_the_twenty_variants_once() {
     // Arrange
     let table = expected();
 
@@ -84,8 +83,8 @@ fn the_table_lists_each_of_the_twenty_one_variants_once() {
     wires.dedup();
 
     // Assert
-    assert_eq!(table.len(), 21);
-    assert_eq!(wires.len(), 21);
+    assert_eq!(table.len(), 20);
+    assert_eq!(wires.len(), 20);
 }
 
 #[test]

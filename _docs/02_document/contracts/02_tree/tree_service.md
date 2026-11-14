@@ -3,9 +3,9 @@
 **Component**: 02_tree
 **Producer task**: E-13/c04 — `_docs/02_tasks/todo/B03-04_tree_folder_mutations.md` (contributor: E-13/c12 `B03-12_tree_revision_lookups.md` for `resolve_path` and `find_revisions`); keys assigned at Step 4
 **Consumer tasks**: E-13/c09, E-13/c11 (this batch); E-21/c13 (11 handlers), E-22/c10 (`admin restore`), resolved at Step 4
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: draft (frozen when the producer task passes review)
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-14
 
 ## Purpose
 
@@ -57,6 +57,7 @@ Stable codes (helper 02): `name_conflict` 409, `invalid_name` 422, `cycle` 409, 
 
 - G-1: whether NFC and NFD spellings are one name (E-13/c01, owner).
 - Resolved 2026-11-13 (owner): `resolve_path` finds a tombstoned last part for restore through `resolve_path_with_state`; several tombstones on one path: the most recent `deleted_at`, then `id DESC`. If a caller outside 02 needs the state, the port changes to `resolve_path -> (Uuid, NodeState)`.
+- Resolved 2026-11-14 (owner, AZ-3715): `TreeRestore::restore_revision` (`PgTreeRestore`) resolves a path itself, every part being the live child of that name else its most recently tombstoned one (`deleted_at DESC, id DESC`), so a file under a deleted folder is reachable; `resolve_path` and `resolve_path_with_state` keep their live-folder rule. `FileMissing` and the reinstate refusal come from `BlobRegistry::reinstate_in_tx` (`ReinstateOutcome::FileMissing`, `ReinstateOutcome::BeyondRetention` for a removed `blobs` row); an `at` before `now - retention` is `BeyondRetention` without a transaction. Conflict-copy names of a restore carry no device label (`report (conflict copy YYYY-MM-DD HH-MM).txt`).
 - Keyset paging for `find_revisions` (AZ-3716 AC-2) needs a `contracts` change (`after: Option<Uuid>`, `limit`, answer with `next`); until then the port pages by offset.
 
 ## Change Log
@@ -65,3 +66,4 @@ Stable codes (helper 02): `name_conflict` 409, `invalid_name` 422, `cycle` 409, 
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
 | 1.1.0 | 2026-11-13 | `resolve_path` rules and `resolve_path_with_state`; `find_revisions` offset paging; `TreeService` implemented by `PgTreeService` | AZ-3716 |
+| 1.2.0 | 2026-11-14 | Path rule and refusal sources of the operator restore (`PgTreeRestore`) | AZ-3715 |

@@ -51,7 +51,6 @@ pub struct BatchCommit {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntryError {
     InvalidName,
-    EditedSince,
     ParentGone,
     ParentNotFound,
     NotAFolder,
@@ -84,8 +83,6 @@ pub enum CommitServiceError {
     UploadNotFound,
     #[error("invalid name")]
     InvalidName,
-    #[error("edited since")]
-    EditedSince,
     #[error("parent gone")]
     ParentGone,
     #[error("parent not found")]

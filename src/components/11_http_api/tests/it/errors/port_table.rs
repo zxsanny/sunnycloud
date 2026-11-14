@@ -129,7 +129,6 @@ fn transfer_rows(id: CorrelationId) -> Vec<Row> {
         Code(ErrorCode::BlocklistMismatch) => CommitServiceError::BlocklistMismatch,
         Code(ErrorCode::UploadSessionGone) => CommitServiceError::UploadNotFound,
         Code(ErrorCode::InvalidName) => CommitServiceError::InvalidName,
-        Code(ErrorCode::EditedSince) => CommitServiceError::EditedSince,
         Code(ErrorCode::ParentDeleted) => CommitServiceError::ParentGone,
         Code(ErrorCode::ParentNotFound) => CommitServiceError::ParentNotFound,
         Code(ErrorCode::NotAFolder) => CommitServiceError::NotAFolder,
@@ -272,7 +271,6 @@ fn every_batch_entry_error_has_its_code() {
     // Arrange
     let entries = [
         (EntryError::InvalidName, ErrorCode::InvalidName),
-        (EntryError::EditedSince, ErrorCode::EditedSince),
         (EntryError::ParentGone, ErrorCode::ParentDeleted),
         (EntryError::ParentNotFound, ErrorCode::ParentNotFound),
         (EntryError::NotAFolder, ErrorCode::NotAFolder),

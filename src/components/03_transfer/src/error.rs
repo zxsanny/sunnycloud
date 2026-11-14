@@ -40,8 +40,6 @@ pub enum TransferError {
     /// The indexes of the blocks the session still lacks.
     #[error("blocks needed")]
     NeedBlocks(Vec<u32>),
-    #[error("edited since")]
-    EditedSince,
     #[error("content unavailable")]
     ContentUnavailable,
     #[error("range not satisfiable")]
@@ -72,7 +70,6 @@ impl TransferError {
             TransferError::BlockLengthMismatch => ErrorCode::BlockLengthMismatch,
             TransferError::BlockConflict => ErrorCode::BlockConflict,
             TransferError::NeedBlocks(_) => ErrorCode::NeedBlocks,
-            TransferError::EditedSince => ErrorCode::EditedSince,
             TransferError::ContentUnavailable => ErrorCode::ContentUnavailable,
             TransferError::RangeNotSatisfiable => ErrorCode::RangeNotSatisfiable,
             TransferError::UploadSessionGone => ErrorCode::UploadSessionGone,

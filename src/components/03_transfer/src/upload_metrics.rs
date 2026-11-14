@@ -1,8 +1,11 @@
 //! The upload series of `deployment/observability.md` § Transfer: `upload_sessions_active`,
 //! `upload_sessions_total{result}`, `upload_rejections_total{reason}`, `blocks_received_total` and
-//! `block_bytes_received_total`. A process without a registry leaves them out and records nothing.
+//! `block_bytes_received_total`, and the commit series `commits_total{kind, result}` and
+//! `commit_duration_seconds{kind}`. A process without a registry leaves them out and records nothing.
 
-use sc_observability::{Counter, Gauge, LabelSet, Metrics, NoLabels, ObsError};
+use std::time::Duration;
+
+use sc_observability::{Counter, Gauge, Histogram, LabelSet, Metrics, NoLabels, ObsError};
 
 /// The `reason` label of `upload_rejections_total`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,10 +27,11 @@ impl LabelSet for Rejection {
     }
 }
 
-/// The `result` label of `upload_sessions_total`; `committed` and `expired` come with commit and the reaper.
+/// The `result` label of `upload_sessions_total`; `expired` comes with the reaper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionResult {
     Aborted,
+    Committed,
 }
 
 impl LabelSet for SessionResult {
@@ -36,6 +40,50 @@ impl LabelSet for SessionResult {
     fn value(&self, _index: usize) -> &'static str {
         match self {
             SessionResult::Aborted => "aborted",
+            SessionResult::Committed => "committed",
+        }
+    }
+}
+
+/// The `kind` label of the commit series; `single` and `batch` come with the batch commit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommitKind {
+    BlockList,
+}
+
+impl LabelSet for CommitKind {
+    const NAMES: &'static [&'static str] = &["kind"];
+
+    fn value(&self, _index: usize) -> &'static str {
+        match self {
+            CommitKind::BlockList => "block_list",
+        }
+    }
+}
+
+/// The `result` label of `commits_total`: committed, refused with a typed error, or failed unexpectedly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommitResult {
+    Committed,
+    Refused,
+    Failed,
+}
+
+/// `commits_total{kind, result}`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CommitLabels(CommitKind, CommitResult);
+
+impl LabelSet for CommitLabels {
+    const NAMES: &'static [&'static str] = &["kind", "result"];
+
+    fn value(&self, index: usize) -> &'static str {
+        if index == 0 {
+            return self.0.value(0);
+        }
+        match self.1 {
+            CommitResult::Committed => "committed",
+            CommitResult::Refused => "refused",
+            CommitResult::Failed => "failed",
         }
     }
 }
@@ -46,6 +94,8 @@ pub(crate) struct UploadMetrics {
     rejections: Counter<Rejection>,
     blocks: Counter<NoLabels>,
     block_bytes: Counter<NoLabels>,
+    commits: Counter<CommitLabels>,
+    commit_duration: Histogram<CommitKind>,
 }
 
 impl UploadMetrics {
@@ -56,6 +106,8 @@ impl UploadMetrics {
             rejections: metrics.counter("upload_rejections_total")?,
             blocks: metrics.counter("blocks_received_total")?,
             block_bytes: metrics.counter("block_bytes_received_total")?,
+            commits: metrics.counter("commits_total")?,
+            commit_duration: metrics.histogram("commit_duration_seconds")?,
         })
     }
 
@@ -81,5 +133,13 @@ impl UploadMetrics {
     pub(crate) fn block_received(&self, bytes: u64) {
         self.blocks.inc(NoLabels);
         self.block_bytes.inc_by(NoLabels, bytes);
+    }
+
+    /// One `commit_upload` call and how long it took.
+    pub(crate) fn block_list_commit(&self, result: CommitResult, elapsed: Duration) {
+        self.commits
+            .inc(CommitLabels(CommitKind::BlockList, result));
+        self.commit_duration
+            .observe(CommitKind::BlockList, elapsed.as_secs_f64());
     }
 }

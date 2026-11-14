@@ -106,5 +106,9 @@ Then it waits until the lock is released
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| A path can match several tombstoned nodes (deleted, recreated, deleted again); which node a path restore picks is not stated | E-13 owner / Owner | open | Medium |
-| How `FileMissing` is detected (which port reports an absent blob file) is not stated in 02 | E-13 owner, E-10 | open | Low |
+| A path can match several tombstoned nodes (deleted, recreated, deleted again); which node a path restore picks is not stated | E-13 owner / Owner | resolved 2026-11-14: the most recently tombstoned one, per path part | Medium |
+| How `FileMissing` is detected (which port reports an absent blob file) is not stated in 02 | E-13 owner, E-10 | resolved: `BlobRegistry::reinstate_in_tx` returns `ReinstateOutcome::FileMissing` (04 stats the file) | Low |
+
+## Owner decision
+
+Owner decision 2026-11-14 (complexity budget, option A): when a path matches several tombstoned nodes, the restore picks the most recently tombstoned one.

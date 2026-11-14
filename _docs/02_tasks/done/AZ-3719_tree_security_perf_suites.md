@@ -109,3 +109,7 @@ Then `report.docx` holds r3 and exactly one `report (conflict copy YYYY-MM-DD HH
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | PT-02-3 targets are derived and must be calibrated on REF-SRV | Owner (hardware) | open | Low |
+
+## Owner decision
+
+Owner decision 2026-11-14 (complexity budget, option A): ST-02-1..3 and AT-02-1 now; PT-02-1, PT-02-3 and the PT-02-4 batch row stay NOT-RUN(HW-REF) until REF-SRV exists.

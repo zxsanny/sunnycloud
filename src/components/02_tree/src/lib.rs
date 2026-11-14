@@ -4,9 +4,9 @@
 //! conflict outcomes and the path and device queries (`TreeService`, `TreeCommit` on `PgTreeService`), the node,
 //! listing and revision reads with the thumbnail states of a listing page and the live usage sum (`TreeReader`,
 //! `LiveUsageSource` on `PgTreeReader`), the account lifecycle hook with the blob owner cleanup
-//! (`PgTreeLifecycle`), and the folder cascade and tombstone purge (`PgTreeMaintenance`) with their janitors
-//! (`TreeJanitor`); every change of a file's current revision applies its usage delta and queues the blob it
-//! unreferences in its own transaction; the other ports are implemented by later tasks.
+//! (`PgTreeLifecycle`), the folder cascade and tombstone purge (`PgTreeMaintenance`) with their janitors
+//! (`TreeJanitor`), and the operator restore of a revision (`PgTreeRestore`); every change of a file's current
+//! revision applies its usage delta and queues the blob it unreferences in its own transaction.
 //! The schema is `src/migrations/*_create_tree_tables.*.sql`.
 
 mod config;
@@ -26,6 +26,8 @@ mod reader;
 mod reader_repo;
 mod reader_revisions;
 mod reader_thumbs;
+mod restore;
+mod restore_repo;
 mod retry;
 mod revision_repo;
 mod service;
@@ -40,6 +42,7 @@ pub use reader::PgTreeReader;
 #[doc(hidden)]
 pub use reader_repo::LISTING_PAGE_SQL;
 pub use reader_revisions::MAX_LOOKUP_HASHES;
+pub use restore::{PgTreeRestore, RESTORED_FOLDER};
 pub use retry::{TxFailure, run_retrying};
 #[doc(hidden)]
 pub use revision_repo::{DEVICE_REVISIONS_SQL, LOOKUP_REVISIONS_SQL};

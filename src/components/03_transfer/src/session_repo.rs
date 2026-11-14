@@ -1,5 +1,5 @@
 //! The `upload_sessions` statements of `start_upload`, the `put_block` checkpoint, the lazy load,
-//! `abort_upload` and `stage_small`. Every statement names the account, so a row of another account is never read or written even
+//! `abort_upload`, `stage_small` and the commit effect. Every statement names the account, so a row of another account is never read or written even
 //! in system scope. Timestamps travel as Unix microseconds.
 
 use sc_clock::Timestamp;
@@ -67,6 +67,16 @@ const DELETE_OPEN_RETURNING: &str = "DELETE FROM upload_sessions \
      WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL \
      AND expires_at > 'epoch'::timestamptz + $3::bigint * interval '1 microsecond' \
      RETURNING blob_id, reserved_bytes";
+
+// The commit effect's lock: an open row only, so an aborted, reaped or already committed session gives no row.
+const LOCK_OPEN: &str = "SELECT 1 FROM upload_sessions \
+     WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL FOR UPDATE";
+
+// A large session's row becomes the committed-key record (owner decision 2026-11-13): no reservation, kept until
+// commit time + `upload_session_ttl`.
+const MARK_COMMITTED: &str = "UPDATE upload_sessions SET committed_revision_id = $3, reserved_bytes = 0, \
+     expires_at = 'epoch'::timestamptz + $4::bigint * interval '1 microsecond' \
+     WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL";
 
 /// The row a `client_key` names. `committed_revision_id` is `Some` once its commit created that revision.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -308,4 +318,32 @@ pub(crate) async fn delete_open_returning(
         .bind(now.as_unix_micros())
         .fetch_optional(tx.conn())
         .await?)
+}
+
+/// Locks the open session `id` for the rest of the transaction; `false` when there is no open row.
+pub(crate) async fn lock_open(tx: &mut DbTx, account: Uuid, id: Uuid) -> Result<bool, DbError> {
+    let row: Option<i32> = sqlx::query_scalar(LOCK_OPEN)
+        .bind(id)
+        .bind(account)
+        .fetch_optional(tx.conn())
+        .await?;
+    Ok(row.is_some())
+}
+
+/// Turns the open session `id` into the committed-key record of `revision`; returns the rows written, 0 or 1.
+pub(crate) async fn mark_committed(
+    tx: &mut DbTx,
+    account: Uuid,
+    id: Uuid,
+    revision: Uuid,
+    expires_at: Timestamp,
+) -> Result<u64, DbError> {
+    let done = sqlx::query(MARK_COMMITTED)
+        .bind(id)
+        .bind(account)
+        .bind(revision)
+        .bind(expires_at.as_unix_micros())
+        .execute(tx.conn())
+        .await?;
+    Ok(done.rows_affected())
 }

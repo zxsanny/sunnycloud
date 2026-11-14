@@ -115,6 +115,26 @@ impl Tree {
         .await
     }
 
+    /// Every row of `account` a tree operation can touch, as text: nodes, revisions, blobs, queue, quota and feed.
+    pub async fn rows_of(&self, account: Uuid) -> String {
+        let mut admin = self.fixture.db.admin().await;
+        let text = sqlx::query_scalar(
+            "SELECT concat_ws(' | ', \
+             (SELECT string_agg(n::text, ',' ORDER BY n.id) FROM nodes n WHERE n.account_id = $1), \
+             (SELECT string_agg(r::text, ',' ORDER BY r.id) FROM revisions r WHERE r.account_id = $1), \
+             (SELECT string_agg(b::text, ',' ORDER BY b.id) FROM blobs b WHERE b.account_id = $1), \
+             (SELECT string_agg(g::text, ',' ORDER BY g.blob_id) FROM blob_gc g WHERE g.account_id = $1), \
+             (SELECT q::text FROM quota q WHERE q.account_id = $1), \
+             (SELECT f::text FROM account_feeds f WHERE f.account_id = $1))",
+        )
+        .bind(account)
+        .fetch_one(&mut admin)
+        .await
+        .expect("rows of the account");
+        close(admin).await;
+        text
+    }
+
     pub async fn count(&self, sql: &str) -> i64 {
         self.fixture.db.admin_count(sql).await
     }

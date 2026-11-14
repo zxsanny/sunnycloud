@@ -272,13 +272,19 @@ impl CommitService for Gate<RecordingCommits> {
             .chain(request.base_revision)
             .collect();
         if !self.admit("CommitService::commit_upload", account, &ids) {
-            return Err(if !self.owns(account, request.upload_id) {
-                CommitServiceError::UploadNotFound
-            } else if !self.owns(account, request.parent_id) {
-                CommitServiceError::ParentNotFound
-            } else {
-                CommitServiceError::EditedSince
-            });
+            if !self.owns(account, request.upload_id) {
+                return Err(CommitServiceError::UploadNotFound);
+            }
+            if !self.owns(account, request.parent_id) {
+                return Err(CommitServiceError::ParentNotFound);
+            }
+            // A base revision the account has no revision for is ignored: the target is a new file
+            // (commit_service.md).
+            let request = CommitUpload {
+                base_revision: None,
+                ..request
+            };
+            return self.inner.commit_upload(actor, request).await;
         }
         self.inner.commit_upload(actor, request).await
     }
@@ -310,11 +316,6 @@ impl CommitService for Gate<RecordingCommits> {
                     BatchEntryResult::Failed(EntryError::UploadNotFound)
                 } else if !self.owns(account, entry.parent_id) {
                     BatchEntryResult::Failed(EntryError::ParentNotFound)
-                } else if entry
-                    .base_revision
-                    .is_some_and(|base| !self.owns(account, base))
-                {
-                    BatchEntryResult::Failed(EntryError::EditedSince)
                 } else {
                     BatchEntryResult::Committed(Committed {
                         node_id: entry.parent_id,

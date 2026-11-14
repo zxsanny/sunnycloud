@@ -141,7 +141,7 @@ async fn ac1_a_batch_passes_its_entries_in_order_and_answers_one_result_per_entr
                     revision_id: REVISION,
                     conflict_copy: Some(COPY),
                 }),
-                BatchEntryResult::Failed(EntryError::EditedSince),
+                BatchEntryResult::Failed(EntryError::ParentGone),
                 BatchEntryResult::Failed(EntryError::EffectFailed(ErrorCode::QuotaExceeded)),
             ],
         }),
@@ -163,7 +163,7 @@ async fn ac1_a_batch_passes_its_entries_in_order_and_answers_one_result_per_entr
                 "revision_id": REVISION.to_string(),
                 "conflict_copy": COPY.to_string()
             },
-            {"status": "entry_error", "code": "edited_since"},
+            {"status": "entry_error", "code": "parent_deleted"},
             {"status": "entry_error", "code": "quota_exceeded"}
         ]})
     );
@@ -188,7 +188,6 @@ async fn the_refusals_of_03_keep_their_codes_and_need_blocks_lists_the_indexes()
         COMMIT,
         Err::<Committed, _>(CommitServiceError::NeedBlocks(vec![1, 4])),
     );
-    script.push(COMMIT, Err::<Committed, _>(CommitServiceError::EditedSince));
     script.push(
         COMMIT,
         Err::<Committed, _>(CommitServiceError::BlocklistMismatch),
@@ -209,7 +208,7 @@ async fn the_refusals_of_03_keep_their_codes_and_need_blocks_lists_the_indexes()
 
     // Act
     let mut answers = Vec::new();
-    for _ in 0..5 {
+    for _ in 0..4 {
         answers.push(
             stack
                 .as_member("POST", "/api/v1/commits", &commit_body())
@@ -228,7 +227,6 @@ async fn the_refusals_of_03_keep_their_codes_and_need_blocks_lists_the_indexes()
     let seen: Vec<(u16, String)> = answers.iter().map(|a| (a.status, a.code())).collect();
     let expected = [
         (409, "need_blocks"),
-        (409, "edited_since"),
         (422, "blocklist_mismatch"),
         (410, "upload_session_gone"),
         (410, "parent_deleted"),

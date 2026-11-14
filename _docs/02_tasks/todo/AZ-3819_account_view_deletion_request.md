@@ -111,3 +111,7 @@ Then it returns within 1 s with deadline = now + 30 s, U's state is `deleting`, 
 
 This task produces `_docs/02_document/contracts/07_admin/account_services.md` (view, quota view and the deletion request without the last-admin rule).
 Consumers MUST read that file — not this task spec — to discover the interface.
+
+## Owner decision
+
+Owner decision 2026-11-14: add one read-only method to 01's account admin port that returns the caller's display name and linked identities (contracts change, additive), then build this task.

@@ -1,5 +1,6 @@
 use contracts::{
-    LifecycleError, MaintenanceError, TreeCommitError, TreeReaderError, TreeServiceError,
+    LifecycleError, MaintenanceError, RestoreError, TreeCommitError, TreeReaderError,
+    TreeServiceError,
 };
 use sc_db::{Db, DbError, DbTx, RunError, Scope};
 
@@ -89,6 +90,19 @@ impl TxFailure for MaintenanceError {
     fn db_error(&self) -> Option<&DbError> {
         match self {
             MaintenanceError::Unexpected(fault) => fault.downcast_ref::<DbError>(),
+        }
+    }
+}
+
+impl TxFailure for RestoreError {
+    fn from_db(error: DbError) -> Self {
+        RestoreError::Unexpected(Box::new(error))
+    }
+
+    fn db_error(&self) -> Option<&DbError> {
+        match self {
+            RestoreError::Unexpected(fault) => fault.downcast_ref::<DbError>(),
+            _ => None,
         }
     }
 }

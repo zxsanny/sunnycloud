@@ -134,3 +134,7 @@ Then the 16 description §5, IT-16-8 in the 16 test spec and the IT-16-8 row in 
 **What E-26/c12 must still settle** (not measured here): when the OPFS copy is deleted after a good save (no "download finished" signal reaches the page; the copy doubles disk use until then); the quota check before start (`navigator.storage.estimate()`, fall back to the labelled unverified path when the file does not fit); `ETag` equality across range answers (the probe checked the total size only); private-browsing windows; after the hash matched, the `blob:` save of the OPFS `File` took 1.0 to 1.5 s (1 GiB) and 2.5 to 3.0 s (2 GiB) in Firefox until the file was complete in the download folder.
 
 **Engines not run.** Safari: `NOT-RUN(HW-DEVICE)` (no Mac). Chromium without Playwright: not run (the directly started browser did not load the probe page on this workstation), so the higher Chromium A2/B2 memory is not separated from Playwright's network tracking; Chromium keeps its save-picker path. The `browsers` container: not used; the workstation ran the same Playwright browser builds as AZ-3930.
+
+## Owner decision
+
+2026-11-14: gate S12 option (a) — Safari is measured on the owner Mac with the kit in `_docs/00_research/s12_download_spike/` (README has the steps). Until that run is recorded, E-26/c12 builds the labelled unverified path for Safari.

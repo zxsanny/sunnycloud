@@ -102,4 +102,16 @@ Then the token lookup is the only one, and it returns at most one row for an exa
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| What the padding reads for an unknown token are (for example a fixed dummy node lookup) is not described; IT-06-9 only requires the same statement count and shape | E-16 owner | open | Low |
+| What the padding reads for an unknown token are (for example a fixed dummy node lookup) is not described; IT-06-9 only requires the same statement count and shape | E-16 owner | closed 2026-11-14: a link that is not live (unknown, malformed, purged, expired, revoked) reads the fixed dummy target (nil account, nil node) through the same `resolve_live_file` and `get_node` calls; the five not-found cases log the same three data statements | Low |
+| A live target makes 02's `resolve_live_file` and `get_node` each add the ancestor walk (`WITH RECURSIVE chain`), so a live link runs five data statements against three for every not-found case, and a file under a tombstoned folder whose cascade is still pending runs five and answers `NotFound`. The dummy reads cannot reproduce the walk through `TreeReader`; equal counts with the live case need a 02 change (for example the walk run unconditionally) | 02 tree owner | open | Low |
+
+## Owner decision
+
+Owner decision 2026-11-14 (complexity budget, option A): an unknown or malformed token takes fixed dummy primary-key reads with the same statement count and shape as a live link; Argon2 password verification runs on the blocking pool, not the async worker.
+
+## Implementation notes (2026-11-14)
+
+- Lookup: `src/components/06_sharing/src/lookup_repo.rs::by_token_hash`, the only `run_system` call of 06 (`share_lookup`). It needs the allowlist line `src/components/06_sharing/src/lookup_repo.rs` in `scripts/ci/run-system-allowlist.txt`.
+- `open` is an inherent method of `PgShareService` with the port's signature; `impl PublicShareService` follows when `verify_password` (E-16/c05) and `authorize_content` / `authorize_derived` (E-16/c06) exist, so no operation is stubbed.
+- Link liveness is decided before the target reads; a link that is not live reads the dummy target, so expired and revoked links cost what an unknown token costs.
+- Share create hashes the password on tokio's blocking pool (`spawn_blocking`).

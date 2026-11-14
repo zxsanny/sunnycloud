@@ -9,6 +9,7 @@ use sc_error::{
     BusinessError, BusinessParams, CorrelationId, DomainError, ErrorCode, FieldProblem,
 };
 use sunnycloud_http_api::ApiProblem;
+use uuid::Uuid;
 
 pub struct Case {
     pub name: &'static str,
@@ -115,7 +116,12 @@ pub const CASES: &[Case] = &[
         ApiProblem::from_port(CommitServiceError::NeedBlocks(vec![3, 7]), id)
     }),
     case("edited_since", 409, "edited_since", |id| {
-        ApiProblem::from_port(CommitServiceError::EditedSince, id)
+        ApiProblem::from_port(
+            TreeServiceError::EditedSince {
+                current_revision: Uuid::nil(),
+            },
+            id,
+        )
     }),
     case("batch_too_large", 422, "batch_too_large", |id| {
         ApiProblem::from_port(CommitServiceError::BatchTooLarge, id)

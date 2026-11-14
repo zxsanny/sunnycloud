@@ -4267,6 +4267,7 @@ dependencies = [
  "sqlx",
  "sunnycloud-blobstore",
  "sunnycloud-quota",
+ "sunnycloud-sync-feed",
  "sunnycloud-testkit",
  "sunnycloud-tree",
  "thiserror 2.0.21",

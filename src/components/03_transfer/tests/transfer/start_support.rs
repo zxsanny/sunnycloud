@@ -1,7 +1,7 @@
-//! `PgUploadService` on the real 02 reader, 04 writer and registry (a temporary volume) and 07a ledger, all on one
-//! test database. The account guard is the port backed at its boundary (the real one is wired by E-14/c15). File
+//! `PgUploadService` on the real 02 reader and `publish`, 04 writer, reader, registry and GC queue (a temporary
+//! volume), 05 feed stamp and 07a ledger, all on one test database. The account guard is the port backed at its boundary (the real one is wired by E-14/c15). File
 //! creation and the quota reservation can be made to fail through thin decorators that otherwise delegate to the
-//! real writer and ledger. A restart is a new `PgUploadService` over the same ports (an empty progress table).
+//! real writer and ledger; the reader counts its calls and `publish` can be paused (`commit_ports`). A restart is a new `PgUploadService` over the same ports (an empty progress table).
 
 use std::fs;
 use std::path::PathBuf;
@@ -11,20 +11,21 @@ use std::time::Duration;
 use contracts::{StartUpload, StartUploadOutcome, Started, UploadError};
 use sc_audit::AuditWriter;
 use sc_clock::{Clock, ManualClock};
-use sc_config::Secret;
 use sc_ids::FileHash;
 use sc_names::{name_key, validate_name};
 use sqlx::PgConnection;
 use sunnycloud_blobstore::{
-    BlobCatalog, BlobRegistry, BlobstoreConfig, FileBlobReader, FileBlobWriter, MasterKeyring,
-    SyncBarrier,
+    BlobCatalog, BlobRegistry, FileBlobReader, FileBlobWriter, GcQueue, MasterKeyring, SyncBarrier,
 };
 use sunnycloud_quota::{PgQuotaAdmin, PgQuotaLedger, QuotaConfig};
+use sunnycloud_sync_feed::{InProcessNotifier, PgFeedStamp};
 use sunnycloud_testkit::StateGuard;
 use sunnycloud_transfer::{PgUploadService, TransferConfig, UploadPorts};
-use sunnycloud_tree::{PgTreeReader, TreeConfig};
+use sunnycloud_tree::{PgTreeReader, PgTreeService};
 use uuid::Uuid;
 
+use crate::commit_ports::{CountingReader, PausingCommit};
+use crate::rig_config::{blob_config, tree_config};
 use crate::start_ports::{FaultyLedger, FaultyWriter};
 use crate::support::{Fixture, account};
 
@@ -47,6 +48,8 @@ impl Drop for Scratch {
 struct Parts {
     config: TransferConfig,
     tree: Arc<PgTreeReader>,
+    commit: Arc<PausingCommit>,
+    reader: Arc<CountingReader>,
     quota: Arc<FaultyLedger>,
     quota_admin: Arc<PgQuotaAdmin>,
     registry: Arc<BlobRegistry>,
@@ -59,7 +62,8 @@ pub struct Rig {
     parts: Parts,
     pub writer: Arc<FaultyWriter>,
     pub ledger: Arc<FaultyLedger>,
-    pub reader: FileBlobReader,
+    pub reader: Arc<CountingReader>,
+    pub commit: Arc<PausingCommit>,
     pub clock: Arc<ManualClock>,
     pub account: Uuid,
     pub root: Uuid,
@@ -112,6 +116,7 @@ impl Rig {
             clock.clone(),
         )
         .expect("reader");
+        let reader = Arc::new(CountingReader::new(reader));
         let real = FileBlobWriter::new(&blob_config, keyring, SyncBarrier::new(Duration::ZERO))
             .expect("writer");
         let writer = Arc::new(FaultyWriter::new(real));
@@ -120,9 +125,21 @@ impl Rig {
             default_quota_bytes: 10 * GIB,
         };
         let ledger = Arc::new(FaultyLedger::new(PgQuotaLedger::new(quota)));
+        let gc = GcQueue::new(&blob_config, fixture.api.clone(), clock.clone()).expect("gc queue");
+        let commit = Arc::new(PausingCommit::new(PgTreeService::new(
+            fixture.api.clone(),
+            Arc::new(StateGuard::default()),
+            ledger.clone(),
+            Arc::new(gc),
+            Arc::new(PgFeedStamp),
+            InProcessNotifier::new(),
+            clock.clone(),
+        )));
         let parts = Parts {
             config,
             tree: Arc::new(PgTreeReader::new(fixture.api.clone(), &tree_config())),
+            commit: commit.clone(),
+            reader: reader.clone(),
             quota: ledger.clone(),
             quota_admin: Arc::new(PgQuotaAdmin::new(fixture.api.clone(), quota)),
             registry: Arc::new(registry),
@@ -136,6 +153,7 @@ impl Rig {
             writer,
             ledger,
             reader,
+            commit,
             clock,
             account,
             root,
@@ -222,9 +240,10 @@ impl Rig {
             writer,
             ledger,
             reader,
+            commit,
             ..
         } = self;
-        drop((service, parts, writer, ledger, reader));
+        drop((service, parts, writer, ledger, reader, commit));
         fixture.finish().await;
     }
 }
@@ -241,6 +260,9 @@ fn instance(
         UploadPorts {
             guard: Arc::new(StateGuard::default()),
             tree: parts.tree.clone(),
+            commit: parts.commit.clone(),
+            reader: parts.reader.clone(),
+            commit_effects: Vec::new(),
             quota: parts.quota.clone(),
             quota_admin: parts.quota_admin.clone(),
             writer: writer.clone(),
@@ -407,10 +429,16 @@ pub fn now(clock: &ManualClock) -> sc_clock::Timestamp {
     clock.now_utc()
 }
 
-/// The account, its root and its quota row (the installation default of 10 GiB applies); returns the root.
+/// The account, its root, its feed row and its quota row (the installation default of 10 GiB applies); returns
+/// the root.
 async fn account_rows(conn: &mut PgConnection, id: Uuid) -> Uuid {
     account(conn, id).await;
     let root = node(conn, id, None, "folder", "").await;
+    sqlx::query("INSERT INTO account_feeds (account_id, epoch) VALUES ($1, 1)")
+        .bind(id)
+        .execute(&mut *conn)
+        .await
+        .expect("insert feed row");
     sqlx::query("INSERT INTO quota (account_id) VALUES ($1)")
         .bind(id)
         .execute(conn)
@@ -435,48 +463,5 @@ pub fn transfer_config() -> TransferConfig {
         max_buffered_block_bytes: 1 << 30,
         session_reap_interval: Duration::from_secs(60),
         receipt_janitor_interval: Duration::from_secs(3600),
-    }
-}
-
-fn tree_config() -> TreeConfig {
-    TreeConfig {
-        tombstone_horizon: Duration::from_secs(30 * 86_400),
-        listing_default_limit: 1000,
-        listing_max_limit: 1000,
-        cascade_batch_size: 1000,
-        purge_batch_size: 1000,
-        tree_maintenance_interval: Duration::from_secs(30),
-        conflict_copy_time_zone: "UTC".to_owned(),
-    }
-}
-
-fn blob_config(
-    volume: &std::path::Path,
-    key_file: &std::path::Path,
-    free_reserve: u64,
-) -> BlobstoreConfig {
-    BlobstoreConfig {
-        blob_root: Some(volume.to_string_lossy().into_owned()),
-        retention: Duration::from_secs(7 * 86_400),
-        orphan_sweep_age: Duration::from_secs(86_400),
-        orphan_mode: "report".to_owned(),
-        orphan_sweep_interval: Duration::from_secs(3600),
-        blob_free_reserve: free_reserve,
-        blob_free_reserve_percent: 100,
-        gc_interval: Duration::from_secs(60),
-        gc_batch: 100,
-        gc_claim_lease: Duration::from_secs(60),
-        gc_cycle_budget: Duration::from_secs(60),
-        scrub_interval: Duration::from_secs(3600),
-        scrub_cycle_budget: Duration::from_secs(60),
-        scrub_max_rate: 1 << 20,
-        scrub_pause_active_streams: 1,
-        blob_sync_coalesce_delay: Duration::ZERO,
-        blob_preallocate: false,
-        blob_read_ahead_chunks: 1,
-        blob_io_threads: None,
-        master_key_file: Secret::new(key_file.to_string_lossy().into_owned()),
-        master_key_ring: None,
-        master_key_current: None,
     }
 }

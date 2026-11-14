@@ -100,7 +100,6 @@ const COMMIT_ERRORS: &[ErrorCode] = &[
     ErrorCode::BlocklistMismatch,
     ErrorCode::UploadSessionGone,
     ErrorCode::InvalidName,
-    ErrorCode::EditedSince,
     ErrorCode::ParentDeleted,
     ErrorCode::ParentNotFound,
     ErrorCode::NotAFolder,

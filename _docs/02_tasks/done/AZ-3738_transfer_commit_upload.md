@@ -138,3 +138,13 @@ Consumers MUST read that file — not this task spec — to discover the interfa
 
 Committed-key record (owner decision, migration `20261113100000`): in `BlobCommitEffect::on_entry`, lock the row `WHERE id = $1 AND account_id = $2 AND committed_revision_id IS NULL FOR UPDATE`, settle `reserved_bytes` as before, mark the blob committed, and for a large session do not delete the row: `UPDATE upload_sessions SET committed_revision_id = <new revision id>, reserved_bytes = 0, expires_at = <commit time> + upload_session_ttl WHERE id = $1 AND account_id = $2`. Staged rows are still deleted at commit. The reaper deletes rows with `expires_at <= now`; for a committed row it touches neither the blob nor the reservation, for an open row it releases `reserved_bytes`, removes the blob row and discards the file after COMMIT. The `upload_sessions_active` gauge goes down on commit, abort and reap. A purged revision deletes its committed record (`ON DELETE CASCADE`).
 
+## Owner decision
+
+Owner decision 2026-11-14 (complexity budget, option A): 03 has its own head sniffer with the same rules as 08's output check; no shared sniffer helper.
+
+## Implementation notes (AZ-3738, 2026-11-14)
+
+- `commit_upload` is an inherent method of `PgUploadService` (`src/commit.rs`); `UploadPorts` gained `commit` (`TreeCommit`), `reader` (`BlobReader`) and `commit_effects` (injected, run after `BlobCommitEffect`). The `CommitService` trait impl comes with `commit_batch` (E-14/c09), since the trait has both methods.
+- Abort or reap before `publish` removes the blob row with the session, so 02's ownership check fails first; 03 maps that to `UploadNotFound` (`commit_service.md` 1.3.0). The effect's own zero-row path is tested with a session closed between validation and `publish`.
+- AC-6b's reaper part (removal after the TTL) belongs to the reaper (AZ-3756); the test here checks the record's `expires_at` and that `start_upload` stops answering it after the TTL.
+- Open for the contracts owner: `EditedSince` is still a variant of `CommitServiceError` and `EntryError` in `src/contracts` (`commit_service.md` says E-14/c08 removes it); 03 never returns it.

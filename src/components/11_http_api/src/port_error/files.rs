@@ -76,7 +76,6 @@ impl PortError for CommitServiceError {
             Self::BlocklistMismatch => business(ErrorCode::BlocklistMismatch),
             Self::UploadNotFound => business(ErrorCode::UploadSessionGone),
             Self::InvalidName => business(ErrorCode::InvalidName),
-            Self::EditedSince => business(ErrorCode::EditedSince),
             Self::ParentGone => business(ErrorCode::ParentDeleted),
             Self::ParentNotFound => business(ErrorCode::ParentNotFound),
             Self::NotAFolder => business(ErrorCode::NotAFolder),
@@ -92,7 +91,6 @@ impl PortError for CommitServiceError {
 pub fn entry_error_code(error: &EntryError) -> ErrorCode {
     match error {
         EntryError::InvalidName => ErrorCode::InvalidName,
-        EntryError::EditedSince => ErrorCode::EditedSince,
         EntryError::ParentGone => ErrorCode::ParentDeleted,
         EntryError::ParentNotFound => ErrorCode::ParentNotFound,
         EntryError::NotAFolder => ErrorCode::NotAFolder,

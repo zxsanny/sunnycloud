@@ -209,7 +209,7 @@ impl PgTreeService {
 }
 
 /// Revives one node under its own name, or under a conflict-copy name when its name is taken; `true` when renamed.
-async fn revive_node(
+pub(crate) async fn revive_node(
     tx: &mut DbTx,
     account: Uuid,
     node: &Tombstoned,

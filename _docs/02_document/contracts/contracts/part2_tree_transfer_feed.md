@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c04 — `_docs/02_tasks/todo/B01-13_contracts_part2.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c05 (part 3); other batches: E-11..E-14, E-16..E-18, E-21, E-22, E-30
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: draft (frozen when the producer task is accepted)
 **Last Updated**: 2026-11-11
 
@@ -85,7 +85,7 @@ All methods take the resolved account id first (from 11's authentication), never
 | | `put_block` | `account, upload_id, index, expected_hash: Hash32, body: ByteStream, length` -> `BlockAck` | `UploadNotFound`, `IndexOutOfRange`, `LengthMismatch`, `HashMismatch`, `BlockConflict`, `Overloaded`, `StorageFull`, `Storage` |
 | | `abort_upload` | `account, upload_id` -> `()` | `UploadNotFound` |
 | | `stage_small` | `account, staged_key, expected_hash?, body: ByteStream, length (0..=2 MiB)` -> `Staged{staged_key, size}` | `QuotaExceeded`, `StagedCapReached`, `HashMismatch`, `LengthMismatch`, `ClientKeyMismatch`, `FreeSpaceFloor`, `Overloaded`, `AccountNotActive`, `Storage` |
-| `CommitService` | `commit_upload` | `CommitActor, CommitUpload{upload_id, parent_id, name, base_revision?, blocklist, client_mtime?, client_meta?, import_hint}` -> `Committed{node_id, revision_id, conflict_copy?}` | `NeedBlocks(list)`, `BlocklistMismatch`, `UploadNotFound`, `InvalidName`, `EditedSince`, `ParentGone`, `ParentNotFound`, `NotAFolder`, `AccountNotActive` |
+| `CommitService` | `commit_upload` | `CommitActor, CommitUpload{upload_id, parent_id, name, base_revision?, blocklist, client_mtime?, client_meta?, import_hint}` -> `Committed{node_id, revision_id, conflict_copy?}` | `NeedBlocks(list)`, `BlocklistMismatch`, `UploadNotFound`, `InvalidName`, `ParentGone`, `ParentNotFound`, `NotAFolder`, `AccountNotActive` |
 | | `commit_batch` | `CommitActor, BatchCommit{commit_id, entries}` (entry `{staged_key, parent_id, name, base_revision?, client_mtime?, client_meta?, import_hint}`) -> `BatchResult{per_entry: Committed \| EntryError}` | `BatchTooLarge`, `CommitIdReused`, `AccountNotActive` |
 | `DownloadService` | `open_revision_content` | `account, RevisionOrCurrent{Revision(revision_id) \| Current(node_id)}, retained_ok, range: Option<ByteRange>, if_range?, if_none_match?` -> `Download` | `NotFound`, `RangeNotSatisfiable`, `ContentUnavailable`, `Storage` |
 | | `open_blob_content` | `account, BlobRef, media_type?, same options` -> `Download` | as above |
@@ -153,3 +153,4 @@ All methods take the resolved account id first (from 11's authentication), never
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
 | 1.1.0 | 2026-11-11 | `DownloadError::RangeNotSatisfiable` becomes `RangeNotSatisfiable { total_size: i64 }` so 11 can answer `Content-Range: bytes */<total>`; owner-approved; the only matching caller (11 `port_error`) and its tests updated, 03 does not construct it yet (AZ-3755) | owner-approved change |
+| 1.2.0 | 2026-11-14 | `EditedSince` removed from `CommitServiceError` and `EntryError` (commits never answer it: a stale base becomes a conflict copy, an unknown or foreign base is ignored; `commit_service.md`); 11 and 03 updated, `edited_since` stays a `delete_node` error | AZ-3738 |
