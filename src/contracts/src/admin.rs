@@ -6,6 +6,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::common::{Fault, Page};
+pub use crate::identity::IdentityView;
 use crate::identity::{AccountState, AccountStatus, Principal, Role};
 use crate::quota::QuotaView;
 use crate::registries::HealthItem;
@@ -31,12 +32,6 @@ pub struct AdminUserView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HealthReport {
     pub items: Vec<(String, HealthItem)>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IdentityView {
-    pub provider: String,
-    pub email: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,11 +114,15 @@ pub enum DeletionError {
 
 #[async_trait]
 pub trait AccountDeletionService: Send + Sync {
+    /// Session principals only; `confirmation` is the caller's own account id as lowercase hyphenated UUID text.
     async fn request(
         &self,
         principal: &Principal,
         confirmation: &str,
     ) -> Result<DeletionAccepted, DeletionError>;
+
+    /// The operator path (`admin user delete --yes`): no principal and no confirmation.
+    async fn request_as_operator(&self, account: Uuid) -> Result<DeletionAccepted, DeletionError>;
 }
 
 #[derive(Debug, Error)]

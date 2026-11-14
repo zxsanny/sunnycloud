@@ -5,13 +5,13 @@ use std::time::Duration;
 use crate::common::{Calls, IP, NOW, id, principal};
 use contracts::{
     AccountAdmin, AccountAdminError, AccountFilter, AccountGuard, AccountGuardError, AccountInfo,
-    AccountState, ApprovalView, Authenticator, AuthenticatorError, AuthorizationRedirect,
-    BeginSignIn, BrowserBinding, CallbackParams, Credential, Decision, DeviceAuthorization,
-    DeviceGrantError, DeviceGrantService, DeviceInfo, DeviceToken, InviteError, InviteInfo,
-    InviteService, InviteToken, Linked, OperatorIdentityError, OperatorIdentityOps, Page,
-    Principal, PrincipalRevalidator, ProviderList, RevalidatorError, RevokeReason, Role, Scope,
-    SessionError, SessionInfo, SessionService, SessionTokens, SignInError, SignInOutcome,
-    SignInService, async_trait,
+    AccountProfile, AccountState, ApprovalView, Authenticator, AuthenticatorError,
+    AuthorizationRedirect, BeginSignIn, BrowserBinding, CallbackParams, Credential, Decision,
+    DeviceAuthorization, DeviceGrantError, DeviceGrantService, DeviceInfo, DeviceToken,
+    InviteError, InviteInfo, InviteService, InviteToken, Linked, OperatorIdentityError,
+    OperatorIdentityOps, Page, Principal, PrincipalRevalidator, ProviderList, RevalidatorError,
+    RevokeReason, Role, Scope, SessionError, SessionInfo, SessionService, SessionTokens,
+    SignInError, SignInOutcome, SignInService, async_trait,
 };
 use sc_db::DbTx;
 use sc_ids::{RawToken, TokenKind, UserCode, new_token, new_user_code};
@@ -284,6 +284,14 @@ impl AccountAdmin for Double {
     ) -> Result<Vec<AccountInfo>, AccountAdminError> {
         self.0.record("list_accounts");
         Ok(Vec::new())
+    }
+
+    async fn profile(&self, _account: Uuid) -> Result<AccountProfile, AccountAdminError> {
+        self.0.record("profile");
+        Ok(AccountProfile {
+            display_name: "Ada".to_owned(),
+            identities: Vec::new(),
+        })
     }
 
     async fn lock_active_admins(&self, _tx: &mut DbTx) -> Result<Vec<Uuid>, AccountAdminError> {

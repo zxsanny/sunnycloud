@@ -58,6 +58,11 @@ const DELETE_OWNED: [&str; 5] = [
 
 const DELETE_ACCOUNT: &str = "DELETE FROM accounts WHERE id = $1";
 
+const DISPLAY_NAME: &str = "SELECT display_name FROM accounts WHERE id = $1";
+
+const IDENTITIES_OF: &str =
+    "SELECT provider, email FROM identities WHERE account_id = $1 ORDER BY created_at, id";
+
 /// A listed account, undecided: role and state are the stored text.
 pub(crate) struct ListedAccount {
     pub id: Uuid,
@@ -273,4 +278,23 @@ pub(crate) async fn delete_with_owned_rows(tx: &mut DbTx, account: Uuid) -> Resu
             .map(drop)?;
     }
     Ok(())
+}
+
+/// The display name of `account`; `None` when it does not exist.
+pub(crate) async fn display_name(tx: &mut DbTx, account: Uuid) -> Result<Option<String>, DbError> {
+    Ok(sqlx::query_scalar::<_, String>(DISPLAY_NAME)
+        .bind(account)
+        .fetch_optional(tx.conn())
+        .await?)
+}
+
+/// `(provider, email)` of every identity of `account`, oldest first.
+pub(crate) async fn identities_of(
+    tx: &mut DbTx,
+    account: Uuid,
+) -> Result<Vec<(String, Option<String>)>, DbError> {
+    Ok(sqlx::query_as::<_, (String, Option<String>)>(IDENTITIES_OF)
+        .bind(account)
+        .fetch_all(tx.conn())
+        .await?)
 }

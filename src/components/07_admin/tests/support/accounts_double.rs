@@ -7,8 +7,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
 use contracts::{
-    AccountAdmin, AccountAdminError, AccountFilter, AccountInfo, AccountState, AccountStatus, Page,
-    Role, async_trait,
+    AccountAdmin, AccountAdminError, AccountFilter, AccountInfo, AccountProfile, AccountState,
+    AccountStatus, Page, Role, async_trait,
 };
 use sc_clock::Timestamp;
 use sc_db::{Db, DbTx, Scope};
@@ -93,6 +93,10 @@ impl AccountAdmin for AccountsDouble {
                 })
             })
             .collect()
+    }
+
+    async fn profile(&self, _account: Uuid) -> Result<AccountProfile, AccountAdminError> {
+        Err(failure(NOT_CALLED))
     }
 
     async fn lock_active_admins(&self, _tx: &mut DbTx) -> Result<Vec<Uuid>, AccountAdminError> {

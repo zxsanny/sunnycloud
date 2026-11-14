@@ -16,9 +16,10 @@ pub use auth::{
 pub use device::{ApprovalView, Decision, DeviceGrantError, DeviceGrantService};
 pub use invite::{InviteError, InviteService, OperatorIdentityError, OperatorIdentityOps};
 pub use model::{
-    AccountFilter, AccountInfo, AccountState, AccountStatus, ClientKind, Credential,
-    DeviceAuthorization, DeviceInfo, DeviceToken, InviteInfo, InviteToken, Principal,
-    PrincipalKind, ProviderInfo, RevokeReason, Role, Scope, SessionInfo, SessionTokens,
+    AccountFilter, AccountInfo, AccountProfile, AccountState, AccountStatus, ClientKind,
+    Credential, DeviceAuthorization, DeviceInfo, DeviceToken, IdentityView, InviteInfo,
+    InviteToken, Principal, PrincipalKind, ProviderInfo, RevokeReason, Role, Scope, SessionInfo,
+    SessionTokens,
 };
 pub use session::{SessionError, SessionService};
 pub use sign_in::{

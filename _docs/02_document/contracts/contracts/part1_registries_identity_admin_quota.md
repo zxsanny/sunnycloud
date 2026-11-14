@@ -3,9 +3,9 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c03 — `_docs/02_tasks/todo/B01-12_contracts_part1.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c04 (part 2), E-00/c05 (part 3); other batches: E-10..E-22, E-30 (implementers and callers)
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: draft (frozen when the producer task is accepted)
-**Last Updated**: 2026-11-05
+**Last Updated**: 2026-11-14
 
 ## Purpose
 
@@ -79,6 +79,7 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | | `create_admin_invite` | `()` -> `InviteToken` | `Unexpected` |
 | | `reset_admin` | `account` -> `InviteToken` (operator invite with `target_account_id`; the admin's sessions and device tokens are revoked) | `NotFound` (unknown or deleting account), `NotAnAdmin`, `Unexpected` |
 | `AccountAdmin` | `list_accounts` | `filter, page` -> `Vec<AccountInfo>` | `Unexpected` |
+| | `profile` (read-only, own short transaction in the account's scope; owner decision 2026-11-14, AZ-3819) | `account` -> `AccountProfile{display_name, identities: Vec<IdentityView{provider, email?}>}` (identities oldest first; no token, no provider subject) | `Unexpected` (also for an unknown account) |
 | | `lock_active_admins` | `tx: &mut DbTx` -> `Vec<Uuid>` | `Unexpected` |
 | | `set_role` | `tx: &mut DbTx, account, Role` -> `()` | `Unexpected` |
 | | `set_state` | `tx: &mut DbTx, account, AccountState{Active \| Disabled}` -> `()` (a disabled account's sessions and device tokens are revoked in the same transaction) | `Unexpected` |
@@ -97,6 +98,8 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | `DeviceToken` | the sync-only device token (printed as placeholder) |
 | `ClientKind` | the `client_kind` of `begin` (`web`, `android`, `ios`, `desktop`); `code_challenge` required for mobile kinds |
 | `ProviderInfo`, `SessionInfo`, `DeviceInfo`, `InviteInfo`, `AccountInfo` | ids and display fields only, no token (field lists open, see Open points) |
+| `AccountProfile` | `display_name, identities: Vec<IdentityView>` (the account view's name and identities) |
+| `IdentityView` | `provider, email: Option` (`email` only when stored under the email rule); defined with the 01 types, used by `AccountView.identities`; path `contracts::IdentityView` unchanged |
 
 ### 07 admin
 
@@ -109,7 +112,7 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | `AccountService` | `view` | `&Principal` -> `AccountView{id, display_name, role, identities, quota, root_node_id}` | `Unexpected` |
 | | `quota_view` | `&Principal` -> `QuotaView` | `Unexpected` |
 | `AccountDeletionService` | `request` | `&Principal, confirmation` -> `DeletionAccepted{deadline: Timestamp}` (confirmation = the caller's own account id as lowercase hyphenated UUID text, exact equality) | `Forbidden` (device token), `LastAdmin`, `ConfirmationMismatch` |
-| | `request_as_operator` (proposed, E-17 `contracts` change task, decided 2026-11-07) | `account` -> `DeletionAccepted{deadline: Timestamp}` (no confirmation; last-admin guard applies) | `LastAdmin` |
+| | `request_as_operator` (CC-2, decided 2026-11-07, added AZ-3819) | `account` -> `DeletionAccepted{deadline: Timestamp}` (no confirmation; last-admin guard applies) | `LastAdmin` |
 | `DevSeed` | `seed` | `()` -> `()` | a refusal when `environment = production` (variant name open) |
 
 `Actor` = `Admin(Principal)` or `Operator` (CLI). Every mutating call writes an `admin_action` audit row inside the provider.
@@ -161,7 +164,7 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 2. `ReadinessCheck` has no method list in any spec; the shape above is inferred from the `/readyz` body of E-09 (`{name, status, detail}`).
 3. `DoctorContext` fields are derived from the `doctor` options in 12 §3; 12 names only `run(ctx)`.
 4. `Role`: data_model §4.1 says `user`/`admin`; 01 invites carry `grants_role` `member`/`admin`.
-5. Resolved 2026-11-07: `admin user delete --yes` (operator, no principal) calls the separate method `AccountDeletionService::request_as_operator(account)`; `request` stays session-only (proposed `contracts` change task in E-17). The `DevSeed` refusal still has no variant name in 07.
+5. Resolved 2026-11-07: `admin user delete --yes` (operator, no principal) calls the separate method `AccountDeletionService::request_as_operator(account)`; `request` stays session-only (CC-2, in the crate since 1.5.0). The `DevSeed` refusal still has no variant name in 07.
 6. 01 §2 lists `revalidate` under `Authenticator`; the Ports table and canonical-names split it into `PrincipalRevalidator`. This contract follows the Ports table.
 7. Where 01 lists no error for a method (`reset_admin`, the `AccountAdmin` mutators, invite `revoke`), only `Unexpected` is declared; a provider that needs a typed failure (for example an unknown account) adds it through a minor version.
 
@@ -174,3 +177,4 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | 1.2.0 | 2026-11-13 | `SignInService`: the caller's address (`client_ip`) on `begin` (`BeginSignIn`), `complete`, `complete_link` and `exchange_mobile_code`, for the per-IP sign-in and invalid-token limits (AZ-3691) | AZ-3691 |
 | 1.3.0 | 2026-11-13 | `InviteError::NotFound`; `OperatorIdentityError::{NotFound, NotAnAdmin}` (open point 7 applied for invites and `reset_admin`) | AZ-3688 |
 | 1.4.0 | 2026-11-13 | Device grant bound at lookup; `decide` answers `UnknownCode` for a grant the caller's account did not look up (owner, security fix) | AZ-4267 |
+| 1.5.0 | 2026-11-14 | `AccountAdmin::profile(account) -> AccountProfile{display_name, identities}` (read-only, owner decision 2026-11-14); `AccountDeletionService::request_as_operator(account)` (CC-2); `IdentityView` moved beside the 01 types (same public path). Additive | AZ-3819 |

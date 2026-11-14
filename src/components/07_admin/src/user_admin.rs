@@ -150,7 +150,7 @@ fn state_action(state: AccountState) -> &'static str {
 }
 
 /// Ids and one action code; no name, email or address can enter an `AuditEvent`.
-fn admin_action(actor: &Actor, subject: Uuid, action: &'static str) -> AuditEvent {
+pub(crate) fn admin_action(actor: &Actor, subject: Uuid, action: &'static str) -> AuditEvent {
     let (actor_account_id, actor_session_id) = match actor {
         Actor::Admin(principal) => (
             Some(principal.account_id),

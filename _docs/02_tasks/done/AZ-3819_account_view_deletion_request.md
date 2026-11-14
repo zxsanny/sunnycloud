@@ -104,8 +104,8 @@ Then it returns within 1 s with deadline = now + 30 s, U's state is `deleting`, 
 |---------|----------------|--------|----------|
 | The exact confirmation value: the caller's own account id as lowercase hyphenated UUID text, exact equality (inferred from ST-07-2; owner decision 2026-11-07, AZ-3814) | E-17 owner | resolved | Medium |
 | `admin user delete` (operator) has no principal: it calls the separate `request_as_operator(account)`, a proposed `contracts` change task in E-17 (owner decision 2026-11-07, AZ-3814) | E-17 / E-22 owners | resolved | Medium |
-| No port named in 07's Requires gives the caller's display name and linked identities for `AccountView` (`AccountAdmin` lists accounts only) | E-15 / E-17 owners | open | Medium |
-| `ConfirmationMismatch` has no code or status in the shared status table | E-02 / E-17 owners | open | Medium |
+| No port named in 07's Requires gives the caller's display name and linked identities for `AccountView` (`AccountAdmin` lists accounts only). Resolved by the owner decision 2026-11-14: `AccountAdmin::profile(account) -> AccountProfile{display_name, identities}` (additive `contracts` change) | E-15 / E-17 owners | resolved | Medium |
+| `ConfirmationMismatch` has no code or status in the shared status table. Proposal (not applied to the shared table): code `confirmation_mismatch`, HTTP 422; recorded in `account_services.md` open point 4 | E-02 / E-17 owners | open | Medium |
 
 ## Contract
 

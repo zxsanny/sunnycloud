@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use contracts::{
     AccountAdmin, AccountAdminError, AccountFilter, AccountInfo, AccountLifecycleHook,
-    AccountState, CheckFuture, Drift, EraseProgress, HealthContributor, HealthItem, LifecycleError,
-    ListingPage, LiveFileLookup, NodeRef, NodeSelector, NodeView, Page, QuotaAdmin,
+    AccountProfile, AccountState, CheckFuture, Drift, EraseProgress, HealthContributor, HealthItem,
+    LifecycleError, ListingPage, LiveFileLookup, NodeRef, NodeSelector, NodeView, Page, QuotaAdmin,
     QuotaAdminError, QuotaView, RevisionMatch, RevisionView, Role, TreeReader, TreeReaderError,
     async_trait,
 };
@@ -22,6 +22,10 @@ impl AccountAdmin for AccountAdminDouble {
         _filter: AccountFilter,
         _page: Page,
     ) -> Result<Vec<AccountInfo>, AccountAdminError> {
+        Err(AccountAdminError::Unexpected(NOT_CALLED.into()))
+    }
+
+    async fn profile(&self, _account: Uuid) -> Result<AccountProfile, AccountAdminError> {
         Err(AccountAdminError::Unexpected(NOT_CALLED.into()))
     }
 

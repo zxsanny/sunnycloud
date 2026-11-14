@@ -11,6 +11,8 @@ workspace = true
 
 [dependencies]
 contracts = { path = "../../contracts" }
+# The deletion deadline is read from the injected clock.
+sc_clock = { path = "../../shared/clock" }
 sc_audit = { path = "../../shared/audit" }
 sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }
@@ -22,8 +24,15 @@ tokio = { workspace = true, features = ["rt", "time"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
+# The account view and the deletion request run against the real 01 (account admin, guard, authenticator),
+# 02 (tree reader and commit), 07a (quota view and ledger), with 04's GC queue and 05's feed stamp under the
+# commit (component dev-dependencies, ADR-015).
+sunnycloud-identity = { path = "../01_identity" }
+sunnycloud-tree = { path = "../02_tree" }
+sunnycloud-blobstore = { path = "../04_blobstore" }
+sunnycloud-sync-feed = { path = "../05_sync_feed" }
+sunnycloud-quota = { path = "../07a_quota" }
 # Per-test PostgreSQL databases.
-sc_clock = { path = "../../shared/clock" }
 sc_testdb = { path = "../../shared/testdb" }
 # Names the types in the signatures of the port doubles.
 sc_ids = { path = "../../shared/ids_hashing" }

@@ -112,3 +112,7 @@ Then each call returns its normal result and an ERROR is logged for each failed 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | The expiry boundary depends on E-16/c01 (G-06-3); decided 2026-11-07 as `expires_at > now` live | E-16 owner | resolved | Low |
+
+## Owner decision
+
+Owner decision 2026-11-14 (complexity budget, option A): no cache — every `open` and `authorize_content` re-reads the link and its target (bound 0 s, within `share_lookup_cache`); revoke and delete take effect at once.

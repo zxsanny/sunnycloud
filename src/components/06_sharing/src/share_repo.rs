@@ -1,4 +1,4 @@
-//! The statements on `share_links` for the owner operations. Each runs on the caller's transaction in the owner's
+//! The statements on `share_links` for the owner operations and the account erase. Each runs on the caller's transaction in the owner's
 //! account scope and names the account, so row-level security and the statement agree. Only the token's hash and
 //! the password's PHC string reach this module.
 
@@ -28,6 +28,12 @@ const REVOKE: &str = "UPDATE share_links \
     RETURNING node_id";
 
 const EXISTS: &str = "SELECT EXISTS (SELECT 1 FROM share_links WHERE id = $1 AND account_id = $2)";
+
+// The account erase (AZ-3702): revoked links go too; `ORDER BY id` makes the batch deterministic.
+const DELETE_BATCH: &str = "DELETE FROM share_links WHERE id IN \
+    (SELECT id FROM share_links WHERE account_id = $1 ORDER BY id LIMIT $2)";
+
+const COUNT: &str = "SELECT count(*) FROM share_links WHERE account_id = $1";
 
 /// A new link row; the plaintext token and password never reach this module.
 pub(crate) struct NewLink<'a> {
@@ -114,4 +120,26 @@ pub(crate) async fn exists(
         .fetch_one(tx.conn())
         .await?;
     Ok(found)
+}
+
+/// Deletes up to `limit` links of the account, revoked ones included.
+pub(crate) async fn delete_batch(
+    tx: &mut DbTx,
+    account_id: Uuid,
+    limit: u32,
+) -> Result<(), DbError> {
+    sqlx::query(DELETE_BATCH)
+        .bind(account_id)
+        .bind(i64::from(limit))
+        .execute(tx.conn())
+        .await?;
+    Ok(())
+}
+
+pub(crate) async fn count(tx: &mut DbTx, account_id: Uuid) -> Result<i64, DbError> {
+    let count: i64 = sqlx::query_scalar(COUNT)
+        .bind(account_id)
+        .fetch_one(tx.conn())
+        .await?;
+    Ok(count)
 }

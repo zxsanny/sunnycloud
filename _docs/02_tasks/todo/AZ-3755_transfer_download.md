@@ -116,3 +116,7 @@ Then the result is `ContentUnavailable`, no server-class error occurs, and the b
 
 This task produces/implements the contract at `_docs/02_document/contracts/03_transfer/download_service.md`.
 Consumers MUST read that file — not this task spec — to discover the interface.
+
+## Owner decision
+
+Owner decision 2026-11-14 (complexity budget, option A): `open_blob_content` has no `suggested_name` (none); no port change.

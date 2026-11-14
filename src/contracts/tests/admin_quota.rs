@@ -98,6 +98,11 @@ impl AccountDeletionService for Double {
         self.0.record("request");
         Ok(DeletionAccepted { deadline: NOW })
     }
+
+    async fn request_as_operator(&self, _account: Uuid) -> Result<DeletionAccepted, DeletionError> {
+        self.0.record("request_as_operator");
+        Ok(DeletionAccepted { deadline: NOW })
+    }
 }
 
 #[async_trait]
@@ -231,16 +236,27 @@ async fn account_deletion_and_dev_seed_doubles_record_each_method_across_two_thr
             .request(&principal(), "delete")
             .await
             .expect("request");
+        let by_operator = deletion
+            .request_as_operator(id())
+            .await
+            .expect("request_as_operator");
         seed.seed().await.expect("seed");
-        accepted
+        (accepted, by_operator)
     });
     a.await.expect("first task");
-    let accepted = b.await.expect("second task");
+    let (accepted, by_operator) = b.await.expect("second task");
 
     assert_eq!(accepted, DeletionAccepted { deadline: NOW });
+    assert_eq!(by_operator, DeletionAccepted { deadline: NOW });
     assert_eq!(
         calls.sorted(),
-        sorted(vec!["quota_view", "request", "seed", "view"])
+        sorted(vec![
+            "quota_view",
+            "request",
+            "request_as_operator",
+            "seed",
+            "view"
+        ])
     );
 }
 

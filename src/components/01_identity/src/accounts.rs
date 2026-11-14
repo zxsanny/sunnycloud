@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use contracts::{
     AccountAdmin, AccountAdminError, AccountFilter, AccountGuard, AccountGuardError, AccountInfo,
-    AccountState, AccountStatus, Page, RevokeReason, Role, async_trait,
+    AccountProfile, AccountState, AccountStatus, IdentityView, Page, RevokeReason, Role,
+    async_trait,
 };
 use sc_clock::{Clock, Timestamp};
-use sc_db::{Db, DbTx};
+use sc_db::{Db, DbError, DbTx, Scope};
 use uuid::Uuid;
 
 use crate::account_repo::{self, ListedAccount};
@@ -140,6 +141,31 @@ impl AccountAdmin for IdentityAccounts {
         rows.into_iter()
             .map(|row| account_info(row).map_err(unexpected))
             .collect()
+    }
+
+    /// Runs in its own short transaction in the account's scope, where row-level security shows only the
+    /// account's own identities.
+    async fn profile(&self, account: Uuid) -> Result<AccountProfile, AccountAdminError> {
+        let read = self
+            .db
+            .run(Scope::Account(account), async |tx| {
+                let Some(display_name) = account_repo::display_name(tx, account).await? else {
+                    return Ok(None);
+                };
+                let identities = account_repo::identities_of(tx, account).await?;
+                Ok::<_, DbError>(Some((display_name, identities)))
+            })
+            .await
+            .map_err(unexpected)?;
+        let (display_name, identities) =
+            read.ok_or_else(|| unexpected(IdentityError::AccountNotFound))?;
+        Ok(AccountProfile {
+            display_name,
+            identities: identities
+                .into_iter()
+                .map(|(provider, email)| IdentityView { provider, email })
+                .collect(),
+        })
     }
 
     async fn lock_active_admins(&self, tx: &mut DbTx) -> Result<Vec<Uuid>, AccountAdminError> {

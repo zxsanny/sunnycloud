@@ -223,7 +223,7 @@ async fn invite_and_operator_doubles_record_each_method_across_two_threads() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn account_admin_double_records_list_accounts_across_two_threads() {
+async fn account_admin_double_records_list_accounts_and_profile_across_two_threads() {
     let calls = Calls::default();
     let port: Arc<dyn AccountAdmin> = Arc::new(Double(calls.clone()));
     let other = port.clone();
@@ -233,11 +233,18 @@ async fn account_admin_double_records_list_accounts_across_two_threads() {
     };
 
     let a = tokio::spawn(async move { port.list_accounts(AccountFilter::default(), page).await });
-    let b = tokio::spawn(async move { other.list_accounts(AccountFilter::default(), page).await });
+    let b = tokio::spawn(async move {
+        other.list_accounts(AccountFilter::default(), page).await?;
+        other.profile(id()).await
+    });
     a.await.expect("first task").expect("list_accounts");
-    b.await.expect("second task").expect("list_accounts");
+    let profile = b.await.expect("second task").expect("profile");
 
-    assert_eq!(calls.sorted(), ["list_accounts", "list_accounts"]);
+    assert_eq!(profile.display_name, "Ada");
+    assert_eq!(
+        calls.sorted(),
+        ["list_accounts", "list_accounts", "profile"]
+    );
 }
 
 /// The `Arc<dyn Port>` form of every identity trait, for the composition root.

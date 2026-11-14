@@ -20,6 +20,7 @@ recording_port!(RecordingAccounts: AccountService, AccountServiceError, {
 recording_port!(RecordingDeletion: AccountDeletionService, DeletionError, {
     async fn request(&self, principal: &Principal, confirmation: &str)
         -> Result<DeletionAccepted, DeletionError>;
+    async fn request_as_operator(&self, account: Uuid) -> Result<DeletionAccepted, DeletionError>;
 });
 
 recording_port!(RecordingInvites: InviteService, InviteError, {

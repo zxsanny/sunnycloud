@@ -144,18 +144,25 @@ fn account_service_holds_the_account_quota_and_tree_ports() {
     assert!(same_object(service.tree(), &tree));
 }
 
-#[test]
-fn deletion_service_holds_the_account_port_and_settings() {
+#[tokio::test]
+async fn deletion_service_holds_the_account_port_and_settings() {
     // Arrange
     let accounts = accounts();
     let config = config();
+    let database = TestDb::clone_template().await;
+    let api = database.api().await;
+    let clock = clock_at_start();
+    let audit = AuditWriter::new(api.clone(), clock.clone());
 
     // Act
-    let service = AccountDeletionServiceImpl::new(accounts.clone(), config.clone());
+    let service =
+        AccountDeletionServiceImpl::new(accounts.clone(), config.clone(), audit, api, clock);
 
     // Assert
     assert!(same_object(service.accounts(), &accounts));
     assert_eq!(service.config(), &config);
+    drop(service);
+    database.drop_db().await;
 }
 
 /// A registry would be a process-wide `static`, a lazy cell or a thread-local.

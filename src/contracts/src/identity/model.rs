@@ -149,6 +149,20 @@ pub struct AccountInfo {
     pub last_login: Option<Timestamp>,
 }
 
+/// A linked sign-in identity; `email` is present only when it was stored under the email rule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentityView {
+    pub provider: String,
+    pub email: Option<String>,
+}
+
+/// What `AccountAdmin::profile` reads for the account view: no token, no provider subject.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountProfile {
+    pub display_name: String,
+    pub identities: Vec<IdentityView>,
+}
+
 /// Filter of `AccountAdmin::list_accounts`; `None` matches any.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AccountFilter {

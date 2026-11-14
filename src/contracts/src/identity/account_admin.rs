@@ -3,7 +3,7 @@ use sc_db::DbTx;
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::model::{AccountFilter, AccountInfo, AccountState, Role};
+use super::model::{AccountFilter, AccountInfo, AccountProfile, AccountState, Role};
 use crate::common::{Fault, Page};
 
 #[derive(Debug, Error)]
@@ -20,6 +20,10 @@ pub trait AccountAdmin: Send + Sync {
         filter: AccountFilter,
         page: Page,
     ) -> Result<Vec<AccountInfo>, AccountAdminError>;
+
+    /// The account's display name and linked identities, oldest identity first; read-only, own short
+    /// transaction in the account's scope. An unknown account is `Unexpected`.
+    async fn profile(&self, account: Uuid) -> Result<AccountProfile, AccountAdminError>;
 
     /// Locks the active admin rows for the last-admin check.
     async fn lock_active_admins(&self, tx: &mut DbTx) -> Result<Vec<Uuid>, AccountAdminError>;

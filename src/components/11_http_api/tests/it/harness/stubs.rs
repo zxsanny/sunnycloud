@@ -176,6 +176,7 @@ stub_port!(AccountStub: AccountService, AccountServiceError, {
 stub_port!(AccountDeletionStub: AccountDeletionService, DeletionError, {
     async fn request(&self, principal: &Principal, confirmation: &str)
         -> Result<DeletionAccepted, DeletionError>;
+    async fn request_as_operator(&self, account: Uuid) -> Result<DeletionAccepted, DeletionError>;
 });
 
 stub_port!(ThumbnailStateStub: ThumbnailStateSource, ThumbnailStateError, {
