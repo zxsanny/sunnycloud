@@ -59,9 +59,14 @@ pub async fn run(args: Vec<OsString>, env: &CliEnv) -> u8 {
     );
     let dispatch = Dispatch::new(log_subscriber);
 
-    let result = execute(&cli.command, env, settings)
-        .with_subscriber(dispatch.clone())
-        .await;
+    let result = match install_for_spawned_tasks(&cli.command, &dispatch) {
+        Ok(()) => {
+            execute(&cli.command, env, settings)
+                .with_subscriber(dispatch.clone())
+                .await
+        }
+        Err(error) => Err(error),
+    };
     let (exit, error) = match result {
         Ok(outcome) => {
             let exit = outcome.exit();
@@ -96,6 +101,21 @@ pub async fn run(args: Vec<OsString>, env: &CliEnv) -> u8 {
         });
     }
     exit.code()
+}
+
+/// A subscriber attached to the command future is not inherited by `tokio::spawn`ed tasks, and `serve` runs its
+/// request handlers, connections and janitor loops on spawned tasks (AZ-4318). `serve` is one process-long run, so
+/// it alone also installs its subscriber as the process default; every other command, and every in-process run in
+/// a test, keeps the per-future subscriber and its own sink.
+fn install_for_spawned_tasks(command: &Command, dispatch: &Dispatch) -> Result<(), CliError> {
+    if !matches!(command, Command::Serve) {
+        return Ok(());
+    }
+    tracing::dispatcher::set_global_default(dispatch.clone()).map_err(|error| CliError::Operator {
+        code: ErrorCode::Internal.as_str(),
+        detail: format!("cannot install the log subscriber for spawned tasks: {error}"),
+        exit: Exit::Failed,
+    })
 }
 
 async fn execute(
@@ -165,5 +185,22 @@ impl SigintWatch {
 impl Drop for SigintWatch {
     fn drop(&mut self) {
         self.0.abort();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_command_other_than_serve_installs_no_process_default() {
+        // Arrange
+        let dispatch = Dispatch::none();
+
+        // Act
+        let result = install_for_spawned_tasks(&Command::Openapi, &dispatch);
+
+        // Assert
+        assert!(result.is_ok() && !tracing::dispatcher::has_been_set());
     }
 }
