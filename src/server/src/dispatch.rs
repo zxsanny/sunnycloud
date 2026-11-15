@@ -2,13 +2,15 @@ use sc_error::ErrorCode;
 use sunnycloud_http_api::current_document;
 
 use crate::command_config;
-use crate::commands::Command;
+use crate::commands::{AdminCommand, Command, ScrubCommand};
 use crate::error::CliError;
 use crate::exit::Exit;
 use crate::handler::{BoxFuture, Call, Handler};
 use crate::healthcheck;
+use crate::media_commands;
 use crate::migration;
 use crate::outcome::Outcome;
+use crate::scrub_commands;
 use crate::serve;
 
 /// The binary's handler. Each command task replaces its `NotImplemented` arm with a call into its own module.
@@ -24,6 +26,21 @@ impl Handler for Commands {
                 Command::Healthcheck => healthcheck::run(healthcheck::OPS_ADDR, &call.cancel).await,
                 Command::Migrate(args) => migration::run(call.command, args, call.services).await,
                 Command::Serve => serve::run(call.services, call.cancel).await,
+                Command::Admin {
+                    command: AdminCommand::MediaRequeue { account, kind },
+                } => {
+                    media_commands::requeue(account.as_deref(), kind.as_deref(), call.services)
+                        .await
+                }
+                Command::Admin {
+                    command: AdminCommand::MediaStats,
+                } => media_commands::stats(call.services).await,
+                Command::Scrub {
+                    command: ScrubCommand::Run { full, rate },
+                } => scrub_commands::run(*full, *rate, &call).await,
+                Command::Scrub {
+                    command: ScrubCommand::Status,
+                } => scrub_commands::status(call.services).await,
                 other => Err(CliError::NotImplemented(other.route())),
             }
         })

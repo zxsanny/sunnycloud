@@ -11,7 +11,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::http::StatusCode;
+use contracts::{MediaAdmin, Scrubber};
 use janitor_support::{get, series};
+use media_api::MediaAdminService;
 use sc_observability::{Liveness, Metrics, ReadinessCheck as _, ReadinessRegistry, ops_router};
 
 use sc_config::parse_duration;
@@ -331,6 +333,49 @@ async fn key_check_builds_the_keyring_and_nothing_of_another_component() {
     ];
     expected.sort_unstable();
     assert_eq!(root.services.built(), expected);
+    root.finish().await;
+}
+
+#[tokio::test]
+async fn media_admin_builds_without_the_tree_or_the_blobs_and_media_holds_the_same_instance() {
+    // Arrange
+    let root = Root::new().await;
+    let services = &root.services;
+
+    // Act
+    let admin = services.get::<dyn MediaAdmin>().await.expect("media admin");
+    let stats = admin.stats().await.expect("stats on an empty queue");
+
+    // Assert
+    let built = services.built();
+    assert!(stats.counts.iter().all(|item| item.count == 0));
+    assert!(!built.contains(&type_name::<Tree>()));
+    assert!(!built.contains(&type_name::<Blobstore>()));
+    let media = services.get::<Media>().await.expect("08");
+    assert!(Arc::ptr_eq(
+        &media.admin,
+        &services
+            .get::<MediaAdminService>()
+            .await
+            .expect("admin service")
+    ));
+    root.finish().await;
+}
+
+#[tokio::test]
+async fn the_scrubber_service_is_the_instance_04_holds() {
+    // Arrange
+    let root = Root::new().await;
+
+    // Act
+    let scrubber = root.services.get::<dyn Scrubber>().await.expect("scrubber");
+    let blobs = root.services.get::<Blobstore>().await.expect("04");
+
+    // Assert
+    assert!(std::ptr::addr_eq(
+        Arc::as_ptr(&scrubber),
+        Arc::as_ptr(&blobs.scrubber)
+    ));
     root.finish().await;
 }
 

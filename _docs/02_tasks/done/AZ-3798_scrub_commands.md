@@ -111,3 +111,16 @@ The owner-effect parts of IT-12-14 (a flipped bit found with its blob id, `--rat
 | IT-12-14 expects findings listed with the blob id and path, but `StepResult` carries counts only and `Scrubber` has no per-blob findings output; this task prints the counts | E-10 owner | open | Medium |
 | 12 §3 lists a "suspect set" in `scrub status`; E-10/c12's `status` returns the oldest time, unscrubbed count, latest summary and the count of unavailable blobs | E-10 / E-22 owners | open | Low |
 | Exit code of a run cancelled by SIGINT is not stated (G-12-7 covers `serve` only) | E-22 owner | open | Low |
+
+## Implementation status (2026-11-15)
+
+| AC | Status | Evidence |
+|----|--------|----------|
+| AC-1 | Done | `src/server/tests/scrub_commands.rs::full_with_a_rate_and_plain_runs_call_start_once_step_until_done_and_finish_once` (the plain run passes no rate: `Scrubber::start_run` applies `scrub_max_rate` for `None`) |
+| AC-2 | Done | `scrub_commands.rs::exit_is_0_without_findings_and_2_for_a_mismatch_or_a_missing_blob_with_the_counts_printed` |
+| AC-3 | Done | `scrub_commands.rs::a_progress_line_appears_on_stderr_at_least_every_interval_while_a_step_runs` (500 ms interval, 1.2 s steps) |
+| AC-4 | Done | `src/server/tests/scrub_sigint.rs::sigint_stops_after_the_running_step_and_closes_the_run_once` (real SIGINT at the test process; `finish_run` once; exit 130) |
+| AC-5 | Done | `scrub_commands.rs::status_prints_the_same_facts_in_text_and_json`, `::a_status_with_no_run_yet_prints_null_for_the_missing_facts` |
+| AC-6 | Done | `scrub_commands.rs::a_rate_of_zero_negative_or_not_a_number_exits_3_with_no_start_call` (clap's range check, exit 3) |
+
+As built: `src/server/src/scrub_commands.rs`. Decisions: a clean run cut short by SIGINT exits 130 (flagged concern 3); findings win over 130; `oldest_scrubbed_at_micros` is Unix microseconds because no timestamp formatter exists in `sc_clock` yet; `cli_progress_interval` is now read into `CliSettings::progress_interval`.

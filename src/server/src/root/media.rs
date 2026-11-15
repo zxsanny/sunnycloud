@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use contracts::MediaAdmin;
 use media_api::{
     BlobPorts, DerivedFiles, DerivedStore, JobMetrics, JobPlanner, JobQueue, MediaAdminService,
     MediaConfig, MediaHealth, MediaLifecycle, ThumbnailStates, WorkerAuth, WorkerJobsFacade,
@@ -42,6 +43,13 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
         .register::<MediaPlanning, _, _>(|services| async move {
             planning(&services).await.map(Arc::new)
         })
+        .register::<MediaAdminService, _, _>(|services| async move {
+            admin(&services).await.map(Arc::new)
+        })
+        .register::<dyn MediaAdmin, _, _>(|services| async move {
+            let admin: Arc<dyn MediaAdmin> = services.get::<MediaAdminService>().await?;
+            Ok(admin)
+        })
         .register::<Media, _, _>(|services| async move { media(&services).await.map(Arc::new) })
 }
 
@@ -69,6 +77,18 @@ async fn planning(services: &ServiceContext) -> Result<MediaPlanning, CliError> 
     })
 }
 
+/// The one admin service: `Media` serves it to the metrics scrape, `admin media-*` reaches it through
+/// `dyn MediaAdmin`, and neither builds the other's dependencies.
+async fn admin(services: &ServiceContext) -> Result<MediaAdminService, CliError> {
+    let db = Db::clone(&*services.get::<Db>().await?);
+    let planning = services.get::<MediaPlanning>().await?;
+    Ok(MediaAdminService::new(
+        db,
+        Arc::clone(&planning.queue),
+        Arc::clone(&planning.metrics),
+    ))
+}
+
 async fn media(services: &ServiceContext) -> Result<Media, CliError> {
     let db = Db::clone(&*services.get::<Db>().await?);
     let clock = services.get::<dyn Clock>().await?;
@@ -91,11 +111,7 @@ async fn media(services: &ServiceContext) -> Result<Media, CliError> {
         &planning.config,
         Arc::clone(&planning.metrics),
     ));
-    let admin = Arc::new(MediaAdminService::new(
-        db.clone(),
-        Arc::clone(&planning.queue),
-        Arc::clone(&planning.metrics),
-    ));
+    let admin = services.get::<MediaAdminService>().await?;
     // The queue gauges are read from the table before each scrape (08's scrape probe).
     registry.register_probe(admin.clone());
     Ok(Media {

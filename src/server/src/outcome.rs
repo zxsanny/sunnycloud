@@ -10,7 +10,7 @@ pub enum Class {
     Warnings,
     /// The command ran and found problems (`scrub run` mismatch, `doctor` Fail).
     Findings,
-    /// `serve` ran its shutdown to the end after SIGINT.
+    /// A SIGINT ended the command in order (`serve` after its shutdown, `scrub run` after its closing call).
     Interrupted,
 }
 

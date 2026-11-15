@@ -88,3 +88,13 @@ The owner-effect parts of IT-12-16 (requeued rows become `queued`, counts equal 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | The accepted kind values are 08's job kinds; the CLI takes them from 08's type and lists none of its own | E-18 owner | accepted-risk | Low |
+
+## Implementation status (2026-11-15)
+
+| AC | Status | Evidence |
+|----|--------|----------|
+| AC-1 | Done | `src/server/tests/media_commands.rs::requeue_with_each_filter_makes_one_call_with_exactly_that_filter_and_prints_the_count` |
+| AC-2 | Done | `media_commands.rs::an_invalid_kind_or_account_exits_3_with_no_call` |
+| AC-3 | Done | `media_commands.rs::stats_print_every_lane_and_status_with_the_same_facts_in_text_and_json`; the real service is the one `Media` holds: `composition_root.rs::media_admin_builds_without_the_tree_or_the_blobs_and_media_holds_the_same_instance` |
+
+As built: `src/server/src/media_commands.rs`; the kind names (`stills`, `poster`, `transcode`) are a three-entry table in 12 because 08's name helpers are crate-private and typed with `media_shared`, not `contracts` (accepted-risk concern, Low).

@@ -45,8 +45,10 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "signal", "sync", "time", "net", "io-util"] }
 tokio-util = { workspace = true }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
+uuid = { workspace = true }
 
 [dev-dependencies]
+async-trait = "0.1"
 axum = { workspace = true }
 # `serve`'s binary tests send real blocks, each with its `X-Blake3` hash.
 sc_ids = { path = "../shared/ids_hashing" }
