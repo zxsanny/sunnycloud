@@ -29,6 +29,8 @@ pub const INTERVALS: &[(&str, &str)] = &[
     ("account_delete_interval", "18s"),
     ("job_reap_interval", "19m"),
     ("derived_janitor_interval", "20m"),
+    ("identity_janitor_interval", "21m"),
+    ("audit_retention_interval", "22m"),
 ];
 
 pub struct Root {

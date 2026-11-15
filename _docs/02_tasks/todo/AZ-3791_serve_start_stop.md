@@ -127,3 +127,8 @@ Then the shutdown order of AC-5 runs and the exit code is 130
 | A `.epoch` marker absent on a volume that holds blobs fails 05's doctor check, but `serve`'s refusal rule names only "database epoch below the marker" | E-12 / E-22 owner | open | Low |
 | The exact non-zero code (2 or 3) per refusal kind is not stated; IT-12-6 accepts either (contract open point 5) | E-22 owner | open | Low |
 | `deployment_procedures.md` says SIGTERM gets 120 s, while helper 01 and 11 set `shutdown_grace` to 25 s; this task follows the config default | Deployment docs owner | open | Low |
+
+## Owner decisions (2026-11-15)
+
+- `HttpConfig` keys (from AZ-3789): new `sc_config` keys `public_addr` (default `0.0.0.0:8080`), `session_cookie` (default `__Host-session`, the name the OpenAPI document publishes) and `binding_cookie` (default `__Host-signin-binding`); `serve` maps `ServeSettings` to `HttpConfig` and passes `root::api_services`.
+- Shutdown steps with no port (flagged concern, Medium): add two small operations inside this task. 03: save every upload's unsaved progress now (the idle-flush work for every entry, regardless of idle time). 04: wait until every open sync group has finished. `serve` calls both, in that order, before the pool closes.

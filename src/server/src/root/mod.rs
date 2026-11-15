@@ -3,10 +3,10 @@
 //! checks, health contributors, readiness checks) in their documented order.
 //!
 //! Wiring only: every builder calls owner constructors and hands over ports; no SQL, blob I/O, crypto or business
-//! rule lives here. The vault service (20) is compiled only with feature `vault`.
-//!
-//! Not assembled yet: `ApiServices` and therefore `HttpServer` (AZ-3789).
+//! rule lives here. The vault service (20) is compiled only with feature `vault`. [`api_services`] assembles what
+//! 11 receives from the same builders.
 
+mod api;
 mod base;
 mod domain;
 mod lists;
@@ -22,6 +22,7 @@ use sc_clock::Clock;
 use crate::context::ContextBuilder;
 use crate::error::CliError;
 
+pub use api::api_services;
 pub use base::{DatabaseReady, Shutdown};
 pub use domain::{Admin, Feed, Identity, Quota, Sharing, Transfer, Tree};
 pub use lists::{

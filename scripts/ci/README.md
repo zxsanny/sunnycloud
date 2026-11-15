@@ -15,7 +15,7 @@ cargo sqlx --version  # sqlx-cli-sqlx 0.9.0
 Both scripts refuse to run on any other minor version. Both need a PostgreSQL 18 reachable through `DATABASE_URL`:
 
 ```bash
-docker run -d --name sunnycloud-pg18 -e POSTGRES_PASSWORD=dev -p 127.0.0.1:5432:5432 postgres:18
+docker run -d --name sunnycloud-pg18 -e POSTGRES_PASSWORD=dev -p 127.0.0.1:5432:5432 postgres:18 -c max_connections=400  # the workspace suite holds ~270 at peak
 export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/postgres
 ```
 

@@ -163,8 +163,10 @@ async fn janitors_run_on_their_owners_configured_intervals() {
         ("tree_purge", interval("tree_maintenance_interval")),
         ("tree_cascade", interval("tree_maintenance_interval")),
         ("deletion_purger", interval("account_delete_interval")),
+        ("identity", interval("identity_janitor_interval")),
         ("job_reaper", interval("job_reap_interval")),
         ("derived_janitor", interval("derived_janitor_interval")),
+        ("audit_retention", interval("audit_retention_interval")),
     ];
     assert_eq!(actual, expected);
     root.finish().await;

@@ -114,6 +114,8 @@ settings_table! {
     provider_github_client_secret: Opt<Sec> = unset(A);
     provider_oidc_client_secret: Opt<Sec> = unset(A);
     setup_token: Opt<Sec> = unset(A);
+    // How often 12 runs 01's `IdentityMaintenance` (owner decision 2026-11-14).
+    identity_janitor_interval: Dur = dflt("5m", A);
 
     // Abuse limits (helper 08)
     device_grant_ip_limit: Opt<Count> = unset(A);
@@ -171,6 +173,8 @@ settings_table! {
     admin_list_page_size: Opt<Count> = unset(A);
     default_quota: Size = dflt("100GiB", A);
     audit_retention: Dur = dflt("365d", A);
+    // How often 12 runs the audit-retention janitor (owner decision 2026-11-14).
+    audit_retention_interval: Dur = dflt("1h", A);
 
     // Blobstore (04)
     blob_root: Opt<Text> = unset(A);

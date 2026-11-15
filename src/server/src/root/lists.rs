@@ -23,9 +23,10 @@ use super::domain::{Admin, Identity, Quota, Sharing, Transfer, Tree};
 use super::failed;
 use super::media::{Media, MediaPlanning};
 use super::storage::Blobstore;
+use crate::command_config::ServeSettings;
 use crate::context::{ContextBuilder, ServiceContext};
 use crate::error::CliError;
-use crate::janitor::{JanitorMetrics, Scheduled, Scheduler};
+use crate::janitor::{AuditRetentionJanitor, JanitorMetrics, Scheduled, Scheduler};
 
 /// A list entry with the component that registered it (`"06"`, `"07a"`); the hook and cleanup ports carry no
 /// name of their own.
@@ -56,7 +57,7 @@ pub struct CommitEffects(pub Vec<Registered<dyn CommitEffect>>);
 /// 02, then 08; given to 04's GC sweeper.
 pub struct BlobCleanups(pub Vec<Registered<dyn BlobOwnerCleanup>>);
 
-/// The janitors with their owners' intervals, in the order 03, 04, 02, 07, 08.
+/// The janitors with their owners' intervals, in the order 03, 04, 02, 07, 01, 08, then 12's audit retention.
 pub struct Janitors(pub Vec<Scheduled>);
 
 /// What 07's health aggregation runs: 04, then 08.
@@ -182,9 +183,8 @@ async fn account_hooks(
     Ok(hooks)
 }
 
-/// Not registered, because no configuration key gives their interval: 01's `IdentityMaintenance` and the
-/// audit-retention janitor of 12 (`identity_janitor_interval` / `audit_retention_interval` do not exist).
 async fn janitors(services: &ServiceContext) -> Result<Janitors, CliError> {
+    let settings = services.get::<ServeSettings>().await?;
     let db = Db::clone(&*services.get::<Db>().await?);
     let audit = AuditWriter::clone(&*services.get::<AuditWriter>().await?);
     let clock = services.get::<dyn Clock>().await?;
@@ -260,6 +260,10 @@ async fn janitors(services: &ServiceContext) -> Result<Janitors, CliError> {
         ),
         every(Arc::new(purger), admin.config.account_delete_interval),
         every(
+            identity.maintenance.clone(),
+            settings.identity_janitor_interval.get(),
+        ),
+        every(
             Arc::new(JobReaper::new(
                 db.clone(),
                 Arc::clone(&clock),
@@ -269,8 +273,15 @@ async fn janitors(services: &ServiceContext) -> Result<Janitors, CliError> {
             media.job_reap_interval,
         ),
         every(
-            Arc::new(DerivedJanitor::new(db, clock, blobs.gc.clone())),
+            Arc::new(DerivedJanitor::new(db.clone(), clock, blobs.gc.clone())),
             media.derived_janitor_interval,
+        ),
+        every(
+            Arc::new(AuditRetentionJanitor::new(
+                db,
+                settings.audit_retention.get(),
+            )),
+            settings.audit_retention_interval.get(),
         ),
     ]))
 }

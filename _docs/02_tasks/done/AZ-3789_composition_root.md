@@ -146,3 +146,12 @@ Blocked, nothing stubbed:
 - No interval key for 01's `IdentityMaintenance` or the audit-retention janitor; both are not scheduled until helper 01's table gets keys (or the owner names keys to reuse).
 
 Owner decision 2026-11-14 (janitor keys): new `sc_config` keys `identity_janitor_interval` (default 5 min) for 01's `IdentityMaintenance` and `audit_retention_interval` (default 1 h) for the audit-retention janitor; register both in the scheduler. Completion of `ApiServices`/`serve` waits on AZ-4309, AZ-4310 and AZ-4311.
+
+## Implementation status (batch 72, 2026-11-15)
+
+Done:
+- `root::api_services` (`src/server/src/root/api.rs`): every port of `ApiServices` is the instance the builders made for every other consumer (AC-1 in `src/server/tests/api_services.rs`); the hook list is built first so 01's account creation holds it before any listener; `vault` is `None` without feature `vault` (AC-6).
+- Janitor keys (owner decision 2026-11-14): `identity_janitor_interval` (5m) schedules 01's `IdentityMaintenance` (`identity`), `audit_retention_interval` (1h) schedules 12's `AuditRetentionJanitor` (`audit_retention`, retention `audit_retention`). The janitor list is 03, 04, 02, 07, 01, 08, audit retention; the 200 ms in-process run covers both.
+
+Moved to AZ-3791 (2026-11-15):
+- Running the real `serve` binary (AC-1 through the binary, the `serve` half of AC-5) belongs to AZ-3791 (`serve` start and stop sequence), which owns building `HttpServer` and its listeners. AC-1 and AC-5 of this task pass in process (`api_services.rs`, `composition_root.rs`). The owner decision of 2026-11-15 on the missing `HttpConfig` keys is recorded in AZ-3791.
