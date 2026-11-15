@@ -7,9 +7,9 @@ mod janitor_support;
 use std::sync::Arc;
 use std::time::Duration;
 
-use janitor_support::{metrics, series, system_clock};
+use janitor_support::{metrics, series, start_scheduler, system_clock};
 use sc_testdb::TestDb;
-use sunnycloud_server::janitor::{AuditRetentionJanitor, JanitorMetrics, Scheduled, Scheduler};
+use sunnycloud_server::janitor::{AuditRetentionJanitor, JanitorMetrics, Scheduled};
 
 const SAMPLES: usize = 100;
 
@@ -20,7 +20,7 @@ async fn no_advisory_lock_is_held_while_a_database_janitor_cycles() {
     let api = db.api().await;
     let metrics = metrics();
     let janitor_metrics = Arc::new(JanitorMetrics::new(&metrics).expect("janitor families"));
-    let scheduler = Scheduler::start(
+    let scheduler = start_scheduler(
         system_clock(),
         janitor_metrics,
         vec![Scheduled {

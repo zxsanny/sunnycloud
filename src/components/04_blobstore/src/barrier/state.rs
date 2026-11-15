@@ -90,6 +90,22 @@ impl Shared {
         open
     }
 
+    /// One registration on the open group for the final sync of a shutdown, so its outcome is kept until awaited;
+    /// `None` when no flush runs and the open group holds no file, so there is nothing to wait for.
+    pub fn join_open(&self) -> Option<u64> {
+        let mut state = self.lock();
+        let open = state.open;
+        let holds_files = state
+            .groups
+            .get(&open)
+            .is_some_and(|group| !group.files.is_empty());
+        if !holds_files && !state.flushing {
+            return None;
+        }
+        state.groups.entry(open).or_default().registrations += 1;
+        Some(open)
+    }
+
     /// The outcome of the token's group when it is known; otherwise, when the group is open and no flush runs,
     /// this waiter starts the flush. An absent group is a token that was never issued or was already awaited.
     pub fn check(

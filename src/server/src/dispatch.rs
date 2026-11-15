@@ -9,6 +9,7 @@ use crate::handler::{BoxFuture, Call, Handler};
 use crate::healthcheck;
 use crate::migration;
 use crate::outcome::Outcome;
+use crate::serve;
 
 /// The binary's handler. Each command task replaces its `NotImplemented` arm with a call into its own module.
 pub struct Commands;
@@ -22,6 +23,7 @@ impl Handler for Commands {
                 Command::Openapi => openapi(),
                 Command::Healthcheck => healthcheck::run(healthcheck::OPS_ADDR, &call.cancel).await,
                 Command::Migrate(args) => migration::run(call.command, args, call.services).await,
+                Command::Serve => serve::run(call.services, call.cancel).await,
                 other => Err(CliError::NotImplemented(other.route())),
             }
         })

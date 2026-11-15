@@ -13,6 +13,7 @@ use sc_ratelimit::AbuseLimiter;
 use sunnycloud_admin::{
     AccountDeletionServiceImpl, AccountServiceImpl, AdminConfig, AdminServiceImpl,
 };
+use sunnycloud_blobstore::FileEpochMarker;
 use sunnycloud_identity::{
     IdentityAccounts, IdentityAuthenticator, IdentityConfig, IdentityDeviceGrants, IdentityInvites,
     IdentityMaintenance, IdentitySessions, IdentitySignIn, MaxmindGeoLookup,
@@ -121,6 +122,11 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
                 admin: Arc::new(PgQuotaAdmin::new(base.db, config)),
             }))
         })
+        .register::<PgEpochAdmin, _, _>(|services| async move {
+            let db = Db::clone(&*services.get::<Db>().await?);
+            let marker = services.get::<FileEpochMarker>().await?;
+            Ok(Arc::new(PgEpochAdmin::new(db, marker)))
+        })
         .register::<Feed, _, _>(|services| async move { feed(&services).await.map(Arc::new) })
         .register::<Tree, _, _>(|services| async move { tree(&services).await.map(Arc::new) })
         .register::<Transfer, _, _>(
@@ -222,11 +228,11 @@ async fn feed(services: &ServiceContext) -> Result<Feed, CliError> {
         horizon: Arc::new(PgFeedHorizon),
         change_feed: Arc::new(change_feed),
         lifecycle: Arc::new(PgFeedLifecycle::new(
-            base.db.clone(),
+            base.db,
             base.clock,
             blobs.epoch_marker.clone(),
         )),
-        epoch_admin: Arc::new(PgEpochAdmin::new(base.db, blobs.epoch_marker.clone())),
+        epoch_admin: services.get::<PgEpochAdmin>().await?,
     })
 }
 

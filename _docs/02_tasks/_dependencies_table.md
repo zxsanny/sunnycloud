@@ -385,3 +385,4 @@ Recommended execution order (topological; ties by key). Test-epic refs (E-31) ar
 | AZ-4309 | admin_service_impl | 3 | AZ-3817, AZ-3818 | AZ-3624 |
 | AZ-4310 | share_authorize_derived | 3 | AZ-3700, AZ-3699, AZ-3701 | AZ-3619 |
 | AZ-4311 | media_effect_account_per_commit | 2 | AZ-3843 | AZ-3629 |
+| AZ-4318 | spawned_task_logs | 2 | AZ-3791 | AZ-3647 |

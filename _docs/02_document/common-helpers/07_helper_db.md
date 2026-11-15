@@ -19,6 +19,7 @@ One place that owns connections, transaction shape and tenant scope, so no compo
 | `Migrator::revert` | `Db` (role `Migrator`), steps | `MigrationReport` | `IrreversibleMigration` |
 | `Migrator::status` | `Db` (either role) | `applied`, `pending`, `dirty`, `unknown_newer` | none |
 | `Migrator::check_version` | `Db` (either role) | `SchemaState::{Current, Pending{n}, UnknownNewer}` | none; used by `serve` (refuses to start unless `Current`), `/readyz` and `doctor` |
+| `Db::close` | `Db` (either role) | `()`; closes the pool shared by every clone after the checked-out connections return; later calls fail | none; `serve` calls it as the last shutdown step (AZ-3791) |
 | `Db::health` | none | `{reachable, server_version, migrations_pending, pool_in_use}` | none |
 
 `DbTx` cannot be constructed outside this crate. Ports that must join a caller's transaction take `&mut DbTx`; everything else opens its own `Db::run`.

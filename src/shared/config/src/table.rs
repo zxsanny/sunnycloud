@@ -61,6 +61,7 @@ settings_table! {
     environment: Environment = dflt("production", ALL);
     public_url: Text = unset(A);
     trusted_proxies: List = dflt("", A);
+    public_addr: ListenAddr = dflt("0.0.0.0:8080", A);
     internal_addr: ListenAddr = dflt("0.0.0.0:8081", A);
     ops_addr: ListenAddr = dflt("0.0.0.0:9090", A);
     // `log` and `log_level` are also read by the worker (AZ-3868): its logging setup takes the same two keys.
@@ -82,6 +83,9 @@ settings_table! {
     request_timeout: Dur = dflt("60s", A);
     body_idle_timeout: Dur = dflt("30s", A);
     download_write_idle: Dur = dflt("60s", A);
+    // The browser cookie names 11 reads (owner decision 2026-11-15); 11 refuses a name without `__Host-`.
+    session_cookie: Text = dflt("__Host-session", A);
+    binding_cookie: Text = dflt("__Host-signin-binding", A);
 
     // Database (07)
     db_api_url: Sec = unset(A);

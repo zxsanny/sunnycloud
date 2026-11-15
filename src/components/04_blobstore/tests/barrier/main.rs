@@ -3,6 +3,7 @@
 
 mod coalesce;
 mod failure;
+mod final_sync;
 mod groups;
 mod idle;
 mod ordering;

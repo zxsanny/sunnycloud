@@ -22,6 +22,7 @@ mod output;
 pub mod root;
 mod run;
 mod secret;
+mod serve;
 mod settings;
 mod terminal;
 mod wiring;

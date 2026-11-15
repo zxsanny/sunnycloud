@@ -51,6 +51,7 @@ mod security_dos;
 mod security_idor;
 mod security_protocol;
 mod security_support;
+mod shutdown_flush;
 mod stage_refusals;
 mod stage_small;
 mod stage_support;

@@ -72,5 +72,12 @@ pub fn command_finished(
                 duration_ms = duration_ms
             )
         }
+        (Exit::Interrupted, _) => {
+            log_info!(
+                "cli command finished: exit 130",
+                route = route,
+                duration_ms = duration_ms
+            )
+        }
     }
 }

@@ -231,8 +231,8 @@ fn a_valid_configuration_gets_past_the_configuration_stage() {
     let serve = run(&watch, &setup, &["serve"]);
     let migrate = run(&watch, &setup, &["migrate"]);
 
-    // Assert: both get past configuration (exit 3) and stop later with exit 2: `serve` is not implemented yet and
-    // `migrate` finds no database behind the migrator URL.
+    // Assert: both get past configuration (exit 3) and stop later with exit 2: neither finds a database behind
+    // its URL.
     assert_eq!(serve.code(), Some(2), "{}", serve.stderr());
     assert_eq!(migrate.code(), Some(2), "{}", migrate.stderr());
 }

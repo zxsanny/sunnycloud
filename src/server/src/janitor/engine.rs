@@ -1,5 +1,5 @@
 use std::sync::atomic::AtomicUsize;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::Duration;
 
 use contracts::Janitor;
@@ -16,6 +16,8 @@ use super::readiness::{LoopGuard, SchedulerAlive};
 pub enum SchedulerError {
     #[error("janitor `{0}` has a zero interval")]
     ZeroInterval(&'static str),
+    #[error("the janitor scheduler was already started")]
+    AlreadyStarted,
 }
 
 /// A janitor with its interval from configuration.
@@ -26,47 +28,53 @@ pub struct Scheduled {
 
 /// One timer loop per janitor. A janitor's loop runs its cycles one after another, so a janitor never overlaps
 /// itself; different janitors run concurrently.
+///
+/// Built before the listeners, so `/readyz` can hold its `scheduler_alive` item, and started after the late
+/// lists: until [`Scheduler::start`] the item is failing.
 pub struct Scheduler {
+    clock: Arc<dyn Clock>,
+    metrics: Arc<JanitorMetrics>,
     stop: CancellationToken,
     loops: Mutex<Vec<JoinHandle<()>>>,
     running: Arc<AtomicUsize>,
-    total: usize,
+    total: Arc<OnceLock<usize>>,
 }
 
 impl Scheduler {
-    /// Starts one loop per entry on the current runtime. The first cycle of a janitor runs one interval after
-    /// the start.
-    pub fn start(
-        clock: Arc<dyn Clock>,
-        metrics: Arc<JanitorMetrics>,
-        jobs: Vec<Scheduled>,
-    ) -> Result<Scheduler, SchedulerError> {
+    /// A scheduler with no loop yet.
+    pub fn new(clock: Arc<dyn Clock>, metrics: Arc<JanitorMetrics>) -> Scheduler {
+        Scheduler {
+            clock,
+            metrics,
+            stop: CancellationToken::new(),
+            loops: Mutex::new(Vec::new()),
+            running: Arc::new(AtomicUsize::new(0)),
+            total: Arc::new(OnceLock::new()),
+        }
+    }
+
+    /// Starts one loop per entry on the current runtime, once. The first cycle of a janitor runs one interval
+    /// after the start.
+    pub fn start(&self, jobs: Vec<Scheduled>) -> Result<(), SchedulerError> {
         if let Some(job) = jobs.iter().find(|job| job.interval.is_zero()) {
             return Err(SchedulerError::ZeroInterval(job.janitor.name()));
         }
-        let stop = CancellationToken::new();
-        let running = Arc::new(AtomicUsize::new(0));
-        let total = jobs.len();
-        let begun = clock.monotonic();
-        let loops = jobs
-            .into_iter()
-            .map(|job| {
-                tokio::spawn(run_loop(
-                    job,
-                    begun,
-                    Arc::clone(&clock),
-                    Arc::clone(&metrics),
-                    stop.clone(),
-                    LoopGuard::new(&running),
-                ))
-            })
-            .collect();
-        Ok(Scheduler {
-            stop,
-            loops: Mutex::new(loops),
-            running,
-            total,
-        })
+        let mut loops = self.loops.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.total.set(jobs.len()).is_err() {
+            return Err(SchedulerError::AlreadyStarted);
+        }
+        let begun = self.clock.monotonic();
+        loops.extend(jobs.into_iter().map(|job| {
+            tokio::spawn(run_loop(
+                job,
+                begun,
+                Arc::clone(&self.clock),
+                Arc::clone(&self.metrics),
+                self.stop.clone(),
+                LoopGuard::new(&self.running),
+            ))
+        }));
+        Ok(())
     }
 
     /// The `scheduler_alive` item for the readiness registry.
@@ -74,7 +82,7 @@ impl Scheduler {
         Arc::new(SchedulerAlive::new(
             self.stop.clone(),
             Arc::clone(&self.running),
-            self.total,
+            Arc::clone(&self.total),
         ))
     }
 

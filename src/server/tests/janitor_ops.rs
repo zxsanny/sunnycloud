@@ -7,7 +7,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::StatusCode;
-use janitor_support::{Counting, Erroring, get, metrics, series, system_clock, wait_until};
+use janitor_support::{
+    Counting, Erroring, get, metrics, series, start_scheduler, system_clock, wait_until,
+};
 use sc_clock::{ManualClock, Timestamp};
 
 use sc_observability::{Liveness, ReadinessRegistry, ReadinessStatus, ops_router};
@@ -24,7 +26,7 @@ async fn metrics_exist_per_janitor_and_scheduler_alive_turns_failing_after_stop(
     let failing = Erroring::new("failing_janitor");
     let metrics = metrics();
     let janitor_metrics = Arc::new(JanitorMetrics::new(&metrics).expect("janitor families"));
-    let scheduler = Scheduler::start(
+    let scheduler = start_scheduler(
         system_clock(),
         janitor_metrics,
         vec![
@@ -95,7 +97,7 @@ async fn last_success_is_the_clock_time_of_the_finished_cycle() {
     let ok = Counting::new("ok_janitor");
     let metrics = metrics();
     let janitor_metrics = Arc::new(JanitorMetrics::new(&metrics).expect("janitor families"));
-    let scheduler = Scheduler::start(
+    let scheduler = start_scheduler(
         clock.clone(),
         janitor_metrics,
         vec![Scheduled {
@@ -126,7 +128,7 @@ async fn scheduler_alive_fails_when_the_clock_shuts_down_the_loops() {
     let clock = Arc::new(ManualClock::new(START));
     let metrics = metrics();
     let janitor_metrics = Arc::new(JanitorMetrics::new(&metrics).expect("janitor families"));
-    let scheduler = Scheduler::start(
+    let scheduler = start_scheduler(
         clock.clone(),
         janitor_metrics,
         vec![Scheduled {
@@ -157,4 +159,28 @@ async fn scheduler_alive_fails_when_the_clock_shuts_down_the_loops() {
     assert_eq!(after.status, ReadinessStatus::Failing);
     assert_eq!(alive.name(), "scheduler_alive");
     scheduler.stop().await;
+}
+
+#[tokio::test]
+async fn scheduler_alive_is_failing_until_the_scheduler_starts() {
+    // Arrange: built, as `serve` builds it before the listeners.
+    let metrics = metrics();
+    let janitor_metrics = Arc::new(JanitorMetrics::new(&metrics).expect("janitor families"));
+    let scheduler = Scheduler::new(system_clock(), janitor_metrics);
+    let alive = scheduler.readiness();
+
+    // Act
+    let before = alive.check().await;
+    scheduler
+        .start(vec![Scheduled {
+            janitor: Counting::new("ok_janitor"),
+            interval: INTERVAL,
+        }])
+        .expect("scheduler starts");
+    let after = alive.check().await;
+    scheduler.stop().await;
+
+    // Assert
+    assert_eq!(before.status, ReadinessStatus::Failing);
+    assert_eq!(after.status, ReadinessStatus::Ok);
 }

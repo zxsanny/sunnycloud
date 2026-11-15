@@ -1,6 +1,4 @@
 /// The one mapping from outcome classes to process exit codes.
-///
-/// 130 (SIGINT in `serve`) is applied by the `serve` command, not here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exit {
     Success,
@@ -10,6 +8,8 @@ pub enum Exit {
     Failed,
     /// Usage or configuration error, including a refused confirmation.
     Usage,
+    /// `serve` stopped in order on SIGINT (128 + 2, G-12-7).
+    Interrupted,
 }
 
 impl Exit {
@@ -19,6 +19,7 @@ impl Exit {
             Exit::Warnings => 1,
             Exit::Failed => 2,
             Exit::Usage => 3,
+            Exit::Interrupted => 130,
         }
     }
 }

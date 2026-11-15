@@ -7,15 +7,14 @@ use sunnycloud_http_api::ApiServices;
 
 use super::base::Shutdown;
 use super::domain::{Admin, Feed, Identity, Sharing, Transfer, Tree};
-use super::lists::{AccountHooks, ReadinessChecks};
+use super::lists::ReadinessChecks;
 use super::media::{Media, MediaPlanning};
 use crate::context::ServiceContext;
 use crate::error::CliError;
 
-/// Builds what 11 receives. The account hook list is built first, so 01's account creation holds it before any
-/// listener can accept a sign-in.
+/// Builds what 11 receives. The account hook list is not part of it: `serve` registers it with 01 after binding
+/// the listeners and before serving, so no sign-in is handled before 01 holds it.
 pub async fn api_services(services: &ServiceContext) -> Result<ApiServices, CliError> {
-    services.get::<AccountHooks>().await?;
     let identity = services.get::<Identity>().await?;
     let tree = services.get::<Tree>().await?;
     let transfer = services.get::<Transfer>().await?;

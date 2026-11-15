@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use sc_observability::{Liveness, ReadinessRegistry, ops_router};
+use sc_observability::{Liveness, ReadinessRegistry, log_info, ops_router};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
@@ -197,7 +197,8 @@ impl BoundServer {
     /// Serves until `shutdown_signal` completes, then, in this order: `/readyz` answers 503, every listener stops
     /// accepting, the held long-polls are woken (`ApiServices::feed_shutdown`), and the open connections are
     /// closed gracefully for at most `shutdown_grace`, after which a response still streaming is aborted. Returns
-    /// when no connection is open, so within the grace plus the time to drop the connections.
+    /// when no connection is open, so within the grace plus the time to drop the connections. Each of the four
+    /// steps logs one INFO line when done (`serve`'s shutdown log, IT-12-8).
     pub async fn serve(
         self,
         shutdown_signal: impl Future<Output = ()>,
@@ -220,12 +221,16 @@ impl BoundServer {
         let signal = async {
             shutdown_signal.await;
             liveness.shut_down();
+            log_info!("http shutdown: readiness 503");
             stop.cancel();
         };
         // The accept loops own their listeners, so once they are joined nothing accepts any more.
         tokio::join!(public, internal, ops, test_clock, signal);
+        log_info!("http shutdown: listeners stopped accepting");
         self.feed_shutdown.cancel();
+        log_info!("http shutdown: long-polls woken");
         self.accept.close_connections(self.shutdown_grace).await;
+        log_info!("http shutdown: connections drained");
         Ok(())
     }
 }

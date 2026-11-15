@@ -77,6 +77,17 @@ impl SyncBarrier {
             notified.await;
         }
     }
+
+    /// The final group sync of a shutdown: waits for the flush that runs, then closes the open group and syncs
+    /// it, and returns when no flush runs. Files whose waiters were dropped are synced too. With no flush running
+    /// and no file in the open group it returns at once. `Io` when the flush of the open group failed; a failed
+    /// earlier group is reported to its own waiters.
+    pub async fn sync_open_groups(&self) -> Result<(), BlobError> {
+        match self.shared.join_open() {
+            Some(group) => self.await_durable(DurableToken(group)).await,
+            None => Ok(()),
+        }
+    }
 }
 
 struct Release<'a> {

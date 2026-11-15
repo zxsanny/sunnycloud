@@ -1,4 +1,5 @@
-//! 04 blobstore: the master keyring (its own builder, so `key-check` builds nothing else) and the blob services.
+//! 04 blobstore: the master keyring and the epoch marker (each its own builder, so `key-check` and `serve`'s start
+//! checks build nothing else) and the blob services.
 //! The GC sweeper, orphan sweeper and scrub janitor are built with the janitor list, because the sweeper takes the
 //! blob-owner cleanups of 02 and 08.
 
@@ -31,6 +32,8 @@ pub struct Blobstore {
     pub inventory: Arc<BlobInventory>,
     pub health: Arc<BlobHealth>,
     pub epoch_marker: Arc<FileEpochMarker>,
+    /// The writer's group-commit barrier, for the final group sync at shutdown.
+    pub barrier: SyncBarrier,
     pub scrubber: Arc<BlobScrubber>,
     pub activity: ActivityGauge,
 }
@@ -58,6 +61,12 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
                 Db::clone(&db),
                 AuditWriter::clone(&audit),
             )))
+        })
+        .register::<FileEpochMarker, _, _>(|services| async move {
+            let settings = services.get::<ServeSettings>().await?;
+            let marker = FileEpochMarker::new(&BlobstoreConfig::from_settings(&settings))
+                .map_err(|error| failed("the epoch marker", error))?;
+            Ok(Arc::new(marker))
         })
         .register::<Blobstore, _, _>(
             |services| async move { blobstore(&services).await.map(Arc::new) },
@@ -91,7 +100,7 @@ async fn blobstore(services: &ServiceContext) -> Result<Blobstore, CliError> {
     .with_metrics(Arc::clone(&blob_metrics));
     let barrier =
         SyncBarrier::new(config.blob_sync_coalesce_delay).with_metrics(Arc::clone(&blob_metrics));
-    let writer = FileBlobWriter::new(&config, Arc::clone(&keyring), barrier)
+    let writer = FileBlobWriter::new(&config, Arc::clone(&keyring), barrier.clone())
         .map_err(blob)?
         .with_activity(activity.clone());
     let health = BlobHealth::new(&config, db.clone())
@@ -105,7 +114,8 @@ async fn blobstore(services: &ServiceContext) -> Result<Blobstore, CliError> {
         gc: Arc::new(GcQueue::new(&config, db.clone(), Arc::clone(&clock)).map_err(blob)?),
         inventory: Arc::new(BlobInventory::new(&config, db.clone()).map_err(blob)?),
         health: Arc::new(health),
-        epoch_marker: Arc::new(FileEpochMarker::new(&config).map_err(blob)?),
+        epoch_marker: services.get::<FileEpochMarker>().await?,
+        barrier,
         scrubber: Arc::new(scrubber(
             &config,
             &keyring,

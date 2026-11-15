@@ -15,12 +15,24 @@ use contracts::{CycleStats, Fault, Janitor, JanitorError, async_trait};
 use sc_clock::{SystemClock, Timestamp};
 use sc_observability::{BuildInfo, Component, LineSink, LogConfig, LogFormat, Metrics, subscriber};
 use serde_json::Value;
+use sunnycloud_server::janitor::{JanitorMetrics, Scheduled, Scheduler, SchedulerError};
 use tower::ServiceExt;
 use tracing::Level;
 use tracing::subscriber::DefaultGuard;
 
 pub fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A scheduler built and started at once, as `serve` does in two steps.
+pub fn start_scheduler(
+    clock: Arc<dyn sc_clock::Clock>,
+    metrics: Arc<JanitorMetrics>,
+    jobs: Vec<Scheduled>,
+) -> Result<Scheduler, SchedulerError> {
+    let scheduler = Scheduler::new(clock, metrics);
+    scheduler.start(jobs)?;
+    Ok(scheduler)
 }
 
 pub fn system_clock() -> Arc<SystemClock> {

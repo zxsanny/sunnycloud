@@ -21,6 +21,12 @@ pub struct Db {
 }
 
 impl Db {
+    /// Closes the pool shared by every clone: waits for checked-out connections to return, then closes them;
+    /// later calls fail. `serve` calls it as the last shutdown step.
+    pub async fn close(&self) {
+        self.pool.close().await;
+    }
+
     /// Opens the pool for `role` and verifies the connected role (`DbError::WrongRole`). The pool applies
     /// `db_statement_timeout` and `db_idle_in_tx_timeout` to every connection it opens.
     pub async fn connect(cfg: &DbConfig, role: DbRole) -> Result<Db, DbError> {

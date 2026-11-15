@@ -48,6 +48,8 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 axum = { workspace = true }
+# `serve`'s binary tests send real blocks, each with its `X-Blake3` hash.
+sc_ids = { path = "../shared/ids_hashing" }
 # Per-test PostgreSQL databases of the janitor tests; `crate_graph` bans it as a normal dependency.
 sc_testdb = { path = "../shared/testdb" }
 # The janitor tests read and seed their databases directly; test code only (`crate_graph` bans it as a normal dependency).

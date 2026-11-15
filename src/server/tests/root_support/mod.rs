@@ -15,7 +15,7 @@ use sunnycloud_server::{CliError, ConfigCheck, ServeSettings, ServiceContext};
 #[path = "../config_support/mod.rs"]
 mod config_support;
 
-use config_support::Setup;
+pub use config_support::Setup;
 
 /// Distinct interval per janitor key, so the test can tell which key each janitor reads.
 pub const INTERVALS: &[(&str, &str)] = &[
@@ -36,7 +36,8 @@ pub const INTERVALS: &[(&str, &str)] = &[
 pub struct Root {
     pub services: ServiceContext,
     pub db: TestDb,
-    setup: Setup,
+    /// The environment the context was built from; `serve`'s binary tests run the binary with it.
+    pub setup: Setup,
 }
 
 impl Root {

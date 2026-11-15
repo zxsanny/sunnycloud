@@ -20,9 +20,9 @@ use sc_ratelimit::AbuseLimiter;
 use sunnycloud_blobstore::MasterKeyring;
 use sunnycloud_server::janitor::Scheduler;
 use sunnycloud_server::root::{
-    AccountHooks, Admin, BlobCleanups, Blobstore, CommitEffects, DatabaseReady, DoctorChecks, Feed,
-    HealthContributors, Identity, Janitors, Media, MediaPlanning, Quota, ReadinessChecks, Sharing,
-    Transfer, Tree,
+    self, AccountHooks, Admin, BlobCleanups, Blobstore, CommitEffects, DatabaseReady, DoctorChecks,
+    Feed, HealthContributors, Identity, Janitors, Media, MediaPlanning, Quota, ReadinessChecks,
+    Sharing, Transfer, Tree,
 };
 
 use root_support::{INTERVALS, Root, address};
@@ -172,8 +172,16 @@ async fn janitors_run_on_their_owners_configured_intervals() {
     root.finish().await;
 }
 
+async fn statuses(checks: &ReadinessChecks) -> Vec<(String, ReadinessStatus)> {
+    let mut items = Vec::new();
+    for check in &checks.0 {
+        items.push((check.name().to_owned(), check.check().await.status));
+    }
+    items
+}
+
 #[tokio::test]
-async fn readiness_list_is_the_database_then_scheduler_alive_and_both_are_ok() {
+async fn readiness_list_is_the_database_then_scheduler_alive_and_both_are_ok_once_started() {
     // Arrange
     let root = Root::new().await;
 
@@ -183,14 +191,23 @@ async fn readiness_list_is_the_database_then_scheduler_alive_and_both_are_ok() {
         .get::<ReadinessChecks>()
         .await
         .expect("readiness");
-    let mut items = Vec::new();
-    for check in &checks.0 {
-        items.push((check.name().to_owned(), check.check().await.status));
-    }
+    let built = statuses(&checks).await;
+    root::start_scheduler(&root.services)
+        .await
+        .expect("scheduler starts");
+    let started = statuses(&checks).await;
 
     // Assert
     assert_eq!(
-        items,
+        built,
+        [
+            ("database".to_owned(), ReadinessStatus::Ok),
+            ("scheduler_alive".to_owned(), ReadinessStatus::Failing),
+        ],
+        "the scheduler is not started by building the list"
+    );
+    assert_eq!(
+        started,
         [
             ("database".to_owned(), ReadinessStatus::Ok),
             ("scheduler_alive".to_owned(), ReadinessStatus::Ok),
@@ -274,7 +291,7 @@ async fn identity_and_sharing_hold_the_one_limiter_of_the_context() {
 }
 
 #[tokio::test]
-async fn the_scheduler_is_started_once_for_every_consumer() {
+async fn the_scheduler_is_built_once_for_every_consumer_and_started_once() {
     // Arrange
     let root = Root::new().await;
 
@@ -284,10 +301,14 @@ async fn the_scheduler_is_started_once_for_every_consumer() {
         .get::<ReadinessChecks>()
         .await
         .expect("readiness");
-    let second = root.services.get::<Scheduler>().await.expect("scheduler");
+    let started = root::start_scheduler(&root.services)
+        .await
+        .expect("scheduler starts");
+    let again = root::start_scheduler(&root.services).await;
 
     // Assert
-    assert!(Arc::ptr_eq(&first, &second));
+    assert!(Arc::ptr_eq(&first, &started));
+    assert!(again.is_err(), "a second start is refused");
     root.finish().await;
 }
 
@@ -374,6 +395,9 @@ async fn every_registered_janitor_cycles_at_200ms_and_readyz_lists_scheduler_ali
         .await
         .expect("readiness");
     let metrics = root.services.get::<Metrics>().await.expect("metrics");
+    root::start_scheduler(&root.services)
+        .await
+        .expect("scheduler starts");
     let mut registry = ReadinessRegistry::new();
     for check in &checks.0 {
         registry.add(Arc::clone(check));

@@ -10,6 +10,8 @@ pub enum Class {
     Warnings,
     /// The command ran and found problems (`scrub run` mismatch, `doctor` Fail).
     Findings,
+    /// `serve` ran its shutdown to the end after SIGINT.
+    Interrupted,
 }
 
 impl Class {
@@ -18,6 +20,7 @@ impl Class {
             Class::Success => Exit::Success,
             Class::Warnings => Exit::Warnings,
             Class::Findings => Exit::Failed,
+            Class::Interrupted => Exit::Interrupted,
         }
     }
 
@@ -27,6 +30,7 @@ impl Class {
             Class::Success => "ok",
             Class::Warnings => "warnings",
             Class::Findings => "findings",
+            Class::Interrupted => "interrupted",
         }
     }
 }

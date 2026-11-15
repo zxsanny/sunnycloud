@@ -66,7 +66,7 @@ pub struct HealthContributors(pub Vec<Arc<dyn HealthContributor>>);
 /// The owners' doctor checks: 04, then 08.
 pub struct DoctorChecks(pub Vec<Arc<dyn DoctorCheck>>);
 
-/// What `/readyz` runs: the database, then `scheduler_alive`.
+/// What `/readyz` runs: the database, then `scheduler_alive` (failing until [`start_scheduler`]).
 pub struct ReadinessChecks(pub Vec<Arc<dyn ReadinessCheck>>);
 
 pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
@@ -125,20 +125,9 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
         .register::<Scheduler, _, _>(|services| async move {
             let clock = services.get::<dyn Clock>().await?;
             let metrics = services.get::<Metrics>().await?;
-            let janitors = services.get::<Janitors>().await?;
             let metrics = JanitorMetrics::new(&metrics)
                 .map_err(|error| failed("the janitor metrics", error))?;
-            let jobs = janitors
-                .0
-                .iter()
-                .map(|job| Scheduled {
-                    janitor: Arc::clone(&job.janitor),
-                    interval: job.interval,
-                })
-                .collect();
-            let scheduler = Scheduler::start(clock, Arc::new(metrics), jobs)
-                .map_err(|error| failed("the janitor scheduler", error))?;
-            Ok(Arc::new(scheduler))
+            Ok(Arc::new(Scheduler::new(clock, Arc::new(metrics))))
         })
         .register::<ReadinessChecks, _, _>(|services| async move {
             let database = services.get::<DatabaseReady>().await?;
@@ -148,6 +137,24 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
                 scheduler.readiness(),
             ])))
         })
+}
+
+/// Starts the one scheduler with the janitor list; `serve` calls it after the late lists are registered.
+pub async fn start_scheduler(services: &ServiceContext) -> Result<Arc<Scheduler>, CliError> {
+    let janitors = services.get::<Janitors>().await?;
+    let scheduler = services.get::<Scheduler>().await?;
+    let jobs = janitors
+        .0
+        .iter()
+        .map(|job| Scheduled {
+            janitor: Arc::clone(&job.janitor),
+            interval: job.interval,
+        })
+        .collect();
+    scheduler
+        .start(jobs)
+        .map_err(|error| failed("the janitor scheduler", error))?;
+    Ok(scheduler)
 }
 
 async fn account_hooks(

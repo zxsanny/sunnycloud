@@ -132,3 +132,27 @@ Then the shutdown order of AC-5 runs and the exit code is 130
 
 - `HttpConfig` keys (from AZ-3789): new `sc_config` keys `public_addr` (default `0.0.0.0:8080`), `session_cookie` (default `__Host-session`, the name the OpenAPI document publishes) and `binding_cookie` (default `__Host-signin-binding`); `serve` maps `ServeSettings` to `HttpConfig` and passes `root::api_services`.
 - Shutdown steps with no port (flagged concern, Medium): add two small operations inside this task. 03: save every upload's unsaved progress now (the idle-flush work for every entry, regardless of idle time). 04: wait until every open sync group has finished. `serve` calls both, in that order, before the pool closes.
+
+## Implementation status (2026-11-15)
+
+| AC | Status | Evidence |
+|----|--------|----------|
+| AC-1 | Done | `src/server/tests/serve_start.rs::start_steps_are_logged_in_order_and_readyz_is_200_within_10s` (real binary, `log = json`, 10 step lines in order, non-decreasing `ts`, `/readyz` 200 < 10 s) |
+| AC-2 | Done | `serve_start.rs::a_database_newer_than_the_binary_refuses_and_names_migrate`, `::a_pending_migration_refuses_names_migrate_and_serve_does_not_migrate` (exit 2 < 10 s, the three listeners probed every 100 ms never accept, `_sqlx_migrations` unchanged) |
+| AC-3 | Done | `serve_start.rs::a_missing_master_key_file_refuses_with_file_missing`, `::a_31_byte_master_key_refuses_with_wrong_length_and_prints_no_key_byte`, `::a_volume_with_blobs_and_no_keycheck_refuses` |
+| AC-4 | Done | `serve_start.rs::the_schema_owner_url_refuses_naming_the_role_check` |
+| AC-5 | Done | `serve_stop.rs::sigterm_runs_the_shutdown_in_order_and_a_restart_resumes_only_the_unacknowledged_blocks` (20 held long-polls answered 200 after the signal, 10 uploads, grace 3 s, exit 0 < 5 s, after a restart `need_blocks` lists only the unacknowledged blocks), `::the_pool_closes_last` (`serve stop: final group sync` then `serve stop: pool closed`). `sc_db::Db::close` was added to helper 07 inside this task (pool close is the last shutdown step) |
+| AC-6 | Done | `serve_stop.rs::sigint_runs_the_same_shutdown_order_and_exits_130` |
+
+As built: `src/server/src/serve/` (start, stop, `HttpConfig` mapping); 11 logs its four shutdown steps
+(`BoundServer::serve`); 03 `PgUploadService::flush_all` shares the idle flush's code path; 04
+`SyncBarrier::sync_open_groups` is the final group sync; the scheduler is built with the readiness list and started
+after the late lists (`root::start_scheduler`); the keyring, `.epoch` marker and `PgEpochAdmin` have their own
+builders so the start checks construct no other component; new keys `public_addr`, `session_cookie`,
+`binding_cookie`. Unit tests with recording steps were not added: the order and the refusal mapping are checked on
+the real binary from its log, plus unit tests of the refusal texts (`serve/start.rs`) and of the 0/130 mapping
+(`serve/mod.rs`).
+
+Open: `update_url` has no key; with no `min_client_version`
+`server-info` advertises `0.0.0`; spawned tasks (request handlers, janitor loops) log through no subscriber because
+the CLI installs its subscriber per future, not globally; the SPA bundle is not wired to `HttpServer::with_spa`.

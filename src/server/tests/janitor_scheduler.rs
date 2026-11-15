@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use contracts::Janitor;
 use janitor_support::{
-    Counting, Erroring, PanicsOnce, Slow, capture_logs, metrics, series, system_clock, wait_until,
+    Counting, Erroring, PanicsOnce, Slow, capture_logs, metrics, series, start_scheduler,
+    system_clock, wait_until,
 };
 use sc_clock::{Clock, ManualClock, Timestamp};
 use sunnycloud_server::janitor::{JanitorMetrics, Scheduled, Scheduler, SchedulerError};
@@ -25,7 +26,7 @@ fn start(
 ) -> (Scheduler, Arc<sc_observability::Metrics>) {
     let metrics = metrics();
     let janitor_metrics = Arc::new(JanitorMetrics::new(&metrics).expect("janitor families"));
-    let scheduler = Scheduler::start(clock, janitor_metrics, jobs).expect("scheduler starts");
+    let scheduler = start_scheduler(clock, janitor_metrics, jobs).expect("scheduler starts");
     (scheduler, metrics)
 }
 
@@ -208,7 +209,7 @@ async fn a_zero_interval_is_refused_before_any_loop_starts() {
     let janitor_metrics = Arc::new(JanitorMetrics::new(&metrics).expect("janitor families"));
 
     // Act
-    let result = Scheduler::start(
+    let result = start_scheduler(
         system_clock(),
         janitor_metrics,
         vec![
@@ -224,4 +225,21 @@ async fn a_zero_interval_is_refused_before_any_loop_starts() {
     ));
     tokio::time::sleep(Duration::from_millis(10)).await;
     assert_eq!(counting.calls(), 0);
+}
+
+#[tokio::test]
+async fn a_second_start_is_refused_and_starts_no_loop() {
+    // Arrange
+    let counting = Counting::new("counting");
+    let (scheduler, _metrics) = start(system_clock(), vec![scheduled(counting.clone(), INTERVAL)]);
+    let again = Counting::new("again");
+
+    // Act
+    let result = scheduler.start(vec![scheduled(again.clone(), INTERVAL)]);
+
+    // Assert
+    assert!(matches!(result, Err(SchedulerError::AlreadyStarted)));
+    wait_until("the first loop to cycle", || counting.calls() > 0).await;
+    scheduler.stop().await;
+    assert_eq!(again.calls(), 0);
 }

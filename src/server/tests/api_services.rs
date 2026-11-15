@@ -111,10 +111,10 @@ async fn runtime_handles_are_the_contexts_own() {
     root.finish().await;
 }
 
-/// The hook list reaches 01's account creation before 11 receives a port, and assembling it twice builds nothing
-/// new.
+/// The hook list is not built with the ports: `serve` registers it after binding the listeners and before
+/// serving. Assembling the ports twice builds nothing new.
 #[tokio::test]
-async fn the_hook_list_is_built_with_the_api_services() {
+async fn the_api_services_leave_the_hook_list_to_serve() {
     // Arrange
     let root = Root::new().await;
     let services = &root.services;
@@ -127,7 +127,7 @@ async fn the_hook_list_is_built_with_the_api_services() {
         .expect("api services again");
 
     // Assert
-    assert!(built.contains(&std::any::type_name::<AccountHooks>()));
+    assert!(!built.contains(&std::any::type_name::<AccountHooks>()));
     assert_eq!(services.built(), built);
     root.finish().await;
 }
