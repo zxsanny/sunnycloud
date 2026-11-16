@@ -84,7 +84,29 @@ fn push_fact(text: &mut String, key: &str, value: &Value) {
     text.push_str(": ");
     match value {
         Value::String(value) => text.push_str(value),
+        Value::Array(items) => {
+            for item in items {
+                text.push_str("\n  - ");
+                text.push_str(&listed(item));
+            }
+        }
         other => text.push_str(&other.to_string()),
     }
     text.push('\n');
+}
+
+/// One list element on one line: an object as `key: value, key: value`, anything else as its JSON text.
+fn listed(item: &Value) -> String {
+    match item {
+        Value::Object(fields) => fields
+            .iter()
+            .map(|(key, value)| match value {
+                Value::String(value) => format!("{key}: {value}"),
+                other => format!("{key}: {other}"),
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
+        Value::String(text) => text.clone(),
+        other => other.to_string(),
+    }
 }

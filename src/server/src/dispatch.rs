@@ -3,6 +3,7 @@ use sunnycloud_http_api::current_document;
 
 use crate::command_config;
 use crate::commands::{AdminCommand, Command, ScrubCommand};
+use crate::doctor_command;
 use crate::error::CliError;
 use crate::exit::Exit;
 use crate::handler::{BoxFuture, Call, Handler};
@@ -26,6 +27,7 @@ impl Handler for Commands {
                 Command::Healthcheck => healthcheck::run(healthcheck::OPS_ADDR, &call.cancel).await,
                 Command::Migrate(args) => migration::run(call.command, args, call.services).await,
                 Command::Serve => serve::run(call.services, call.cancel).await,
+                Command::Doctor(args) => doctor_command::run(args, call.services).await,
                 Command::Admin {
                     command: AdminCommand::MediaRequeue { account, kind },
                 } => {
