@@ -119,6 +119,23 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
                 media.health.clone(),
             ])))
         })
+        .register::<GcSweeper, _, _>(|services| async move {
+            let db = Db::clone(&*services.get::<Db>().await?);
+            let clock = services.get::<dyn Clock>().await?;
+            let shutdown = services.get::<Shutdown>().await?;
+            let blobs = services.get::<Blobstore>().await?;
+            let cleanups = services.get::<BlobCleanups>().await?;
+            GcSweeper::new(
+                &blobs.config,
+                db,
+                clock,
+                blobs.registry.clone(),
+                items(&cleanups.0),
+                shutdown.janitors.clone(),
+            )
+            .map(Arc::new)
+            .map_err(|error| failed("the blob GC sweeper", error))
+        })
         .register::<Janitors, _, _>(
             |services| async move { janitors(&services).await.map(Arc::new) },
         )
@@ -196,26 +213,16 @@ async fn janitors(services: &ServiceContext) -> Result<Janitors, CliError> {
     let audit = AuditWriter::clone(&*services.get::<AuditWriter>().await?);
     let clock = services.get::<dyn Clock>().await?;
     let metrics = services.get::<Metrics>().await?;
-    let shutdown = services.get::<Shutdown>().await?;
     let transfer = services.get::<Transfer>().await?;
     let blobs = services.get::<Blobstore>().await?;
     let tree = services.get::<Tree>().await?;
     let identity = services.get::<Identity>().await?;
     let admin = services.get::<Admin>().await?;
     let hooks = services.get::<AccountHooks>().await?;
-    let cleanups = services.get::<BlobCleanups>().await?;
     let planning = services.get::<MediaPlanning>().await?;
     let blob = |error: contracts::BlobError| failed("a blobstore janitor", error);
 
-    let gc = GcSweeper::new(
-        &blobs.config,
-        db.clone(),
-        Arc::clone(&clock),
-        blobs.registry.clone(),
-        items(&cleanups.0),
-        shutdown.janitors.clone(),
-    )
-    .map_err(blob)?;
+    let gc = services.get::<GcSweeper>().await?;
     let orphans =
         OrphanSweeper::new(&blobs.config, db.clone(), Arc::clone(&clock)).map_err(blob)?;
     let purger = DeletionPurger::new(
@@ -243,7 +250,7 @@ async fn janitors(services: &ServiceContext) -> Result<Janitors, CliError> {
             Arc::new(IdleFlush::new(transfer.service.clone())),
             transfer.config.checkpoint_interval,
         ),
-        every(Arc::new(gc), blobs.config.gc_interval),
+        every(gc, blobs.config.gc_interval),
         every(Arc::new(orphans), blobs.config.orphan_sweep_interval),
         every(
             Arc::new(ScrubJanitor::new(&blobs.config, blobs.scrubber.clone())),

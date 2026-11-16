@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use contracts::{EpochAdmin, TreeRestore};
 use sc_audit::AuditWriter;
 use sc_clock::Clock;
 use sc_config::ConfigError;
@@ -127,8 +128,16 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
             let marker = services.get::<FileEpochMarker>().await?;
             Ok(Arc::new(PgEpochAdmin::new(db, marker)))
         })
+        .register::<dyn EpochAdmin, _, _>(|services| async move {
+            let admin: Arc<dyn EpochAdmin> = services.get::<PgEpochAdmin>().await?;
+            Ok(admin)
+        })
         .register::<Feed, _, _>(|services| async move { feed(&services).await.map(Arc::new) })
         .register::<Tree, _, _>(|services| async move { tree(&services).await.map(Arc::new) })
+        .register::<dyn TreeRestore, _, _>(|services| async move {
+            let restore: Arc<dyn TreeRestore> = services.get::<Tree>().await?.restore.clone();
+            Ok(restore)
+        })
         .register::<Transfer, _, _>(
             |services| async move { transfer(&services).await.map(Arc::new) },
         )

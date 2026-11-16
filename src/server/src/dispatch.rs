@@ -8,6 +8,7 @@ use crate::error::CliError;
 use crate::exit::Exit;
 use crate::handler::{BoxFuture, Call, Handler};
 use crate::healthcheck;
+use crate::maintenance_commands;
 use crate::media_commands;
 use crate::migration;
 use crate::outcome::Outcome;
@@ -34,6 +35,15 @@ impl Handler for Commands {
                     media_commands::requeue(account.as_deref(), kind.as_deref(), call.services)
                         .await
                 }
+                Command::Admin {
+                    command: AdminCommand::EpochBump(_),
+                } => maintenance_commands::epoch_bump(call.services).await,
+                Command::Admin {
+                    command: AdminCommand::Restore(args),
+                } => maintenance_commands::restore(args, call.services).await,
+                Command::Admin {
+                    command: AdminCommand::GcRun,
+                } => maintenance_commands::gc_run(call.services).await,
                 Command::Admin {
                     command: AdminCommand::MediaStats,
                 } => media_commands::stats(call.services).await,

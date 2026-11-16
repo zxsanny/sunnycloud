@@ -80,8 +80,12 @@ pub fn report(findings: &[CheckFinding]) -> Outcome {
         FindingLevel::Warn => Class::Warnings,
         FindingLevel::Fail => Class::Findings,
     };
-    let items: Vec<Value> = findings.iter().map(item).collect();
-    Outcome::new(class).field("findings", items)
+    Outcome::new(class).field("findings", findings_value(findings))
+}
+
+/// The findings as the list both writers print.
+pub fn findings_value(findings: &[CheckFinding]) -> Value {
+    Value::Array(findings.iter().map(item).collect())
 }
 
 fn worse(left: FindingLevel, right: FindingLevel) -> FindingLevel {

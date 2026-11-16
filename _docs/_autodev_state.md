@@ -9,7 +9,7 @@ status: in_progress
 sub_step:
   phase: 2
   name: batch-loop
-  detail: "batch 76 done (AZ-3807 doctor aggregation committed, AZ-3822 archived). AZ-3797 and AZ-3794 blocked on owner answers (rewrap_batch key ids vs key file; create_admin_invite takes no note or TTL). Next: AZ-3793 migrate commands, AZ-3809 doctor root checks, AZ-3796 epoch/restore/gc commands, then other ready tasks. Test DB: container sunnycloud-pg18 (max_connections=400), DATABASE_URL=postgres://postgres:dev@127.0.0.1:57432/postgres, CARGO_INCREMENTAL=0. Open owner questions: batch reports 61-76."
+  detail: "batch 77 done (AZ-3796 partly: epoch-bump, restore, gc-run; dry-run blocked). AZ-3797, AZ-3794, AZ-3796 dry-run, AZ-3793 AC-6 blocked on owner answers (rewrap_batch key ids vs key file; create_admin_invite takes no note or TTL). Next: AZ-3793 migrate commands, AZ-3809 doctor root checks, AZ-3796 epoch/restore/gc commands, then other ready tasks. Test DB: container sunnycloud-pg18 (max_connections=400), DATABASE_URL=postgres://postgres:dev@127.0.0.1:57432/postgres, CARGO_INCREMENTAL=0. Open owner questions: batch reports 61-77."
 retry_count: 0
 tracker: jira
 loop: 1

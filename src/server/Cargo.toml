@@ -31,6 +31,7 @@ media-api = { path = "../components/08_media_jobs" }
 sunnycloud-http-api = { path = "../components/11_http_api" }
 # v1.2 only: linked with feature `vault` (module-layout exception 6, owner decision 2026-11-14).
 sunnycloud-vault-service = { path = "../components/20_vault_service", optional = true }
+chrono = { version = "0.4", default-features = false }
 sc_audit = { path = "../shared/audit" }
 sc_clock = { path = "../shared/clock" }
 sc_config = { path = "../shared/config" }
