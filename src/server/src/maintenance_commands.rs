@@ -25,6 +25,8 @@ use crate::utc_arg;
 pub(crate) async fn epoch_bump(services: &ServiceContext) -> Result<Outcome, CliError> {
     let admin = services.get::<dyn EpochAdmin>().await?;
     let clock = services.get::<dyn Clock>().await?;
+    // Built before the bump: a failure here must not be reported for an epoch that is already raised.
+    let checks = services.get::<DoctorChecks>().await?;
     let epoch = admin.bump_epoch(clock.now_utc()).await.map_err(|error| {
         log_error!("epoch bump failed", err = &error);
         CliError::Operator {
@@ -35,7 +37,6 @@ pub(crate) async fn epoch_bump(services: &ServiceContext) -> Result<Outcome, Cli
             exit: Exit::Warnings,
         }
     })?;
-    let checks = services.get::<DoctorChecks>().await?;
     let findings = run_checks(
         &checks.0,
         CheckSelection::Tagged(DoctorTag::Restore),
