@@ -58,7 +58,7 @@ fn a_destructive_command_without_yes_on_a_closed_stdin_exits_3() {
 
 #[test]
 fn a_command_whose_task_has_not_landed_fails_loudly() {
-    let output = sunnycloud(&["admin", "user", "list"]);
+    let output = sunnycloud(&["admin", "user", "delete", "alice", "--yes"]);
 
     assert_eq!(output.status.code(), Some(2));
     assert!(text(&output.stderr).contains("not implemented"));

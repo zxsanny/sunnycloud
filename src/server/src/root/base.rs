@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use sc_audit::AuditWriter;
+use sc_audit::{AuditReader, AuditWriter};
 use sc_clock::Clock;
 use sc_config::Settings;
 use sc_db::{Db, DbConfig, DbRole};
@@ -41,6 +41,10 @@ pub(super) fn register(builder: ContextBuilder, clock: Arc<dyn Clock>) -> Contex
                 .await
                 .map_err(|error| failed("the API database pool", error))?;
             Ok(Arc::new(db))
+        })
+        .register::<AuditReader, _, _>(|services| async move {
+            let db = services.get::<Db>().await?;
+            Ok(Arc::new(AuditReader::new(Db::clone(&db))))
         })
         .register::<AuditWriter, _, _>(|services| async move {
             let db = services.get::<Db>().await?;

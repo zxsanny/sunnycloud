@@ -1,8 +1,9 @@
 use sc_error::ErrorCode;
 use sunnycloud_http_api::current_document;
 
+use crate::audit_commands;
 use crate::command_config;
-use crate::commands::{AdminCommand, Command, ScrubCommand};
+use crate::commands::{AdminCommand, AuditCommand, Command, ScrubCommand, UserCommand};
 use crate::doctor_command;
 use crate::error::CliError;
 use crate::exit::Exit;
@@ -14,6 +15,7 @@ use crate::migration;
 use crate::outcome::Outcome;
 use crate::scrub_commands;
 use crate::serve;
+use crate::user_commands;
 
 /// The binary's handler. Each command task replaces its `NotImplemented` arm with a call into its own module.
 pub struct Commands;
@@ -41,6 +43,24 @@ impl Handler for Commands {
                 Command::Admin {
                     command: AdminCommand::Restore(args),
                 } => maintenance_commands::restore(args, call.services).await,
+                Command::Admin {
+                    command:
+                        AdminCommand::User {
+                            command: UserCommand::List,
+                        },
+                } => user_commands::list(call.services).await,
+                Command::Admin {
+                    command:
+                        AdminCommand::User {
+                            command: UserCommand::SetQuota { account, size },
+                        },
+                } => user_commands::set_quota(account, *size, call.services).await,
+                Command::Admin {
+                    command:
+                        AdminCommand::Audit {
+                            command: AuditCommand::Export { since },
+                        },
+                } => audit_commands::export(since, &call).await,
                 Command::Admin {
                     command: AdminCommand::GcRun,
                 } => maintenance_commands::gc_run(call.services).await,

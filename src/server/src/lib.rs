@@ -5,6 +5,7 @@
 //! this library exists so the command tests run the same entry point ([`execute`]) with injected streams,
 //! services and handler.
 
+mod audit_commands;
 mod command_config;
 pub mod commands;
 mod context;
@@ -29,6 +30,7 @@ mod secret;
 mod serve;
 mod settings;
 mod terminal;
+mod user_commands;
 mod utc_arg;
 mod wiring;
 
