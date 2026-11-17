@@ -1,7 +1,10 @@
 //! `admin user list` and `admin user set-quota` (E-22/c09): one call, or one page loop, on 07's `AdminService`
 //! with `Actor::Operator`. No token is ever part of an account row.
 
-use contracts::{AccountStatus, Actor, AdminError, AdminService, AdminUserView, Page, Role};
+use contracts::{
+    AccountDeletionService, AccountStatus, Actor, AdminError, AdminService, AdminUserView,
+    DeletionError, Page, Role,
+};
 use sc_error::ErrorCode;
 use serde_json::{Map, Value};
 use uuid::Uuid;
@@ -54,6 +57,20 @@ pub(crate) async fn set_quota(
         .field("limit", limit))
 }
 
+/// `--yes` was checked before the handler ran: it is the operator's confirmation.
+pub(crate) async fn delete(account: &str, services: &ServiceContext) -> Result<Outcome, CliError> {
+    let account = Uuid::parse_str(account)
+        .map_err(|_| CliError::Usage(format!("`{account}` is not an account id")))?;
+    let deletion = services.get::<dyn AccountDeletionService>().await?;
+    let accepted = deletion
+        .request_as_operator(account)
+        .await
+        .map_err(deletion_failure)?;
+    Ok(Outcome::success()
+        .field("account", account.to_string())
+        .field("deadline_micros", accepted.deadline.as_unix_micros()))
+}
+
 fn row(user: &AdminUserView) -> Value {
     let mut object = Map::new();
     object.insert("account".to_owned(), Value::from(user.account.to_string()));
@@ -94,5 +111,16 @@ pub(crate) fn failure(error: AdminError) -> CliError {
         code,
         detail,
         exit: Exit::Failed,
+    }
+}
+
+fn deletion_failure(error: DeletionError) -> CliError {
+    match error {
+        DeletionError::LastAdmin => failure(AdminError::LastAdmin),
+        other => CliError::Operator {
+            code: ErrorCode::Internal.as_str(),
+            detail: format!("deletion: {other}"),
+            exit: Exit::Failed,
+        },
     }
 }

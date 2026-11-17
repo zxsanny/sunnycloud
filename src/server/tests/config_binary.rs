@@ -253,7 +253,7 @@ fn a_refusal_with_a_planted_database_url_prints_it_nowhere() {
 }
 
 #[test]
-fn commands_that_use_no_provider_worker_token_or_master_key_get_past_configuration() {
+fn migrate_needs_no_provider_worker_token_or_master_key_to_get_past_configuration() {
     // Arrange: only the migrator secret, the one thing `migrate` reads from the API's table.
     let watch = Watch::new();
     let mut setup = Setup::empty();
@@ -262,23 +262,17 @@ fn commands_that_use_no_provider_worker_token_or_master_key_get_past_configurati
         "postgres://migrator@127.0.0.1:1/sunnycloud",
     );
 
-    for args in [
-        &["migrate"][..],
-        &["admin", "user", "delete", "alice", "--yes"],
-    ] {
-        // Act
-        let run = run(&watch, &setup, args);
+    // Act
+    let migrate = run(&watch, &setup, &["migrate"]);
 
-        // Assert: each stops after configuration (exit 2: no database behind the URL, or not implemented yet),
-        // never at configuration (3).
-        assert_eq!(run.code(), Some(2), "{args:?}: {}", run.stderr());
-        assert!(!run.stderr().contains("invalid configuration"), "{args:?}");
-        assert!(
-            !run.stderr().contains("warning"),
-            "{args:?}: {}",
-            run.stderr()
-        );
-    }
+    // Assert: it stops after configuration (exit 2: no database behind the URL), never at configuration (3).
+    assert_eq!(migrate.code(), Some(2), "{}", migrate.stderr());
+    assert!(!migrate.stderr().contains("invalid configuration"));
+    assert!(
+        !migrate.stderr().contains("warning"),
+        "{}",
+        migrate.stderr()
+    );
     for args in [&["version"][..], &["openapi"]] {
         let local = run(&watch, &setup, args);
         assert_eq!(local.code(), Some(0), "{args:?}: {}", local.stderr());

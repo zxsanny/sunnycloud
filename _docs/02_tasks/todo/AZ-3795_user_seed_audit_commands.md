@@ -25,7 +25,7 @@ The operator manages accounts from the host: who exists and how much they use, a
 
 - `admin user list`: `AdminService::list_users` with `Actor::Operator`, paged until done; prints account, role, state, last login, used and limit; no token.
 - `admin user set-quota <account> <size>`: one `AdminService::set_quota` call; an unparsable size exits 3.
-- `admin user delete <account> --yes`: one `AccountDeletionService::request` call; without `--yes` on a non-TTY exit 3; `LastAdmin` exits 2; success prints the deletion deadline.
+- `admin user delete <account> --yes`: one `AccountDeletionService::request_as_operator` call; without `--yes` on a non-TTY exit 3; `LastAdmin` exits 2; success prints the deletion deadline.
 - `admin dev-seed`: one `DevSeed::seed` call; refused when `environment = production` (exit 2).
 - `admin audit export --since <time>`: `AuditReader::export` paged until no next page; one JSON line per event to stdout with ids and action codes only.
 
@@ -108,7 +108,7 @@ The owner-effect parts (quota visible at `GET /accounts/me/quota`, U purged to 0
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `AccountDeletionService::request(principal, confirmation)` takes a principal, but `admin user delete` has none (operator); the operator form is not defined (contract part 1, open point 5) | E-17 owner | open | Medium |
+| `AccountDeletionService::request(principal, confirmation)` takes a principal, but `admin user delete` has none (operator); the operator form is `request_as_operator(account)` (contract part 1, open point 5) | E-17 owner | resolved | Medium |
 | `DevSeed`'s production refusal has no variant name in 07 | E-17 owner | open | Low |
 | The format of `--since` is not stated (`--at` is RFC 3339 UTC; contract open point 7) | E-22 owner | open | Low |
 | 12 §2 names `QuotaAdmin` for `set-quota`, while 12 §3 and 07 name `AdminService::set_quota`; this task calls `AdminService` (one call, audit by 07) | E-22 owner | resolved | Low |

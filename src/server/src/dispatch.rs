@@ -85,6 +85,12 @@ impl Handler for Commands {
                 } => user_commands::set_quota(account, *size, call.services).await,
                 Command::Admin {
                     command:
+                        AdminCommand::User {
+                            command: UserCommand::Delete { account, .. },
+                        },
+                } => user_commands::delete(account, call.services).await,
+                Command::Admin {
+                    command:
                         AdminCommand::Audit {
                             command: AuditCommand::Export { since },
                         },

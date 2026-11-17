@@ -4,7 +4,10 @@
 
 use std::sync::Arc;
 
-use contracts::{AdminService, EpochAdmin, InviteService, OperatorIdentityOps, TreeRestore};
+use contracts::{
+    AccountDeletionService, AdminService, EpochAdmin, InviteService, OperatorIdentityOps,
+    TreeRestore,
+};
 use sc_audit::AuditWriter;
 use sc_clock::Clock;
 use sc_config::ConfigError;
@@ -131,6 +134,11 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
         .register::<dyn AdminService, _, _>(|services| async move {
             let admin: Arc<dyn AdminService> = services.get::<Admin>().await?.admin.clone();
             Ok(admin)
+        })
+        .register::<dyn AccountDeletionService, _, _>(|services| async move {
+            let deletion: Arc<dyn AccountDeletionService> =
+                services.get::<Admin>().await?.deletion.clone();
+            Ok(deletion)
         })
         .register::<dyn OperatorIdentityOps, _, _>(|services| async move {
             let ops: Arc<dyn OperatorIdentityOps> =

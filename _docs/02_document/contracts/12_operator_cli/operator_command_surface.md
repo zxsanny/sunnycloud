@@ -65,7 +65,7 @@ Destructive commands: `admin user delete`, `admin rewrap`, `admin epoch-bump`, `
 | `admin invite --admin <account> create\|list\|revoke` | `create [--note]`, `list`, `revoke <id>` (the admin must exist; it is stored as the creator) | `InviteService` | token once on `create`; never on `list` | 0 | E-22/c08 |
 | `admin user list` | none | `AdminService::list_users` | account, role, state, last login, used, limit; no token | 0 | E-22/c09 |
 | `admin user set-quota` | `<account> <size>` | `AdminService::set_quota` | new limit | 0 | E-22/c09 |
-| `admin user delete` | `<account> --yes` | `AccountDeletionService::request` | deletion deadline | 0; `LastAdmin` 2; no `--yes` on non-TTY 3 | E-22/c09 |
+| `admin user delete` | `<account> --yes` | `AccountDeletionService::request_as_operator` | deletion deadline | 0; `LastAdmin` 2; no `--yes` on non-TTY 3 | E-22/c09 |
 | `admin dev-seed` | none | `DevSeed::seed` | seed summary | 0; refused when `environment = production` 2 | E-22/c09 |
 | `admin audit export` | `--since <time>` | `AuditReader::export` (paged) | JSON lines, ids only | 0 | E-22/c09 |
 | `admin epoch-bump` | `[--yes]` | `EpochAdmin::bump_epoch(now)`, then the `restore`-tagged doctor checks | new epoch and reconcile findings | 0; error 1; no `--yes` on non-TTY 3 | E-22/c10 |
