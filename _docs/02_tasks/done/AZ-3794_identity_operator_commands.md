@@ -24,10 +24,10 @@ An operator must be able to create the first admin, recover a lost setup token, 
 ## Outcome
 
 - `admin setup-token`: one `ensure_setup_token` call; a token prints once with a sign-in hint and exit 0; when the owner returns nothing (an account exists) the command prints `SetupNotAvailable`, nothing on stdout, exit 2.
-- `admin create [--note] [--ttl]`: one `create_admin_invite` call; the invite token prints once with the sign-in hint; exit 0.
+- `admin create` (owner decision 2026-11-17: no `--note`, no `--ttl`; the invite is valid for `invite_ttl`): one `create_admin_invite` call; the invite token prints once with the sign-in hint; exit 0.
 - `admin reset <account>`: one `reset_admin` call; the fresh invite prints once; `NotFound` exits 2; the sole-admin outcome follows the G-12-3 answer recorded by E-15/c01.
 - `admin promote|demote <account>`: one `AdminService::update_user` call with the role and `Actor::Operator`; `LastAdmin` exits 2 with code `last_admin`.
-- `admin invite create|list|revoke`: one `InviteService` call each; the token prints once on `create` and never on `list`.
+- `admin invite --admin <account> create|list|revoke` (owner decision 2026-11-17: the operator names an existing admin, passed to the port and stored as the creator of an invite): one `InviteService` call each; the token prints once on `create` and never on `list`.
 
 Narrowed against the plan: the full first-run flow (setup token to first admin) is AZ-3654 (E-22/p01) and invite redemption through sign-in is AZ-3664 (E-22/p02); the last-admin rule and its concurrency are 07's (E-17/c04). This task owns the command side.
 
@@ -53,7 +53,7 @@ Then it reports `SetupNotAvailable`, exits 2, and prints no token
 
 **AC-3: Admin invite once (FT-P-65, IT-12-2)**
 Given an install with one admin
-When `admin create --note x --ttl 1h` runs
+When `admin create` runs
 Then one `create_admin_invite` call is made, the token appears once on stdout with the sign-in hint, and the exit code is 0
 
 **AC-4: Reset (FT-P-65 step 1, IT-12-2)**
@@ -68,7 +68,7 @@ Then each makes one `update_user` call with `Actor::Operator`, the promote exits
 
 **AC-6: Invites (IT-12-3)**
 Given an admin
-When `admin invite create`, `admin invite list` and `admin invite revoke <id>` run
+When `admin invite --admin <account> create`, `... list` and `... revoke <id>` run
 Then `create` prints the token once, `list` prints ids, notes and expiry with no token, `revoke` exits 0, and each makes exactly one `InviteService` call
 
 ## Non-Functional Requirements
@@ -89,7 +89,7 @@ Then `create` prints the token once, `list` prints ids, notes and expiry with no
 | AC Ref | Initial Data/Conditions | What to Test | Expected Behavior | NFR References |
 |--------|------------------------|-------------|-------------------|----------------|
 | AC-1, AC-2 | Harness, recording `OperatorIdentityOps` | `setup-token` with and without accounts (IT-12-2) | Token once, exit 0; then exit 2, no token | FT-P-78 |
-| AC-3 | Harness | `admin create --note x --ttl 1h` (IT-12-2) | Token once on stdout; exit 0 | ST-12-1 |
+| AC-3 | Harness | `admin create` (IT-12-2) | Token once on stdout; exit 0 | ST-12-1 |
 | AC-4 | Harness | `reset` admin, unknown, sole admin (IT-12-2) | Invite once; exit 2 `NotFound`; G-12-3 outcome | FT-P-65 |
 | AC-5 | Harness, recording `AdminService` | `promote`, `demote` last admin (IT-12-3) | Exit 0; exit 2 `last_admin` | FT-N-46 |
 | AC-6 | Harness, recording `InviteService` | `invite create`, `list`, `revoke` (IT-12-3) | Token once on create, never on list | |
@@ -111,5 +111,6 @@ The owner-effect parts of IT-12-2 and IT-12-3 (old token refused after a new set
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | G-12-3: reset of the sole admin: the owner answered 2026-11-11 (AZ-3681): allowed, exit 0 | E-15/c01 / product owner | resolved | Low |
-| `admin create --note --ttl`: `OperatorIdentityOps::create_admin_invite()` takes no note and no TTL in the identity contract (contract open point 6) | E-15 owner | open | Medium |
+| `admin create --note --ttl`: `OperatorIdentityOps::create_admin_invite()` takes no note and no TTL | E-15 owner | resolved 2026-11-17: options dropped, `invite_ttl` applies | Medium |
+| `InviteService` wants an admin account the operator CLI does not have (`created_by` is a foreign key to accounts) | E-15 / E-22 owners | resolved 2026-11-17: `--admin <account>` | Medium |
 | The error of `reset_admin` for an unknown or non-admin account, and of `revoke` for an unknown or redeemed invite, is not named yet in the identity contract; AC-4 assumes `NotFound` | E-15 owner | open | Low |

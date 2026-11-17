@@ -83,7 +83,7 @@ const fn state(state: AccountStatus) -> &'static str {
     }
 }
 
-fn failure(error: AdminError) -> CliError {
+pub(crate) fn failure(error: AdminError) -> CliError {
     let (code, detail) = match error {
         AdminError::NotFound => (ErrorCode::NotFound.as_str(), "no such account".to_owned()),
         AdminError::InvalidLimit => ("invalid_limit", "the limit is not accepted".to_owned()),

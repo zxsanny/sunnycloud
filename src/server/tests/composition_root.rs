@@ -532,3 +532,37 @@ async fn the_pre_flight_list_holds_every_pre_flight_tagged_check_of_the_doctor_l
     assert_eq!(listed, tagged);
     root.finish().await;
 }
+
+#[tokio::test]
+async fn the_operator_and_invite_ports_are_the_identity_invites_04_holds() {
+    // Arrange
+    let root = Root::new().await;
+
+    // Act
+    let ops = root
+        .services
+        .get::<dyn contracts::OperatorIdentityOps>()
+        .await
+        .expect("operator ops");
+    let invites = root
+        .services
+        .get::<dyn contracts::InviteService>()
+        .await
+        .expect("invite service");
+    let identity = root
+        .services
+        .get::<sunnycloud_server::root::Identity>()
+        .await
+        .expect("01");
+
+    // Assert
+    assert!(std::ptr::addr_eq(
+        Arc::as_ptr(&ops),
+        Arc::as_ptr(&identity.invites)
+    ));
+    assert!(std::ptr::addr_eq(
+        Arc::as_ptr(&invites),
+        Arc::as_ptr(&identity.invites)
+    ));
+    root.finish().await;
+}

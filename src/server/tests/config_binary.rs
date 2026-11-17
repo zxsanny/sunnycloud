@@ -264,7 +264,6 @@ fn commands_that_use_no_provider_worker_token_or_master_key_get_past_configurati
 
     for args in [
         &["migrate"][..],
-        &["admin", "setup-token"],
         &["admin", "user", "delete", "alice", "--yes"],
     ] {
         // Act

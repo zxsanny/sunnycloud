@@ -1,22 +1,13 @@
-use std::time::Duration;
-
 use clap::{Args, Subcommand};
 
-use super::{ConfirmArgs, Confirmation, parse_duration, parse_size};
+use super::{ConfirmArgs, Confirmation, parse_size};
 
 #[derive(Debug, Subcommand)]
 pub enum AdminCommand {
     /// Print the one-time setup token while no admin exists.
     SetupToken,
-    /// Create an admin invite.
-    Create {
-        /// Free-text note stored with the invite.
-        #[arg(long)]
-        note: Option<String>,
-        /// How long the invite stays valid, for example 24h.
-        #[arg(long, value_name = "DURATION", value_parser = parse_duration)]
-        ttl: Option<Duration>,
-    },
+    /// Create an admin invite; it is valid for the `invite_ttl` setting.
+    Create,
     /// Issue a fresh admin invite for an existing admin.
     Reset { account: String },
     /// Give an account the admin role.
@@ -25,6 +16,9 @@ pub enum AdminCommand {
     Demote { account: String },
     /// Create, list or revoke invites.
     Invite {
+        /// Id of the admin the invites are created or managed for; it must exist.
+        #[arg(long, value_name = "ACCOUNT")]
+        admin: String,
         #[command(subcommand)]
         command: InviteCommand,
     },
@@ -131,11 +125,11 @@ impl AdminCommand {
     pub(super) fn route(&self) -> &'static str {
         match self {
             AdminCommand::SetupToken => "/cli/admin-setup-token",
-            AdminCommand::Create { .. } => "/cli/admin-create",
+            AdminCommand::Create => "/cli/admin-create",
             AdminCommand::Reset { .. } => "/cli/admin-reset",
             AdminCommand::Promote { .. } => "/cli/admin-promote",
             AdminCommand::Demote { .. } => "/cli/admin-demote",
-            AdminCommand::Invite { command } => match command {
+            AdminCommand::Invite { command, .. } => match command {
                 InviteCommand::Create { .. } => "/cli/admin-invite-create",
                 InviteCommand::List => "/cli/admin-invite-list",
                 InviteCommand::Revoke { .. } => "/cli/admin-invite-revoke",

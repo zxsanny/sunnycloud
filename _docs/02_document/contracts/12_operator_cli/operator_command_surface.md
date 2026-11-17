@@ -59,10 +59,10 @@ Destructive commands: `admin user delete`, `admin rewrap`, `admin epoch-bump`, `
 | `migrate status` | none | `Migrator::status` (either role: the migrator secret when set, else the API URL) | applied, pending, dirty, checksum-mismatch, unknown-newer | 0; dirty, checksum mismatch or unknown-newer 2 (owner decision 2026-11-12) | E-22/c07 |
 | `migrate revert` | `[--steps N] --yes` | `Migrator::revert` | reverted versions | 0; `IrreversibleMigration` 2; no `--yes` on non-TTY 3 | E-22/c07 |
 | `admin setup-token` | none | `OperatorIdentityOps::ensure_setup_token` | token once and a sign-in hint | 0; `SetupNotAvailable` 2 with nothing on stdout | E-22/c08 |
-| `admin create` | `[--note] [--ttl]` | `OperatorIdentityOps::create_admin_invite` | invite token once and a sign-in hint | 0 | E-22/c08 |
+| `admin create` | none (valid for `invite_ttl`) | `OperatorIdentityOps::create_admin_invite` | invite token once and a sign-in hint | 0 | E-22/c08 |
 | `admin reset` | `<account>` | `OperatorIdentityOps::reset_admin` | fresh invite once | 0 (also for the only active admin, G-12-3); `NotFound` 2 | E-22/c08 |
 | `admin promote`, `admin demote` | `<account>` | `AdminService::update_user` (role, `Actor::Operator`) | new role | 0; `LastAdmin` 2 | E-22/c08 |
-| `admin invite create\|list\|revoke` | `create [--note]`, `list`, `revoke <id>` | `InviteService` | token once on `create`; never on `list` | 0 | E-22/c08 |
+| `admin invite --admin <account> create\|list\|revoke` | `create [--note]`, `list`, `revoke <id>` (the admin must exist; it is stored as the creator) | `InviteService` | token once on `create`; never on `list` | 0 | E-22/c08 |
 | `admin user list` | none | `AdminService::list_users` | account, role, state, last login, used, limit; no token | 0 | E-22/c09 |
 | `admin user set-quota` | `<account> <size>` | `AdminService::set_quota` | new limit | 0 | E-22/c09 |
 | `admin user delete` | `<account> --yes` | `AccountDeletionService::request` | deletion deadline | 0; `LastAdmin` 2; no `--yes` on non-TTY 3 | E-22/c09 |
@@ -123,7 +123,7 @@ Names not in this table (`key rewrap`, `media requeue`, a top-level `restore`) a
 3. Stable codes for operator-only outcomes (`SetupNotAvailable`, `BeyondRetention`, `KeyCheckMismatch`, `KeyCheckSampleFailed`, `FileMissing`, `WrongLength`, `KeyCheckAbsentButBlobsExist`, `IrreversibleMigration`, checksum mismatch, unknown-newer) are not in helper 02's code table.
 4. The exit code when SIGINT cancels a long command other than `serve` is not stated (G-12-7 covers `serve` only).
 5. The exact non-zero code (2 or 3) of each `serve` refusal kind is not stated (IT-12-6 accepts either).
-6. `admin create --note --ttl` has no matching parameters in `OperatorIdentityOps::create_admin_invite()`.
+6. `admin create --note --ttl` had no matching parameters in `OperatorIdentityOps::create_admin_invite()`: resolved 2026-11-17, the options are dropped. `InviteService` needs an admin account, so `admin invite` takes `--admin <account>`.
 7. The accepted format of `admin audit export --since` is not stated.
 
 ## Implemented skeleton (AZ-3788, proposals pending the open points above)

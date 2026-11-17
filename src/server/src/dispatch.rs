@@ -1,3 +1,4 @@
+use contracts::Role;
 use sc_error::ErrorCode;
 use sunnycloud_http_api::current_document;
 
@@ -9,6 +10,7 @@ use crate::error::CliError;
 use crate::exit::Exit;
 use crate::handler::{BoxFuture, Call, Handler};
 use crate::healthcheck;
+use crate::identity_commands;
 use crate::key_commands;
 use crate::maintenance_commands;
 use crate::media_commands;
@@ -32,6 +34,24 @@ impl Handler for Commands {
                 Command::Migrate(args) => migration::run(call.command, args, call.services).await,
                 Command::Serve => serve::run(call.services, call.cancel).await,
                 Command::Doctor(args) => doctor_command::run(args, call.services).await,
+                Command::Admin {
+                    command: AdminCommand::SetupToken,
+                } => identity_commands::setup_token(call.services).await,
+                Command::Admin {
+                    command: AdminCommand::Create,
+                } => identity_commands::create(call.services).await,
+                Command::Admin {
+                    command: AdminCommand::Reset { account },
+                } => identity_commands::reset(account, call.services).await,
+                Command::Admin {
+                    command: AdminCommand::Promote { account },
+                } => identity_commands::set_role(account, Role::Admin, call.services).await,
+                Command::Admin {
+                    command: AdminCommand::Demote { account },
+                } => identity_commands::set_role(account, Role::User, call.services).await,
+                Command::Admin {
+                    command: AdminCommand::Invite { admin, command },
+                } => identity_commands::invite(admin, command, call.services).await,
                 Command::KeyCheck => key_commands::key_check(call.services).await,
                 Command::Admin {
                     command: AdminCommand::KeycheckInit,

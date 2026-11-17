@@ -16,13 +16,19 @@ const COMMANDS: &[(&str, &str)] = &[
     ("migrate status", "/cli/migrate-status"),
     ("migrate revert --steps 2 --yes", "/cli/migrate-revert"),
     ("admin setup-token", "/cli/admin-setup-token"),
-    ("admin create --note first --ttl 24h", "/cli/admin-create"),
+    ("admin create", "/cli/admin-create"),
     ("admin reset alice", "/cli/admin-reset"),
     ("admin promote alice", "/cli/admin-promote"),
     ("admin demote alice", "/cli/admin-demote"),
-    ("admin invite create --note n", "/cli/admin-invite-create"),
-    ("admin invite list", "/cli/admin-invite-list"),
-    ("admin invite revoke inv-1", "/cli/admin-invite-revoke"),
+    (
+        "admin invite --admin alice create --note n",
+        "/cli/admin-invite-create",
+    ),
+    ("admin invite --admin alice list", "/cli/admin-invite-list"),
+    (
+        "admin invite --admin alice revoke inv-1",
+        "/cli/admin-invite-revoke",
+    ),
     ("admin user list", "/cli/admin-user-list"),
     (
         "admin user set-quota alice 10GiB",
@@ -159,6 +165,8 @@ fn unknown_command_and_missing_arguments_exit_3_and_build_no_service() {
         "admin user set-quota alice lots",
         "admin restore --account a",
         "admin rewrap --yes",
+        "admin invite list",
+        "admin create --note first",
         "migrate revert --steps 0 --yes",
         "doctor --backup-interval soon",
     ] {

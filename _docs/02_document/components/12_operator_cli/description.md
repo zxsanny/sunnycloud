@@ -44,7 +44,7 @@
 
 | Command | Business call (one) | Result and exit |
 |---|---|---|
-| `admin create [--note] [--ttl]` | `OperatorIdentityOps::create_admin_invite` | prints the one-time admin invite token **once** and the sign-in hint; 0 |
+| `admin create` | `OperatorIdentityOps::create_admin_invite` | prints the one-time admin invite token **once** and the sign-in hint; 0 |
 | `admin reset <account>` | `OperatorIdentityOps::reset_admin` | sessions of that admin revoked, fresh invite printed once (also for the only active admin, G-12-3); `NotFound` -> 2 |
 | `admin promote\|demote <account>` | `AdminService::update_user` (role) | the last-admin rule is 07's; `LastAdmin` -> 2 |
 | `admin setup-token` | `OperatorIdentityOps::ensure_setup_token` | only while zero accounts exist: replaces the open token, prints it once; otherwise `SetupNotAvailable` -> 2 |

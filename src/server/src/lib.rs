@@ -16,6 +16,7 @@ mod exit;
 mod guard;
 mod handler;
 mod healthcheck;
+mod identity_commands;
 pub mod janitor;
 mod key_commands;
 mod log;
