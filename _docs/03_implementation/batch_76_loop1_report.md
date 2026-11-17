@@ -22,7 +22,7 @@ AZ-3794 `admin setup-token|create|reset|invite|promote|demote`: the spec's flagg
 ## Code Review Verdict: PASS_WITH_WARNINGS
 
 Warnings (recorded, none blocks):
-- `--pre-flight` does not yet avoid the database in the real binary: `root::DoctorChecks` is built with a connected `Db` (`Db::connect` opens its pool eagerly) and `KeyDoctorCheck::new` needs one. The aggregation selects only `pre-flight` checks and builds nothing else, which the harness test proves, but the owner-built list still connects. Fix needs 04's `KeyDoctorCheck` (or `sc_db`) to accept a lazy database. See Discovered #1.
+- `--pre-flight` does not yet avoid the database in the real binary: `root::DoctorChecks` is built with a connected `Db` (`Db::connect` opens its pool eagerly) and `KeyDoctorCheck::new` needs one. The aggregation selects only `pre-flight` checks and builds nothing else, which the harness test proves, but the owner-built list still connects. Resolved in batch 80 (owner decision 2026-11-17): a separate database-free `PreFlightChecks` list. See Discovered #1.
 - A check that panics or hangs is not isolated and has no timeout (spec concern, Low, open).
 - A `doctor` run writes no audit row (spec concern, Low, open); it is read-only.
 
@@ -44,7 +44,7 @@ CI-parity (`CARGO_INCREMENTAL=0`): `cargo fmt --all --check`, workspace clippy `
 
 | # | Scenario or question | Spec ref | Proposed handling | clear / unclear |
 |---|----------------------|----------|-------------------|-----------------|
-| 1 | `doctor --pre-flight` with the database stopped still connects in the real composition: `DoctorChecks` needs `Db`, `Db::connect` is eager | AZ-3807 AC-3 | Make `KeyDoctorCheck`'s database lazy (04) or give `sc_db` a lazy pool; then register the pre-flight list without a connection | unclear (touches 04 or `sc_db`, owner choice) |
+| 1 | `doctor --pre-flight` with the database stopped still connects in the real composition: `DoctorChecks` needs `Db`, `Db::connect` is eager | AZ-3807 AC-3 | Make `KeyDoctorCheck`'s database lazy (04) or give `sc_db` a lazy pool; then register the pre-flight list without a connection | resolved in batch 80 (owner chose the separate list) |
 | 2 | `create_admin_invite` has no note or TTL | AZ-3794 concern 2 | Blocked, ask | unclear |
 | 3 | Three load-sensitive tests failed in the full run and pass alone (listed under Test Suite) | none of this batch's files | Report only; a tolerance for the `date` header in the uniform-404 comparison would remove the first | clear |
 | 4 | Per-check timeout and panic isolation in `doctor` | AZ-3807 concern 1 | Not added | unclear (owner may want 07's per-check timeout) |

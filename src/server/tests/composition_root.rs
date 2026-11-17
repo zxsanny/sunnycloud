@@ -505,3 +505,30 @@ async fn the_keyring_port_is_the_keyring_04_holds_and_the_blob_services_share_it
     ));
     root.finish().await;
 }
+
+#[tokio::test]
+async fn the_pre_flight_list_holds_every_pre_flight_tagged_check_of_the_doctor_list() {
+    // Arrange
+    let root = Root::new().await;
+
+    // Act
+    let doctor = root.services.get::<DoctorChecks>().await.expect("doctor");
+    let early = root
+        .services
+        .get::<sunnycloud_server::root::PreFlightChecks>()
+        .await
+        .expect("pre-flight");
+
+    // Assert
+    let mut tagged: Vec<_> = doctor
+        .0
+        .iter()
+        .filter(|check| check.tags().contains(&contracts::DoctorTag::PreFlight))
+        .map(|check| check.name())
+        .collect();
+    let mut listed: Vec<_> = early.0.iter().map(|check| check.name()).collect();
+    tagged.sort_unstable();
+    listed.sort_unstable();
+    assert_eq!(listed, tagged);
+    root.finish().await;
+}

@@ -27,7 +27,7 @@ pub use base::{DatabaseReady, Shutdown};
 pub use domain::{Admin, Feed, Identity, Quota, Sharing, Transfer, Tree};
 pub use lists::{
     AccountHooks, BlobCleanups, CommitEffects, DoctorChecks, HealthContributors, Janitors,
-    ReadinessChecks, Registered, start_scheduler,
+    PreFlightChecks, ReadinessChecks, Registered, start_scheduler,
 };
 pub use media::{Media, MediaPlanning};
 pub use storage::Blobstore;

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use contracts::{DoctorCheck, DoctorContext, DoctorTag, Finding, FindingLevel, async_trait};
 use serde_json::Value;
-use sunnycloud_server::root::DoctorChecks;
+use sunnycloud_server::root::{DoctorChecks, PreFlightChecks};
 use sunnycloud_server::{CheckSelection, run_checks};
 use support::{Captured, Harness, locked};
 
@@ -61,6 +61,17 @@ fn run(checks: Vec<Arc<dyn DoctorCheck>>, args: &[&str]) -> Captured {
         .real_handler()
         .service::<DoctorChecks, _, _>(move |_| {
             let checks = DoctorChecks(checks.clone());
+            async move { Ok(Arc::new(checks)) }
+        })
+        .run(args)
+}
+
+/// Only the pre-flight list is registered: a run that asked for any other list would fail.
+fn run_pre_flight(checks: Vec<Arc<dyn DoctorCheck>>, args: &[&str]) -> Captured {
+    Harness::new()
+        .real_handler()
+        .service::<PreFlightChecks, _, _>(move |_| {
+            let checks = PreFlightChecks(checks.clone());
             async move { Ok(Arc::new(checks)) }
         })
         .run(args)
@@ -166,27 +177,38 @@ fn json_carries_the_same_findings_levels_remedies_and_exit_as_the_text() {
 }
 
 #[test]
-fn pre_flight_runs_only_pre_flight_tagged_checks_and_builds_nothing_else() {
+fn pre_flight_runs_the_pre_flight_list_and_builds_no_other() {
+    // Arrange
     let seen = contexts();
-    let untagged_seen = contexts();
-    let checks = vec![
-        check(
-            "redirect_uris",
-            &[DoctorTag::PreFlight],
-            vec![finding(FindingLevel::Ok, "https://cloud.example/cb", "")],
-            &seen,
-        ),
-        warn_check(&untagged_seen),
-    ];
+    let checks = vec![check(
+        "redirect_uris",
+        &[DoctorTag::PreFlight],
+        vec![finding(FindingLevel::Ok, "https://cloud.example/cb", "")],
+        &seen,
+    )];
 
-    let result = run(checks, &["doctor", "--pre-flight"]);
+    // Act
+    let result = run_pre_flight(checks, &["doctor", "--pre-flight"]);
 
+    // Assert
     assert_eq!(result.exit, 0, "{}", result.stderr);
     assert!(result.stdout.contains("https://cloud.example/cb"));
-    assert!(!result.stdout.contains("backup_age"));
     assert_eq!(locked(&seen).len(), 1);
     assert!(locked(&seen)[0].pre_flight);
-    assert!(locked(&untagged_seen).is_empty());
+}
+
+#[test]
+fn pre_flight_skips_a_check_in_its_list_that_is_not_tagged_pre_flight() {
+    // Arrange
+    let seen = contexts();
+    let checks = vec![warn_check(&seen)];
+
+    // Act
+    let result = run_pre_flight(checks, &["doctor", "--pre-flight"]);
+
+    // Assert
+    assert_eq!(result.exit, 0, "{}", result.stderr);
+    assert!(locked(&seen).is_empty());
 }
 
 #[tokio::test]

@@ -16,12 +16,20 @@ const REMEDY: &str = "mount the master key of this installation; `sunnycloud adm
 
 pub struct KeyDoctorCheck {
     config: BlobstoreConfig,
-    db: Db,
+    db: Option<Db>,
 }
 
 impl KeyDoctorCheck {
     pub fn new(config: BlobstoreConfig, db: Db) -> Self {
-        KeyDoctorCheck { config, db }
+        KeyDoctorCheck {
+            config,
+            db: Some(db),
+        }
+    }
+
+    /// For a run before the stack is up: it holds no database, so a missing key check is never judged.
+    pub fn without_database(config: BlobstoreConfig) -> Self {
+        KeyDoctorCheck { config, db: None }
     }
 
     /// A pre-flight run opens no database connection, so a missing key check is then not judged.
@@ -33,14 +41,16 @@ impl KeyDoctorCheck {
                 compare_with_ring(&check, &ring)?;
                 Ok("master key matches the key check")
             }
-            None if pre_flight => Ok("no key check file yet; master key length is valid"),
-            None => {
-                if volume::has_blob_files(&root).await? || keyring_repo::any_blob(&self.db).await? {
-                    Err(KeyError::KeyCheckAbsentButBlobsExist)
-                } else {
-                    Ok("no key check file yet; it is created at the first start")
+            None => match &self.db {
+                Some(db) if !pre_flight => {
+                    if volume::has_blob_files(&root).await? || keyring_repo::any_blob(db).await? {
+                        Err(KeyError::KeyCheckAbsentButBlobsExist)
+                    } else {
+                        Ok("no key check file yet; it is created at the first start")
+                    }
                 }
-            }
+                _ => Ok("no key check file yet; master key length is valid"),
+            },
         }
     }
 }

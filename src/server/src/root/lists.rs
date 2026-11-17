@@ -12,8 +12,8 @@ use sc_db::Db;
 use sc_observability::{HealthContributor, Metrics, ReadinessCheck};
 use sunnycloud_admin::DeletionPurger;
 use sunnycloud_blobstore::{
-    BlobHealthContributor, GcSweeper, KeyDoctorCheck, MissingBlobsCheck, OrphanSweeper,
-    RetentionCheck, ScrubJanitor, VolumeCheck,
+    BlobHealthContributor, BlobstoreConfig, GcSweeper, KeyDoctorCheck, MissingBlobsCheck,
+    OrphanSweeper, RetentionCheck, ScrubJanitor, VolumeCheck,
 };
 use sunnycloud_transfer::{IdleFlush, ReceiptJanitor, SessionReaper};
 use sunnycloud_tree::TreeJanitor;
@@ -66,6 +66,10 @@ pub struct HealthContributors(pub Vec<Arc<dyn HealthContributor>>);
 /// The owners' doctor checks: 04, then 08.
 pub struct DoctorChecks(pub Vec<Arc<dyn DoctorCheck>>);
 
+/// The `pre-flight` checks only, built from settings with no database: `doctor --pre-flight` runs before the
+/// stack is up. Every check tagged `pre-flight` is listed here as well as in [`DoctorChecks`].
+pub struct PreFlightChecks(pub Vec<Arc<dyn DoctorCheck>>);
+
 /// What `/readyz` runs: the database, then `scheduler_alive` (failing until [`start_scheduler`]).
 pub struct ReadinessChecks(pub Vec<Arc<dyn ReadinessCheck>>);
 
@@ -102,6 +106,14 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
             Ok(Arc::new(HealthContributors(vec![
                 Arc::new(BlobHealthContributor::new(blobs.health.clone())),
                 media.health.clone(),
+            ])))
+        })
+        .register::<PreFlightChecks, _, _>(|services| async move {
+            let settings = services.get::<ServeSettings>().await?;
+            let config = BlobstoreConfig::from_settings(&settings);
+            Ok(Arc::new(PreFlightChecks(vec![
+                Arc::new(VolumeCheck::new(&config)),
+                Arc::new(KeyDoctorCheck::without_database(config)),
             ])))
         })
         .register::<DoctorChecks, _, _>(|services| async move {

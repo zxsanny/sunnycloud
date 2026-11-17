@@ -212,6 +212,26 @@ async fn a_lost_key_check_with_blobs_present_fails_unless_it_is_a_pre_flight() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_check_without_a_database_never_judges_a_lost_key_check_but_still_fails_a_wrong_key() {
+    // Arrange
+    let rig = Rig::new().await;
+    rig.store(1024, 1).await;
+    let wrong = KeyDoctorCheck::without_database(config_with_key(&rig, "other.key", &KEY_TWO));
+    let lost = KeyDoctorCheck::without_database(rig.config.clone());
+
+    // Act
+    let wrong_key = wrong.run(&DoctorContext::default()).await;
+    fs::remove_file(rig.volume.join(".keycheck")).expect("remove the key check");
+    let lost_check = lost.run(&DoctorContext::default()).await;
+
+    // Assert
+    assert_eq!(levels(&wrong_key), vec![FindingLevel::Fail]);
+    assert_eq!(levels(&lost_check), vec![FindingLevel::Ok]);
+    drop((wrong, lost));
+    rig.finish().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_new_install_without_a_key_check_passes() {
     // Arrange
     let rig = Rig::new().await;

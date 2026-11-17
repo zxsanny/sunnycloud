@@ -12,7 +12,7 @@ use crate::commands::DoctorArgs;
 use crate::context::ServiceContext;
 use crate::error::CliError;
 use crate::outcome::{Class, Outcome};
-use crate::root::DoctorChecks;
+use crate::root::{DoctorChecks, PreFlightChecks};
 
 /// Which of the registered checks run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,7 +55,11 @@ fn selected(check: &Arc<dyn DoctorCheck>, selection: CheckSelection) -> bool {
 
 /// `doctor`: `--pre-flight` runs only the checks tagged `pre-flight`; no other option narrows the set.
 pub(crate) async fn run(args: &DoctorArgs, services: &ServiceContext) -> Result<Outcome, CliError> {
-    let checks = services.get::<DoctorChecks>().await?;
+    let checks = if args.pre_flight {
+        services.get::<PreFlightChecks>().await?.0.clone()
+    } else {
+        services.get::<DoctorChecks>().await?.0.clone()
+    };
     let ctx = DoctorContext {
         pre_flight: args.pre_flight,
         backup_interval: args.backup_interval,
@@ -66,7 +70,7 @@ pub(crate) async fn run(args: &DoctorArgs, services: &ServiceContext) -> Result<
     } else {
         CheckSelection::All
     };
-    Ok(report(&run_checks(&checks.0, selection, &ctx).await))
+    Ok(report(&run_checks(&checks, selection, &ctx).await))
 }
 
 /// The outcome of a run: Fail anywhere is exit 2, Warn anywhere (and no Fail) exit 1, otherwise 0.
