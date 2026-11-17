@@ -181,6 +181,7 @@ fn a_bump_error_exits_1_with_the_advice_to_run_again_and_runs_no_check() {
 
 struct Restorer {
     calls: Mutex<Vec<(Uuid, NodeOrPath, Timestamp)>>,
+    previews: Mutex<Vec<(Uuid, NodeOrPath, Timestamp)>>,
     answer: fn() -> Result<RestoreOutcome, RestoreError>,
 }
 
@@ -195,6 +196,16 @@ impl TreeRestore for Restorer {
         locked(&self.calls).push((account, target, at));
         (self.answer)()
     }
+
+    async fn preview_restore(
+        &self,
+        account: Uuid,
+        target: NodeOrPath,
+        at: Timestamp,
+    ) -> Result<RestoreOutcome, RestoreError> {
+        locked(&self.previews).push((account, target, at));
+        (self.answer)()
+    }
 }
 
 fn restore_run(
@@ -203,6 +214,7 @@ fn restore_run(
 ) -> (Captured, Arc<Restorer>) {
     let restorer = Arc::new(Restorer {
         calls: Mutex::default(),
+        previews: Mutex::default(),
         answer,
     });
     let served = Arc::clone(&restorer);
@@ -309,18 +321,51 @@ fn a_bad_time_account_or_missing_path_exits_3_with_no_call() {
 }
 
 #[test]
-fn dry_run_is_refused_without_a_call_because_the_owner_has_no_dry_run_form() {
+fn dry_run_previews_with_the_same_arguments_and_says_nothing_was_changed() {
+    // Arrange
     let account = Uuid::from_u128(9).to_string();
     let mut args = restore_args(&account, "2026-11-01T10:00:00Z");
     args.push("--dry-run");
+    let mut json_args = vec!["--json"];
+    json_args.extend(&args);
 
-    let (result, restorer) = restore_run(|| restored(Placement::Original), &args);
+    // Act
+    let (result, restorer) = restore_run(|| restored(Placement::Restored), &args);
+    let (object, _) = restore_run(|| restored(Placement::Restored), &json_args);
 
-    assert_eq!(result.exit, 2);
+    // Assert
+    assert_eq!(result.exit, 0, "{}", result.stderr);
     assert!(
-        result.stderr.contains("no dry-run form"),
+        result.stdout.contains("changed: false"),
         "{}",
-        result.stderr
+        result.stdout
     );
+    assert!(result.stdout.contains("placement: restored"));
+    assert!(result.stdout.contains(&format!("revision: {REVISION}")));
+    assert!(locked(&restorer.calls).is_empty(), "no real restore");
+    let previews = locked(&restorer.previews);
+    assert_eq!(previews.len(), 1);
+    assert_eq!(previews[0].0, Uuid::from_u128(9));
+    assert_eq!(previews[0].1, NodeOrPath::Path("/x".to_owned()));
+    let envelope: Value = serde_json::from_str(&object.stdout).expect("envelope");
+    assert_eq!(envelope["data"]["changed"], false);
+}
+
+#[test]
+fn a_real_restore_says_it_changed_something_and_a_dry_run_refusal_is_the_real_one() {
+    // Arrange
+    let account = Uuid::from_u128(9).to_string();
+    let plain = restore_args(&account, "2026-11-01T10:00:00Z");
+    let mut dry = plain.clone();
+    dry.push("--dry-run");
+
+    // Act
+    let (real, _) = restore_run(|| restored(Placement::Original), &plain);
+    let (refused, restorer) = restore_run(|| Err(RestoreError::BeyondRetention), &dry);
+
+    // Assert
+    assert!(real.stdout.contains("changed: true"), "{}", real.stdout);
+    assert_eq!(refused.exit, 2);
     assert!(locked(&restorer.calls).is_empty());
+    assert_eq!(locked(&restorer.previews).len(), 1);
 }

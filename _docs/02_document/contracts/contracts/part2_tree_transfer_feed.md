@@ -44,6 +44,7 @@ Conventions (ids, `Timestamp`, `DbTx`, error enums, object safety) are those of 
 | | `lookup_revisions` | `account, &[FileHash]` (at most 1000) -> `Vec<RevisionMatch{hash, node_id, revision_id, client_meta}>` | `BatchTooLarge` |
 | `TreeCommit` | `publish` | `CommitActor, Vec<PublishEntry>, Vec<Arc<dyn CommitEffect>>, now: Timestamp` -> `PublishResult{Published(Vec<EntryResult>) \| Replayed(StoredResponse)}` | whole call: `AccountNotActive`, `CommitIdReused`, `EffectFailed(ErrorCode)` |
 | `TreeRestore` | `restore_revision` | `account, NodeOrPath, at: Timestamp` -> `RestoreOutcome{restored_revision, placement: Original \| Restored}` | `BeyondRetention`, `FileMissing`, `NotFound` |
+| `TreeRestore` | `preview_restore` | same arguments and result; runs the restore transaction and rolls it back, so nothing is stored, reinstated, queued or announced (owner decision 2026-11-17, AZ-3796 AC-6) | the same refusals |
 | `LiveUsageSource` | `live_bytes` | `account` -> `i64` | none |
 | `VaultRoots` (v1.2) | `claim_root` | `tx: &mut DbTx, account, root_node_id, vault` -> `()`: locks the folder row `FOR UPDATE`, checks it is a live, empty folder other than the account's root folder and in no vault, and sets its `vault_id`; called by 20's `create_vault` after its `vaults` insert | `NotFound`, `Taken` |
 | `TreeMaintenance` | `cascade_batch` | `now, limit` -> `processed: u64` | `Unexpected` |

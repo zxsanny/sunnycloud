@@ -44,6 +44,15 @@ pub trait TreeRestore: Send + Sync {
         target: NodeOrPath,
         at: Timestamp,
     ) -> Result<RestoreOutcome, RestoreError>;
+
+    /// What [`TreeRestore::restore_revision`] would return for the same arguments, with nothing stored,
+    /// reinstated, queued or announced; every refusal is the real one.
+    async fn preview_restore(
+        &self,
+        account: Uuid,
+        target: NodeOrPath,
+        at: Timestamp,
+    ) -> Result<RestoreOutcome, RestoreError>;
 }
 
 #[derive(Debug, Error)]

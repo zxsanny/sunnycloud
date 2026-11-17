@@ -6,6 +6,7 @@
 //! else `Restored`. The usage delta, `FeedStamp::stamp` last, COMMIT, then `FeedNotifier::notify` (from the CLI
 //! process it reaches nobody; held polls see the change on 05's recheck). Any refusal rolls everything back.
 
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -29,7 +30,7 @@ use crate::publish::EntryError;
 use crate::publish_repo::{self, FileRow, NewFile};
 use crate::reader_repo;
 use crate::restore_repo::{self, Picked};
-use crate::retry::retry_aborted;
+use crate::retry::{TxFailure, retry_aborted};
 use crate::service::PgTreeService;
 
 /// The root folder a file lands in when its own folder is gone (decision 4).
@@ -330,6 +331,56 @@ impl TreeRestore for PgTreeRestore {
             self.tree.notifier.notify(account, seq);
         }
         Ok(outcome)
+    }
+
+    async fn preview_restore(
+        &self,
+        account: Uuid,
+        target: NodeOrPath,
+        at: Timestamp,
+    ) -> Result<RestoreOutcome, RestoreError> {
+        let now = self.tree.clock.now_utc();
+        if beyond_retention(now, self.retention, at) {
+            return Err(RestoreError::BeyondRetention);
+        }
+        let target = &target;
+        let ended: Result<Infallible, Preview> = retry_aborted(|| {
+            in_system(
+                &self.tree.db,
+                "tree_restore_preview",
+                async move |tx: &mut DbTx| match self.restore_in(tx, account, target, at, now).await
+                {
+                    Ok((outcome, _)) => Err(Preview::Would(outcome)),
+                    Err(error) => Err(Preview::Refused(error)),
+                },
+            )
+        })
+        .await;
+        match ended {
+            Err(Preview::Would(outcome)) => Ok(outcome),
+            Err(Preview::Refused(error)) => Err(error),
+            Ok(never) => match never {},
+        }
+    }
+}
+
+/// The end of a preview: the transaction always fails on purpose, so it is always rolled back, and the outcome
+/// the real restore would have committed travels out inside the error.
+enum Preview {
+    Would(RestoreOutcome),
+    Refused(RestoreError),
+}
+
+impl TxFailure for Preview {
+    fn from_db(error: DbError) -> Self {
+        Preview::Refused(RestoreError::from_db(error))
+    }
+
+    fn db_error(&self) -> Option<&DbError> {
+        match self {
+            Preview::Refused(error) => error.db_error(),
+            Preview::Would(_) => None,
+        }
     }
 }
 

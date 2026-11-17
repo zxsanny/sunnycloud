@@ -67,4 +67,5 @@ Stable codes (helper 02): `name_conflict` 409, `invalid_name` 422, `cycle` 409, 
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B03) |
 | 1.1.0 | 2026-11-13 | `resolve_path` rules and `resolve_path_with_state`; `find_revisions` offset paging; `TreeService` implemented by `PgTreeService` | AZ-3716 |
 | 1.2.0 | 2026-11-14 | Path rule and refusal sources of the operator restore (`PgTreeRestore`) | AZ-3715 |
+| 1.3.0 | 2026-11-17 | `TreeRestore::preview_restore`: the restore transaction always rolled back (additive) | AZ-3796 |
 | 1.3.0 | 2026-11-14 | v1.2 vault membership: `create_folder` copies the parent's `vault_id`; a move across the vault boundary is `VaultBoundary` (409 `vault_boundary`); `VaultRoots::claim_root` on `PgTreeService` (part 2) | AZ-3927 |

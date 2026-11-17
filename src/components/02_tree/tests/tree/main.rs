@@ -54,6 +54,7 @@ mod real_support;
 mod real_thumbs;
 mod restore_effects;
 mod restore_placement;
+mod restore_preview;
 mod restore_support;
 mod retry;
 mod revision_support;

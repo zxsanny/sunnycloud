@@ -144,6 +144,16 @@ impl Restore {
             .await
     }
 
+    pub async fn preview_by_node(
+        &self,
+        node: Uuid,
+        at: Timestamp,
+    ) -> Result<RestoreOutcome, RestoreError> {
+        self.restore
+            .preview_restore(self.tree.account, NodeOrPath::Node(node), at)
+            .await
+    }
+
     /// `(parent, name, live, current revision)` of a node.
     pub async fn node(&self, id: Uuid) -> (Option<Uuid>, String, bool, Option<Uuid>) {
         let mut admin = self.tree.fixture.db.admin().await;

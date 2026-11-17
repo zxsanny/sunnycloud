@@ -56,21 +56,16 @@ pub(crate) async fn restore(
         CliError::Usage(format!("--account `{}` is not an account id", args.account))
     })?;
     let at = utc_arg::parse("--at", &args.at)?;
-    if args.dry_run {
-        return Err(CliError::Operator {
-            code: "dry_run_unavailable",
-            detail:
-                "--dry-run is not available: 02's restore has no dry-run form, so nothing was done"
-                    .to_owned(),
-            exit: Exit::Failed,
-        });
-    }
     let restorer = services.get::<dyn TreeRestore>().await?;
-    let outcome = restorer
-        .restore_revision(account, NodeOrPath::Path(args.path.clone()), at)
-        .await
-        .map_err(refusal)?;
+    let target = NodeOrPath::Path(args.path.clone());
+    let outcome = if args.dry_run {
+        restorer.preview_restore(account, target, at).await
+    } else {
+        restorer.restore_revision(account, target, at).await
+    }
+    .map_err(refusal)?;
     Ok(Outcome::success()
+        .field("changed", !args.dry_run)
         .field("revision", outcome.restored_revision.to_string())
         .field(
             "placement",

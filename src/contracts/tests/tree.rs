@@ -231,6 +231,19 @@ impl TreeRestore for Double {
             placement: Placement::Original,
         })
     }
+
+    async fn preview_restore(
+        &self,
+        _account: Uuid,
+        _target: NodeOrPath,
+        _at: sc_clock::Timestamp,
+    ) -> Result<RestoreOutcome, RestoreError> {
+        self.calls.record("preview_restore");
+        Ok(RestoreOutcome {
+            restored_revision: Uuid::from_u128(9),
+            placement: Placement::Original,
+        })
+    }
 }
 
 #[async_trait]

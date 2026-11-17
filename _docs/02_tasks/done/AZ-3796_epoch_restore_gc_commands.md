@@ -68,7 +68,7 @@ Then each exits 3 with no business call
 **AC-6: Dry run (IT-12-4)**
 Given `--dry-run`
 When `admin restore` runs
-Then the call is made in dry-run form and the printed result says nothing was changed
+Then `preview_restore` is called (not `restore_revision`) and the printed result says `changed: false`
 
 **AC-7: GC on demand (IT-12-16, NFT-RES-37)**
 Given a recording `GcSweeper` returning counts
@@ -113,6 +113,6 @@ The owner-effect parts (marker equals the new epoch, a second bump is strictly h
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `TreeRestore::restore_revision(account, NodeOrPath, at)` has no dry-run input (contracts part 2, E-13/c11); AC-6 needs one | E-13 owner | open | Medium |
+| `TreeRestore::restore_revision(account, NodeOrPath, at)` has no dry-run input (contracts part 2, E-13/c11); AC-6 needs one | E-13 owner | resolved 2026-11-17: new `TreeRestore::preview_restore` (the restore transaction rolled back) | Medium |
 | G-12-5 default makes `epoch-bump` exit 1 on error, while the general table uses 2 for failures; reconcile findings do not change the exit code | E-22 owner | accepted-risk | Low |
 | E-13/c11 also returns `FileMissing`; this task maps it to exit 2 like the other owner refusals | E-22 owner | open | Low |
