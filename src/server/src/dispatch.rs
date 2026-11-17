@@ -9,6 +9,7 @@ use crate::error::CliError;
 use crate::exit::Exit;
 use crate::handler::{BoxFuture, Call, Handler};
 use crate::healthcheck;
+use crate::key_commands;
 use crate::maintenance_commands;
 use crate::media_commands;
 use crate::migration;
@@ -31,6 +32,13 @@ impl Handler for Commands {
                 Command::Migrate(args) => migration::run(call.command, args, call.services).await,
                 Command::Serve => serve::run(call.services, call.cancel).await,
                 Command::Doctor(args) => doctor_command::run(args, call.services).await,
+                Command::KeyCheck => key_commands::key_check(call.services).await,
+                Command::Admin {
+                    command: AdminCommand::KeycheckInit,
+                } => key_commands::keycheck_init(call.services).await,
+                Command::Admin {
+                    command: AdminCommand::Rewrap(args),
+                } => key_commands::rewrap(args, &call).await,
                 Command::Admin {
                     command: AdminCommand::MediaRequeue { account, kind },
                 } => {

@@ -17,6 +17,7 @@ mod guard;
 mod handler;
 mod healthcheck;
 pub mod janitor;
+mod key_commands;
 mod log;
 mod maintenance_commands;
 mod media_commands;

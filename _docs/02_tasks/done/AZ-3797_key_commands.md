@@ -24,8 +24,8 @@ Losing or mixing up the master key makes data unreadable (AC-43, AC-72). The ope
 
 - `key-check`: one `MasterKeyring::load_and_verify` call; exit 0 on a match; `FileMissing`, `WrongLength`, `KeyCheckMismatch`, `KeyCheckAbsentButBlobsExist` exit 2 with that code.
 - `admin keycheck-init`: one `init_key_check` call; `KeyCheckSampleFailed` exits 2; success exits 0.
-- `admin rewrap --new-key-file <path> [--yes]`: without `--yes` on a non-TTY exit 3 with no call; with it `rewrap_batch` is called repeatedly until it reports 0 rows; a progress line on stderr every `cli_progress_interval`; a closing message that the old key must be kept; exit 0. SIGINT stops the loop between batches (E-22/c02 cancellation).
-- The new key is given as a file path; no key bytes on the command line or in any output.
+- `admin rewrap --from-key-id <id> [--yes]` (config-first rotation, owner decision 2026-11-17: the operator adds the new key to `master_key_ring`, sets `master_key_current` and restarts first): without `--yes` on a non-TTY exit 3 with no call; an id that is not an old key of the ring exits 3 with no batch; with it `rewrap_batch(id, current, 100)` is called repeatedly until it reports 0 rows; a progress line on stderr every `cli_progress_interval`; a closing message that the old key must be kept; exit 0. SIGINT stops the loop between batches (E-22/c02 cancellation).
+- No key bytes on the command line or in any output; `keycheck-init` reads the configured `master_key_file` (key 1) as its candidate.
 
 Narrowed against the plan: the wrong-key refusal of `serve` and `key-check` end to end and the `keycheck-init` caller are AZ-3666 (E-22/p13) AC-72 and AC-4. This task owns the command side.
 
@@ -51,12 +51,12 @@ Then success exits 0 and the failure exits 2 with `KeyCheckSampleFailed`
 
 **AC-3: Rewrap needs confirmation (IT-12-13, ST-12-2)**
 Given stdin that is not a TTY
-When `admin rewrap --new-key-file k2` runs without `--yes`
+When `admin rewrap --from-key-id 1` runs without `--yes`
 Then it exits 3 and no `rewrap_batch` call is made
 
 **AC-4: Rewrap loops to zero (IT-12-13, FT-P-41)**
 Given a recording `rewrap_batch` that reports 200, 200, 100, then 0 rows, each call taking longer than `cli_progress_interval` (500 ms in tests)
-When `admin rewrap --new-key-file k2 --yes` runs
+When `admin rewrap --from-key-id 1 --yes` runs
 Then `rewrap_batch` is called four times, a progress line appears on stderr at least every 500 ms, the closing message says the old key must be kept, and the exit code is 0
 
 **AC-5: Rewrap stops cleanly on Ctrl-C (IT-12-19)**
@@ -72,7 +72,7 @@ Then 0 occurrences are found
 ## Non-Functional Requirements
 
 **Security**
-- `--new-key-file` takes a path; key bytes are never an argument.
+- No command takes key bytes as an argument.
 
 ## Unit Tests
 
@@ -108,5 +108,5 @@ The owner-effect parts of IT-12-12 and IT-12-13 (`.keycheck` not created on a wr
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `rewrap_batch(from_id, to_id, n)` (E-10/c13) works on key ids of the configured ring, while the command takes `--new-key-file`; how the file becomes a ring id (config change first, or the command registering it) is not stated | E-10 / E-22 owners | open | Medium |
-| The batch size `n` of the rewrap loop is not stated | E-10 / E-22 owners | open | Low |
+| `rewrap_batch(from_id, to_id, n)` works on ring ids, the command took `--new-key-file` | E-10 / E-22 owners | resolved 2026-11-17: config-first, `--from-key-id` | Medium |
+| The batch size `n` of the rewrap loop is not stated | E-10 / E-22 owners | resolved 2026-11-17: fixed 100 | Low |

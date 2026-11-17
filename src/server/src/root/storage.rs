@@ -63,6 +63,11 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
                 AuditWriter::clone(&audit),
             )))
         })
+        .register::<dyn contracts::MasterKeyring, _, _>(|services| async move {
+            let keyring: Arc<dyn contracts::MasterKeyring> =
+                services.get::<MasterKeyring>().await?;
+            Ok(keyring)
+        })
         .register::<dyn Scrubber, _, _>(|services| async move {
             let blobs = services.get::<Blobstore>().await?;
             let scrubber: Arc<dyn Scrubber> = blobs.scrubber.clone();

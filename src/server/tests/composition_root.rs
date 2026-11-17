@@ -484,3 +484,24 @@ fn ok_cycles(scrape: &str, task: &str) -> f64 {
     )
     .unwrap_or(0.0)
 }
+
+#[tokio::test]
+async fn the_keyring_port_is_the_keyring_04_holds_and_the_blob_services_share_it() {
+    // Arrange
+    let root = Root::new().await;
+
+    // Act
+    let port = root
+        .services
+        .get::<dyn contracts::MasterKeyring>()
+        .await
+        .expect("keyring port");
+    let blobs = root.services.get::<Blobstore>().await.expect("04");
+
+    // Assert
+    assert!(std::ptr::addr_eq(
+        Arc::as_ptr(&port),
+        Arc::as_ptr(&blobs.keyring)
+    ));
+    root.finish().await;
+}

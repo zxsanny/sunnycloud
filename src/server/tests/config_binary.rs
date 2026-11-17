@@ -262,7 +262,11 @@ fn commands_that_use_no_provider_worker_token_or_master_key_get_past_configurati
         "postgres://migrator@127.0.0.1:1/sunnycloud",
     );
 
-    for args in [&["migrate"][..], &["admin", "setup-token"], &["key-check"]] {
+    for args in [
+        &["migrate"][..],
+        &["admin", "setup-token"],
+        &["admin", "user", "delete", "alice", "--yes"],
+    ] {
         // Act
         let run = run(&watch, &setup, args);
 

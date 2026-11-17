@@ -10,7 +10,7 @@ const DESTRUCTIVE: &[(&[&str], &str)] = &[
         "/cli/admin-user-delete",
     ),
     (
-        &["admin", "rewrap", "--new-key-file", "/run/new.key"],
+        &["admin", "rewrap", "--from-key-id", "1"],
         "/cli/admin-rewrap",
     ),
     (&["admin", "epoch-bump"], "/cli/admin-epoch-bump"),

@@ -18,6 +18,7 @@ use crate::context::ServiceContext;
 use crate::error::CliError;
 use crate::exit::Exit;
 use crate::janitor::Scheduler;
+use crate::key_commands::key_kind;
 use crate::root::{self, AccountHooks, Janitors};
 
 /// What a started `serve` holds until its shutdown.
@@ -128,14 +129,7 @@ async fn schema_check(db: &Db) -> Result<(), CliError> {
 
 /// The variant name, then 04's operator text; neither carries key material.
 fn key_refusal(error: KeyError) -> CliError {
-    let kind = match &error {
-        KeyError::FileMissing => "FileMissing",
-        KeyError::WrongLength => "WrongLength",
-        KeyError::KeyCheckMismatch => "KeyCheckMismatch",
-        KeyError::KeyCheckAbsentButBlobsExist => "KeyCheckAbsentButBlobsExist",
-        KeyError::KeyCheckSampleFailed { .. } => "KeyCheckSampleFailed",
-        KeyError::Unexpected(_) => "Unexpected",
-    };
+    let kind = key_kind(&error);
     refusal(
         "master_key_refused",
         format!(

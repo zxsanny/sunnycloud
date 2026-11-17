@@ -52,7 +52,9 @@ fn outcome_classes_and_failures_map_to_the_documented_codes() {
 
 #[test]
 fn an_unfinished_command_fails_instead_of_pretending() {
-    let result = Harness::new().real_handler().run(&["key-check"]);
+    let result = Harness::new()
+        .real_handler()
+        .run(&["admin", "user", "delete", "alice", "--yes"]);
 
     assert_eq!(result.exit, 2);
     assert!(

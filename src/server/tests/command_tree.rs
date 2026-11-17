@@ -42,10 +42,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ("admin gc-run", "/cli/admin-gc-run"),
     ("key-check", "/cli/key-check"),
     ("admin keycheck-init", "/cli/admin-keycheck-init"),
-    (
-        "admin rewrap --new-key-file /run/new.key --yes",
-        "/cli/admin-rewrap",
-    ),
+    ("admin rewrap --from-key-id 1 --yes", "/cli/admin-rewrap"),
     ("scrub run --full --rate 50", "/cli/scrub-run"),
     ("scrub status", "/cli/scrub-status"),
     (

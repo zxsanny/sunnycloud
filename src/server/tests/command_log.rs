@@ -10,21 +10,20 @@ use support::{Harness, answer};
 fn one_line_per_command_without_the_argument_values() {
     let result = Harness::new().log_json().run(&[
         "admin",
-        "rewrap",
-        "--new-key-file",
-        "/home/alice/secret-master.key",
-        "--yes",
+        "media-requeue",
+        "--account",
+        "/home/alice/secret-account",
     ]);
 
     assert_eq!(result.exit, 0, "{}", result.stderr);
     assert_eq!(result.log.len(), 1, "{:?}", result.log);
     let line: Value = serde_json::from_str(&result.log[0]).expect("a JSON line");
-    assert_eq!(line["route"], "/cli/admin-rewrap");
+    assert_eq!(line["route"], "/cli/admin-media-requeue");
     assert_eq!(line["msg"], "cli command finished: exit 0");
     assert!(line["duration_ms"].is_u64());
     for text in [&result.log[0], &result.stdout, &result.stderr] {
         assert!(
-            !text.contains("secret-master") && !text.contains("/home/alice"),
+            !text.contains("secret-account") && !text.contains("/home/alice"),
             "{text}"
         );
     }

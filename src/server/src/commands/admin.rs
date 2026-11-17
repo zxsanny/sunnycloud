@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::{Args, Subcommand};
@@ -121,9 +120,9 @@ pub struct RestoreArgs {
 
 #[derive(Debug, Args)]
 pub struct RewrapArgs {
-    /// File holding the new master key.
-    #[arg(long, value_name = "PATH")]
-    pub new_key_file: PathBuf,
+    /// Id of the old master key in the ring; every data key wrapped under it moves to the current key.
+    #[arg(long, value_name = "ID")]
+    pub from_key_id: i16,
     #[command(flatten)]
     pub confirm: ConfirmArgs,
 }
@@ -172,7 +171,7 @@ impl AdminCommand {
             }),
             AdminCommand::Rewrap(args) => Some(Confirmation {
                 yes: args.confirm.yes,
-                action: "Re-encrypt every blob key under the new master key".to_owned(),
+                action: "Re-encrypt every blob key under the current master key".to_owned(),
             }),
             _ => None,
         }

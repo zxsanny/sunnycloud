@@ -73,7 +73,7 @@ Destructive commands: `admin user delete`, `admin rewrap`, `admin epoch-bump`, `
 | `admin gc-run` | none | `GcSweeper::run_cycle` once | counts | 0 | E-22/c10 |
 | `key-check` | none | `MasterKeyring::load_and_verify` | match, never key bytes | 0; `FileMissing`, `WrongLength`, `KeyCheckMismatch`, `KeyCheckAbsentButBlobsExist` 2 | E-22/c11 |
 | `admin keycheck-init` | none | `MasterKeyring::init_key_check` | key check written | 0; `KeyCheckSampleFailed` 2 | E-22/c11 |
-| `admin rewrap` | `--new-key-file <path> [--yes]` | `MasterKeyring::rewrap_batch` looped until 0 rows | progress on stderr; "keep the old key" | 0; no `--yes` on non-TTY 3 | E-22/c11 |
+| `admin rewrap` | `--from-key-id <id> [--yes]` (new key already in `master_key_ring` and `master_key_current`) | `MasterKeyring::rewrap_batch` looped until 0 rows | progress on stderr; "keep the old key" | 0; no `--yes` on non-TTY 3 | E-22/c11 |
 | `scrub run` | `[--full] [--rate MiB/s]` | `Scrubber::start_run`, `run_step` until done, `finish_run` | live progress, findings | 0; any mismatch or missing blob 2 | E-22/c12 |
 | `scrub status` | none | `Scrubber::status` | oldest scrub time, unscrubbed count, open findings | 0 | E-22/c12 |
 | `admin media-requeue` | `[--account] [--kind]` | `MediaAdmin::requeue_dead` | count | 0 | E-22/c13 |
