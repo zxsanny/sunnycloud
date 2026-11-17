@@ -119,9 +119,11 @@ The user-side part of AC-73 (listings 200, files open as 404 `content_unavailabl
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| `describe_blobs` returns node paths per blob id only; AC-73 needs account and revision id too | E-13 owner | open | Medium |
-| E-10/c13 also provides a missing-blob `DoctorCheck` with ids only; only one of the two should be registered | E-10 / E-22 owners | open | Medium |
+| `describe_blobs` returns node paths per blob id only; AC-73 needs account and revision id too | E-13 owner | resolved 2026-11-17: new additive `TreeReader::describe_blob_revisions` (tree_reader 1.5.0) | Medium |
+| E-10/c13 also provides a missing-blob `DoctorCheck` with ids only; only one of the two should be registered | E-10 / E-22 owners | resolved 2026-11-17: the 04 check is removed; the root's `MissingBlobsReport` is the only one | Medium |
 | No E-15 task implements the providers / redirect-URI and setup-state checks, and no E-21 task the public URL, TLS 1.3, HTTP/2 and proxy-body probe check, that 12 §6 assigns to 01 and 11; `doctor --pre-flight` (AC-22) needs the redirect URIs | E-15, E-21 owners (parent) | open | Medium |
-| `find_missing(batch)` has no cursor, so how repeated calls cover every committed row is not stated (E-10/c13 flag) | E-10 owner | open | Low |
-| The levels of the drift and clock findings (Warn or Fail) are not stated; the ACs require only non-Ok | E-22 owner | open | Low |
-| The port that lists every account for the drift check is not named; this task assumes `AccountAdmin::list_accounts` (E-15/c10) | E-22 owner | open | Low |
+| `find_missing(batch)` has no cursor, so how repeated calls cover every committed row is not stated (E-10/c13 flag) | E-10 owner | resolved: `BlobInventory::scan_page(after, batch)` is the cursor walk | Low |
+| The levels of the drift and clock findings (Warn or Fail) are not stated; the ACs require only non-Ok | E-22 owner | resolved 2026-11-17 (owner decision): both Warn | Low |
+| The port that lists every account for the drift check is not named; this task assumes `AccountAdmin::list_accounts` (E-15/c10) | E-22 owner | resolved: `list_accounts`, accounts being deleted are skipped | Low |
+| The configuration check is not a `DoctorCheck` object: a configuration that does not load cannot build one, so `doctor` itself turns the loader's rejected keys into one `Fail` per key, and a stack that does not build (for instance a refused database role) into the database check plus one `stack` finding | E-22 owner | resolved 2026-11-17 | Medium |
+| Drift is reported from `QuotaAdmin::recompute`, which returns the `used` counter only; a drifted `reserved` counter is not reported (`PgQuotaAdmin::recompute_columns` has both) | E-17 / E-22 owners | open | Low |

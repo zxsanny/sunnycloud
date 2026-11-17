@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use contracts::{
     AccountAdmin, AccountAdminError, AccountFilter, AccountInfo, AccountLifecycleHook,
-    AccountProfile, AccountState, CheckFuture, Drift, EraseProgress, HealthContributor, HealthItem,
-    LifecycleError, ListingPage, LiveFileLookup, NodeRef, NodeSelector, NodeView, Page, QuotaAdmin,
-    QuotaAdminError, QuotaView, RevisionMatch, RevisionView, Role, TreeReader, TreeReaderError,
-    async_trait,
+    AccountProfile, AccountState, BlobRevision, CheckFuture, Drift, EraseProgress,
+    HealthContributor, HealthItem, LifecycleError, ListingPage, LiveFileLookup, NodeRef,
+    NodeSelector, NodeView, Page, QuotaAdmin, QuotaAdminError, QuotaView, RevisionMatch,
+    RevisionView, Role, TreeReader, TreeReaderError, async_trait,
 };
 use sc_db::DbTx;
 use sc_ids::FileHash;
@@ -166,6 +166,13 @@ impl TreeReader for TreeReaderDouble {
         &self,
         _blob_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, Vec<String>>, TreeReaderError> {
+        Err(TreeReaderError::Unexpected(NOT_CALLED.into()))
+    }
+
+    async fn describe_blob_revisions(
+        &self,
+        _blob_ids: &[Uuid],
+    ) -> Result<Vec<BlobRevision>, TreeReaderError> {
         Err(TreeReaderError::Unexpected(NOT_CALLED.into()))
     }
 

@@ -12,7 +12,7 @@ use sc_clock::Clock;
 use sc_config::{KeyProblem, Reason};
 use thiserror::Error;
 
-use crate::config::ProviderConfig;
+use crate::config::{IdentityConfig, ProviderConfig};
 use crate::error::IdentityError;
 use crate::outbound::OutboundClient;
 
@@ -67,6 +67,10 @@ pub trait ProviderClient: Send + Sync {
         &self,
         exchange: &CodeExchange<'_>,
     ) -> Result<ProviderIdentity, ProviderError>;
+
+    /// Reaches the provider's discovery endpoint (OIDC) or token endpoint (GitHub) through the same outbound
+    /// rules as sign-in; used by `doctor`. Any answer short of a server error counts as reachable.
+    async fn probe(&self) -> Result<(), ProviderError>;
 }
 
 fn invalid(index: usize, field: &str, reason: Reason) -> IdentityError {
@@ -93,6 +97,36 @@ pub(crate) fn build(
         )?)),
         _ => Err(invalid(index, "kind", Reason::WrongType)),
     }
+}
+
+/// A provider's key and its client.
+pub(crate) type Keyed = (String, Arc<dyn ProviderClient>);
+
+/// One client per configured provider, in configuration order, over one outbound client. Opens no connection.
+pub(crate) fn build_all(
+    config: &IdentityConfig,
+    clock: &Arc<dyn Clock>,
+) -> Result<Vec<Keyed>, IdentityError> {
+    let http = Arc::new(
+        OutboundClient::new(config.allow_plain_http_dev)
+            .map_err(|error| IdentityError::OutboundSetup(Box::new(error)))?,
+    );
+    let read_email = !config.email_allowlist.is_empty();
+    config
+        .providers
+        .iter()
+        .enumerate()
+        .map(|(index, provider)| {
+            let client = build(
+                index,
+                provider,
+                Arc::clone(&http),
+                Arc::clone(clock),
+                read_email,
+            )?;
+            Ok((provider.key.clone(), client))
+        })
+        .collect()
 }
 
 /// The domain of Sign in with Apple's private relay: the address forwards mail and identifies nobody, so it is

@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use common::{Calls, NOW, id, sorted};
 use contracts::{
-    ListingPage, LiveFile, LiveFileLookup, LiveUsageError, LiveUsageSource, MaintenanceError,
-    NodeKind, NodeOrPath, NodeRef, NodeSelector, NodeState, NodeView, Page, Placement,
-    RestoreError, RestoreOutcome, RevisionMatch, RevisionRef, RevisionView, ThumbState,
+    BlobRevision, ListingPage, LiveFile, LiveFileLookup, LiveUsageError, LiveUsageSource,
+    MaintenanceError, NodeKind, NodeOrPath, NodeRef, NodeSelector, NodeState, NodeView, Page,
+    Placement, RestoreError, RestoreOutcome, RevisionMatch, RevisionRef, RevisionView, ThumbState,
     TreeMaintenance, TreeReader, TreeReaderError, TreeRestore, TreeService, TreeServiceError,
     async_trait,
 };
@@ -188,6 +188,22 @@ impl TreeReader for Double {
         Ok(true)
     }
 
+    async fn describe_blob_revisions(
+        &self,
+        blob_ids: &[Uuid],
+    ) -> Result<Vec<BlobRevision>, TreeReaderError> {
+        self.calls.record("describe_blob_revisions");
+        Ok(blob_ids
+            .iter()
+            .map(|blob| BlobRevision {
+                blob_id: *blob,
+                account: *blob,
+                revision_id: *blob,
+                path: Some("a".to_owned()),
+            })
+            .collect())
+    }
+
     async fn describe_blobs(
         &self,
         blob_ids: &[Uuid],
@@ -335,6 +351,8 @@ async fn tree_reader_double_records_each_method_through_arc_dyn() {
         reader.get_revision(account, account).await?;
         reader.is_current_or_retained(account, account).await?;
         let described = reader.describe_blobs(&[account]).await?;
+        let placed = reader.describe_blob_revisions(&[account]).await?;
+        assert_eq!(placed.len(), 1);
         let matches = reader.lookup_revisions(account, &[hash()]).await?;
         Ok::<_, TreeReaderError>((described.len(), matches.len()))
     });
@@ -352,6 +370,7 @@ async fn tree_reader_double_records_each_method_through_arc_dyn() {
             "get_revision",
             "is_current_or_retained",
             "describe_blobs",
+            "describe_blob_revisions",
             "lookup_revisions"
         ])
     );

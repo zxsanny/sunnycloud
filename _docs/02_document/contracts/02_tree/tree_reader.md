@@ -3,7 +3,7 @@
 **Component**: 02_tree
 **Producer task**: E-13/c03 — `_docs/02_tasks/todo/B03-03_tree_reader.md` (contributors: E-13/c12 `B03-12_tree_revision_lookups.md`, E-13/c14 `B03-14_tree_thumb_state_listing.md`); keys assigned at Step 4
 **Consumer tasks**: E-14/c02, E-14/c04, E-14/c08, E-14/c10 (this batch); E-16 (06 sharing), E-17 (07 admin), E-18 (08 media_jobs), E-21 (11 http_api), E-22 (12 operator_cli), E-30 (20 vault_service), resolved at Step 4
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: draft (frozen when the producer task passes review)
 **Last Updated**: 2026-11-04
 
@@ -24,6 +24,7 @@ Signatures: part 2 § 02 tree (`TreeReader`, `LiveUsageSource`). Behaviour per m
 | `root_node(account)` | The account's single root | none |
 | `get_revision(account, revision)` | `RevisionView` including the blocklist | `NotFound` |
 | `is_current_or_retained(account, revision)` | true while the revision is current or retained (not yet collected); false for collected or foreign revisions | none |
+| `describe_blob_revisions(blob_ids)` | System scope (doctor, AC-73): one row per revision row that holds one of the blobs, current or retained, with its account, revision id and node path (`None` when the file or a folder above it is tombstoned); an id no revision holds has no row | none |
 | `describe_blobs(blob_ids)` | System scope (doctor, AC-73): for each blob id the paths of the nodes that use it; unknown ids map to nothing | none |
 | `lookup_revisions(account, hashes)` | At most 1000 hashes; current revisions of live files only, with `client_meta` | `BatchTooLarge` above 1000 |
 | `LiveUsageSource::live_bytes(account)` | Sum of the sizes of current revisions of live files | none |
@@ -75,4 +76,5 @@ Signatures: part 2 § 02 tree (`TreeReader`, `LiveUsageSource`). Behaviour per m
 | 1.1.0 | 2026-11-13 | Provider `PgTreeReader::new(db, &TreeConfig)` with inherent reads (the `TreeReader` trait impl lands with AZ-3716, which adds the revision reads); `limit = 0` is the default; a cursor that cannot be a stored `name_key` is `InvalidCursor`; listing a folder under a tombstoned ancestor is `NotFound`; `thumb_state` is not on `NodeView` yet (contracts change with AZ-3718) | AZ-3707 |
 | 1.2.0 | 2026-11-13 | Revision reads, `describe_blobs` default, `TreeReader` and `LiveUsageSource` implemented | AZ-3716 |
 | 1.3.0 | 2026-11-13 | `NodeView.thumb_state` filled by `list_children` from `ThumbnailStateSource` | AZ-3718 |
+| 1.5.0 | 2026-11-17 | `describe_blob_revisions` (additive): the missing-blob report of `doctor` needs the account and revision id as well as the path (AZ-3809); `describe_blobs` is unchanged | AZ-3809 |
 | 1.4.0 | 2026-11-14 | v1.2 `NodeView.vault` and `LiveFile.vault` (the node's `vault_id` is set) on every read that returns them; 03 reads the parent's for the vault file limit, 06 the target's for the share refusal | AZ-3927 |

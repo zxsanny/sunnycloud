@@ -18,6 +18,7 @@
 mod config;
 mod db;
 mod error;
+mod inspect;
 mod migrate;
 mod roles;
 mod scope;
@@ -30,6 +31,7 @@ mod tests;
 pub use config::{DbConfig, DbRole};
 pub use db::Db;
 pub use error::{DbError, RunError};
+pub use inspect::DbInspection;
 pub use migrate::{MigrationError, MigrationReport, MigrationStatus, Migrator, SchemaState};
 pub use scope::{AccountId, Scope};
 pub use stats::{DbHealth, DbStats, QueryStats};

@@ -477,3 +477,17 @@ pub(crate) async fn list_accounts(
     })
     .await
 }
+
+/// Whether any account exists, and when the open setup token was created (microseconds since the epoch), in one
+/// system-scope read: the setup state `doctor` reports.
+pub(crate) async fn setup_state(
+    db: &Db,
+    now: Timestamp,
+) -> Result<(bool, Option<i64>), RunError<DbError>> {
+    db.run_system("setup_state", async |tx| {
+        let accounts = account_repo::any_account(tx).await?;
+        let token = invite_repo::open_setup_created(tx, now).await?;
+        Ok((accounts, token))
+    })
+    .await
+}

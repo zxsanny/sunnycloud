@@ -258,11 +258,15 @@ async fn health_and_doctor_lists_hold_the_owners_items() {
     assert_eq!(
         doctor,
         [
+            "database",
             "master_key",
             "blob_volume",
             "blob_retention",
             "blob_files_missing",
-            "media_worker"
+            "quota_drift",
+            "media_worker",
+            "identity_providers",
+            "identity_setup"
         ]
     );
     root.finish().await;

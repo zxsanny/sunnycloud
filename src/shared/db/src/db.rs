@@ -30,6 +30,16 @@ impl Db {
     /// Opens the pool for `role` and verifies the connected role (`DbError::WrongRole`). The pool applies
     /// `db_statement_timeout` and `db_idle_in_tx_timeout` to every connection it opens.
     pub async fn connect(cfg: &DbConfig, role: DbRole) -> Result<Db, DbError> {
+        let db = Db::open(cfg, role).await?;
+        if let Err(error) = roles::verify(&db.pool, role).await {
+            db.pool.close().await;
+            return Err(error);
+        }
+        Ok(db)
+    }
+
+    /// The pool of [`Db::connect`] without the role check; only `inspect` may use a pool that was not verified.
+    pub(crate) async fn open(cfg: &DbConfig, role: DbRole) -> Result<Db, DbError> {
         let options = cfg
             .url(role)?
             .parse::<PgConnectOptions>()
@@ -49,10 +59,6 @@ impl Db {
             .acquire_timeout(cfg.db_acquire_timeout)
             .connect_with(options)
             .await?;
-        if let Err(error) = roles::verify(&pool, role).await {
-            pool.close().await;
-            return Err(error);
-        }
         Ok(Db {
             pool,
             role,

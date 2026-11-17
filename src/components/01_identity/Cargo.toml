@@ -19,6 +19,7 @@ sc_config = { path = "../../shared/config" }
 sc_db = { path = "../../shared/db" }
 sc_error = { path = "../../shared/error" }
 sc_ids = { path = "../../shared/ids_hashing" }
+sc_observability = { path = "../../shared/observability" }
 # The id-token verifier reads time from the injected clock, in chrono's type.
 chrono = { version = "0.4", default-features = false }
 # The PKCE S256 challenge is the URL-safe base64 of a SHA-256.

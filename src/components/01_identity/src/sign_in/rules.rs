@@ -3,9 +3,13 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use reqwest::Url;
+use sc_config::{KeyProblem, Reason};
 use sc_ids::{TokenHash, sha256_token};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+use crate::config::IdentityConfig;
+use crate::error::IdentityError;
 
 /// A path the browser may be sent to after sign-in: one leading slash, no second slash or backslash right
 /// after it (`//host` and `/\host` are network-path references), no control character anywhere (a CR or LF
@@ -44,6 +48,13 @@ pub(crate) struct PublicUrl {
 }
 
 impl PublicUrl {
+    /// The configured `public_url`, or the config problem naming it.
+    pub(crate) fn of(config: &IdentityConfig) -> Result<Self, IdentityError> {
+        Self::parse(&config.public_url).ok_or_else(|| {
+            IdentityError::Config(vec![KeyProblem::new("public_url", Reason::WrongType)])
+        })
+    }
+
     pub(crate) fn parse(public_url: &str) -> Option<Self> {
         let url = Url::parse(public_url).ok()?;
         let host = url.host_str()?.to_ascii_lowercase();

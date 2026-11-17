@@ -41,6 +41,7 @@ Conventions (ids, `Timestamp`, `DbTx`, error enums, object safety) are those of 
 | | `get_revision` | `account, revision_id` -> `RevisionView` (with blocklist) | `NotFound` |
 | | `is_current_or_retained` | `account, revision_id` -> `bool` | none |
 | | `describe_blobs` (system scope) | `&[Uuid]` blob ids -> map blob id -> node paths | none |
+| | `describe_blob_revisions` (system scope) | `&[Uuid]` blob ids -> `Vec<BlobRevision{blob_id, account, revision_id, path: Option<String>}>`, one per revision row that holds one of them | none |
 | | `lookup_revisions` | `account, &[FileHash]` (at most 1000) -> `Vec<RevisionMatch{hash, node_id, revision_id, client_meta}>` | `BatchTooLarge` |
 | `TreeCommit` | `publish` | `CommitActor, Vec<PublishEntry>, Vec<Arc<dyn CommitEffect>>, now: Timestamp` -> `PublishResult{Published(Vec<EntryResult>) \| Replayed(StoredResponse)}` | whole call: `AccountNotActive`, `CommitIdReused`, `EffectFailed(ErrorCode)` |
 | `TreeRestore` | `restore_revision` | `account, NodeOrPath, at: Timestamp` -> `RestoreOutcome{restored_revision, placement: Original \| Restored}` | `BeyondRetention`, `FileMissing`, `NotFound` |

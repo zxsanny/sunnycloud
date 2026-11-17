@@ -25,10 +25,10 @@ use contracts::{
     AccountLifecycleHook, AuthorizationRedirect, BeginSignIn, BrowserBinding, CallbackParams,
     ClientKind, ProviderInfo, SessionTokens, SignInError, SignInOutcome,
 };
-use rules::{PublicUrl, is_relative_return_path, link_state_hash, state_hash};
+pub(crate) use rules::PublicUrl;
+use rules::{is_relative_return_path, link_state_hash, state_hash};
 use sc_audit::AuditWriter;
 use sc_clock::{Clock, Timestamp};
-use sc_config::{KeyProblem, Reason};
 use sc_db::Db;
 use sc_error::ErrorCode;
 use sc_ids::{RawToken, TokenHash, TokenKind, new_id, new_random_text, new_token, sha256_token};
@@ -40,7 +40,6 @@ use crate::audit_events::{self, record_logged};
 use crate::auth_repo::{self, KnownIdentity, NewState, StateRow};
 use crate::config::IdentityConfig;
 use crate::error::IdentityError;
-use crate::outbound::OutboundClient;
 use crate::provider::{
     self, AuthorizationRequest, CodeExchange, ProviderClient, ProviderError, ProviderIdentity,
 };
@@ -99,25 +98,8 @@ impl IdentitySignIn {
         if !problems.is_empty() {
             return Err(IdentityError::Config(problems));
         }
-        let public_url = PublicUrl::parse(&config.public_url).ok_or_else(|| {
-            IdentityError::Config(vec![KeyProblem::new("public_url", Reason::WrongType)])
-        })?;
-        let http = Arc::new(
-            OutboundClient::new(config.allow_plain_http_dev)
-                .map_err(|error| IdentityError::OutboundSetup(Box::new(error)))?,
-        );
-        let read_email = !config.email_allowlist.is_empty();
-        let mut providers = HashMap::new();
-        for (index, provider) in config.providers.iter().enumerate() {
-            let client = provider::build(
-                index,
-                provider,
-                Arc::clone(&http),
-                Arc::clone(&clock),
-                read_email,
-            )?;
-            providers.insert(provider.key.clone(), client);
-        }
+        let public_url = PublicUrl::of(config)?;
+        let providers: HashMap<_, _> = provider::build_all(config, &clock)?.into_iter().collect();
         Ok(IdentitySignIn {
             db,
             clock,

@@ -8,13 +8,14 @@ use contracts::{AccountLifecycleHook, BlobOwnerCleanup, CommitEffect, DoctorChec
 use media_api::{DerivedJanitor, JobReaper, MediaEnqueueEffect};
 use sc_audit::AuditWriter;
 use sc_clock::Clock;
-use sc_db::Db;
+use sc_db::{Db, DbConfig};
 use sc_observability::{HealthContributor, Metrics, ReadinessCheck};
 use sunnycloud_admin::DeletionPurger;
 use sunnycloud_blobstore::{
-    BlobHealthContributor, BlobstoreConfig, GcSweeper, KeyDoctorCheck, MissingBlobsCheck,
-    OrphanSweeper, RetentionCheck, ScrubJanitor, VolumeCheck,
+    BlobHealthContributor, BlobstoreConfig, GcSweeper, KeyDoctorCheck, OrphanSweeper,
+    RetentionCheck, ScrubJanitor, VolumeCheck,
 };
+use sunnycloud_identity::{IdentityConfig, IdentityProvidersCheck, IdentitySetupCheck};
 use sunnycloud_transfer::{IdleFlush, ReceiptJanitor, SessionReaper};
 use sunnycloud_tree::TreeJanitor;
 
@@ -25,8 +26,11 @@ use super::media::{Media, MediaPlanning};
 use super::storage::Blobstore;
 use crate::command_config::ServeSettings;
 use crate::context::{ContextBuilder, ServiceContext};
+use crate::database_check::DatabaseCheck;
 use crate::error::CliError;
 use crate::janitor::{AuditRetentionJanitor, JanitorMetrics, Scheduled, Scheduler};
+use crate::missing_blobs_check::MissingBlobsReport;
+use crate::quota_drift_check::QuotaDriftCheck;
 
 /// A list entry with the component that registered it (`"06"`, `"07a"`); the hook and cleanup ports carry no
 /// name of their own.
@@ -70,6 +74,16 @@ pub struct DoctorChecks(pub Vec<Arc<dyn DoctorCheck>>);
 /// stack is up. Every check tagged `pre-flight` is listed here as well as in [`DoctorChecks`].
 pub struct PreFlightChecks(pub Vec<Arc<dyn DoctorCheck>>);
 
+/// 01's providers check; it holds no database, so `doctor --pre-flight` runs it too.
+fn providers_check(
+    settings: &ServeSettings,
+    clock: Arc<dyn Clock>,
+) -> Result<Arc<dyn DoctorCheck>, CliError> {
+    let check = IdentityProvidersCheck::new(clock, &IdentityConfig::from_settings(settings))
+        .map_err(|error| failed("the providers check", error))?;
+    Ok(Arc::new(check))
+}
+
 /// What `/readyz` runs: the database, then `scheduler_alive` (failing until [`start_scheduler`]).
 pub struct ReadinessChecks(pub Vec<Arc<dyn ReadinessCheck>>);
 
@@ -110,25 +124,52 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
         })
         .register::<PreFlightChecks, _, _>(|services| async move {
             let settings = services.get::<ServeSettings>().await?;
+            let clock = services.get::<dyn Clock>().await?;
             let config = BlobstoreConfig::from_settings(&settings);
             Ok(Arc::new(PreFlightChecks(vec![
                 Arc::new(VolumeCheck::new(&config)),
                 Arc::new(KeyDoctorCheck::without_database(config)),
+                providers_check(&settings, clock)?,
             ])))
         })
+        .register::<DatabaseCheck, _, _>(|services| async move {
+            let settings = services.get::<ServeSettings>().await?;
+            let clock = services.get::<dyn Clock>().await?;
+            Ok(Arc::new(DatabaseCheck::new(
+                DbConfig::from_settings(&settings),
+                clock,
+            )))
+        })
         .register::<DoctorChecks, _, _>(|services| async move {
+            let database = services.get::<DatabaseCheck>().await?;
+            let identity = services.get::<Identity>().await?;
+            let tree = services.get::<Tree>().await?;
+            let transfer = services.get::<Transfer>().await?;
+            let quota = services.get::<Quota>().await?;
+            let settings = services.get::<ServeSettings>().await?;
+            let clock = services.get::<dyn Clock>().await?;
             let db = Db::clone(&*services.get::<Db>().await?);
             let blobs = services.get::<Blobstore>().await?;
             let media = services.get::<Media>().await?;
             Ok(Arc::new(DoctorChecks(vec![
-                Arc::new(KeyDoctorCheck::new(blobs.config.clone(), db)),
+                database,
+                Arc::new(KeyDoctorCheck::new(blobs.config.clone(), db.clone())),
                 Arc::new(VolumeCheck::new(&blobs.config)),
                 Arc::new(RetentionCheck::new(&blobs.config)),
-                Arc::new(MissingBlobsCheck::new(
+                Arc::new(MissingBlobsReport::new(
                     blobs.inventory.clone(),
+                    tree.reader.clone(),
                     blobs.batch(),
                 )),
+                Arc::new(QuotaDriftCheck::new(
+                    identity.accounts.clone(),
+                    tree.reader.clone(),
+                    transfer.service.clone(),
+                    quota.admin.clone(),
+                )),
                 media.health.clone(),
+                providers_check(&settings, Arc::clone(&clock))?,
+                Arc::new(IdentitySetupCheck::new(db, clock)),
             ])))
         })
         .register::<GcSweeper, _, _>(|services| async move {

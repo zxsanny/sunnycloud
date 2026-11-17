@@ -1,91 +1,19 @@
-//! The blobstore doctor checks: key (AC-6), volume, retention and missing blobs (AC-4).
+//! The blobstore doctor checks: key (AC-6), volume and retention. The missing-blob report joins 04 with 02, so it
+//! is the composition root's.
 
 use std::fs;
-use std::sync::Arc;
 use std::time::Duration;
 
 use contracts::{DoctorCheck, DoctorContext, DoctorTag, FindingLevel};
-use sunnycloud_blobstore::{KeyDoctorCheck, MissingBlobsCheck, RetentionCheck, VolumeCheck};
+use sunnycloud_blobstore::{KeyDoctorCheck, RetentionCheck, VolumeCheck};
 
 use crate::fixture::{KEY_TWO, Rotated};
-use crate::inventory::{inventory, volume_with_gaps};
 use crate::support::{KEY, Rig};
 
 const DAY: Duration = Duration::from_secs(86_400);
 
 fn levels(findings: &[contracts::Finding]) -> Vec<FindingLevel> {
     findings.iter().map(|finding| finding.level).collect()
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn the_missing_blob_check_lists_the_same_seven_ids_as_fail_findings() {
-    // Arrange
-    let rig = Rig::new().await;
-    let volume = volume_with_gaps(&rig).await;
-    let check = MissingBlobsCheck::new(Arc::new(inventory(&rig)), 20);
-
-    // Act
-    let findings = check.run(&DoctorContext::default()).await;
-
-    // Assert
-    assert_eq!(findings.len(), 7);
-    assert!(
-        levels(&findings)
-            .iter()
-            .all(|level| *level == FindingLevel::Fail)
-    );
-    for id in &volume.missing {
-        let named = findings
-            .iter()
-            .filter(|finding| finding.message.contains(&id.to_string()))
-            .count();
-        assert_eq!(named, 1, "blob {id}");
-    }
-    for id in volume.uploading.iter().chain(&volume.present) {
-        assert!(
-            findings
-                .iter()
-                .all(|f| !f.message.contains(&id.to_string()))
-        );
-    }
-    assert_eq!(check.tags(), &[DoctorTag::Restore]);
-    drop(check);
-    rig.finish().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn the_missing_blob_check_is_one_ok_finding_when_every_file_is_there() {
-    // Arrange
-    let rig = Rig::new().await;
-    rig.store(1024, 1).await;
-    let check = MissingBlobsCheck::new(Arc::new(inventory(&rig)), 20);
-
-    // Act
-    let findings = check.run(&DoctorContext::default()).await;
-
-    // Assert
-    assert_eq!(levels(&findings), vec![FindingLevel::Ok]);
-    drop(check);
-    rig.finish().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn the_missing_blob_check_fails_once_when_the_walk_cannot_finish() {
-    // Arrange
-    let rig = Rig::new().await;
-    volume_with_gaps(&rig).await;
-    let check = MissingBlobsCheck::new(Arc::new(inventory(&rig)), 20);
-    rig.db
-        .admin_exec("ALTER TABLE blobs RENAME TO blobs_hidden")
-        .await;
-
-    // Act
-    let findings = check.run(&DoctorContext::default()).await;
-
-    // Assert
-    assert_eq!(levels(&findings), vec![FindingLevel::Fail]);
-    drop(check);
-    rig.finish().await;
 }
 
 fn key_check(rig: &Rig, config: sunnycloud_blobstore::BlobstoreConfig) -> KeyDoctorCheck {

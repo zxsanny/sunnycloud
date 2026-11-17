@@ -25,6 +25,15 @@ fn pre_flight_lists_the_key_and_volume_checks_and_never_dials_the_database() {
     setup
         .set("blob_root", &volume.display().to_string())
         .secret("master_key_file", &key.display().to_string());
+    // The one provider is a local OIDC issuer nobody answers for, so the test needs no network.
+    setup
+        .remove("github_client_id")
+        .without_secret("provider_github_client_secret");
+    setup
+        .set("oidc_issuer", "http://127.0.0.1:1")
+        .set("oidc_client_id", "client")
+        .set("allow_plain_http_dev", "true")
+        .secret("provider_oidc_client_secret", "oidc-secret");
 
     // Act
     let output = Command::new(env!("CARGO_BIN_EXE_sunnycloud"))
@@ -47,6 +56,13 @@ fn pre_flight_lists_the_key_and_volume_checks_and_never_dials_the_database() {
     );
     assert!(stdout.contains("check: master_key"), "{stdout}");
     assert!(stdout.contains("check: blob_volume"), "{stdout}");
+    assert!(stdout.contains("check: identity_providers"), "{stdout}");
+    assert!(
+        stdout.contains("https://cloud.example.org/api/v1/auth/providers/oidc/callback"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("check: database"), "{stdout}");
+    assert!(!stdout.contains("check: identity_setup"), "{stdout}");
     assert!(!stdout.contains("media_worker"), "{stdout}");
     assert!(!stdout.contains("blob_files_missing"), "{stdout}");
 }

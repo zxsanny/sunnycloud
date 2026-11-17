@@ -304,7 +304,9 @@ impl Shared {
             ("GET", "/.well-known/openid-configuration") => self.discovery(&behaviour),
             ("GET", "/jwks") => self.jwks(),
             ("POST", "/token") => self.token(&request, &behaviour, true).await,
-            ("POST", "/login/oauth/access_token") => self.token(&request, &behaviour, false).await,
+            ("POST" | "GET", "/login/oauth/access_token") => {
+                self.token(&request, &behaviour, false).await
+            }
             ("GET", "/user") => self.github_user(&request, &behaviour),
             ("GET", "/user/emails") => self.github_emails(&behaviour),
             _ => Response::json(404, &json!({"error": "not_found"})),

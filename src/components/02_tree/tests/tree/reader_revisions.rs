@@ -231,6 +231,63 @@ async fn doctor_gets_full_paths_of_live_blobs_none_for_a_deleted_file_and_nothin
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn doctor_gets_account_revision_and_path_per_blob_revision_and_none_for_a_deleted_file() {
+    // Arrange
+    let tree = Tree::new().await;
+    let (account, root) = (tree.account, tree.root);
+    let folder = tree
+        .service
+        .create_folder(account, root, "a")
+        .await
+        .expect("a")
+        .id;
+    let (_, live_revision, live_blob) = publish_file(&tree, account, folder, "one.txt").await;
+    let (other, other_root) = tree.add_account().await;
+    let (_, foreign_revision, foreign_blob) =
+        publish_file(&tree, other, other_root, "Theirs.txt").await;
+    let (deleted, deleted_revision, deleted_blob) =
+        publish_file(&tree, account, folder, "gone.txt").await;
+    tree.service
+        .delete_node(account, deleted, None)
+        .await
+        .expect("delete");
+    let random = Uuid::new_v4();
+    let reader = reader(&tree, 1000);
+
+    // Act
+    let described = reader
+        .describe_blob_revisions(&[live_blob, foreign_blob, deleted_blob, random])
+        .await
+        .expect("describe");
+
+    // Assert
+    let mut found: Vec<_> = described
+        .into_iter()
+        .map(|item| (item.blob_id, item.account, item.revision_id, item.path))
+        .collect();
+    found.sort();
+    let mut expected = vec![
+        (
+            live_blob,
+            account,
+            live_revision,
+            Some("a/one.txt".to_owned()),
+        ),
+        (
+            foreign_blob,
+            other,
+            foreign_revision,
+            Some("Theirs.txt".to_owned()),
+        ),
+        (deleted_blob, account, deleted_revision, None),
+    ];
+    expected.sort();
+    assert_eq!(found, expected);
+    drop(reader);
+    tree.finish().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn doctor_describes_1000_nested_blobs_within_200_ms() {
     // Arrange
     let tree = Tree::new().await;

@@ -41,7 +41,7 @@ pub use catalog::BlobCatalog;
 pub use chunk::ChunkCipher;
 pub use config::BlobstoreConfig;
 pub use data_key::{DATA_KEY_LEN, DataKey};
-pub use doctor::{MissingBlobsCheck, RetentionCheck, VolumeCheck};
+pub use doctor::{RetentionCheck, VolumeCheck};
 pub use epoch::FileEpochMarker;
 pub use error::{
     BlobFault, BlobIds, KEY_OPERATOR_TEXT, blob_error_from_chunk, blob_error_from_db,

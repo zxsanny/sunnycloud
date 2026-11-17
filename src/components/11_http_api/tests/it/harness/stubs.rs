@@ -114,6 +114,8 @@ stub_port!(TreeReaderStub: TreeReader, TreeReaderError, {
         -> Result<bool, TreeReaderError>;
     async fn describe_blobs(&self, blob_ids: &[Uuid])
         -> Result<HashMap<Uuid, Vec<String>>, TreeReaderError>;
+    async fn describe_blob_revisions(&self, blob_ids: &[Uuid])
+        -> Result<Vec<BlobRevision>, TreeReaderError>;
     async fn lookup_revisions(&self, account: Uuid, hashes: &[FileHash])
         -> Result<Vec<RevisionMatch>, TreeReaderError>;
 });

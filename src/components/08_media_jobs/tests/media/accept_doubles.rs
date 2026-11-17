@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use contracts::{
-    BlobRegistry, BlobRegistryError, ListingPage, LiveFileLookup, NodeRef, NodeSelector, NodeView,
-    RegisterState, ReinstateOutcome, RevisionMatch, RevisionView, TreeReader, TreeReaderError,
-    WrittenOrPlanned, async_trait,
+    BlobRegistry, BlobRegistryError, BlobRevision, ListingPage, LiveFileLookup, NodeRef,
+    NodeSelector, NodeView, RegisterState, ReinstateOutcome, RevisionMatch, RevisionView,
+    TreeReader, TreeReaderError, WrittenOrPlanned, async_trait,
 };
 use sc_db::DbTx;
 use sc_ids::FileHash;
@@ -110,6 +110,13 @@ impl TreeReader for CollectingTree {
         blob_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, Vec<String>>, TreeReaderError> {
         self.inner.describe_blobs(blob_ids).await
+    }
+
+    async fn describe_blob_revisions(
+        &self,
+        blob_ids: &[Uuid],
+    ) -> Result<Vec<BlobRevision>, TreeReaderError> {
+        self.inner.describe_blob_revisions(blob_ids).await
     }
 
     async fn lookup_revisions(

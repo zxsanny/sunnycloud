@@ -6,10 +6,12 @@
 use std::sync::Arc;
 
 use contracts::{DoctorCheck, DoctorContext, DoctorTag, Finding, FindingLevel};
+use sc_config::ConfigError;
 use serde_json::{Map, Value};
 
 use crate::commands::DoctorArgs;
 use crate::context::ServiceContext;
+use crate::database_check::DatabaseCheck;
 use crate::error::CliError;
 use crate::outcome::{Class, Outcome};
 use crate::root::{DoctorChecks, PreFlightChecks};
@@ -54,23 +56,92 @@ fn selected(check: &Arc<dyn DoctorCheck>, selection: CheckSelection) -> bool {
 }
 
 /// `doctor`: `--pre-flight` runs only the checks tagged `pre-flight`; no other option narrows the set.
+///
+/// Two failures to build the lists are findings, not errors, because the operator runs `doctor` to learn them: a
+/// configuration that does not load (one finding per rejected key) and, outside `--pre-flight`, a stack that does
+/// not build (the database check still runs, and says why).
 pub(crate) async fn run(args: &DoctorArgs, services: &ServiceContext) -> Result<Outcome, CliError> {
-    let checks = if args.pre_flight {
-        services.get::<PreFlightChecks>().await?.0.clone()
-    } else {
-        services.get::<DoctorChecks>().await?.0.clone()
-    };
     let ctx = DoctorContext {
         pre_flight: args.pre_flight,
         backup_interval: args.backup_interval,
         attest_backup: args.attest_backup,
     };
-    let selection = if args.pre_flight {
-        CheckSelection::Tagged(DoctorTag::PreFlight)
+    let (selection, listed) = if args.pre_flight {
+        (
+            CheckSelection::Tagged(DoctorTag::PreFlight),
+            services
+                .get::<PreFlightChecks>()
+                .await
+                .map(|list| list.0.clone()),
+        )
     } else {
-        CheckSelection::All
+        (
+            CheckSelection::All,
+            services
+                .get::<DoctorChecks>()
+                .await
+                .map(|list| list.0.clone()),
+        )
     };
-    Ok(report(&run_checks(&checks, selection, &ctx).await))
+    match listed {
+        Ok(checks) => Ok(report(&run_checks(&checks, selection, &ctx).await)),
+        Err(CliError::Config(error)) => Ok(report(&configuration_findings(&error))),
+        Err(error) if !args.pre_flight => stack_failed(error, &ctx, services).await,
+        Err(error) => Err(error),
+    }
+}
+
+fn configuration_finding(message: String, remedy: &str) -> CheckFinding {
+    CheckFinding {
+        check: "configuration",
+        finding: Finding {
+            level: FindingLevel::Fail,
+            message,
+            remedy: remedy.to_owned(),
+        },
+    }
+}
+
+/// One `Fail` per rejected key, naming the key and the reason; a rejection never carries the value.
+fn configuration_findings(error: &ConfigError) -> Vec<CheckFinding> {
+    match error {
+        ConfigError::Invalid(problems) => problems
+            .iter()
+            .map(|problem| {
+                configuration_finding(
+                    problem.to_string(),
+                    "correct this key in the environment or the secret files, then run doctor again",
+                )
+            })
+            .collect(),
+        other => vec![configuration_finding(
+            other.to_string(),
+            "provide it as the install documents, then run doctor again",
+        )],
+    }
+}
+
+/// The checks that need the whole stack cannot run, so `doctor` is a failure: the database check, which opens
+/// its own connection, says whether the database is the reason, and one more finding carries the build error.
+async fn stack_failed(
+    error: CliError,
+    ctx: &DoctorContext,
+    services: &ServiceContext,
+) -> Result<Outcome, CliError> {
+    let Ok(database) = services.get::<DatabaseCheck>().await else {
+        return Err(error);
+    };
+    let database: Arc<dyn DoctorCheck> = database;
+    let mut findings = run_checks(&[database], CheckSelection::All, ctx).await;
+    findings.push(CheckFinding {
+        check: "stack",
+        finding: Finding {
+            level: FindingLevel::Fail,
+            message: format!("the other checks could not start: {error}"),
+            remedy: "fix the findings above, then run doctor again".to_owned(),
+        },
+    });
+    Ok(report(&findings))
 }
 
 /// The outcome of a run: Fail anywhere is exit 2, Warn anywhere (and no Fail) exit 1, otherwise 0.

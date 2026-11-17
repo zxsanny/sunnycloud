@@ -90,12 +90,12 @@ pub use transfer::{
     UploadError, UploadService, UploadState,
 };
 pub use tree::{
-    Begin, CommitActor, CommitEffect, EffectError, EntryFailure, EntryOutcome, EntryResult,
-    ListingPage, LiveFile, LiveFileLookup, LiveUsageError, LiveUsageSource, MaintenanceError,
-    NewRevision, NodeKind, NodeOrPath, NodeRef, NodeSelector, NodeState, NodeView, Placement,
-    PublishEntry, PublishOutcome, PublishResult, PublishedEntry, RestoreError, RestoreOutcome,
-    RevisionMatch, RevisionRef, RevisionView, StoredResponse, Target, TreeCommit, TreeCommitError,
-    TreeMaintenance, TreeReader, TreeReaderError, TreeRestore, TreeService, TreeServiceError,
-    VaultRootError, VaultRoots,
+    Begin, BlobRevision, CommitActor, CommitEffect, EffectError, EntryFailure, EntryOutcome,
+    EntryResult, ListingPage, LiveFile, LiveFileLookup, LiveUsageError, LiveUsageSource,
+    MaintenanceError, NewRevision, NodeKind, NodeOrPath, NodeRef, NodeSelector, NodeState,
+    NodeView, Placement, PublishEntry, PublishOutcome, PublishResult, PublishedEntry, RestoreError,
+    RestoreOutcome, RevisionMatch, RevisionRef, RevisionView, StoredResponse, Target, TreeCommit,
+    TreeCommitError, TreeMaintenance, TreeReader, TreeReaderError, TreeRestore, TreeService,
+    TreeServiceError, VaultRootError, VaultRoots,
 };
 pub use vault::{CreatedVault, ETag, VaultError, VaultHeader, VaultService};

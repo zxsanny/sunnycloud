@@ -159,6 +159,13 @@ impl ProviderClient for OidcClient {
             ),
         })
     }
+
+    async fn probe(&self) -> Result<(), ProviderError> {
+        CoreProviderMetadata::discover_async(self.issuer.clone(), &*self.http)
+            .await
+            .map(drop)
+            .map_err(discovery_error)
+    }
 }
 
 /// The `email` claim, only when `email_verified` is `true` and the address is not a relay address.

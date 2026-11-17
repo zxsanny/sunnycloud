@@ -9,8 +9,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use super::model::{
-    ListingPage, LiveFileLookup, NodeRef, NodeSelector, NodeView, RevisionMatch, RevisionRef,
-    RevisionView,
+    BlobRevision, ListingPage, LiveFileLookup, NodeRef, NodeSelector, NodeView, RevisionMatch,
+    RevisionRef, RevisionView,
 };
 use crate::common::{Fault, Page};
 
@@ -156,6 +156,13 @@ pub trait TreeReader: Send + Sync {
         &self,
         blob_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, Vec<String>>, TreeReaderError>;
+
+    /// System scope (no account): every revision row that holds one of `blob_ids`, current or retained, with its
+    /// account, revision id and node path. An id no revision holds (a random id, a derived blob) has no row.
+    async fn describe_blob_revisions(
+        &self,
+        blob_ids: &[Uuid],
+    ) -> Result<Vec<BlobRevision>, TreeReaderError>;
 
     /// At most 1000 hashes; current revisions of live files only.
     async fn lookup_revisions(

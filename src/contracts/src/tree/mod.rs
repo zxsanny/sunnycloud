@@ -13,8 +13,8 @@ pub use maintenance::{
     TreeMaintenance, TreeRestore,
 };
 pub use model::{
-    ListingPage, LiveFile, LiveFileLookup, NodeKind, NodeRef, NodeSelector, NodeState, NodeView,
-    RevisionMatch, RevisionRef, RevisionView,
+    BlobRevision, ListingPage, LiveFile, LiveFileLookup, NodeKind, NodeRef, NodeSelector,
+    NodeState, NodeView, RevisionMatch, RevisionRef, RevisionView,
 };
 pub use publish::{
     CommitActor, EntryFailure, EntryResult, NewRevision, PublishEntry, PublishOutcome,

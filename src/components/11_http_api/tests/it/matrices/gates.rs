@@ -186,6 +186,13 @@ impl TreeReader for Gate<RecordingTreeReader> {
         self.inner.describe_blobs(blob_ids).await
     }
 
+    async fn describe_blob_revisions(
+        &self,
+        blob_ids: &[Uuid],
+    ) -> Result<Vec<BlobRevision>, TreeReaderError> {
+        self.inner.describe_blob_revisions(blob_ids).await
+    }
+
     async fn lookup_revisions(
         &self,
         account: Uuid,

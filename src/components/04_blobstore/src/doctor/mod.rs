@@ -1,13 +1,11 @@
 //! The blobstore checks of `sunnycloud doctor`. The master key check is with the keyring, which owns the key
 //! check file. Findings carry ids and sizes, never a path, a file name or key material.
 
-mod missing;
 mod retention;
 mod volume;
 
 use contracts::{Finding, FindingLevel};
 
-pub use missing::MissingBlobsCheck;
 pub use retention::RetentionCheck;
 pub use volume::VolumeCheck;
 

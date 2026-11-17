@@ -28,6 +28,11 @@ const INSERT: &str = "INSERT INTO invites \
 // An unredeemed setup token, expired or not: the partial unique index allows one.
 const DELETE_OPEN_SETUP: &str = "DELETE FROM invites WHERE kind = 'setup' AND redeemed_at IS NULL";
 
+// The one open (unredeemed, unexpired) setup token, when there is one.
+const OPEN_SETUP_CREATED: &str = "SELECT (extract(epoch FROM created_at) * 1000000)::bigint FROM invites \
+    WHERE kind = 'setup' AND redeemed_at IS NULL \
+    AND expires_at > 'epoch'::timestamptz + $1::bigint * interval '1 microsecond'";
+
 const DELETE_OPEN_REBIND: &str =
     "DELETE FROM invites WHERE target_account_id = $1 AND redeemed_at IS NULL";
 
@@ -102,6 +107,17 @@ pub(crate) async fn open_token(
             target_account_id,
         }),
     )
+}
+
+/// When the open setup token was created, in microseconds since the epoch; `None` when there is none.
+pub(crate) async fn open_setup_created(
+    tx: &mut DbTx,
+    now: Timestamp,
+) -> Result<Option<i64>, DbError> {
+    Ok(sqlx::query_scalar(OPEN_SETUP_CREATED)
+        .bind(now.as_unix_micros())
+        .fetch_optional(tx.conn())
+        .await?)
 }
 
 /// Redeems invite `id` for `account` at `now`; `false` when it was redeemed meanwhile or has expired.

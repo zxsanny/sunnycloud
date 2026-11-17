@@ -182,6 +182,26 @@ impl ProviderClient for GithubClient {
             display_name: display_name(user.name.as_deref(), Some(&user.login)),
         })
     }
+
+    async fn probe(&self) -> Result<(), ProviderError> {
+        let request = http::Request::builder()
+            .method(Method::GET)
+            .uri(self.token_url.as_str())
+            .header(header::USER_AGENT, USER_AGENT)
+            .body(Vec::new())
+            .map_err(|error| ProviderError::Unavailable(Box::new(error)))?;
+        let response = self
+            .http
+            .send(request)
+            .await
+            .map_err(|error| ProviderError::Unavailable(Box::new(error)))?;
+        if response.status().is_server_error() {
+            return Err(ProviderError::Unavailable(Box::new(StatusError(
+                response.status(),
+            ))));
+        }
+        Ok(())
+    }
 }
 
 fn token_error<E>(error: RequestTokenError<OutboundError, E>) -> ProviderError

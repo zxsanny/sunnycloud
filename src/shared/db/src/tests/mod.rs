@@ -4,6 +4,7 @@
 mod accounts_base;
 mod faults;
 mod health;
+mod inspect;
 mod interrupted;
 mod lock;
 mod proxy;

@@ -9,20 +9,28 @@ use crate::error::DbError;
 /// row-level security protects.
 pub(crate) async fn verify(pool: &PgPool, role: DbRole) -> Result<(), DbError> {
     let mut conn = pool.acquire().await?;
+    match problem(&mut conn, role).await? {
+        Some(problem) => Err(DbError::WrongRole(problem)),
+        None => Ok(()),
+    }
+}
+
+/// Why the connected user may not serve as `role`, if it may not: the wrong user, or for the API role a
+/// privilege that defeats row-level security.
+pub(crate) async fn problem(
+    conn: &mut PgConnection,
+    role: DbRole,
+) -> Result<Option<&'static str>, DbError> {
     let user: String = sqlx::query_scalar("SELECT current_user::text")
         .fetch_one(&mut *conn)
         .await?;
     if user != role.user() {
-        return Err(DbError::WrongRole(
-            "the connected user is not the requested role",
-        ));
+        return Ok(Some("the connected user is not the requested role"));
     }
-    if role == DbRole::Api
-        && let Some(problem) = api_privilege_problem(&mut conn).await?
-    {
-        return Err(DbError::WrongRole(problem));
+    if role == DbRole::Api {
+        return api_privilege_problem(conn).await;
     }
-    Ok(())
+    Ok(None)
 }
 
 /// Why the current user may not serve as the API role, if it may not. The application schema is `public`

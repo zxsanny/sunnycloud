@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 
 use contracts::{
-    ListingPage, LiveFileLookup, LiveUsageError, LiveUsageSource, NodeRef, NodeSelector, NodeView,
-    RevisionMatch, RevisionView, TreeReader, TreeReaderError, async_trait,
+    BlobRevision, ListingPage, LiveFileLookup, LiveUsageError, LiveUsageSource, NodeRef,
+    NodeSelector, NodeView, RevisionMatch, RevisionView, TreeReader, TreeReaderError, async_trait,
 };
 use sc_db::DbTx;
 use sc_ids::FileHash;
@@ -109,6 +109,27 @@ impl TreeReader for PgTreeReader {
             .into_iter()
             .map(|place| (place.blob_id, place.path.into_iter().collect()))
             .collect())
+    }
+
+    /// System scope, one statement for the whole list; a path is `None` when the file or a folder above it is
+    /// tombstoned.
+    async fn describe_blob_revisions(
+        &self,
+        blob_ids: &[Uuid],
+    ) -> Result<Vec<BlobRevision>, TreeReaderError> {
+        if blob_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        maintenance_repo::in_system(
+            &self.db,
+            "tree_describe_blob_revisions",
+            async |tx: &mut DbTx| {
+                revision_repo::describe_blob_revisions(tx, blob_ids)
+                    .await
+                    .map_err(unexpected)
+            },
+        )
+        .await
     }
 
     /// The limit is checked before any query; the batch is one indexed statement.

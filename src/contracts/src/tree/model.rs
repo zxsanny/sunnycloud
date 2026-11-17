@@ -79,6 +79,16 @@ pub struct RevisionMatch {
     pub client_meta: Option<String>,
 }
 
+/// One revision row that holds a blob, with where it sits: `path` is `None` when the file or a folder above it is
+/// tombstoned.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlobRevision {
+    pub blob_id: Uuid,
+    pub account: Uuid,
+    pub revision_id: Uuid,
+    pub path: Option<String>,
+}
+
 /// `next` is the `name_key` to pass as `after_name_key`; `None` on the last page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListingPage {

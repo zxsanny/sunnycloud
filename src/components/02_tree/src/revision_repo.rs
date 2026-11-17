@@ -3,7 +3,7 @@
 //! random one (row-level security is the second line). `DESCRIBE_BLOBS` serves `doctor` in system scope: its
 //! entry by blob id is the one lookup that does not know the account, and every join after it names `account_id`.
 
-use contracts::{RevisionMatch, RevisionRef, RevisionView};
+use contracts::{BlobRevision, RevisionMatch, RevisionRef, RevisionView};
 use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx};
 use sc_ids::{FileHash, Hash32};
@@ -58,6 +58,18 @@ const DESCRIBE_BLOBS: &str = "WITH RECURSIVE chain (blob_id, account_id, id, par
     SELECT blob_id, bool_or(deleted), \
     string_agg(name, '/' ORDER BY depth DESC) FILTER (WHERE parent_id IS NOT NULL) \
     FROM chain GROUP BY blob_id";
+
+// As `DESCRIBE_BLOBS`, but one row per revision: the chain carries the revision and its account.
+const DESCRIBE_BLOB_REVISIONS: &str = "WITH RECURSIVE chain (revision_id, blob_id, account_id, id, parent_id, name, deleted, depth) AS ( \
+    SELECT r.id, r.blob_id, n.account_id, n.id, n.parent_id, n.name, n.deleted_at IS NOT NULL, 0 \
+    FROM revisions r JOIN nodes n ON n.id = r.node_id AND n.account_id = r.account_id \
+    WHERE r.blob_id = ANY($1) \
+    UNION ALL \
+    SELECT c.revision_id, c.blob_id, n.account_id, n.id, n.parent_id, n.name, n.deleted_at IS NOT NULL, c.depth + 1 \
+    FROM chain c JOIN nodes n ON n.id = c.parent_id AND n.account_id = c.account_id) \
+    SELECT revision_id, blob_id, account_id, bool_or(deleted), \
+    string_agg(name, '/' ORDER BY depth DESC) FILTER (WHERE parent_id IS NOT NULL) \
+    FROM chain GROUP BY revision_id, blob_id, account_id ORDER BY account_id, revision_id";
 
 const LIVE_BYTES: &str = "SELECT COALESCE(sum(r.size), 0)::bigint \
     FROM nodes n JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id \
@@ -148,6 +160,28 @@ pub(crate) async fn page(
 }
 
 /// One entry per blob id that a revision row holds; an unknown id has none.
+pub(crate) async fn describe_blob_revisions(
+    tx: &mut DbTx,
+    blob_ids: &[Uuid],
+) -> Result<Vec<BlobRevision>, DbError> {
+    let rows = sqlx::query(DESCRIBE_BLOB_REVISIONS)
+        .bind(blob_ids)
+        .fetch_all(tx.conn())
+        .await?;
+    rows.iter()
+        .map(|row| {
+            let deleted: bool = row.try_get(3)?;
+            let path: Option<String> = row.try_get(4)?;
+            Ok(BlobRevision {
+                revision_id: row.try_get(0)?,
+                blob_id: row.try_get(1)?,
+                account: row.try_get(2)?,
+                path: path.filter(|_| !deleted),
+            })
+        })
+        .collect()
+}
+
 pub(crate) async fn describe_blobs(
     tx: &mut DbTx,
     blob_ids: &[Uuid],

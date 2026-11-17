@@ -4111,6 +4111,7 @@ dependencies = [
  "sc_db",
  "sc_error",
  "sc_ids",
+ "sc_observability",
  "sc_ratelimit",
  "sc_testdb",
  "serde",
