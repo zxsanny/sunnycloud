@@ -66,7 +66,7 @@ When `migrate` runs
 Then it succeeds
 
 **AC-6: Failing, killed and irreversible migrations (IT-12-11, NFT-RES-14)**
-Given the test migration source chosen by E-22/c01 with a failing statement, a long statement and a `down` that raises `irreversible: restore from backup`
+Given the shipped migrations with a fault arranged from outside (a table the migration creates already exists; a lock that keeps a migration waiting) and a `down` that raises `irreversible: restore from backup` (library level only: no shipped `down` raises it)
 When `migrate` meets the failing statement, is killed with `kill -9` during the long one, and `migrate revert --yes` meets the irreversible `down`
 Then the failure exits 2 naming the failed version with earlier migrations still applied and the next run retrying from it; after the kill the migration is rolled back and `serve` refuses to start; the irreversible `down` exits 2 with `IrreversibleMigration` and stops
 
@@ -108,5 +108,5 @@ Then the failure exits 2 naming the failed version with earlier migrations still
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| G-12-1: AC-6 is BLOCKED until E-22/c01 records the test-only migration source | E-22/c01 | open | Medium |
+| G-12-1: AC-6 is BLOCKED until E-22/c01 records the test-only migration source | E-22/c01 | resolved 2026-11-17 (owner decision): the test-migrations feature is not built; the failing and killed cases run through the binary on the shipped migrations with the faults arranged from outside (`migrate_interrupted.rs`); the irreversible `down` has no shipped migration to meet, so its binary-level check is waived (covered by `sc_db` and the exit mapping unit test) | Medium |
 | Stable codes for checksum mismatch, unknown-newer and `IrreversibleMigration` are not in helper 02's code table (contract open point 3) | E-02 / E-22 owner | open | Low |
