@@ -35,7 +35,7 @@ Documents only: no source changed, so the CI-parity gate does not apply. Device 
 
 | # | Scenario or question | Spec ref | Proposed handling | clear / unclear |
 |---|----------------------|----------|-------------------|-----------------|
-| 1 | NDK r28 already links with 16 KB alignment; the explicit `max-page-size=16384` flag is belt and braces | AZ-3985 AC-1 | Keep the flag, the CI alignment check is the proof | clear |
+| 1 | NDK r28 links the 64-bit targets with 16 KB alignment by default, but armeabi-v7a only with the explicit `max-page-size=16384` flag (corrected during AZ-3989; the first record tested x86_64 only) | AZ-3985 AC-1 | The flag is set for all three targets in `src/.cargo/config.toml`; the CI alignment check is the proof | clear |
 | 2 | A 4 KB library fails on a 16 KB image with a misleading `DT_HASH` message | AZ-3985 AC-1 | CI alignment check is the diagnostic | clear |
 | 3 | A worker may start in a process the UI never touched, so `nativeInit` must run at worker start too | E-23/c15, E-27/c12 | Handed to those tasks in the record | clear |
 

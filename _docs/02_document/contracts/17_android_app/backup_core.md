@@ -71,6 +71,10 @@ Sources: `components/17_android_app/description.md` §2, §2a, §4, §5, §10, �
 
 Checkpoint asset states: `new, hashing, uploading, uploaded, skipped_gone, skipped_name, skipped_size, failed`.
 
+### Library form and checkpoint store (E-27/c05, AZ-3989)
+
+`mobile_backup` builds as `lib`, `cdylib` (one `.so` per Android ABI) and `staticlib` (iOS), with the UniFFI scaffolding behind feature `uniffi` (a `library_version()` probe until E-27/c07). The checkpoint database opens on first use (`CheckpointDb::write` and `read`), at schema version 1 (`SCHEMA_VERSION`); `SqliteCheckpointStore` is the `CheckpointStore` of sync-core over its `session` and `batch` tables (`session` keyed by the host's `local_key`; `batch.entries` is the JSON of the member `BatchEntry` list; `load_batches` answers in `commit_id` order, as `MemoryCheckpointStore` does). `AndroidConfig` reads the `android_*` rows of the shared key table (`android_catchup_interval` 15m, `android_unmetered_only` true, `android_charging_only` false, `android_hash_ahead` 8).
+
 ## Invariants
 
 - One run per process: a second `run_backup` while one runs returns `Skipped(AlreadyRunning)` and makes no `SyncApi` call (AC-78 layer 2).

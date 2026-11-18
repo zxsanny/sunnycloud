@@ -291,6 +291,14 @@ settings_table! {
     sync_hash_checkpoint_blocks: Count = dflt("32", C).range("1", "1024");
     sync_batch_max_bytes_in_flight: Size = dflt("64MiB", C).range("2MiB", "1GiB");
 
+    // Android backup (17, section `android`). The key table is flat snake case, so 17 §10's `android.catchup_interval` is
+    // `android_catchup_interval` and its environment name is `SUNNYCLOUD_ANDROID_CATCHUP_INTERVAL`. The floor of the
+    // catch-up interval is WorkManager's 15 minute minimum for periodic work; it binds in production only.
+    android_catchup_interval: Dur = dflt("15m", C).range("15m", "24h");
+    android_unmetered_only: Flag = dflt("true", C);
+    android_charging_only: Flag = dflt("false", C);
+    android_hash_ahead: Count = dflt("8", C).range("1", "64");
+
     // Client test overrides (14)
     desktop_settle: Dur = dflt("2s", C).range("200ms", "30s");
     desktop_rescan_interval: Dur = dflt("15m", C).range("10s", "24h");

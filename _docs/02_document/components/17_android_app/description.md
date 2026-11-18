@@ -75,13 +75,13 @@ None served. Deep links only (`AuthReturn`).
 
 ## 4. Data Access Patterns
 
-**Owned data**: checkpoint DB (SQLite, app-private, WAL, `mobile_backup` is the only writer; Kotlin reads through the core). Outside architecture section 4.
+**Owned data**: checkpoint DB (SQLite, app-private, WAL, `synchronous=FULL`, `PRAGMA user_version` is the schema version with forward-only migrations at open and a newer file refused untouched; `mobile_backup` is the only writer; Kotlin reads through the core). Outside architecture section 4.
 
 | Table | Content |
 |-------|---------|
 | `asset (asset_id PK, change_token, size, date_taken, content_hash NULL, upload_name NULL, client_key NULL, node_id NULL, revision_id NULL, state, linked_from NULL)` | state: `new, hashing, uploading, uploaded, skipped_gone, skipped_name, skipped_size, failed` |
 | `cursor (key, value)` | last `ChangeToken` per volume, access level and visible count seen, device id, camera folder node id |
-| `session (asset_id, session_id, block_bitmap_hint)` | resume pointer for an interrupted large upload |
+| `session (local_key PK, state, session_id NULL, file_hash NULL, commit_id, block_hashes)` | resume record of an interrupted large upload, the shape of sync-core's `UploadCheckpoint` (host traits contract): `state` is `hashing`, `uploading` or `committing`, `block_hashes` the concatenated 32-byte block hashes (changed from `(asset_id, session_id, block_bitmap_hint)` by AZ-3989) |
 | `batch (commit_id PK, entries)` | a small-file batch: random UUIDv7 `commit_id` plus the member `staged_key`s (= asset `client_key`s), written before the first `stage_small` of the batch and deleted after the results are stored |
 
 Hash saved after hashing, so 10 forced kills re-hash at most 1% of 50,000 assets (AC-52). Rows only move to `uploaded` after the commit ack; a kill between ack and write is healed by the idempotent upload (below). Estimates: 50,000 assets, about 150 bytes each, under 10 MB.
@@ -112,7 +112,7 @@ Hash saved after hashing, so 10 forced kills re-hash at most 1% of 50,000 assets
 |---|---|
 | NDK | r28.2 (28.2.13676358), clang wrappers at API 30, `minSdk 30`, `compileSdk`/`targetSdk` 35; rustc 1.97.1 (the repository pin) |
 | ABIs built | `aarch64-linux-android` (arm64-v8a), `armv7-linux-androideabi` (armeabi-v7a), `x86_64-linux-android` (x86_64). Run on device: x86_64 only. arm64-v8a and armeabi-v7a were built and alignment-checked, not run |
-| 16 KB link setting | NDK r28 links with 16 KB alignment by default (a build with no flag gave `0x4000`); keep `-C link-arg=-Wl,-z,max-page-size=16384` in `.cargo/config.toml` so a toolchain change cannot silently drop it. A control build with `max-page-size=4096` gives `0x1000` |
+| 16 KB link setting | NDK r28 links the 64-bit targets (aarch64, x86_64) with 16 KB alignment by default (a build with no flag gave `0x4000`), but `armeabi-v7a` without the flag gives `0x1000`. So `-C link-arg=-Wl,-z,max-page-size=16384` is set for all three targets in `src/.cargo/config.toml` (AZ-3989). A control build with `max-page-size=4096` gives `0x1000` |
 | Alignment check | every `LOAD` segment of every packaged `.so`, ours and `libjnidispatch.so`, must be `>= 0x4000` (`llvm-readelf -lW`, `awk '$1=="LOAD"{print $NF}'`), plus `zipalign -c -P 16 -v 4 app.apk` (`extractNativeLibs=false`). The check passes the three built libraries and fails the 4 KB control |
 | Versions | UniFFI 0.32.2 (Kotlin bindings, JNA), JNA 5.17.0 (`@aar`), jni 0.22.4, rusqlite 0.39.0 bundled, WorkManager 2.10.2, AGP 9.1.0, Gradle 9.3.1, JDK 26 |
 | Library size, packaged (probe: one export, SQLite, JNI init; the real library will be larger) | arm64-v8a 1.64 MB, armeabi-v7a 1.37 MB, x86_64 1.69 MB (`opt-level=z`, `lto`, `panic=abort`) |

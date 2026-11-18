@@ -2268,7 +2268,16 @@ dependencies = [
 name = "mobile_backup"
 version = "0.1.0"
 dependencies = [
+ "rusqlite",
+ "sc_config",
+ "serde_json",
  "sync-core",
+ "sync-core-proto",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "uniffi",
+ "uuid",
 ]
 
 [[package]]

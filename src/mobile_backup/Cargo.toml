@@ -9,5 +9,24 @@ publish.workspace = true
 [lints]
 workspace = true
 
+# One library for Android and iOS (ADR-013): a cdylib per Android ABI, a staticlib for the iOS link.
+[lib]
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[features]
+# The UniFFI scaffolding and the foreign-callback traits of sync-core; the business surface arrives with E-27/c07.
+uniffi = ["dep:uniffi", "sync-core/uniffi"]
+
 [dependencies]
+sc_config = { path = "../shared/config" }
 sync-core = { path = "../sync-core" }
+sync-core-proto = { path = "../sync-core-proto" }
+rusqlite = { workspace = true, features = ["bundled"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+uuid = { workspace = true }
+uniffi = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = "3"
