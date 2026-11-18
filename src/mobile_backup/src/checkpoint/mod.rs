@@ -3,6 +3,7 @@
 
 mod asset_repo;
 mod repo;
+mod upload_name;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
@@ -16,7 +17,7 @@ pub(crate) use asset_repo::{
 pub use repo::SqliteCheckpointStore;
 
 /// Forward migrations, oldest first: entry `n` takes a database from version `n` to `n + 1`.
-const MIGRATIONS: &[&str] = &[include_str!("schema.sql")];
+const MIGRATIONS: &[&str] = &[include_str!("schema.sql"), include_str!("schema_v2.sql")];
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;

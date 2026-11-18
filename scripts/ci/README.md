@@ -70,7 +70,7 @@ The database tests seed their files only in temporary directories and create and
 
 ## PR gate: `.github/workflows/ci.yml` and its scripts (AZ-3761)
 
-The workflow only checks out, caches and calls these scripts, each under `watchdog.sh`. Jobs: `rust-lint`, `rust-test`, `pipelines-large`, `http-api-suite`, `pg18-migrations`, `supply-chain`, `images`, `vault-core`; triggers: pull request to `dev`, push to `dev`.
+The workflow only checks out, caches and calls these scripts, each under `watchdog.sh`. Jobs: `rust-lint`, `rust-test`, `pipelines-large`, `http-api-suite`, `pg18-migrations`, `supply-chain`, `images`, `vault-core`, `mobile`; triggers: pull request to `dev`, push to `dev`.
 
 | Script | Job | What it does |
 |--------|-----|--------------|
@@ -103,3 +103,30 @@ scripts/ci/check-wasm-vectors.sh                      # browsers that cannot lau
 scripts/ci/check-wasm-vectors.sh --require-browsers   # a browser that cannot launch fails the gate
 scripts/ci/tests/test-check-wasm-vectors.sh           # a seeded one-bit difference must fail and name the case
 ```
+
+## Mobile app and native library: the `mobile` job (AZ-4002, E-27/c18)
+
+The Flutter project is `src/mobile/` (Kotlin layer in `android/`, Dart in `lib/`, `test/`). The one Rust library per ABI is `mobile_backup` with feature `uniffi` (sync-core inside); Gradle packages it as `libmobile_backup.so` from `src/mobile/android/app/src/main/jniLibs/<abi>/` (build output, gitignored), and the app loads it through JNA (UniFFI) and `System.loadLibrary` (`TlsTrustBridge`). The versions (NDK `28.2.13676358` at API 30, build-tools, Flutter) are pinned in `mobile-common.sh`; JDK 17 or newer comes from the caller (`actions/setup-java`, Temurin 21). Every script prints each step, runs `cargo` and `flutter` verbosely, and exits non-zero on a failed gate. `ANDROID_HOME` must name the Android SDK; `flutter` and `java` must be on `PATH`.
+
+| Script | What it does |
+|--------|--------------|
+| `mobile-setup.sh` | Flutter 3.47.7 (download verified against a pinned SHA-256, into `MOBILE_TOOLS_DIR`, default `~/.cache/sunnycloud-mobile-tools`) and, with `sdkmanager`, the NDK, platform 35 and build-tools 36.0.0 |
+| `mobile-build-native.sh` | `rustup target add`, then `cargo build --release --locked -p mobile_backup --features uniffi --target T` for `aarch64-linux-android`, `armv7-linux-androideabi` and `x86_64-linux-android` with the NDK clang wrappers at API 30 (the 16 KB link flag is in `src/.cargo/config.toml`), copied to `jniLibs/<abi>/` |
+| `mobile-check-alignment.sh PATH...` | AC-2: every LOAD segment of every `.so` (file, directory, or the `lib/*/*.so` of an APK, ours, JNA's and Flutter's) is at least `0x4000` (`llvm-readelf -lW`), plus `zipalign -c -P 16 -v 4` on an APK; fails when below or when nothing was checked |
+| `mobile-check-bindings.sh [--update]` | AC-3: builds the host cdylib and `uniffi-bindgen` (feature `uniffi-cli` of `mobile_backup`, uniffi 0.32.2, never in a release build), regenerates the Kotlin bindings (library mode, `--no-format`) and diffs them against `src/mobile/android/app/src/main/kotlin/uniffi/`; `--update` rewrites them (commit the result after every change of the Rust surface). `BINDINGS_DIR` and `SRC_DIR` override the directories |
+| `mobile-check-no-vault.sh` | AC-4: `cargo tree --target T --edges normal,build` of `mobile_backup` with feature `uniffi` for each ABI; fails when `vault-core` is linked, or `sync-core` is not (an empty listing cannot pass). `SRC_DIR` overrides the workspace |
+| `mobile-build-app.sh debug\|release` | AC-1: `flutter build apk -v` over the built libraries (Gradle fails when one is missing), then `mobile-check-apk.sh`. Release without `android/key.properties` is signed with the debug key and is not shippable (the Play keys are the owner's; the file is gitignored and names `storeFile`, `storePassword`, `keyAlias`, `keyPassword`) |
+| `mobile-check-apk.sh APK` | `minSdkVersion` 30, no `android:process` in the manifest (one process), `lib/<abi>/libmobile_backup.so` for every ABI, then `mobile-check-alignment.sh` |
+| `mobile-test.sh` | `flutter analyze`, `flutter test -v`, host cdylib, and the Kotlin unit tests (`gradlew :app:testDebugUnitTest`) that load it through JNA and call `BackupCore.status` without a server |
+| `tests/test-mobile-checks.sh` | the seeded failures: a 4 KB-aligned library fails the alignment check, a renamed `BackupCore.status` in a copy of the committed bindings fails the drift check, a copy of the workspace where `mobile_backup` depends on `vault-core` fails the no-vault check; each must also pass its real input and fail for the seeded reason. Needs the NDK, cargo and the jniLibs of `mobile-build-native.sh` |
+
+Laptop run, in the job's order (from the repository root):
+
+```bash
+export ANDROID_HOME=~/Android/sdk JAVA_HOME=/path/to/jdk21 PATH=/path/to/flutter/bin:$JAVA_HOME/bin:$PATH
+scripts/ci/mobile-setup.sh && scripts/ci/mobile-build-native.sh && scripts/ci/mobile-check-no-vault.sh
+scripts/ci/mobile-check-bindings.sh && scripts/ci/mobile-build-app.sh debug && scripts/ci/mobile-build-app.sh release
+scripts/ci/mobile-test.sh && scripts/ci/tests/test-mobile-checks.sh
+```
+
+The device error for a 4 KB library on a 16 KB device (`dlopen failed: empty/missing DT_HASH/DT_GNU_HASH`) does not name alignment, so `mobile-check-alignment.sh` is the diagnostic. The emulator harness (E-27/c19) and the iOS static library (E-28/c03) are not part of this job.

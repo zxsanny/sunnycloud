@@ -1,9 +1,12 @@
 //! The results of a staged batch reach the checkpoint here, before `sync-core` clears the batch record.
 
+use std::sync::{Arc, Mutex, PoisonError};
+
 use sc_error::ErrorCode;
-use sync_core::{BatchOutcome, BatchReport, BatchSink, StoreError};
+use sync_core::{BatchOutcome, BatchReport, BatchSink, StoreError, SyncError};
 use sync_core_proto::EntryResult;
 use tracing::{error, warn};
+use uuid::Uuid;
 
 use super::verdict::record_error;
 use crate::checkpoint::{Acknowledged, AssetEnd, AssetStore};
@@ -14,7 +17,7 @@ fn known(code: &str) -> &'static str {
 }
 
 /// How a refused entry ends its asset. `None`: the entry is retried by the next run (its staged row is gone) or
-/// belongs to the folder recovery of E-27/c13, so the asset stays pending. Any other code is not a state of the
+/// was refused for a missing folder (the pipeline recovers it, see `ParentRefusals`), so the asset stays pending. Any other code is not a state of the
 /// contract's table, so the asset ends `failed`, as the table's last row says.
 fn refusal(code: &str) -> Option<AssetEnd> {
     match ErrorCode::from_wire(code) {
@@ -80,4 +83,48 @@ fn note_refusal(assets: &AssetStore, code: &str) -> Result<(), StoreError> {
         error!(error = %cause, "the refusal of a batch entry was not recorded");
         StoreError
     })
+}
+
+/// Hands every report to the checkpoint and remembers the entries the server refused because the folder is missing,
+/// so the pipeline can recreate the folder and send those entries once more.
+pub(super) struct ParentRefusals {
+    assets: Arc<AssetStore>,
+    refused: Mutex<Vec<(Uuid, SyncError)>>,
+}
+
+impl ParentRefusals {
+    pub(super) fn new(assets: Arc<AssetStore>) -> Self {
+        Self {
+            assets,
+            refused: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The staged keys and errors collected so far; the list is emptied.
+    pub(super) fn take(&self) -> Vec<(Uuid, SyncError)> {
+        std::mem::take(&mut *self.refused.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+}
+
+impl BatchSink for ParentRefusals {
+    fn on_batch(&self, report: BatchReport) -> Result<(), StoreError> {
+        if let BatchOutcome::Committed(result) = &report.outcome {
+            let mut refused = self.refused.lock().unwrap_or_else(PoisonError::into_inner);
+            for (entry, result) in report.entries.iter().zip(&result.entries) {
+                let EntryResult::EntryError { code } = result else {
+                    continue;
+                };
+                match ErrorCode::from_wire(code) {
+                    Some(ErrorCode::ParentNotFound) => {
+                        refused.push((entry.staged_key, SyncError::ParentNotFound));
+                    }
+                    Some(ErrorCode::ParentDeleted) => {
+                        refused.push((entry.staged_key, SyncError::ParentGone));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        self.assets.on_batch(report)
+    }
 }

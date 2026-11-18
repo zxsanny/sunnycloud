@@ -62,6 +62,8 @@ struct Item {
     edit: u32,
     size: usize,
     visible: bool,
+    /// The MediaStore display name; `IMG_<id>.jpg` when the test sets none.
+    name: Option<String>,
 }
 
 #[derive(Default)]
@@ -102,6 +104,16 @@ impl FakeSource {
         self.insert(asset_id, size, false);
     }
 
+    /// A visible asset with its own display name, as two folders of one phone hold the same `IMG_0001.jpg`.
+    pub fn add_named(&self, asset_id: i64, size: usize, name: &str) {
+        self.insert(asset_id, size, true);
+        self.state()
+            .items
+            .get_mut(&asset_id)
+            .expect("the asset just added")
+            .name = Some(name.to_owned());
+    }
+
     fn insert(&self, asset_id: i64, size: usize, visible: bool) {
         let mut state = self.state();
         state.generation += 1;
@@ -113,6 +125,7 @@ impl FakeSource {
                 edit: 0,
                 size,
                 visible,
+                name: None,
             },
         );
     }
@@ -173,7 +186,10 @@ impl FakeSource {
         AssetDescriptor {
             asset_id,
             change_token: token_of(item.generation),
-            display_name: format!("IMG_{asset_id}.jpg"),
+            display_name: item
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("IMG_{asset_id}.jpg")),
             mime: "image/jpeg".to_owned(),
             size: item.size as u64,
             date_taken: asset_id,

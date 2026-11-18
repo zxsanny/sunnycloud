@@ -8,3 +8,5 @@ reason: needs a running server and database in the test stack (E-31); the unit t
 Replay: when the E-31 stack serves the API, run the two cases from `tests/` against it and delete this file.
 
 Also AZ-3991: `set_server` against a real https server (server-info answer, `min_client_version` above ours) and `cancel` through a real `HttpSyncClient`; the unit tests cover those rows at the mapping boundary with fakes.
+
+Also AZ-3997: the batch retry after `parent_not_found` / `parent_deleted` (a second `stage_small` and commit for the same `staged_key`) and a stored large-upload session after the camera folder was recreated, against the real server.

@@ -49,4 +49,6 @@ pub struct Record {
     pub lists: usize,
     /// Keys whose row had no stored hash when their upload started.
     pub unstored: Vec<Uuid>,
+    /// Every upload sent, a block upload or a batch entry: its name and the folder it went to.
+    pub attempts: Vec<(String, Uuid)>,
 }

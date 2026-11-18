@@ -2287,6 +2287,7 @@ dependencies = [
  "sc_config",
  "sc_error",
  "sc_ids",
+ "sc_names",
  "serde_json",
  "sync-core",
  "sync-core-proto",

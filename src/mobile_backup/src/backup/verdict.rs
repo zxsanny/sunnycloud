@@ -65,8 +65,9 @@ fn verdict(error: &SyncError) -> Verdict {
         | SyncError::Io { .. }
         | SyncError::BlocklistMismatch
         | SyncError::Unexpected { .. } => Verdict::End(AssetEnd::Failed),
-        // `Unauthorized` is the contract's `TokenRejected`; the network, rate-limit and folder errors are the
-        // host's or E-27/c13's to handle. All of them end the run with the error and keep the asset pending.
+        // `Unauthorized` is the contract's `TokenRejected`; the network and rate-limit errors are the host's to
+        // handle. A missing folder is recovered by the pipeline before it gets here. All of them end the run with
+        // the error and keep the asset pending.
         _ => Verdict::Fatal,
     }
 }
@@ -110,6 +111,14 @@ impl Backup {
                 Err(failure) => failure.into(),
             },
             Verdict::End(_) | Verdict::Fatal => RunError::from(error).into(),
+        }
+    }
+
+    /// The run ends with `error`, stored as `last_error` first: for an error the loop gave up on after its recovery.
+    pub(super) fn halt_recorded(&self, error: SyncError) -> Halt {
+        match self.note(&error) {
+            Ok(()) => RunError::from(error).into(),
+            Err(failure) => failure.into(),
         }
     }
 

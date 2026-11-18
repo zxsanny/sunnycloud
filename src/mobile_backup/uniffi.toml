@@ -1,0 +1,4 @@
+# Kotlin bindings (scripts/ci/mobile-check-bindings.sh). A variant field named `message` clashes with
+# `Throwable.message` in the generated Kotlin exception, so the server's upgrade text is `userMessage` there.
+[bindings.kotlin.rename]
+"BackupError.UpgradeRequired.message" = "userMessage"

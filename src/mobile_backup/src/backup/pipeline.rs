@@ -9,13 +9,15 @@ use std::time::Instant;
 
 use serde_json::{Value, json};
 use sync_core::{
-    BatchSink, CheckpointStore, HashCheckpoint, HashedFile, MemoryCheckpointStore, ProgressSink,
-    SmallFile, SyncError, UploadCheckpoint, UploadRequest, UploadState, takes_staged_path,
+    BatchRunError, CheckpointStore, HashCheckpoint, HashedFile, MemoryCheckpointStore,
+    ProgressSink, SmallFile, SyncError, UploadCheckpoint, UploadRequest, UploadState,
+    takes_staged_path,
 };
 use sync_core_proto::{BatchEntry, CommitOutcome, FileHash, client_key_for_mobile};
 use uuid::Uuid;
 
 use super::Backup;
+use super::sink::ParentRefusals;
 use super::verdict::Halt;
 use crate::checkpoint::{Acknowledged, AssetEnd, PendingAsset};
 use crate::outcome::{BackupOutcome, RunContext, RunError};
@@ -28,7 +30,13 @@ impl ProgressSink for NoProgress {
     fn on_progress(&self, _done: u64, _total: u64) {}
 }
 
+/// The server no longer has the folder: it is recreated once and the asset sent again.
+fn is_parent_error(error: &SyncError) -> bool {
+    matches!(error, SyncError::ParentNotFound | SyncError::ParentGone)
+}
+
 /// An asset whose hash is stored and whose original is open.
+#[derive(Clone)]
 struct Ready {
     asset_id: i64,
     name: String,
@@ -261,23 +269,31 @@ impl<'a> Run<'a> {
         json!({ "device": self.backup.device_id.to_string(), "asset_id": asset_id.to_string() })
     }
 
-    async fn upload_blocks(&mut self, item: Ready, hashed: HashedFile) -> Result<(), Halt> {
-        let request = UploadRequest {
-            local_key: item.asset_id.to_string(),
-            parent: self.parent().await?,
-            name: item.name,
-            source: item.source,
-            hashed,
-            base_revision: None,
-            client_key: item.key,
-            client_meta: Some(self.client_meta(item.asset_id)),
-            import_hint: false,
-        };
-        let outcome = self
+    /// The folder is made again, its id stored, and the run goes on with it.
+    async fn recreate_parent(&mut self) -> Result<Uuid, Halt> {
+        let folder = self
             .backup
-            .api
-            .upload(request, self.backup.store.clone(), Arc::new(NoProgress))
-            .await;
+            .recreate_camera_folder()
+            .await
+            .map_err(|error| self.backup.halt_run(error))?;
+        self.folder = Some(folder);
+        Ok(folder)
+    }
+
+    async fn upload_blocks(&mut self, item: Ready, hashed: HashedFile) -> Result<(), Halt> {
+        let parent = self.parent().await?;
+        let mut outcome = self.send_blocks(&item, &hashed, parent).await;
+        if outcome.as_ref().is_err_and(is_parent_error) {
+            let parent = self.recreate_parent().await?;
+            outcome = self.send_blocks(&item, &hashed, parent).await;
+            if let Some(error) = outcome
+                .as_ref()
+                .err()
+                .filter(|error| is_parent_error(error))
+            {
+                return Err(self.backup.halt_recorded(error.clone()));
+            }
+        }
         if let Some(outcome) = self.settled(item.asset_id, outcome)? {
             self.backup
                 .assets
@@ -286,32 +302,85 @@ impl<'a> Run<'a> {
         Ok(())
     }
 
-    /// The results are stored by the batch sink before `sync-core` clears the batch record.
+    async fn send_blocks(
+        &self,
+        item: &Ready,
+        hashed: &HashedFile,
+        parent: Uuid,
+    ) -> Result<CommitOutcome, SyncError> {
+        let request = UploadRequest {
+            local_key: item.asset_id.to_string(),
+            parent,
+            name: item.name.clone(),
+            source: Arc::clone(&item.source),
+            hashed: hashed.clone(),
+            base_revision: None,
+            client_key: item.key,
+            client_meta: Some(self.client_meta(item.asset_id)),
+            import_hint: false,
+        };
+        self.backup
+            .api
+            .upload(request, self.backup.store.clone(), Arc::new(NoProgress))
+            .await
+    }
+
+    /// The results are stored by the batch sink before `sync-core` clears the batch record. The entries the server
+    /// refused for a missing folder are sent once more into the recreated folder; a second refusal ends the run.
     async fn upload_staged(&mut self, group: Vec<Ready>) -> Result<(), Halt> {
         let parent = self.parent().await?;
-        let files = group
+        let refused = self.send_staged(&group, parent).await?;
+        if refused.is_empty() {
+            return Ok(());
+        }
+        let retry: Vec<Ready> = group
             .into_iter()
+            .filter(|item| refused.iter().any(|(key, _)| *key == item.key))
+            .collect();
+        let parent = self.recreate_parent().await?;
+        match self.send_staged(&retry, parent).await?.into_iter().next() {
+            Some((_, error)) => Err(self.backup.halt_recorded(error)),
+            None => Ok(()),
+        }
+    }
+
+    /// The keys of the group the server refused because the folder is missing, with the error of each.
+    async fn send_staged(
+        &self,
+        group: &[Ready],
+        parent: Uuid,
+    ) -> Result<Vec<(Uuid, SyncError)>, Halt> {
+        let files = group
+            .iter()
             .map(|item| SmallFile {
                 entry: BatchEntry {
                     staged_key: item.key,
                     parent,
-                    name: item.name,
+                    name: item.name.clone(),
                     base_revision: None,
                     file_hash: item.file_hash,
                     client_meta: Some(self.client_meta(item.asset_id)),
                     import_hint: None,
                 },
-                source: item.source,
+                source: Arc::clone(&item.source),
             })
             .collect();
-        let sink = Arc::clone(&self.backup.assets) as Arc<dyn BatchSink>;
-        let left_out = self
+        let sink = Arc::new(ParentRefusals::new(Arc::clone(&self.backup.assets)));
+        let sent = self
             .backup
             .api
-            .upload_small(files, self.backup.store.clone(), sink)
-            .await
-            .map_err(|error| self.backup.halted(error))?;
-        self.backup.settle_left_out(left_out)
+            .upload_small(files, self.backup.store.clone(), sink.clone())
+            .await;
+        match sent {
+            Ok(left_out) => {
+                self.backup.settle_left_out(left_out)?;
+                Ok(sink.take())
+            }
+            Err(BatchRunError::Sync(error)) if is_parent_error(&error) => {
+                Ok(group.iter().map(|item| (item.key, error.clone())).collect())
+            }
+            Err(error) => Err(self.backup.halted(error)),
+        }
     }
 }
 

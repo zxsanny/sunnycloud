@@ -326,8 +326,14 @@ impl BackupApi for FakeApi {
             if self.quota_full() {
                 return Err(SyncError::QuotaExceeded);
             }
+            self.record()
+                .attempts
+                .push((request.name.clone(), request.parent));
             if let Some(error) = self.fault(&request.name) {
                 return Err(error);
+            }
+            if !self.server.state().has_folder(request.parent) {
+                return Err(self.server.missing_parent_error());
             }
             self.started(&[request.client_key]);
             let session = checkpoints.load(&request.local_key).expect("session row");
@@ -373,6 +379,9 @@ impl BackupApi for FakeApi {
             let mut left_out = Vec::new();
             let mut kept = Vec::new();
             for file in files {
+                self.record()
+                    .attempts
+                    .push((file.entry.name.clone(), file.entry.parent));
                 match self.fault(&file.entry.name) {
                     Some(
                         error @ (SyncError::SourceChanged

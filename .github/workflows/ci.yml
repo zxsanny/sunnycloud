@@ -278,3 +278,50 @@ jobs:
       - name: Swift leg (NOT-RUN(H-MAC) without the owner Mac; blocks only the release gate)
         if: matrix.leg == 'uniffi'
         run: scripts/ci/watchdog.sh --name vault-core-swift -- src/vault-core/ci/vault-core-ci.sh swift
+
+  # E-27/c18 (AZ-4002): the Android app and its native library. Rust library per ABI (NDK r28), v1.0 links no
+  # vault-core, Kotlin binding drift, debug and release builds with the 16 KB alignment check on every packaged library,
+  # Flutter and Kotlin unit tests, then the seeded failures that prove each gate can fail. Versions are pinned in
+  # scripts/ci/mobile-common.sh. The emulator harness is E-27/c19 and is not part of this job.
+  mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install the pinned toolchain
+        run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src
+          key: mobile-${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          cache-on-failure: true
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.pub-cache
+          key: mobile-gradle-${{ hashFiles('src/mobile/pubspec.lock', 'src/mobile/android/**/*.kts', 'src/mobile/android/gradle/wrapper/gradle-wrapper.properties') }}
+      # The Flutter archive is 1.5 GB and the download prints nothing, so this one step gets a longer quiet limit.
+      - name: Install Flutter and the Android SDK packages (pinned versions, SHA-256 verified)
+        run: WATCHDOG_STALL=600 scripts/ci/watchdog.sh --name mobile-setup -- scripts/ci/mobile-setup.sh
+      - name: Rust library per ABI (mobile_backup with feature uniffi, release, NDK r28)
+        run: scripts/ci/watchdog.sh --name mobile-build-native -- scripts/ci/mobile-build-native.sh
+      - name: v1.0 Android build links no vault-core
+        run: scripts/ci/watchdog.sh --name mobile-check-no-vault -- scripts/ci/mobile-check-no-vault.sh
+      - name: Kotlin bindings match the Rust surface
+        run: scripts/ci/watchdog.sh --name mobile-check-bindings -- scripts/ci/mobile-check-bindings.sh
+      - name: Debug build, minSdk, one process, one library per ABI, 16 KB alignment
+        run: scripts/ci/watchdog.sh --name mobile-build-debug -- scripts/ci/mobile-build-app.sh debug
+      - name: Release build, minSdk, one process, one library per ABI, 16 KB alignment
+        run: scripts/ci/watchdog.sh --name mobile-build-release -- scripts/ci/mobile-build-app.sh release
+      - name: flutter analyze, flutter test, Kotlin unit tests (BackupCore.status without a server)
+        run: scripts/ci/watchdog.sh --name mobile-test -- scripts/ci/mobile-test.sh
+      - name: Seeded failures (4 KB library, changed BackupCore method, vault-core dependency)
+        run: scripts/ci/watchdog.sh --name mobile-check-seeds -- scripts/ci/tests/test-mobile-checks.sh

@@ -40,6 +40,8 @@ pub struct ServerState {
     pub nothing_to_send: usize,
     /// Entries of a batch the server refuses, by name, with the wire code of the refusal.
     pub refused: HashMap<String, String>,
+    /// A missing folder is answered `ParentNotFound` instead of `ParentGone`.
+    pub missing_is_not_found: bool,
 }
 
 #[derive(Default)]
@@ -49,6 +51,11 @@ impl ServerState {
     fn fresh(&mut self) -> Uuid {
         self.next += 1;
         Uuid::from_u128(0x1000 + self.next)
+    }
+
+    /// The root and every existing folder can take files.
+    pub fn has_folder(&self, id: Uuid) -> bool {
+        id == ROOT || self.folders.iter().any(|folder| folder.id == id)
     }
 
     pub fn folder_named(&self, parent: Uuid, name: &str) -> Option<Uuid> {
@@ -66,6 +73,20 @@ impl Server {
 
     pub fn file_count(&self) -> usize {
         self.state().files.len()
+    }
+
+    /// The user deletes a folder on the web: later uploads into it are refused.
+    pub fn delete_folder(&self, id: Uuid) {
+        self.state().folders.retain(|folder| folder.id != id);
+    }
+
+    /// The error of an upload into a folder that is not there.
+    pub fn missing_parent_error(&self) -> SyncError {
+        if self.state().missing_is_not_found {
+            SyncError::ParentNotFound
+        } else {
+            SyncError::ParentGone
+        }
     }
 
     pub fn create_folder(&self, parent: Uuid, name: &str) -> Result<NodeView, SyncError> {
@@ -142,6 +163,16 @@ impl Server {
         let results = entries
             .iter()
             .map(|entry| {
+                if !self.state().has_folder(entry.parent) {
+                    let code = if self.state().missing_is_not_found {
+                        "parent_not_found"
+                    } else {
+                        "parent_deleted"
+                    };
+                    return EntryResult::EntryError {
+                        code: code.to_owned(),
+                    };
+                }
                 if let Some(code) = self.state().refused.get(&entry.name).cloned() {
                     return EntryResult::EntryError { code };
                 }

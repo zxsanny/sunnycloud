@@ -18,12 +18,15 @@ crate-type = ["lib", "cdylib", "staticlib"]
 uniffi = ["dep:uniffi", "sync-core/uniffi"]
 # Debug builds only: `set_server` accepts an `http://` address. sync-core refuses this feature in a release build.
 allow-plain-http = ["sync-core/allow-plain-http"]
+# Only for the uniffi-bindgen binary that generates the Kotlin and Swift bindings in CI; never in a release build.
+uniffi-cli = ["uniffi", "uniffi/cli", "uniffi/cargo-metadata"]
 
 [dependencies]
 sc_clock = { path = "../shared/clock" }
 sc_config = { path = "../shared/config" }
 sc_error = { path = "../shared/error", default-features = false, features = ["client"] }
 sc_ids = { path = "../shared/ids_hashing" }
+sc_names = { path = "../shared/names" }
 sync-core = { path = "../sync-core" }
 sync-core-proto = { path = "../sync-core-proto" }
 bytes = { workspace = true }
@@ -37,3 +40,8 @@ uniffi = { workspace = true, features = ["tokio"], optional = true }
 [dev-dependencies]
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["uniffi-cli"]

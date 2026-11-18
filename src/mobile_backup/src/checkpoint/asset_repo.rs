@@ -6,6 +6,7 @@ use rusqlite::{OptionalExtension, params};
 use sync_core_proto::FileHash;
 use uuid::Uuid;
 
+use super::upload_name::with_asset_id;
 use super::{CheckpointDb, DbError};
 use crate::source::{AssetDescriptor, ChangeToken};
 
@@ -17,6 +18,9 @@ const ERROR_ID_KEY: &str = "last_error_id";
 const REDACTED_KEY: &str = "location_redacted";
 /// The cursor key discovery and `status` share: the access level the last run saw.
 pub const ACCESS_LEVEL_KEY: &str = "access_level";
+/// Another asset holds this name (ASCII case folded, the index `asset_upload_name_lower`).
+const NAME_TAKEN: &str =
+    "SELECT 1 FROM asset WHERE lower(upload_name) = lower(?1) AND asset_id != ?2 LIMIT 1";
 const ID_LEN: usize = 16;
 const HASH_LEN: usize = 32;
 
@@ -85,6 +89,20 @@ fn id_bytes(id: Option<Uuid>) -> Option<Vec<u8>> {
     id.map(|id| id.as_bytes().to_vec())
 }
 
+/// The upload name is chosen when the row is stored and kept in it: a name another asset holds gets the asset id.
+/// The result is only used for a row that is new or whose token changed.
+fn chosen_name(
+    taken: &mut rusqlite::Statement<'_>,
+    descriptor: &AssetDescriptor,
+) -> Result<String, DbError> {
+    let held = taken.exists(params![descriptor.display_name, descriptor.asset_id])?;
+    Ok(if held {
+        with_asset_id(&descriptor.display_name, descriptor.asset_id)
+    } else {
+        descriptor.display_name.clone()
+    })
+}
+
 fn size_of(descriptor: &AssetDescriptor) -> Result<i64, DbError> {
     i64::try_from(descriptor.size).map_err(|_| DbError::Malformed("asset size"))
 }
@@ -136,7 +154,7 @@ impl AssetStore {
         })
     }
 
-    /// Stores listed assets as `new`. An asset already stored under another token was edited: its hash and upload
+    /// Stores listed assets as `new`, each under its chosen upload name. An asset already stored under another token was edited: its hash and upload
     /// ids are dropped and it is `new` again. The same token again changes nothing.
     pub fn store_listed(&self, descriptors: &[AssetDescriptor]) -> Result<(), DbError> {
         self.db.write(|transaction| {
@@ -148,13 +166,14 @@ impl AssetStore {
                  content_hash = NULL, client_key = NULL, node_id = NULL, revision_id = NULL, state = 'new' \
                  WHERE asset.change_token IS NOT excluded.change_token",
             )?;
+            let mut taken = transaction.prepare(NAME_TAKEN)?;
             for descriptor in descriptors {
                 upsert.execute(params![
                     descriptor.asset_id,
                     descriptor.change_token.0,
                     size_of(descriptor)?,
                     descriptor.date_taken,
-                    descriptor.display_name,
+                    chosen_name(&mut taken, descriptor)?,
                 ])?;
             }
             Ok(())
@@ -168,13 +187,14 @@ impl AssetStore {
                 "INSERT OR IGNORE INTO asset (asset_id, change_token, size, date_taken, upload_name) \
                  VALUES (?1, ?2, ?3, ?4, ?5)",
             )?;
+            let mut taken = transaction.prepare(NAME_TAKEN)?;
             for descriptor in descriptors {
                 insert.execute(params![
                     descriptor.asset_id,
                     descriptor.change_token.0,
                     size_of(descriptor)?,
                     descriptor.date_taken,
-                    descriptor.display_name,
+                    chosen_name(&mut taken, descriptor)?,
                 ])?;
             }
             Ok(())

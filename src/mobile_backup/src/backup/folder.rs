@@ -1,5 +1,5 @@
 //! The target folder `Camera Uploads/<device label>/` (17 §4): found or created through `sync-core`, its node id kept
-//! in `cursor`. Upload names and collision handling belong to E-27/c13.
+//! in `cursor`. A folder the server reports missing is made again by the pipeline (`recreate_camera_folder`).
 
 use sync_core::SyncError;
 use sync_core_proto::{NodeKind, PageToken};
@@ -19,6 +19,12 @@ impl Backup {
             return Uuid::parse_str(&text)
                 .map_err(|_| RunError::from(DbError::Malformed("camera folder")));
         }
+        self.recreate_camera_folder().await
+    }
+
+    /// Finds or creates the folder from the root, whatever id is stored, and stores the id it ends with: for a first
+    /// run, and for a stored folder the server no longer has.
+    pub(super) async fn recreate_camera_folder(&self) -> Result<Uuid, RunError> {
         let root = self.api.root_node().await?.node_id;
         let camera = self.folder_in(root, CAMERA_UPLOADS).await?;
         let device = self.folder_in(camera, &self.device_label).await?;

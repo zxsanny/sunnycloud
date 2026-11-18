@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use mobile_backup::{
-    AccessLevel, AssetDescriptor, AssetSource, BackupOutcome, ChangeToken, ForeignAssetSource,
-    ForeignOpened, RunError, SourceError, Trigger,
+    AccessLevel, AssetDescriptor, AssetSource, AssetSourceError, BackupOutcome, ChangeToken,
+    ForeignAssetSource, ForeignOpened, RunError, SourceError, Trigger,
 };
 use sync_core::{FileIdentity, FileSource, Foreign, ForeignFileSource, HostError};
 
@@ -35,7 +35,7 @@ impl ForeignFileSource for HostFile {
 /// A host over the fake photos that can fail its calls as a throwing Kotlin implementation would.
 struct Host {
     photos: Arc<FakeSource>,
-    open_errors: Mutex<HashMap<i64, HostError>>,
+    open_errors: Mutex<HashMap<i64, AssetSourceError>>,
     access_fails: AtomicBool,
     listing_fails: AtomicBool,
 }
@@ -55,8 +55,8 @@ impl Host {
     }
 }
 
-fn failed(_: SourceError) -> HostError {
-    HostError::Failed
+fn failed(_: SourceError) -> AssetSourceError {
+    AssetSourceError::Failed
 }
 
 impl ForeignAssetSource for Host {
@@ -64,30 +64,30 @@ impl ForeignAssetSource for Host {
         &self,
         token: ChangeToken,
         limit: u32,
-    ) -> Result<Vec<AssetDescriptor>, HostError> {
+    ) -> Result<Vec<AssetDescriptor>, AssetSourceError> {
         if self.listing_fails.load(Ordering::SeqCst) {
-            return Err(HostError::Failed);
+            return Err(AssetSourceError::Failed);
         }
         self.photos.assets_after(&token, limit).map_err(failed)
     }
 
-    fn current_token(&self) -> Result<ChangeToken, HostError> {
+    fn current_token(&self) -> Result<ChangeToken, AssetSourceError> {
         self.photos.current_token().map_err(failed)
     }
 
-    fn list_visible_ids(&self, page: u32) -> Result<Vec<i64>, HostError> {
+    fn list_visible_ids(&self, page: u32) -> Result<Vec<i64>, AssetSourceError> {
         self.photos.list_visible_ids(page).map_err(failed)
     }
 
-    fn visible_count(&self) -> Result<u64, HostError> {
+    fn visible_count(&self) -> Result<u64, AssetSourceError> {
         self.photos.visible_count().map_err(failed)
     }
 
-    fn describe(&self, asset_ids: Vec<i64>) -> Result<Vec<AssetDescriptor>, HostError> {
+    fn describe(&self, asset_ids: Vec<i64>) -> Result<Vec<AssetDescriptor>, AssetSourceError> {
         self.photos.describe(&asset_ids).map_err(failed)
     }
 
-    fn open_read(&self, asset_id: i64) -> Result<ForeignOpened, HostError> {
+    fn open_read(&self, asset_id: i64) -> Result<ForeignOpened, AssetSourceError> {
         if let Some(error) = self.open_errors.lock().expect("errors").get(&asset_id) {
             return Err(*error);
         }
@@ -95,8 +95,8 @@ impl ForeignAssetSource for Host {
             .photos
             .open_read(asset_id)
             .map_err(|error| match error {
-                mobile_backup::OpenError::Gone => HostError::NotFound,
-                mobile_backup::OpenError::Failed => HostError::Failed,
+                mobile_backup::OpenError::Gone => AssetSourceError::NotFound,
+                mobile_backup::OpenError::Failed => AssetSourceError::Failed,
             })?;
         Ok(ForeignOpened {
             file: Arc::new(HostFile(opened.file)),
@@ -104,9 +104,9 @@ impl ForeignAssetSource for Host {
         })
     }
 
-    fn access_level(&self) -> Result<AccessLevel, HostError> {
+    fn access_level(&self) -> Result<AccessLevel, AssetSourceError> {
         if self.access_fails.load(Ordering::SeqCst) {
-            return Err(HostError::Failed);
+            return Err(AssetSourceError::Failed);
         }
         self.photos.access_level().map_err(failed)
     }
@@ -126,10 +126,10 @@ async fn host_errors_on_open_end_the_asset_gone_or_failed_and_the_loop_goes_on()
     let rig = rig_with_six_assets();
     rig.source.vanish_on_open(2);
     let host = Host::new(Arc::clone(&rig.source));
-    host.open_errors
-        .lock()
-        .expect("errors")
-        .extend([(3, HostError::PermissionDenied), (4, HostError::Failed)]);
+    host.open_errors.lock().expect("errors").extend([
+        (3, AssetSourceError::PermissionDenied),
+        (4, AssetSourceError::Failed),
+    ]);
     host.photos.set_redacted(true);
 
     // Act

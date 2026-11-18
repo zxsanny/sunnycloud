@@ -22,7 +22,7 @@ pub use checkpoint::{CheckpointDb, DbError, SCHEMA_VERSION, SqliteCheckpointStor
 pub use config::AndroidConfig;
 pub use error::BackupError;
 #[cfg(feature = "uniffi")]
-pub use ffi::{ForeignAssetSource, ForeignOpened};
+pub use ffi::{AssetSourceError, ForeignAssetSource, ForeignOpened};
 pub use outcome::{
     BackupOutcome, NetworkPolicy, NetworkState, PauseReason, RunContext, RunError, SkipReason,
     Trigger,
