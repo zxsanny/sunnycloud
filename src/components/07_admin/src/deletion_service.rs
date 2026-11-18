@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use contracts::{
-    AccountAdmin, AccountDeletionService, Actor, DeletionAccepted, DeletionError, Principal,
-    PrincipalKind, async_trait,
+    AccountAdmin, AccountAdminError, AccountDeletionService, Actor, DeletionAccepted,
+    DeletionError, Principal, PrincipalKind, async_trait,
 };
 use sc_audit::AuditWriter;
 use sc_clock::{Clock, Timestamp};
@@ -70,7 +70,10 @@ impl AccountDeletionServiceImpl {
                 self.accounts
                     .begin_deletion(tx, account)
                     .await
-                    .map_err(unexpected)?;
+                    .map_err(|error| match error {
+                        AccountAdminError::NotFound => DeletionError::NotFound,
+                        other => unexpected(other),
+                    })?;
                 let event = admin_action(actor, account, DELETION_REQUESTED);
                 self.audit.record_in(tx, event).await.map_err(unexpected)
             })
@@ -117,7 +120,7 @@ impl AccountDeletionService for AccountDeletionServiceImpl {
             .await
     }
 
-    /// `--yes` is the confirmation. An unknown account is `Unexpected`: the contract has no `NotFound` here.
+    /// `--yes` is the confirmation. An unknown account is `NotFound` and changes nothing.
     async fn request_as_operator(&self, account: Uuid) -> Result<DeletionAccepted, DeletionError> {
         self.begin(&Actor::Operator, account).await
     }

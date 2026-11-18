@@ -18,7 +18,7 @@ A user's own account view and the request that starts account deletion. The requ
 | `AccountService::view` | `(&Principal) -> AccountView{id, display_name, role, identities: Vec<IdentityView{provider, email?}>, quota, root_node_id}` | `Unexpected` | async; caller's own account only; session or device principal |
 | `AccountService::quota_view` | `(&Principal) -> QuotaView{limit_bytes?, effective_limit, used, reserved}` | `Unexpected` | async; equals `QuotaAdmin::view` of the caller |
 | `AccountDeletionService::request` | `(&Principal, confirmation) -> DeletionAccepted{deadline}` | `Forbidden` (device-token principal), `ConfirmationMismatch`, `LastAdmin` (from E-17/c04) | async; one short transaction |
-| `AccountDeletionService::request_as_operator` | `(account: Uuid) -> DeletionAccepted{deadline}` | `LastAdmin` (from E-17/c04); `Unexpected` for an unknown account | async; one short transaction; no confirmation |
+| `AccountDeletionService::request_as_operator` | `(account: Uuid) -> DeletionAccepted{deadline}` | `LastAdmin` (from E-17/c04); `NotFound` for an unknown account (nothing written) | async; one short transaction; no confirmation |
 
 `view` is assembled from three ports, each keyed by the principal's own account id: `AccountAdmin::profile` (01: `display_name`, `identities` oldest first), `QuotaAdmin::view` (07a: `quota`, the same value `quota_view` returns) and `TreeReader::root_node` (02: `root_node_id`). `id` is the principal's account id and `role` the principal's role as the authenticator resolved it.
 
@@ -28,6 +28,7 @@ A user's own account view and the request that starts account deletion. The requ
 |-------|------|--------|
 | `Forbidden` | `forbidden` | 403 |
 | `LastAdmin` | `last_admin` | 409 |
+| `NotFound` | `not_found` (operator path only; the CLI prints it, no HTTP route reaches it) | 404 |
 | `ConfirmationMismatch` | proposed `confirmation_mismatch` (open point 4; not in the shared status table yet) | proposed 422 |
 | `Unexpected` | `internal` | 500 |
 
@@ -79,7 +80,7 @@ A user's own account view and the request that starts account deletion. The requ
 2. Resolved 2026-11-07: the operator path is `request_as_operator`; adding it to `contracts` part 1 is a proposed `contracts` change task in E-17 (module-layout Rule 6), a dependency of E-17/c05 (AZ-3819).
 3. Resolved 2026-11-14 (owner decision): `AccountAdmin::profile(account) -> AccountProfile{display_name, identities}`, a read-only additive `contracts` change (`01_identity/account_admin_and_guard.md` 1.1.0, `contracts` part 1 1.5.0).
 4. Open: `ConfirmationMismatch` has no code or status in the shared status table (E-02). Proposal: code `confirmation_mismatch`, HTTP 422 (the request is well-formed but its confirmation does not match the account). Until the table has it, `deletion_error_code` returns no code for it.
-5. Open: `request_as_operator` on an unknown account fails as `Unexpected` (`DeletionError` has no `NotFound`); the CLI (E-22/c09) may need a typed variant, which would be a minor `contracts` change.
+5. Resolved 2026-11-18 (owner decision): `DeletionError::NotFound` for `request_as_operator` on an unknown account, from 01's typed `AccountAdminError::NotFound` in `begin_deletion`; the CLI answers `not_found`.
 
 ## Change Log
 
@@ -89,3 +90,4 @@ A user's own account view and the request that starts account deletion. The requ
 | 1.1.0 | 2026-11-07 | Confirmation value and comparison fixed; `request_as_operator` added (proposed; frozen when its `contracts` change task is accepted) (AZ-3814) | spike AZ-3814 |
 | 1.2.0 | 2026-11-14 | Implemented: `view` from `AccountAdmin::profile`, `QuotaAdmin::view`, `TreeReader::root_node`; `request_as_operator` in `contracts` (CC-2); audit row and wire-error table; open point 3 resolved, 4 carries a proposal, 5 added | AZ-3819 |
 | 1.3.0 | 2026-11-14 | Last-admin guard in the `request` and `request_as_operator` transaction (`lock_active_admins` first, then `begin_deletion`); IT-07-3, IT-07-5 | AZ-3818 |
+| 1.4.0 | 2026-11-18 | `DeletionError::NotFound` on `request_as_operator` (open point 5 resolved, owner decision 2026-11-18). Additive variant | cumulative review 79-85 |

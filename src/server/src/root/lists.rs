@@ -8,6 +8,7 @@ use contracts::{AccountLifecycleHook, BlobOwnerCleanup, CommitEffect, DoctorChec
 use media_api::{DerivedJanitor, JobReaper, MediaEnqueueEffect};
 use sc_audit::AuditWriter;
 use sc_clock::Clock;
+use sc_config::ConfigError;
 use sc_db::{Db, DbConfig};
 use sc_observability::{HealthContributor, Metrics, ReadinessCheck};
 use sunnycloud_admin::DeletionPurger;
@@ -15,7 +16,9 @@ use sunnycloud_blobstore::{
     BlobHealthContributor, BlobstoreConfig, GcSweeper, KeyDoctorCheck, OrphanSweeper,
     RetentionCheck, ScrubJanitor, VolumeCheck,
 };
-use sunnycloud_identity::{IdentityConfig, IdentityProvidersCheck, IdentitySetupCheck};
+use sunnycloud_identity::{
+    IdentityConfig, IdentityError, IdentityProvidersCheck, IdentitySetupCheck,
+};
 use sunnycloud_transfer::{IdleFlush, ReceiptJanitor, SessionReaper};
 use sunnycloud_tree::TreeJanitor;
 
@@ -67,7 +70,8 @@ pub struct Janitors(pub Vec<Scheduled>);
 /// What 07's health aggregation runs: 04, then 08.
 pub struct HealthContributors(pub Vec<Arc<dyn HealthContributor>>);
 
-/// The owners' doctor checks: 04, then 08.
+/// The owners' doctor checks: the database, 04 (key, volume, retention), the missing-blobs report, quota
+/// drift, 08, then 01 (providers, setup).
 pub struct DoctorChecks(pub Vec<Arc<dyn DoctorCheck>>);
 
 /// The `pre-flight` checks only, built from settings with no database: `doctor --pre-flight` runs before the
@@ -80,7 +84,12 @@ fn providers_check(
     clock: Arc<dyn Clock>,
 ) -> Result<Arc<dyn DoctorCheck>, CliError> {
     let check = IdentityProvidersCheck::new(clock, &IdentityConfig::from_settings(settings))
-        .map_err(|error| failed("the providers check", error))?;
+        .map_err(|error| match error {
+            // A key that passed `sc_config` but not the provider build (an issuer that is no URL) is a
+            // configuration problem, so doctor reports it as a finding instead of aborting.
+            IdentityError::Config(problems) => CliError::Config(ConfigError::Invalid(problems)),
+            other => failed("the providers check", other),
+        })?;
     Ok(Arc::new(check))
 }
 

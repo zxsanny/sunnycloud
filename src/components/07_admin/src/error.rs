@@ -20,6 +20,7 @@ pub fn deletion_error_code(error: &DeletionError) -> Option<ErrorCode> {
         DeletionError::Forbidden => Some(ErrorCode::Forbidden),
         DeletionError::LastAdmin => Some(ErrorCode::LastAdmin),
         DeletionError::ConfirmationMismatch => None,
+        DeletionError::NotFound => Some(ErrorCode::NotFound),
         DeletionError::Unexpected(_) => Some(ErrorCode::Internal),
     }
 }

@@ -8,6 +8,9 @@ use crate::common::{Fault, Page};
 
 #[derive(Debug, Error)]
 pub enum AccountAdminError {
+    /// No account row with that id (`set_role`, `set_state`, `begin_deletion`).
+    #[error("not found")]
+    NotFound,
     #[error("unexpected failure")]
     Unexpected(#[source] Fault),
 }

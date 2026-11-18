@@ -173,6 +173,7 @@ fn service_rows(id: CorrelationId) -> Vec<Row> {
         Code(ErrorCode::Forbidden) => DeletionError::Forbidden,
         Code(ErrorCode::LastAdmin) => DeletionError::LastAdmin,
         Field("confirmation") => DeletionError::ConfirmationMismatch,
+        Code(ErrorCode::NotFound) => DeletionError::NotFound,
         Fault => DeletionError::Unexpected(fault()),
         Fault => ThumbnailStateError::Unexpected(fault()),
         Code(ErrorCode::ThumbnailNotReady) => DerivedError::NotReady,

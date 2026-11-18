@@ -272,6 +272,52 @@ fn deleting_the_last_admin_exits_2_with_last_admin() {
 }
 
 #[test]
+fn deleting_an_unknown_account_exits_2_with_not_found() {
+    // Arrange
+    let deleter = deleter(|| Err(DeletionError::NotFound));
+    let account = Uuid::from_u128(9).to_string();
+
+    // Act
+    let result = run_delete(
+        &deleter,
+        &["--json", "admin", "user", "delete", &account, "--yes"],
+    );
+
+    // Assert
+    assert_eq!(result.exit, 2);
+    let envelope: Value = serde_json::from_str(&result.stdout).expect("envelope");
+    assert_eq!(envelope["code"], "not_found");
+}
+
+#[test]
+fn an_unexpected_deletion_failure_exits_2_as_internal_without_its_cause() {
+    // Arrange
+    let deleter = deleter(|| Err(DeletionError::Unexpected("planted cause".into())));
+    let account = Uuid::from_u128(9).to_string();
+
+    // Act
+    let result = run_delete(
+        &deleter,
+        &["--json", "admin", "user", "delete", &account, "--yes"],
+    );
+
+    // Assert
+    assert_eq!(result.exit, 2);
+    let envelope: Value = serde_json::from_str(&result.stdout).expect("envelope");
+    assert_eq!(envelope["code"], "internal");
+    assert!(
+        !result.stdout.contains("planted cause"),
+        "{}",
+        result.stdout
+    );
+    assert!(
+        result.log.iter().any(|line| line.contains("planted cause")),
+        "the cause is logged: {:?}",
+        result.log
+    );
+}
+
+#[test]
 fn delete_of_a_name_that_is_not_an_account_id_exits_3_with_no_call() {
     // Arrange
     let deleter = deleter(|| Ok(DeletionAccepted { deadline: DEADLINE }));

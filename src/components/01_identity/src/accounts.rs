@@ -61,7 +61,7 @@ impl IdentityAccounts {
         account_repo::lock(tx, account)
             .await
             .map_err(unexpected)?
-            .ok_or_else(|| unexpected(IdentityError::AccountNotFound))
+            .ok_or(AccountAdminError::NotFound)
     }
 }
 
@@ -200,7 +200,7 @@ impl AccountAdmin for IdentityAccounts {
         {
             Ok(())
         } else {
-            Err(unexpected(IdentityError::AccountNotFound))
+            Err(AccountAdminError::NotFound)
         }
     }
 

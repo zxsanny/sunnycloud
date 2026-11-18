@@ -161,7 +161,10 @@ async fn set_state_is_refused_for_a_deleting_account_and_for_an_unknown_one() {
         "{on_deleting:?}"
     );
     assert!(
-        matches!(on_unknown, Err(RunError::Closure(_))),
+        matches!(
+            on_unknown,
+            Err(RunError::Closure(AccountAdminError::NotFound))
+        ),
         "{on_unknown:?}"
     );
     assert_eq!(state_of(&mut f.conn, account).await, "deleting");

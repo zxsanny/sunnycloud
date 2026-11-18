@@ -3,7 +3,7 @@
 
 mod support;
 
-use contracts::{AccountAdmin, AccountFilter, AccountStatus, Page, Role};
+use contracts::{AccountAdmin, AccountAdminError, AccountFilter, AccountStatus, Page, Role};
 use sc_db::{RunError, Scope};
 use sqlx::PgConnection;
 use support::accounts::{accounts, fixture, owned_rows, seed};
@@ -204,7 +204,7 @@ async fn role_change_commits_and_the_listing_shows_role_state_and_last_login() {
 }
 
 #[tokio::test]
-async fn set_role_of_an_unknown_account_is_an_error() {
+async fn set_role_of_an_unknown_account_is_not_found() {
     // Arrange
     let f = fixture().await;
     let admin = accounts(&f.harness);
@@ -220,7 +220,10 @@ async fn set_role_of_an_unknown_account_is_an_error() {
         .await;
 
     // Assert
-    assert!(matches!(result, Err(RunError::Closure(_))), "{result:?}");
+    assert!(
+        matches!(result, Err(RunError::Closure(AccountAdminError::NotFound))),
+        "{result:?}"
+    );
     drop(admin);
     f.finish().await;
 }

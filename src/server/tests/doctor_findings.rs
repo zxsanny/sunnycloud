@@ -264,3 +264,22 @@ async fn each_revision_whose_blob_file_is_gone_is_a_fail_with_path_account_and_r
     }
     root.finish().await;
 }
+
+#[test]
+fn an_oidc_issuer_that_is_no_url_is_one_configuration_finding_not_an_abort() {
+    // Arrange: `sc_config` only checks that the issuer is present; 01's provider build refuses the value.
+    let mut setup = Setup::valid(0);
+    local_oidc(&mut setup);
+    setup.set("oidc_issuer", "not a url");
+
+    // Act
+    let run = doctor(&setup, &["--pre-flight"]);
+
+    // Assert
+    assert_eq!(run.code, Some(2), "{}", run.stderr);
+    let all = findings(&run);
+    let config = of(&all, "configuration");
+    assert_eq!(config.len(), 1, "{all:?}");
+    assert_eq!(config[0].1, "fail");
+    assert!(config[0].2.contains("issuer"), "{all:?}");
+}

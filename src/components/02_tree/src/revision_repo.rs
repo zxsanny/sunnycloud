@@ -159,7 +159,7 @@ pub(crate) async fn page(
         .collect()
 }
 
-/// One entry per blob id that a revision row holds; an unknown id has none.
+/// One entry per revision row that holds one of the blob ids; an unknown id has none.
 pub(crate) async fn describe_blob_revisions(
     tx: &mut DbTx,
     blob_ids: &[Uuid],
@@ -182,6 +182,7 @@ pub(crate) async fn describe_blob_revisions(
         .collect()
 }
 
+/// One entry per blob id that a revision row holds; an unknown id has none.
 pub(crate) async fn describe_blobs(
     tx: &mut DbTx,
     blob_ids: &[Uuid],

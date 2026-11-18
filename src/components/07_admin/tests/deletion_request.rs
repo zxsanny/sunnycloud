@@ -258,6 +258,23 @@ async fn the_right_confirmation_marks_deleting_ends_access_and_keeps_the_data() 
 }
 
 #[tokio::test]
+async fn the_operator_request_for_an_unknown_account_is_not_found_and_writes_nothing() {
+    // Arrange
+    let world = World::new().await;
+    let mut conn = world.fixture().await;
+    let unknown = Uuid::from_u128(0xdead_beef);
+
+    // Act
+    let result = world.deletion.request_as_operator(unknown).await;
+
+    // Assert
+    assert!(matches!(result, Err(DeletionError::NotFound)), "{result:?}");
+    assert!(audit_rows(&mut conn).await.is_empty());
+    drop(conn);
+    world.finish().await;
+}
+
+#[tokio::test]
 async fn the_operator_request_needs_no_confirmation_and_reaches_the_same_end_state() {
     // Arrange
     let world = World::new().await;

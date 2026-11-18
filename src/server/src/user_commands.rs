@@ -6,6 +6,7 @@ use contracts::{
     DeletionError, Page, Role,
 };
 use sc_error::ErrorCode;
+use sc_observability::log_error;
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
@@ -114,13 +115,26 @@ pub(crate) fn failure(error: AdminError) -> CliError {
     }
 }
 
+/// `Forbidden` and `ConfirmationMismatch` belong to the session path and cannot come from `request_as_operator`.
 fn deletion_failure(error: DeletionError) -> CliError {
     match error {
         DeletionError::LastAdmin => failure(AdminError::LastAdmin),
-        other => CliError::Operator {
-            code: ErrorCode::Internal.as_str(),
-            detail: format!("deletion: {other}"),
-            exit: Exit::Failed,
-        },
+        DeletionError::NotFound => failure(AdminError::NotFound),
+        DeletionError::Unexpected(fault) => {
+            log_error!("account deletion failed", err = fault.as_ref());
+            internal_deletion_failure()
+        }
+        other @ (DeletionError::Forbidden | DeletionError::ConfirmationMismatch) => {
+            log_error!("account deletion refused", err = &other);
+            internal_deletion_failure()
+        }
+    }
+}
+
+fn internal_deletion_failure() -> CliError {
+    CliError::Operator {
+        code: ErrorCode::Internal.as_str(),
+        detail: "the account deletion failed".to_owned(),
+        exit: Exit::Failed,
     }
 }

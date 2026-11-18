@@ -112,6 +112,9 @@ pub enum DeletionError {
     LastAdmin,
     #[error("confirmation mismatch")]
     ConfirmationMismatch,
+    /// `request_as_operator` only: no account with that id.
+    #[error("not found")]
+    NotFound,
     #[error("unexpected failure")]
     Unexpected(#[source] Fault),
 }

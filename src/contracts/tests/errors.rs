@@ -84,6 +84,7 @@ fn deletion(e: &DeletionError) -> &'static str {
         DeletionError::Forbidden => "Forbidden",
         DeletionError::LastAdmin => "LastAdmin",
         DeletionError::ConfirmationMismatch => "ConfirmationMismatch",
+        DeletionError::NotFound => "NotFound",
         DeletionError::Unexpected(_) => "Unexpected",
     }
 }
@@ -126,13 +127,17 @@ fn operator(e: &OperatorIdentityError) -> &'static str {
     }
 }
 
-fn only_unexpected() -> [&'static str; 3] {
+fn account_admin(e: &AccountAdminError) -> &'static str {
+    match e {
+        AccountAdminError::NotFound => "NotFound",
+        AccountAdminError::Unexpected(_) => "Unexpected",
+    }
+}
+
+fn only_unexpected() -> [&'static str; 2] {
     [
         match RevalidatorError::Unexpected(fault()) {
             RevalidatorError::Unexpected(_) => "Unexpected",
-        },
-        match AccountAdminError::Unexpected(fault()) {
-            AccountAdminError::Unexpected(_) => "Unexpected",
         },
         match AccountServiceError::Unexpected(fault()) {
             AccountServiceError::Unexpected(_) => "Unexpected",
@@ -259,6 +264,7 @@ fn admin_and_quota_variants_match_the_contract_tables() {
         deletion(&DeletionError::Forbidden),
         deletion(&DeletionError::LastAdmin),
         deletion(&DeletionError::ConfirmationMismatch),
+        deletion(&DeletionError::NotFound),
         deletion(&DeletionError::Unexpected(fault())),
     ];
     let seed_names = [
@@ -296,6 +302,7 @@ fn admin_and_quota_variants_match_the_contract_tables() {
             "Forbidden",
             "LastAdmin",
             "ConfirmationMismatch",
+            "NotFound",
             "Unexpected"
         ]
     );
@@ -305,7 +312,14 @@ fn admin_and_quota_variants_match_the_contract_tables() {
         ["QuotaExceeded", "InvariantViolation", "Unexpected"]
     );
     assert_eq!(quota_names, ["NotFound", "InvalidLimit", "Unexpected"]);
-    assert_eq!(only_unexpected(), ["Unexpected"; 3]);
+    assert_eq!(only_unexpected(), ["Unexpected"; 2]);
+    assert_eq!(
+        [
+            account_admin(&AccountAdminError::NotFound),
+            account_admin(&AccountAdminError::Unexpected(fault())),
+        ],
+        ["NotFound", "Unexpected"]
+    );
 }
 
 #[test]

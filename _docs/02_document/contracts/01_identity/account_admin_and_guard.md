@@ -18,9 +18,9 @@ The account operations 07 combines with its own policy checks in one transaction
 | `AccountAdmin::list_accounts` | `(filter, paging) -> [AccountInfo{id, display_name, role, state, last_login?, deletion_requested_at?}]` | none | async, own short transaction |
 | `AccountAdmin::profile` | `(AccountId) -> AccountProfile{display_name, identities: Vec<IdentityView{provider, email?}>}` | `Unexpected` (also an unknown account) | async, own short read-only transaction in the account's scope |
 | `AccountAdmin::lock_active_admins` | `(&mut DbTx) -> Vec<AccountId>` | `Unexpected` (DB errors; a second lost lock race) | async, row locks for update on active admins, ordered by id |
-| `AccountAdmin::set_role` | `(&mut DbTx, AccountId, Role) -> ()` | typed (variants defined in `contracts`) | async, caller's transaction |
+| `AccountAdmin::set_role` | `(&mut DbTx, AccountId, Role) -> ()` | typed: `NotFound` (no such account; also `set_state`), `Unexpected` | async, caller's transaction |
 | `AccountAdmin::set_state` | `(&mut DbTx, AccountId, active \| disabled) -> ()` | typed | async, caller's transaction |
-| `AccountAdmin::begin_deletion` | `(&mut DbTx, AccountId) -> ()` | typed | async, row lock for update |
+| `AccountAdmin::begin_deletion` | `(&mut DbTx, AccountId) -> ()` | typed: `NotFound` (no such account), `Unexpected` | async, row lock for update |
 | `AccountAdmin::finalize_deletion` | `(&mut DbTx, AccountId) -> ()` | typed | async, caller's transaction |
 | `AccountAdmin::lock_deleting` | `(&mut DbTx, AccountId) -> bool` | `Unexpected` (DB errors) | async, caller's transaction; row lock `FOR NO KEY UPDATE SKIP LOCKED`, never waits |
 | `AccountGuard::ensure_active` | `(&mut DbTx, AccountId) -> ()` | `AccountNotActive` | async, shared row lock |
@@ -70,3 +70,4 @@ The account operations 07 combines with its own policy checks in one transaction
 | 1.1.0 | 2026-11-14 | `profile(account)`: display name and linked identities for 07's account view (owner decision 2026-11-14; additive) | AZ-3819 |
 | 1.2.0 | 2026-11-14 | `lock_active_admins`: one retry of a lost lock race inside a savepoint (owner decision 2026-11-14, AZ-3818); no signature change | AZ-3818 |
 | 1.3.0 | 2026-11-14 | `lock_deleting(tx, account) -> bool`, the purger's claim with `FOR NO KEY UPDATE SKIP LOCKED` (CC-1, owner decision 2026-11-14); `AccountInfo.deletion_requested_at` in the listing. Additive | AZ-3820 |
+| 1.4.0 | 2026-11-18 | `AccountAdminError::NotFound` from `set_role`, `set_state` and `begin_deletion` for an unknown account (was `Unexpected`); owner decision 2026-11-18 for 07's operator deletion | cumulative review 79-85 |

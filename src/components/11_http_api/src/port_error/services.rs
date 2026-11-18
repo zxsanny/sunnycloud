@@ -54,6 +54,7 @@ impl PortError for DeletionError {
             Self::Forbidden => business(ErrorCode::Forbidden),
             Self::LastAdmin => business(ErrorCode::LastAdmin),
             Self::ConfirmationMismatch => invalid_field("confirmation", "mismatch"),
+            Self::NotFound => business(ErrorCode::NotFound),
             Self::Unexpected(source) => fault(source, request_id),
         }
     }
