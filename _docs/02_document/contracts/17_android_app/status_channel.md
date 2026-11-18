@@ -1,7 +1,7 @@
 # Contract: status_channel — native-to-Flutter status events and commands
 
 **Component**: 17_android_app (Kotlin side and Dart side of the Method/EventChannel; 18 implements the same channel in Swift)
-**Producer task**: E-27/c16 — `_docs/02_tasks/todo/B13-16_flutter_channel_bridge.md`; keys assigned at Step 4
+**Producer task**: E-27/c16 — `_docs/02_tasks/done/AZ-4000_flutter_channel_bridge.md`; keys assigned at Step 4
 **Consumer tasks**: E-27/c15 (Flutter screens), E-27/c17 (help and diagnostics), E-27/c12 (user-CA warning); E-28/c08 (iOS Flutter UI with the Swift channel, B09-28) and the other E-28 Swift tasks that send status; pipelines AZ-3672, AZ-3673, AZ-3674
 **Version**: 1.0.0
 **Status**: draft
@@ -75,6 +75,18 @@ Each event is a full snapshot, sent on every change and once when Dart subscribe
 | no-token | sign in and a run with sentinel tokens; capture every event and command result | 0 sentinel matches | IT-17-19, ST-17-1 |
 | typed-errors | `setServer("http://...")` | `HttpsRequired` | IT-17-6 |
 | sum-rule | any event | counts add up | |
+
+## As built (E-27/c16, AZ-4000)
+
+EventChannel `org.sunnycloud.backup/status`; MethodChannel `org.sunnycloud.backup/commands`. Arguments are maps with the names of the tables above; results are maps (`{trust}`, the settings map). An error is a `PlatformException` whose code is the error name; `UpgradeRequired` carries the server text in `message` and `details.message`; `Invalid` carries `details.field`.
+
+- Each event is a full snapshot read from `BackupCore.status()` on the main thread at send time, on subscribe and on every `StatusChannel.publish()`. The core has no change callback, so whoever changes status (sign-in c08, run entry points c10/c11, battery settings return c17) calls `publish()`.
+- Optional fields (`server_url`, `server_trust`, `device_label`, `paused`, `last_error`) are sent as null when unset. `paused` uses the PascalCase `PauseReason` name (`QuotaExceeded`); `access_level` and `server_trust` are lowercase (`full`, `user_added`). Counts are integers. `settings.buckets` is a list of selected album names, or null for every album (the default).
+- Implemented commands: `setServer` (errors also `InvalidServerUrl` and `Invalid{field=url}`) and `updateSettings`. `signIn`, `signOut` (c08), `startLargeBackup` (c11), `requestPhotoAccess` (c09/c15), `requestBatteryExemption` and `exportDiagnostics` (c17) answer `notImplemented` until their owners add the native side and the matching Dart method.
+- A failed status read arrives as an error event with the code `CheckpointUnavailable` (or `Unexpected`). An unexpected native failure reaches Dart as `Unexpected` with no message; the cause stays in the device log.
+- `signed_in`, `device_label` and `running` come from the `NativeState` seam and are fixed `false`, `null`, `false` until c08 and c10; `battery_exempt` is read from `PowerManager.isIgnoringBatteryOptimizations`.
+- No-token proof: a reflection check over the wire field and command names, a seeded token field that must fail it, a sentinel scan of every sent payload, and a Dart source scan; a mutation (an error carrying the exception text) failed two tests.
+- Open point 2 answered: user settings live natively in `settings.properties` in the app-private files directory, not in the checkpoint DB. Open point 5 (`buckets` null versus the mockup's default of Camera and Screenshots) is an owner decision.
 
 ## Open points
 
