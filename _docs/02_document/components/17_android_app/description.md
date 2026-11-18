@@ -106,6 +106,26 @@ Hash saved after hashing, so 10 forced kills re-hash at most 1% of 50,000 assets
 
 **Native library**: one `.so` per ABI containing `mobile_backup` + 13 (+ 19 in v1.2) with UniFFI exports; built with NDK r28+ for 16 KB page alignment (CI alignment check), JNA at least 5.17.0. Cancellation is manual via `cancel()`.
 
+**Native library — device spike record (AZ-3985, 2026-11-18, x86_64 emulators; the phone leg is `NOT-RUN(HW-DEVICE)`)**:
+
+| Item | Value |
+|---|---|
+| NDK | r28.2 (28.2.13676358), clang wrappers at API 30, `minSdk 30`, `compileSdk`/`targetSdk` 35; rustc 1.97.1 (the repository pin) |
+| ABIs built | `aarch64-linux-android` (arm64-v8a), `armv7-linux-androideabi` (armeabi-v7a), `x86_64-linux-android` (x86_64). Run on device: x86_64 only. arm64-v8a and armeabi-v7a were built and alignment-checked, not run |
+| 16 KB link setting | NDK r28 links with 16 KB alignment by default (a build with no flag gave `0x4000`); keep `-C link-arg=-Wl,-z,max-page-size=16384` in `.cargo/config.toml` so a toolchain change cannot silently drop it. A control build with `max-page-size=4096` gives `0x1000` |
+| Alignment check | every `LOAD` segment of every packaged `.so`, ours and `libjnidispatch.so`, must be `>= 0x4000` (`llvm-readelf -lW`, `awk '$1=="LOAD"{print $NF}'`), plus `zipalign -c -P 16 -v 4 app.apk` (`extractNativeLibs=false`). The check passes the three built libraries and fails the 4 KB control |
+| Versions | UniFFI 0.32.2 (Kotlin bindings, JNA), JNA 5.17.0 (`@aar`), jni 0.22.4, rusqlite 0.39.0 bundled, WorkManager 2.10.2, AGP 9.1.0, Gradle 9.3.1, JDK 26 |
+| Library size, packaged (probe: one export, SQLite, JNI init; the real library will be larger) | arm64-v8a 1.64 MB, armeabi-v7a 1.37 MB, x86_64 1.69 MB (`opt-level=z`, `lto`, `panic=abort`) |
+| Load time, first UniFFI call from the UI thread after `System.loadLibrary` (cold process, x86_64 emulator, 5 starts) | 16 KB image 33-50 ms (median 46), 4 KB image 35-41 ms (median 39) |
+| Images | Android 15 `google_apis_ps16k` x86_64 (`getconf PAGESIZE` 16384) and Android 14 `google_apis` x86_64 (4096) |
+| Load and call | `ping` returned 42 from the UI thread and from a WorkManager worker (`DefaultDispatcher-worker-1`) on both images |
+| 4 KB library on the 16 KB image | `UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH/DT_GNU_HASH` at `System.loadLibrary` and the app dies; the same library loads on the 4 KB image. The message does not mention alignment, so the CI alignment check is the diagnostic, not the device error |
+| Forced kills (AC-2) | `kill -9` of the app process, 20 times at random moments (0.1-3 s after the worker's write loop started, which is inside a library call), restarted each time, on each image. Every restart loaded the library, opened the WAL file (`synchronous=FULL`, one commit per row), passed `PRAGMA integrity_check` (`ok`), and `max(id) >= last acknowledged id` with no gaps (43,499 rows on the 16 KB image and 45,481 on the 4 KB image at the end). The acknowledgement is an fsynced line written after the commit |
+| Process model (AC-3) | UI and worker share one process (`org.probe`, one pid in `ps` and in both log lines). The merged manifest holds no `android:process` attribute, and WorkManager's `SystemJobService`, receivers and the worker run in the app process by default. Rule for the real app: never set `android:process` on the application, the activity or a WorkManager component, and never use `RemoteWorkManager`; the in-process run mutex then covers the UI path and the worker (AZ-3673 risk 1) |
+| Platform verifier init (open point 1) | The mechanism already decided (`TlsTrustBridge.nativeInit(Context)` as an exported JNI function, `sync-core/src/ffi/android.rs`) works in the same `.so` that serves UniFFI through JNA: `System.loadLibrary` plus `nativeInit(applicationContext)` stored the `JavaVM` and a global reference to the context; a later UniFFI call on a coroutine worker thread attached to that VM, read `getPackageName()` and loaded an app class through the context's class loader. Hand-off to E-23/c15: keep the JNI export, call it in the application start-up path and again at the start of every worker (a worker can start in a process the UI never touched) |
+
+Follow-ups: E-27/c05 and c18 take the recipe above (targets, linker wrappers at API 30, explicit page-size flag, the alignment check as a CI step on every packaged `.so`); E-27/c12 keeps `nativeInit` per worker start; E-28/c03 is unaffected by Android settings. Not proven here: arm64-v8a and armeabi-v7a at run time and a physical Pixel (see `_docs/_process_leftovers/2026-11-18_az-3985-phone-leg.md`).
+
 **Key dependencies**: Flutter, UniFFI 0.32.2, AndroidX WorkManager, rustls-platform-verifier, rusqlite (bundled), `photo_manager` is not used for background work.
 
 **Error handling**: typed `BackupOutcome` and `PauseReason`; transient network errors back off inside the run; `TokenRejected` clears the token and shows sign-in. No empty catch in Kotlin or Dart; failures reach the status screen with a correlation id.
@@ -150,7 +170,7 @@ FT-P-29, FT-P-30, FT-P-32, FT-P-34, FT-P-35, FT-N-26, FT-N-36, NFT-PERF-12, NFT-
 
 ## 15. Risks
 0. Default chosen at Step 5 gap pass: `BackupCore` gains `set_server(url) -> ServerCheck` (https scheme, reachability and `server-info`, AC-54) and `BackupStatus` gains `location_redacted: bool`.
-1. Single-library UniFFI build, 16 KB alignment and forced-kill behaviour need the Android device spike.
+1. Single-library UniFFI build, 16 KB alignment and forced-kill behaviour: proven on x86_64 emulators (16 KB and 4 KB images) by the device spike AZ-3985, record in section 5; the physical-phone leg and the arm ABIs at run time are `NOT-RUN(HW-DEVICE)` and remain a release-gate check.
 2. Play Store permission declarations (checked by spike AZ-3986 on 2026-11-11, record in section 16). Photo/video access (`READ_MEDIA_IMAGES`/`READ_MEDIA_VIDEO`) needs a Play Console declaration and Google's approval of it is unverified: the policy pages name gallery-style apps and never name backup apps, so refusal is possible until the pre-review runs. `ACCESS_MEDIA_LOCATION`: no Play restriction found; the Data safety form must disclose photos, videos and location. Direct battery-exemption request: not established for a backup app, treated as refused; the app opens the system battery-optimisation settings instead. User-initiated data-transfer job (Android 14+): allowed, no Play declaration found. `dataSync` foreground service (Android 11 to 13): allowed with a Play Console foreground-service declaration whose video shows the user starting the transfer. Always-on foreground service for automatic backup: refused by the declaration rules.
 3. Boundary: `mobile_backup` and its checkpoint DB belong to this component; 13 must not duplicate them.
 4. A kill between the server's refresh rotation and the vault write, followed by a restart later than the 30 s reuse grace, forces a new sign-in; the persist-before-use order keeps the window to a lost response.
