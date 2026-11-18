@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Installs pinned CI tools into $TOOLS_BIN (default: ${CARGO_HOME:-~/.cargo}/bin, which the cargo cache restores).
-# usage: install-tools.sh TOOL...      TOOL: cargo-deny cargo-audit cargo-llvm-cov sqlx-cli gitleaks
+# usage: install-tools.sh TOOL...      TOOL: cargo-deny cargo-audit cargo-llvm-cov sqlx-cli gitleaks pg-client-18
 # Downloaded archives are verified against a pinned SHA-256 (also published by the upstream release); cargo
 # installs use --locked and an exact version. Linux x86_64 only. To bump a tool, change its version and checksum here.
+# pg-client-18 is the PostgreSQL 18 client (pg_dump, pg_restore, psql) from the PGDG apt repository at an exact
+# package version, installed with apt (sudo when not root) into /usr/lib/postgresql/18/bin; the repository key is
+# accepted only with the pinned fingerprint, and apt verifies the packages against the signed index. Ubuntu only.
 set -euo pipefail
 
 tag="[install-tools]"
@@ -16,6 +19,10 @@ GITLEAKS_VERSION=8.30.1
 GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 CARGO_AUDIT_VERSION=0.22.2
 SQLX_CLI_VERSION=0.9.0
+PG_CLIENT_VERSION=18.7-1.pgdg24.04+2
+PGDG_KEY_URL=https://www.postgresql.org/media/keys/ACCC4CF8.asc
+PGDG_KEY_FINGERPRINT=B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
+PG_CLIENT_BIN=/usr/lib/postgresql/18/bin
 
 fail() { echo "$tag FAILED: $*" >&2; exit 1; }
 
@@ -38,6 +45,35 @@ installed_version() {
   local exe="$bin_dir/$1"
   shift
   if [ -x "$exe" ]; then "$exe" "$@"; fi
+}
+
+# as_root CMD...  -> runs CMD as root, through sudo when this shell is not root
+as_root() {
+  if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi
+}
+
+# The PGDG source with the fingerprint-checked key, then the exact client and libpq versions.
+install_pg_client() {
+  local work codename release keyring=/usr/share/keyrings/pgdg-archive.gpg fingerprints
+  codename="$(sed -n 's/^VERSION_CODENAME=//p' /etc/os-release)"
+  release="$(sed -n 's/^VERSION_ID=//p' /etc/os-release | tr -d '"')"
+  [ -n "$codename" ] && [ -n "$release" ] || fail "pg-client-18: no VERSION_CODENAME or VERSION_ID in /etc/os-release"
+  case "$PG_CLIENT_VERSION" in
+    *"pgdg$release"*) ;;
+    *) fail "pg-client-18: $PG_CLIENT_VERSION is pinned for another release than $codename" ;;
+  esac
+  work="$(mktemp -d)"
+  curl --fail --show-error --location --retry 3 --no-progress-meter --output "$work/key.asc" "$PGDG_KEY_URL"
+  fingerprints="$(gpg --show-keys --with-colons "$work/key.asc" | awk -F: '$1 == "fpr" { print $10 }')"
+  [ "$fingerprints" = "$PGDG_KEY_FINGERPRINT" ] || fail "PGDG key fingerprint '$fingerprints' is not the pinned $PGDG_KEY_FINGERPRINT"
+  gpg --dearmor --output "$work/pgdg.gpg" "$work/key.asc"
+  as_root install -m 0644 "$work/pgdg.gpg" "$keyring"
+  echo "deb [signed-by=$keyring] https://apt.postgresql.org/pub/repos/apt $codename-pgdg main" > "$work/pgdg.list"
+  as_root install -m 0644 "$work/pgdg.list" /etc/apt/sources.list.d/pgdg.list
+  rm -rf "$work"
+  as_root apt-get update
+  as_root env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+    "postgresql-client-18=$PG_CLIENT_VERSION" "libpq5=$PG_CLIENT_VERSION"
 }
 
 install_tool() {
@@ -69,7 +105,15 @@ install_tool() {
       if [ "$have" = "sqlx-cli $SQLX_CLI_VERSION" ]; then echo "$tag $tool $SQLX_CLI_VERSION already installed"; return; fi
       cargo install sqlx-cli --locked --version "$SQLX_CLI_VERSION" --no-default-features --features rustls,postgres --root "$(dirname "$bin_dir")"
       ;;
-    *) fail "unknown tool '$tool' (cargo-deny cargo-audit cargo-llvm-cov sqlx-cli gitleaks)" ;;
+    pg-client-18)
+      have="$(dpkg-query --show --showformat='${Version}' postgresql-client-18 || true)"
+      if [ "$have" = "$PG_CLIENT_VERSION" ]; then echo "$tag $tool $PG_CLIENT_VERSION already installed"; return; fi
+      install_pg_client
+      "$PG_CLIENT_BIN/pg_dump" --version
+      echo "$tag $tool $PG_CLIENT_VERSION in $PG_CLIENT_BIN (SC_PG_TOOLS)"
+      return
+      ;;
+    *) fail "unknown tool '$tool' (cargo-deny cargo-audit cargo-llvm-cov sqlx-cli gitleaks pg-client-18)" ;;
   esac
   echo "$tag $tool installed"
 }

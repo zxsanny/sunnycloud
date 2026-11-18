@@ -7,7 +7,8 @@
 //! `Dur` (`5m`), `ListenAddr`, `List` (comma separated), `Environment`, `Sec` (secret text).
 //! `Opt<T>` marks a key that may be absent; a key whose row names no default and is not `Opt`
 //! is required. Specs: `dflt("<default text>", readers)` or `unset(readers)`, then optionally
-//! `.range(min, max)`, `.one_of(&[..])`, `.fixed()`.
+//! `.range(min, max)`, `.one_of(&[..])`, `.fixed()`. A row may carry `#[cfg(..)]` attributes: a
+//! key of a feature build only.
 
 use crate::bind::Binder;
 use crate::spec::readers::{A, ALL, AW, C, R, W, WR};
@@ -33,23 +34,23 @@ const fn unset(read_by: Readers) -> KeySpec {
 const LOG_LEVELS: &[&str] = &["error", "warn", "info", "debug", "trace"];
 
 macro_rules! settings_table {
-    ($( $key:ident : $ty:ty = $spec:expr; )*) => {
+    ($( $(#[$attr:meta])* $key:ident : $ty:ty = $spec:expr; )*) => {
         /// Every key of the table as a typed field. A binary binds and validates the fields whose
         /// row lists it; the other fields hold their default, or a neutral value without one.
         #[derive(Debug)]
         pub struct Settings {
-            $( pub $key: $ty, )*
+            $( $(#[$attr])* pub $key: $ty, )*
         }
 
         /// The key table, in documentation order.
         pub static TABLE: &[KeySpec] = &[
-            $( $spec.named::<$ty>(stringify!($key)), )*
+            $( $(#[$attr])* $spec.named::<$ty>(stringify!($key)), )*
         ];
 
         impl Settings {
             pub(crate) fn bind(binder: &mut Binder<'_>) -> Self {
                 Settings {
-                    $( $key: binder.bind::<$ty>(&$spec.named::<$ty>(stringify!($key))), )*
+                    $( $(#[$attr])* $key: binder.bind::<$ty>(&$spec.named::<$ty>(stringify!($key))), )*
                 }
             }
         }
@@ -64,6 +65,10 @@ settings_table! {
     public_addr: ListenAddr = dflt("0.0.0.0:8080", A);
     internal_addr: ListenAddr = dflt("0.0.0.0:8081", A);
     ops_addr: ListenAddr = dflt("0.0.0.0:9090", A);
+    // The `:9091` listener of `POST /test/clock` (`http_server.md` open point 4): a row of `-test` builds only, so
+    // a release binary refuses the key as unknown.
+    #[cfg(feature = "test-clock")]
+    test_clock_addr: ListenAddr = dflt("0.0.0.0:9091", A);
     // `log` and `log_level` are also read by the worker (AZ-3868): its logging setup takes the same two keys.
     log: Text = dflt("text", AW).one_of(&["text", "json"]);
     log_level: Text = dflt("info", AW).one_of(LOG_LEVELS);

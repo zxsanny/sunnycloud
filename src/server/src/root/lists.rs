@@ -23,13 +23,14 @@ use sunnycloud_transfer::{IdleFlush, ReceiptJanitor, SessionReaper};
 use sunnycloud_tree::TreeJanitor;
 
 use super::base::{DatabaseReady, Shutdown};
-use super::domain::{Admin, Identity, Quota, Sharing, Transfer, Tree};
+use super::domain::{Admin, Feed, Identity, Quota, Sharing, Transfer, Tree};
 use super::failed;
 use super::media::{Media, MediaPlanning};
 use super::storage::Blobstore;
 use crate::command_config::ServeSettings;
 use crate::context::{ContextBuilder, ServiceContext};
 use crate::database_check::DatabaseCheck;
+use crate::epoch_check::EpochCheck;
 use crate::error::CliError;
 use crate::janitor::{AuditRetentionJanitor, JanitorMetrics, Scheduled, Scheduler};
 use crate::missing_blobs_check::MissingBlobsReport;
@@ -70,8 +71,8 @@ pub struct Janitors(pub Vec<Scheduled>);
 /// What 07's health aggregation runs: 04, then 08.
 pub struct HealthContributors(pub Vec<Arc<dyn HealthContributor>>);
 
-/// The owners' doctor checks: the database, 04 (key, volume, retention), the missing-blobs report, quota
-/// drift, 08, then 01 (providers, setup).
+/// The owners' doctor checks: the database, 04 (key, volume, retention), the missing-blobs report, the epoch
+/// check, quota drift, 08, then 01 (providers, setup).
 pub struct DoctorChecks(pub Vec<Arc<dyn DoctorCheck>>);
 
 /// The `pre-flight` checks only, built from settings with no database: `doctor --pre-flight` runs before the
@@ -160,6 +161,7 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
             let db = Db::clone(&*services.get::<Db>().await?);
             let blobs = services.get::<Blobstore>().await?;
             let media = services.get::<Media>().await?;
+            let feed = services.get::<Feed>().await?;
             Ok(Arc::new(DoctorChecks(vec![
                 database,
                 Arc::new(KeyDoctorCheck::new(blobs.config.clone(), db.clone())),
@@ -169,6 +171,10 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
                     blobs.inventory.clone(),
                     tree.reader.clone(),
                     blobs.batch(),
+                )),
+                Arc::new(EpochCheck::new(
+                    feed.epoch_admin.clone(),
+                    blobs.inventory.clone(),
                 )),
                 Arc::new(QuotaDriftCheck::new(
                     identity.accounts.clone(),

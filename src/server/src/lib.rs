@@ -12,6 +12,7 @@ mod context;
 mod database_check;
 mod dispatch;
 mod doctor_command;
+mod epoch_check;
 mod error;
 mod exit;
 mod guard;

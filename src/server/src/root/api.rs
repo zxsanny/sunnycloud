@@ -1,5 +1,6 @@
 //! `ApiServices` of 11: one implementation of every port 11 calls, each the instance the builders made for every
-//! other consumer, plus the readiness list, the feed shutdown token, the metrics registry and the clock.
+//! other consumer, plus the readiness list, the feed shutdown token, the metrics registry and the clock (with
+//! feature `test-clock` also as the `OffsetClock` the clock routes move).
 
 use sc_clock::Clock;
 use sc_observability::Metrics;
@@ -60,5 +61,7 @@ pub async fn api_services(services: &ServiceContext) -> Result<ApiServices, CliE
         feed_shutdown: shutdown.feed.clone(),
         metrics: services.get::<Metrics>().await?,
         clock: services.get::<dyn Clock>().await?,
+        #[cfg(feature = "test-clock")]
+        offset_clock: services.get::<sc_clock::OffsetClock>().await?,
     })
 }

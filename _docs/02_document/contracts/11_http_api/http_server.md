@@ -3,9 +3,9 @@
 **Component**: 11_http_api (library `sunnycloud-http-api`, proposed)
 **Producer task**: E-21/c03 — `_docs/02_tasks/todo/B07-03_crate_skeleton_accept_loop.md` (contributors: E-21/c15 internal router and test-clock listener, E-21/c16 readiness list and ops listener, E-21/c17 shutdown semantics of `run`); keys assigned at Step 4
 **Consumer tasks**: E-22/c03 (composition root builds `ApiServices`), E-22/c04 (binds `HttpConfig`), E-22/c05 (`serve` calls `run` and owns the rest of the shutdown order), E-22/c15 (`openapi` and `healthcheck` commands); E-31 harness (Mode R); resolved at Step 4
-**Version**: 1.5.0
+**Version**: 1.5.1
 **Status**: draft
-**Last Updated**: 2026-11-11
+**Last Updated**: 2026-11-18
 
 ## Purpose
 
@@ -47,7 +47,7 @@ Error names are proposals of E-21/c03; they become final when that task is accep
 | trusted proxies | `trusted_proxies` | empty (default deny) |
 | internal listener address | `internal_addr` | `0.0.0.0:8081` |
 | ops listener address | `ops_addr` | `0.0.0.0:9090` |
-| test-clock listener address (feature `test-clock` only; the field does not exist in release builds) | not in the key table (Open point 4) | `0.0.0.0:9091` |
+| test-clock listener address (feature `test-clock` only; the field does not exist in release builds) | `test_clock_addr` (a row of `sc_config` feature `test-clock` only, so a release binary refuses `SUNNYCLOUD_TEST_CLOCK_ADDR` as unknown; Open point 4, closed) | `0.0.0.0:9091` |
 | public listener address | not in the key table (Open point 1) | `:8080` |
 | connection cap | `max_connections` | 4096 |
 | HTTP/1 header timeout | `h1_header_timeout` | 10s |
@@ -118,7 +118,7 @@ The clock of the grace starts at step 4. What 12 does after `run` returns (sched
 1. The public listener address (`:8080`) has no key in helper 01's table; `containerization.md` also says the ops address key "is still to be added" although helper 01 lists `ops_addr`. E-22/c04 and E-01 owner to add the public key.
 2. `ReadinessCheck` registry: E-21's interface lists a registry provided by 11, while `sc_observability` provides `ReadinessRegistry` and the ops router. This contract follows `sc_observability`: 11 receives the list and mounts the shared router; it adds no second registry.
 3. `AbuseLimiter`: 12 "injects it into 11 where it needs it"; no 11 behaviour in v1.0 needs it (11 only maps `RateLimited`), so it is not an `ApiServices` field.
-4. The test-clock listener address has no key in helper 01's table. `HttpConfig.test_clock_addr` is a field of test builds only; E-22/c04 and the E-01 owner to add the key (default `0.0.0.0:9091`, as the table above) and to set the field only under feature `test-clock`.
+4. Closed (AZ-4334, 2026-11-18): key `test_clock_addr` (default `0.0.0.0:9091`, reader api) exists only with `sc_config` feature `test-clock`, which the server's feature `test-clock` turns on together with 11's and `sc_clock`'s; 12 sets `HttpConfig.test_clock_addr` from it and gives 11 the one `OffsetClock` it registers as every component's `Clock`. Helper 01's key table still needs the row (owner of `01_helper_config.md`).
 
 5. The ops listener stops accepting at step 2 like the others, so after the signal `/readyz` answers 503 only on a connection that is still busy, and a probe on a new connection is refused. If operators want `/readyz` and `/metrics` scrapeable through the grace, the ops listener would have to stop last; the owner decides, nothing needs it today.
 
@@ -136,3 +136,4 @@ The clock of the grace starts at step 4. What 12 does after `run` returns (sched
 | 1.4.0 | 2026-11-11 | `run` shutdown order made exact: `ApiServices.feed_shutdown` added and cancelled by `run` after accept stops; connections get a graceful close and are dropped at the end of `shutdown_grace`; `run` returns when none is open | AZ-3833 |
 | 1.4.1 | 2026-11-11 | Invariant on one port per handler names the share content and node media compositions (E-21/c14); no change to `ApiServices` or `HttpConfig` | AZ-3830 |
 | 1.5.0 | 2026-11-11 | Identity, account and admin routes registered (E-21/c12); `CredentialFormat.binding_cookie` added to `HttpConfig.credentials` (breaking for a caller that builds the struct, not for the key table: Open point 6) | AZ-3828 |
+| 1.5.1 | 2026-11-18 | Open point 4 closed: `test_clock_addr` key (feature `test-clock` only); 12 wires one `OffsetClock` as the process clock and 11's handle | AZ-4334 |

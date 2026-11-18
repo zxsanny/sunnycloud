@@ -53,6 +53,8 @@ pub struct Ports {
     pub public: SocketAddr,
     pub internal: SocketAddr,
     pub ops: SocketAddr,
+    /// `test_clock_addr` in a build with feature `test-clock`; a default build has no such key and leaves it unused.
+    pub test_clock: SocketAddr,
 }
 
 /// Every port this test process has handed out. The probe listener is closed before `serve` binds the port, and
@@ -61,13 +63,13 @@ pub struct Ports {
 static HANDED_OUT: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 
 impl Ports {
-    /// Three loopback ports free right now and not given to another test of this process.
+    /// Four loopback ports free right now and not given to another test of this process.
     fn free() -> Ports {
         let mut handed_out = lock(&HANDED_OUT);
         // Listeners of refused ports stay open until the end, so the kernel offers other ports meanwhile.
         let mut refused = Vec::new();
         let mut chosen = Vec::new();
-        while chosen.len() < 3 {
+        while chosen.len() < 4 {
             let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port is free");
             let addr = listener.local_addr().expect("bound address");
             if handed_out.contains(&addr.port()) {
@@ -81,11 +83,17 @@ impl Ports {
             public: chosen[0],
             internal: chosen[1],
             ops: chosen[2],
+            test_clock: chosen[3],
         }
     }
 
-    pub fn all(&self) -> [SocketAddr; 3] {
-        [self.public, self.internal, self.ops]
+    /// The listener addresses `serve` binds in this build.
+    pub fn all(&self) -> Vec<SocketAddr> {
+        let mut all = vec![self.public, self.internal, self.ops];
+        if cfg!(feature = "test-clock") {
+            all.push(self.test_clock);
+        }
+        all
     }
 }
 
@@ -109,6 +117,9 @@ impl Stack {
             .set("max_open_sessions", "16")
             // No checkpoint before the shutdown: what the rows hold after it is the shutdown flush's work.
             .set("checkpoint_bytes", "64MiB");
+        #[cfg(feature = "test-clock")]
+        root.setup
+            .set("test_clock_addr", &ports.test_clock.to_string());
         Stack { root, ports }
     }
 

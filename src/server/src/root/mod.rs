@@ -34,6 +34,20 @@ pub use storage::Blobstore;
 #[cfg(feature = "vault")]
 pub use vault::Vault;
 
+/// Feature `test-clock`: [`register`] with `clock` as the process clock, and the same instance registered as the
+/// `OffsetClock` 11's clock routes move, so every component reads the time the test moves.
+#[cfg(feature = "test-clock")]
+pub fn register_with_test_clock(
+    builder: ContextBuilder,
+    clock: Arc<sc_clock::OffsetClock>,
+) -> ContextBuilder {
+    let process_clock: Arc<dyn Clock> = Arc::clone(&clock) as _;
+    register(builder, process_clock).register::<sc_clock::OffsetClock, _, _>(move |_| {
+        let clock = Arc::clone(&clock);
+        async move { Ok(clock) }
+    })
+}
+
 /// Registers every builder of the server. `clock` is the process clock, the same one the command log uses.
 pub fn register(builder: ContextBuilder, clock: Arc<dyn Clock>) -> ContextBuilder {
     let builder = base::register(builder, clock);

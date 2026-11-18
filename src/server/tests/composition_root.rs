@@ -149,6 +149,7 @@ async fn health_and_doctor_lists_hold_the_owners_items() {
             "blob_volume",
             "blob_retention",
             "blob_files_missing",
+            "epoch",
             "quota_drift",
             "media_worker",
             "identity_providers",

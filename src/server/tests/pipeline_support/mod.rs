@@ -12,6 +12,7 @@ pub mod feed;
 pub mod h2;
 pub mod large;
 pub mod media;
+pub mod restore;
 pub mod tree;
 pub mod wiring;
 

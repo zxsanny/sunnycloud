@@ -118,3 +118,20 @@ Integration through the real binaries; the system scenarios stay in E-31.
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | AC-72 is split: fetch part in E-22/p08, key-check part here | Step 1.8 mapping | accepted-risk | Low |
+
+## Implementation status (2026-11-18)
+
+Tests: `src/server/tests/pipeline_db_restore.rs` with `src/server/tests/pipeline_support/restore.rs`; real `sunnycloud` binary, PostgreSQL 18, a real `pg_dump --format=custom` and `pg_restore --exit-on-error --single-transaction` into the wiped database, real blob volume. The dump tools come from `SC_PG_TOOLS` (a directory) or `PATH`, must be major 18, and a missing tool fails the test; CI installs them with `scripts/ci/install-tools.sh pg-client-18` (PGDG, `postgresql-client-18=18.7-1.pgdg24.04+2`, key fingerprint `B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8`) in `rust-test`.
+
+| AC | Test | Result |
+|----|------|--------|
+| AC-1 (serve part) | `ac1_serve_refuses_a_restored_database_below_the_marker_before_any_listener_naming_the_bump` | pass |
+| AC-1 (doctor part) | `ac1_doctor_reports_fail_for_the_epoch_check_of_a_restored_database` | **fails**: no epoch `DoctorCheck` is registered by 12; 05's `epoch_findings` has no production caller (open item 13 of batch 30) |
+| AC-2 | `ac2_the_bump_writes_the_marker_serve_gets_ready_and_old_or_ahead_cursors_must_resync` | pass |
+| AC-3 | `ac3_after_the_resync_a_paged_listing_has_every_live_node_once_and_polling_resumes_at_the_head` | pass |
+| AC-4 | `ac4_every_f14_operation_has_a_production_caller_and_serve_checks_before_its_listeners` | pass |
+| AC-73 | `ac73_missing_blobs_are_listed_by_doctor_with_ids_and_served_as_404_content_unavailable` | pass, except "marked unavailable" in the listing: no listing field exists; the test asserts the files are listed (200) and the blob rows get `unavailable_at` after the 404 |
+| AC-72 (key-check part) | `ac72_a_wrong_master_key_stops_serve_before_any_listener_and_key_check_exits_2_key_check_mismatch` | pass |
+| F14 step 6 | `f14_step6_keycheck_init_writes_the_key_check_of_a_volume_without_one_only_for_the_confirmed_key` | pass |
+
+Spec corrections: Scope step 3 and AC-4 name `BlobInventory::find_missing` mapped through `TreeReader::describe_blobs`; the restore-tagged check is the composition root's `MissingBlobsReport` (`BlobInventory::scan_page` joined with `TreeReader::describe_blob_revisions`, `server/src/missing_blobs_check.rs`), which the tests check.

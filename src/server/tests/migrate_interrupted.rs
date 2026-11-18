@@ -141,23 +141,31 @@ async fn a_failing_migration_exits_2_naming_its_version_and_the_next_run_retries
 
 #[tokio::test(flavor = "multi_thread")]
 async fn migrate_killed_while_a_migration_waits_leaves_it_unapplied_and_serve_refuses() {
-    // Arrange: the newest migration is made pending by the real `revert`, then a held lock on `vaults` (its first
-    // statement alters that table) keeps the next `migrate` waiting inside it.
+    // Arrange: the newest migration is made pending by the real `revert`; then an ACCESS SHARE lock held on every
+    // application table (sqlx's bookkeeping table excepted) keeps the next `migrate` waiting inside it, whatever
+    // table the newest migration alters.
     let stack = Stack::new().await;
     let db = &stack.root.db;
     let setup = migrator(db);
     let newest = *embedded_versions().last().expect("one migration");
     let reverted = run(&setup, &["migrate", "revert", "--steps", "1", "--yes"]).await;
     assert_eq!(reverted.code(), Some(0), "{}", reverted.stderr());
+    let pending_schema = schema_fingerprint(db).await;
     let mut holder = db.admin().await;
     sqlx::query("BEGIN")
         .execute(&mut holder)
         .await
         .expect("begin");
-    sqlx::query("LOCK TABLE vaults IN ACCESS EXCLUSIVE MODE")
-        .execute(&mut holder)
+    let tables: String = sqlx::query_scalar(APPLICATION_TABLES)
+        .fetch_one(&mut holder)
         .await
-        .expect("lock vaults");
+        .expect("list the application tables");
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "LOCK TABLE {tables} IN ACCESS SHARE MODE"
+    )))
+    .execute(&mut holder)
+    .await
+    .expect("lock the application tables");
     let mut child = spawn(&setup, &["migrate"]);
     let started = Instant::now();
     while db
@@ -193,20 +201,15 @@ async fn migrate_killed_while_a_migration_waits_leaves_it_unapplied_and_serve_re
         );
         tokio::time::sleep(POLL).await;
     }
-    let vault_columns = db
-        .admin_count(
-            "SELECT count(*) FROM information_schema.columns \
-             WHERE table_name = 'nodes' AND column_name = 'vault_id'",
-        )
-        .await;
+    let killed_schema = schema_fingerprint(db).await;
     let status = run(&setup, &["--json", "migrate", "status"]).await;
     let refused = stack.refused();
     let retried = run(&setup, &["--json", "migrate"]).await;
 
     // Assert
     assert_eq!(
-        vault_columns, 0,
-        "the killed migration left its column behind"
+        killed_schema, pending_schema,
+        "the killed migration left part of its change behind"
     );
     assert_eq!(status.code(), Some(0), "{}", status.stderr());
     assert_eq!(status.versions("pending"), [newest]);
@@ -226,4 +229,26 @@ async fn migrate_killed_while_a_migration_waits_leaves_it_unapplied_and_serve_re
     assert_eq!(retried.versions("applied"), [newest]);
     drop(holder);
     stack.finish().await;
+}
+
+/// Every application table of the public schema, comma-separated and quoted, for one `LOCK TABLE`.
+const APPLICATION_TABLES: &str = "SELECT string_agg(format('%I.%I', schemaname, tablename), ', ' \
+     ORDER BY tablename) FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_sqlx_migrations'";
+
+/// The columns and constraints of the public schema as one text: equal before and after means a migration left
+/// nothing of itself behind.
+async fn schema_fingerprint(db: &TestDb) -> String {
+    let mut conn = db.admin().await;
+    let fingerprint: String = sqlx::query_scalar(
+        "SELECT coalesce((SELECT string_agg(table_name || '.' || column_name || ':' || data_type || ':' \
+         || is_nullable, ',' ORDER BY table_name, column_name) FROM information_schema.columns \
+         WHERE table_schema = 'public'), '') || '|' || coalesce((SELECT string_agg(conname || ':' \
+         || pg_get_constraintdef(oid), ',' ORDER BY conname) FROM pg_constraint \
+         WHERE connamespace = 'public'::regnamespace), '')",
+    )
+    .fetch_one(&mut conn)
+    .await
+    .expect("read the schema");
+    sqlx::Connection::close(conn).await.expect("close");
+    fingerprint
 }

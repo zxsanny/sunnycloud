@@ -66,6 +66,8 @@ jobs:
           --health-retries 20
     env:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      # pg_dump and pg_restore of the restore pipeline tests (AZ-3666), installed below.
+      SC_PG_TOOLS: /usr/lib/postgresql/18/bin
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -79,6 +81,8 @@ jobs:
           cache-on-failure: true
       - name: Install cargo-llvm-cov
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-llvm-cov
+      - name: Install the PostgreSQL 18 client (PGDG, pinned version and key)
+        run: scripts/ci/watchdog.sh --name install-pg-client -- scripts/ci/install-tools.sh pg-client-18
       - name: cargo test --workspace --locked under cargo llvm-cov (75% overall, 90% critical paths)
         run: scripts/ci/watchdog.sh --name rust-test -- scripts/ci/check-coverage.sh
       # The vault service (v1.2) is linked only with feature `vault`, which the workspace run above leaves off.
@@ -87,6 +91,12 @@ jobs:
         run: >-
           ../scripts/ci/watchdog.sh --name rust-test-vault -- cargo test --locked -p sunnycloud-server --features vault
           --test vault_http --test vault_report --test local_commands --test api_services --test composition_root
+      # The -test images build `serve` with feature `test-clock` (AZ-4334): one OffsetClock moved through :9091.
+      - name: Server tests with the test-clock feature
+        working-directory: src
+        run: >-
+          ../scripts/ci/watchdog.sh --name rust-test-test-clock -- cargo test --locked -p sunnycloud-server
+          --features test-clock --test test_clock_serve --test api_services --test composition_root
 
   # The two 1 GiB pipeline ACs (AZ-3657 AC-1, AZ-3660 AC-72) in release mode, apart from the instrumented rust-test
   # job (owner decision 2026-11-18). Each runs by its exact name, so no other ignored test runs here; run-one-test.sh

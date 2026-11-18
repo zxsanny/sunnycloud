@@ -19,6 +19,22 @@ docker run -d --name sunnycloud-pg18 -e POSTGRES_PASSWORD=dev -p 127.0.0.1:5432:
 export DATABASE_URL=postgres://postgres:dev@127.0.0.1:5432/postgres
 ```
 
+## PostgreSQL 18 client for the restore tests: `SC_PG_TOOLS`
+
+`src/server/tests/pipeline_db_restore.rs` (AZ-3666) runs a real `pg_dump` and `pg_restore` of its test database. The tools come from the directory named by `SC_PG_TOOLS`, or from `PATH` when it is unset; they must be major version 18, and a missing tool fails the test (it is never skipped). They connect through `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` and `PGDATABASE`, which the tests set from `DATABASE_URL`; the dump goes to stdout and the restore reads stdin.
+
+```bash
+scripts/ci/install-tools.sh pg-client-18                 # Ubuntu: apt (sudo), then
+export SC_PG_TOOLS=/usr/lib/postgresql/18/bin
+```
+
+Without a local client, `SC_PG_TOOLS` may name a directory of wrappers called `pg_dump` and `pg_restore` that run the tool of the same name in the database container, forwarding only `PGUSER`, `PGPASSWORD` and `PGDATABASE` (the container's own socket replaces host and port):
+
+```bash
+#!/usr/bin/env bash
+exec docker exec -i -e PGUSER -e PGPASSWORD -e PGDATABASE sunnycloud-pg18 "$(basename "$0")" "$@"
+```
+
 ## `check-migrations.sh`: up, down, up
 
 Applies every migration to an empty database, reverts them all (newest first, one at a time), applies them again, and prints each step. It exits non-zero and names the version when an `up` or `down` file fails, when a file is not part of a reversible `YYYYMMDDHHMMSS_<verb>_<object>.up.sql` / `.down.sql` pair, or when the database already has applied migrations. With zero migrations it prints `0 migrations applied, reverted and re-applied`.
@@ -59,10 +75,10 @@ The workflow only checks out, caches and calls these scripts, each under `watchd
 | Script | Job | What it does |
 |--------|-----|--------------|
 | `setup-rust.sh` | all cargo jobs | `rustup toolchain install` from `src/rust-toolchain.toml`, verifies the pinned channel |
-| `install-tools.sh TOOL...` | all cargo jobs | pinned `cargo-deny`, `cargo-llvm-cov`, `gitleaks` (SHA-256 verified downloads), `cargo-audit`, `sqlx-cli` (`cargo install --locked --version`); the versions live in that script |
-| `rust-lint.sh` | `rust-lint` | `cargo fmt --check`, clippy `-D warnings` over the workspace, then clippy `-D warnings` of `sunnycloud-server --features vault` (the vault service is linked only with that feature), `sqlx migrate run`, `check-sqlx-prepare.sh` (needs `DATABASE_URL`) |
+| `install-tools.sh TOOL...` | all cargo jobs | pinned `cargo-deny`, `cargo-llvm-cov`, `gitleaks` (SHA-256 verified downloads), `cargo-audit`, `sqlx-cli` (`cargo install --locked --version`); `pg-client-18` (`rust-test`): the PostgreSQL 18 client from the PGDG apt repository at an exact package version, its signing key accepted only with the pinned fingerprint, into `/usr/lib/postgresql/18/bin` (the job's `SC_PG_TOOLS`); the versions live in that script |
+| `rust-lint.sh` | `rust-lint` | `cargo fmt --check`, clippy `-D warnings` over the workspace, then clippy `-D warnings` of `sunnycloud-server` with `--features vault` (the vault service is linked only with that feature) and with `--features test-clock` (the `-test` images' clock, AZ-4334), `sqlx migrate run`, `check-sqlx-prepare.sh` (needs `DATABASE_URL`) |
 | `check-coverage.sh` | `rust-test` | `cargo llvm-cov test --workspace --locked` (lists every test), then 75% overall and 90% per entry of `critical-paths.txt` (an entry may carry its own minimum, `PATH MIN`); prints the measured values |
-| (inline `cargo test`) | `rust-test` | after the coverage step: `cargo test --locked -p sunnycloud-server --features vault` over `vault_http`, `vault_report`, `local_commands`, `api_services`, `composition_root` (the feature-gated server tests the workspace run leaves off) |
+| (inline `cargo test`) | `rust-test` | after the coverage step: `cargo test --locked -p sunnycloud-server --features vault` over `vault_http`, `vault_report`, `local_commands`, `api_services`, `composition_root`, then `--features test-clock` over `test_clock_serve`, `api_services`, `composition_root` (the feature-gated server tests the workspace run leaves off) |
 | `run-one-test.sh CMD...` | `pipelines-large` | runs one `cargo test ... -- --ignored --exact NAME` (the 1 GiB download and worker ACs, release mode), passes its output through, and fails unless exactly one test passed: a name that matches nothing would otherwise exit 0 with `0 passed` |
 | `check-migrations.sh` | `pg18-migrations` | see above |
 | `check-it-suite.sh` | `http-api-suite` | runs IT-11-1..20 of `components/11_http_api/tests.md` through `it_suite.py` and the id-to-test map `src/components/11_http_api/tests/it_cases.txt`; prints each case with result and duration; fails on a case with no test, a prefix that selects nothing, an unknown id, a failing run or a case over its max execution time |

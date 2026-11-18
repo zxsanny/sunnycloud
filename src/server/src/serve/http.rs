@@ -15,6 +15,8 @@ pub(super) fn http_config(settings: &Settings) -> HttpConfig {
         public_addr: settings.public_addr.get(),
         internal_addr: settings.internal_addr.get(),
         ops_addr: settings.ops_addr.get(),
+        #[cfg(feature = "test-clock")]
+        test_clock_addr: settings.test_clock_addr.get(),
         max_connections: usize::try_from(settings.max_connections).unwrap_or(usize::MAX),
         h1_header_timeout: settings.h1_header_timeout.get(),
         h2_stream_window: saturated(settings.h2_stream_window.bytes()),

@@ -6,11 +6,12 @@
 use std::fs;
 use std::sync::Arc;
 
+#[cfg(not(feature = "test-clock"))]
 use sc_clock::{Clock, SystemClock};
 use sc_config::{ConfigSources, load_keys};
 use sc_testdb::TestDb;
 use sunnycloud_server::root;
-use sunnycloud_server::{CliError, ConfigCheck, ServeSettings, ServiceContext};
+use sunnycloud_server::{CliError, ConfigCheck, ContextBuilder, ServeSettings, ServiceContext};
 
 #[path = "../config_support/mod.rs"]
 mod config_support;
@@ -97,7 +98,6 @@ impl Root {
 }
 
 fn context(sources: ConfigSources) -> ServiceContext {
-    let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
     let sources = Arc::new(sources);
     let builder = ServiceContext::builder()
         .register::<ConfigSources, _, _>(move |_| {
@@ -109,7 +109,20 @@ fn context(sources: ConfigSources) -> ServiceContext {
             load_keys::<ServeSettings>(&sources, &ConfigCheck::Server.keys())
                 .map_err(CliError::from)
         });
-    root::register(builder, clock).finish()
+    register_clock(builder).finish()
+}
+
+/// The clock `serve` itself registers: a system clock, or in a `test-clock` build the one `OffsetClock` that 11's
+/// test-clock routes move (`wiring.rs`).
+#[cfg(not(feature = "test-clock"))]
+fn register_clock(builder: ContextBuilder) -> ContextBuilder {
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
+    root::register(builder, clock)
+}
+
+#[cfg(feature = "test-clock")]
+fn register_clock(builder: ContextBuilder) -> ContextBuilder {
+    root::register_with_test_clock(builder, Arc::new(sc_clock::OffsetClock::new()))
 }
 
 /// The thin address of an `Arc`, to compare a trait object with the concrete value it was made from.

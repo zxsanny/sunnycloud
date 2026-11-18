@@ -13,3 +13,7 @@ workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+
+[features]
+# Adds the `test_clock_addr` key of the `-test` image (`http_server.md` open point 4); release builds have no such key.
+test-clock = []
