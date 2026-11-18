@@ -3,7 +3,8 @@ use std::time::Duration;
 
 use contracts::{
     AdminError, AuthenticatorError, ChangeFeedError, CommitServiceError, DownloadError,
-    PublicShareError, ResyncReason, TreeReaderError, TreeServiceError, UploadError, WorkerJobError,
+    PublicShareError, ResyncReason, TreeReaderError, TreeServiceError, UploadError, VaultError,
+    WorkerJobError,
 };
 use sc_error::{
     BusinessError, BusinessParams, CorrelationId, DomainError, ErrorCode, FieldProblem,
@@ -176,6 +177,29 @@ pub const CASES: &[Case] = &[
     case("output_kind_rejected", 422, "output_kind_rejected", |id| {
         ApiProblem::from_port(WorkerJobError::OutputKindRejected, id)
     }),
+    case("vault_exists", 409, "vault_exists", |id| {
+        ApiProblem::from_port(VaultError::VaultExists, id)
+    }),
+    case(
+        "vault_header_too_large",
+        413,
+        "vault_header_too_large",
+        |id| ApiProblem::from_port(VaultError::HeaderTooLarge, id),
+    ),
+    case("precondition_failed", 412, "precondition_failed", |id| {
+        ApiProblem::from_port(VaultError::PreconditionFailed, id)
+    }),
+    case(
+        "precondition_required",
+        428,
+        "precondition_required",
+        |id| {
+            ApiProblem::new(
+                business(ErrorCode::PreconditionRequired, BusinessParams::default()),
+                id,
+            )
+        },
+    ),
     case("internal", 500, "internal", |id| {
         ApiProblem::new(DomainError::unexpected(planted_chain(), id), id)
     }),

@@ -3,9 +3,9 @@
 **Component**: 20_vault_service (routes registered in 11's registry, served by 11, wired by 12)
 **Producer task**: E-30/c06 — `_docs/02_tasks/todo/B11-21_vault_routes_registration.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-30/c08 (integration and security suite), E-30/p01 (`AZ-3675_pipeline_vault`), the client vault pages of 16 (E-26) and 17/18 (E-27, E-28) that call these routes with header bytes produced by `vault-core` (19) — those client tasks are not planned yet (flagged on AZ-3675)
-**Version**: 1.0.0
-**Status**: draft (20 is a stub-level proposal for the external review, 20 §1; frozen when E-30/c06 is accepted and the open points are closed)
-**Last Updated**: 2026-11-04
+**Version**: 1.1.0
+**Status**: frozen (open points 1-5 closed by E-30/c06, AZ-3926, owner decisions 2026-11-18); after v1.2 ships the E-21 additive-only diff gate applies
+**Last Updated**: 2026-11-18
 
 ## Purpose
 
@@ -17,10 +17,10 @@ The four HTTP operations through which a client creates a vault, reads and repla
 
 | Method | Path | Auth class | Mut | Port method | Request | Success response | Error statuses |
 |--------|------|-----------|-----|-------------|---------|------------------|----------------|
-| `POST` | `/api/v1/vaults` | `SessionOnly` | yes | `VaultService::create_vault` | header bytes and `root_node_id` (encoding: Open point 1) | 201; `ETag` response header; body with the vault id | 401, 403 (device token; CSRF), 404 (root unknown, foreign or tombstoned), header too large (Open point 3), root is a file and second vault on a root (Open point 3), `VaultExists` if decided (Open point 3) |
-| `GET` | `/api/v1/vaults/{id}` | `Session` | no | `VaultService::get_header` | none | 200; header bytes, root node id; `ETag` response header | 401, 403, 404 |
-| `PUT` | `/api/v1/vaults/{id}/header` | `SessionOnly` | yes | `VaultService::replace_header` | header bytes; `If-Match` request header required | 200; new `ETag` response header | 401, 403, 404, 412 (`If-Match` differs from the stored ETag; stored header unchanged), 428 (no `If-Match`; stored header unchanged), header too large (Open point 3) |
-| `POST` | `/api/v1/vaults/{id}/unlock-failures` | `Session` | yes | `VaultService::report_unlock_failure` | no fields; any body content is ignored and never stored or logged | success status (Open point 4) | 401, 403, 404 (unknown or foreign id; nothing written) |
+| `POST` | `/api/v1/vaults` | `SessionOnly` | yes | `VaultService::create_vault` | `{"root_node_id": uuid, "header": base64}`, body class `Small` | 201; `ETag`; `{"id": uuid}` | 400 `invalid_request` (body shape; `header` not base64 or empty), 401, 403 (device token; CSRF), 404 `not_found` (root unknown, foreign, tombstoned, a file or the account's own root), 409 `vault_exists` (the account already has a vault, or the root already holds one), 413 `vault_header_too_large` |
+| `GET` | `/api/v1/vaults/{id}` | `Session` | no | `VaultService::get_header` | none | 200; `ETag`; `{"id": uuid, "root_node_id": uuid, "header": base64}` | 400 (`id` not a UUID), 401, 403, 404 |
+| `PUT` | `/api/v1/vaults/{id}/header` | `SessionOnly` | yes | `VaultService::replace_header` | `{"header": base64}`, body class `Small`; `If-Match` request header required | 200; new `ETag`; empty body | 400, 401, 403, 404, 412 `precondition_failed` (`If-Match` differs from the stored ETag; stored header unchanged), 428 `precondition_required` (no `If-Match`; no port call, stored header unchanged), 413 `vault_header_too_large` |
+| `POST` | `/api/v1/vaults/{id}/unlock-failures` | `Session` | yes | `VaultService::report_unlock_failure` | no fields, body class `Small`; the body is never read, stored or logged | 204 No Content | 400 (`id` not a UUID), 401, 403, 404 (unknown or foreign id; nothing written) |
 
 `x-id-params`: `{id}` (path) on the last three operations; `root_node_id` (body) on create.
 
@@ -28,14 +28,14 @@ The four HTTP operations through which a client creates a vault, reads and repla
 
 | Header | Direction | Rule |
 |--------|-----------|------|
-| `ETag` | response of create, GET and PUT | derived from the SHA-256 of the stored header bytes; equal on every read of unchanged bytes; string form: Open point 2 |
-| `If-Match` | request of PUT | required; compared with the ETag of the stored bytes at write time |
+| `ETag` | response of create, GET and PUT | strong tag: the lowercase hex SHA-256 of the stored header bytes in double quotes, `"<64 hex>"`; equal on every read of unchanged bytes. 20 returns the bare hex; 11 adds the quotes |
+| `If-Match` | request of PUT | required. Absent: 428, no port call. One line holding exactly one quoted tag: the text between the quotes is compared with the stored ETag at write time. Any other present value (empty, unquoted, weak `W/"…"`, `*`, a list, several lines) is compared as an empty tag, which matches no stored header, so it answers 412 and writes nothing |
 
 ### Field table (request and response values)
 
 | Field | Type | Required | Description | Constraints |
 |-------|------|----------|-------------|-------------|
-| header | bytes | yes (create, PUT; GET response) | opaque authenticated vault header from `vault-core` | 1 to `max_vault_header_bytes` bytes; never parsed or altered by the server |
+| header | bytes, standard base64 with padding on the wire (JSON string, OpenAPI `format: byte`) | yes (create, PUT; GET response) | opaque authenticated vault header from `vault-core` | 1 to `max_vault_header_bytes` bytes (default 1,024, so the JSON body stays far below the 64 KiB `Small` class); never parsed or altered by the server; text that is not base64 is 400 `invalid_request` (`header`/`not_base64`), an empty header 400 (`header`/`empty`) |
 | `root_node_id` | UUID | yes (create; GET response) | the vault's root folder | a live folder of the caller |
 | vault id | UUID | yes (create response; path elsewhere) | identifies the vault | |
 
@@ -73,18 +73,19 @@ The four HTTP operations through which a client creates a vault, reads and repla
 | race | 50 concurrent PUTs with the same current ETag | 1 x 200, 49 x 412, 0 x 5xx | IT-20-2 |
 | cross-account | account B calls all four with A's vault id | 404 on every call | ST-20-1, AC-59 |
 | device-token | device token on POST `/vaults` and PUT header | 403 | ST-20-1 |
-| report-ids-only | unlock-failure POST with a passphrase-shaped body | success status; audit row and logs hold ids and time only | ST-20-2 |
+| report-ids-only | unlock-failure POST with a passphrase-shaped body | 204; audit row and logs hold ids and time only | ST-20-2 |
 
-## Open points (closed by E-30/c06 with the E-21 and E-02 owners)
+## Open points (closed by E-30/c06, AZ-3926, owner decisions 2026-11-18)
 
-1. Wire encoding of the header bytes in request and response bodies (raw body with metadata in headers, or JSON with an encoded field) and its body class (`Small` is 64 KiB); not specified by 20 §4.
-2. String form of the `ETag` value (quoted, hex or base64 of the SHA-256); not specified.
-3. Status and problem code of `HeaderTooLarge`, of a file given as root, of a second vault on one root and of `VaultExists` (if one vault per account is decided by E-30/c01); IT-20-1 and IT-20-7 say only "4xx".
-4. Success status of the unlock-failure report.
-5. The problem codes for 412 and 428 are not yet rows of the `sc_error` table (`sc_error.md` open point 1); E-30/c06 adds them.
+1. Closed: JSON bodies with the header in standard base64 (`header`), body class `Small` (64 KiB). Create `{"root_node_id", "header"}`, replace `{"header"}`, GET answers `{"id", "root_node_id", "header"}`.
+2. Closed: strong `ETag`, the quoted lowercase hex SHA-256, `"<64 hex>"`; the `If-Match` reading is the row in "Headers".
+3. Closed: `HeaderTooLarge` is 413 `vault_header_too_large`; `VaultExists` (the caller already has its one vault, whatever root it names) is 409 `vault_exists`; another account's vault root, a file, foreign, tombstoned or unknown root, and the account's own root, are the port's `NotFound`, 404 `not_found`.
+4. Closed: the unlock-failure report answers 204 No Content; its body is ignored.
+5. Closed: `precondition_failed` (412) and `precondition_required` (428), with `vault_exists` (409) and `vault_header_too_large` (413), are rows of the `sc_error` table (`sc_error.md` 1.1.0).
 
 ## Change Log
 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial draft from 20 §3-4 and tests | decompose Step 2 (B11) |
+| 1.1.0 | 2026-11-18 | Open points 1-5 closed (base64 JSON wire, quoted SHA-256 `ETag`, the `If-Match` reading, 409/413/404 rows, 204 report, the four `sc_error` rows); status frozen | AZ-3926 |

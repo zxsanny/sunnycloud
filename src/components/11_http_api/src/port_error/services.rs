@@ -4,7 +4,7 @@ use contracts::{
 };
 use sc_error::{CorrelationId, DomainError, ErrorCode};
 
-use super::{PortError, business, fault, invalid_field, no_wire_code, not_found, retry_after};
+use super::{PortError, business, fault, invalid_field, not_found, retry_after};
 
 impl PortError for ShareError {
     fn into_domain(self, request_id: CorrelationId) -> DomainError {
@@ -99,13 +99,15 @@ impl PortError for WorkerJobError {
     }
 }
 
+/// A root that is a file, foreign, tombstoned or the account's own root is `NotFound` in 20, so it answers 404
+/// like an unknown vault (`vault_http_api.md`).
 impl PortError for VaultError {
     fn into_domain(self, request_id: CorrelationId) -> DomainError {
         match self {
-            Self::VaultExists => no_wire_code("VaultError::VaultExists", request_id),
-            Self::HeaderTooLarge => business(ErrorCode::SizeTooLarge),
+            Self::VaultExists => business(ErrorCode::VaultExists),
+            Self::HeaderTooLarge => business(ErrorCode::VaultHeaderTooLarge),
             Self::NotFound => not_found(),
-            Self::PreconditionFailed => no_wire_code("VaultError::PreconditionFailed", request_id),
+            Self::PreconditionFailed => business(ErrorCode::PreconditionFailed),
             Self::Unexpected(source) => fault(source, request_id),
         }
     }

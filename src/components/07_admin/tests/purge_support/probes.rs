@@ -107,7 +107,9 @@ pub async fn drain(
     panic!("the account is not gone after {MAX_CYCLES} cycles");
 }
 
-/// The longest open transaction of the API role on the test database right now.
+/// The longest open transaction of the API role on the test database right now. Read it on a superuser
+/// connection (`TestDb::admin`): for any other role `pg_stat_activity` hides the API role's `xact_start`, and the
+/// probe reads 0.
 pub async fn longest_transaction(conn: &mut PgConnection) -> Duration {
     let seconds: f64 = sqlx::query_scalar(
         "SELECT coalesce(max(extract(epoch FROM clock_timestamp() - xact_start)), 0)::float8 \

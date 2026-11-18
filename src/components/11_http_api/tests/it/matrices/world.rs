@@ -14,7 +14,7 @@ pub const ACCOUNT_A: Uuid = Uuid::from_u128(0xAAAA);
 /// The port methods that have a per-account fake: the IDOR generator gives an ID parameter a case only when its
 /// operation's owner is here. `UploadService::stage_small` keys are per account (03 section 4: a row is looked up
 /// by `(account, staged_key)`), so its fake answers for the caller's own key space.
-pub const PER_ACCOUNT_FAKES: [&str; 21] = [
+pub const PER_ACCOUNT_FAKES: [&str; 25] = [
     "TreeService::create_folder",
     "TreeService::update_node",
     "TreeService::delete_node",
@@ -36,6 +36,10 @@ pub const PER_ACCOUNT_FAKES: [&str; 21] = [
     "DeviceGrantService::decide",
     "DeviceGrantService::revoke_device",
     "SessionService::revoke",
+    "VaultService::create_vault",
+    "VaultService::get_header",
+    "VaultService::replace_header",
+    "VaultService::report_unlock_failure",
 ];
 
 /// One call a per-account fake received.

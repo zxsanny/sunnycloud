@@ -34,7 +34,7 @@ async fn it_07_11_cycles_stop_at_the_budget_with_batches_of_50_and_short_transac
     let accounts = RecordedAccounts::wrap(wiring.accounts.clone(), &log, false);
     let purger = world.purger(accounts, hooks, world.api.clone());
     let sweeper = world.sweeper(&wiring);
-    let mut sampler_conn = world.fixture().await;
+    let mut sampler_conn = world.db.admin().await;
     let done = Arc::new(AtomicBool::new(false));
     let sampling = done.clone();
     let sampler = tokio::spawn(async move {

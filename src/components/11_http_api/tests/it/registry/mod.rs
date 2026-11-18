@@ -11,3 +11,4 @@ mod scopes;
 mod sources;
 mod spa;
 mod support;
+mod vault;

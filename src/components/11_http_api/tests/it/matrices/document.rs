@@ -3,7 +3,14 @@
 //! Nothing here lists an operation: the list is the document's.
 
 use serde_json::Value;
-use sunnycloud_http_api::registry::{RouteDef, document, production_routes};
+use sunnycloud_http_api::registry::{RouteDef, document, production_routes, vault_routes};
+
+/// Every operation of the registry: the release list and the v1.2 vault operations.
+pub fn registry_routes() -> Vec<RouteDef> {
+    let mut routes = production_routes();
+    routes.extend(vault_routes());
+    routes
+}
 
 /// The cookie scheme of the document's `securitySchemes`: an operation that lists it accepts a browser session.
 pub const COOKIE_SCHEME: &str = "cookieSession";
@@ -80,9 +87,10 @@ pub struct Document {
 }
 
 impl Document {
-    /// The document `HttpServer::openapi()` serves for the release registry.
+    /// The document `HttpServer::openapi()` serves for the whole registry: a v1.2 server, whose vault slot is
+    /// filled, as the Mode S target is.
     pub fn production() -> Document {
-        Document::of(&production_routes())
+        Document::of(&registry_routes())
     }
 
     /// The document generated from `defs`.

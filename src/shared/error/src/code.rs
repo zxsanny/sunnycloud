@@ -66,6 +66,7 @@ error_codes! {
     StagedCapReached => "staged_cap_reached", 409, "Staged file cap reached";
     LeaseLost => "lease_lost", 409, "Lease lost";
     VaultBoundary => "vault_boundary", 409, "Move across a vault boundary";
+    VaultExists => "vault_exists", 409, "Vault exists";
 
     UploadSessionGone => "upload_session_gone", 410, "Upload session gone";
     ParentDeleted => "parent_deleted", 410, "Parent deleted";
@@ -73,9 +74,12 @@ error_codes! {
 
     LengthRequired => "length_required", 411, "Length required";
 
+    PreconditionFailed => "precondition_failed", 412, "Precondition failed";
+
     SizeTooLarge => "size_too_large", 413, "Size too large";
     OutputTooLarge => "output_too_large", 413, "Output too large";
     VaultFileTooLarge => "vault_file_too_large", 413, "Vault file above max_vault_file_bytes";
+    VaultHeaderTooLarge => "vault_header_too_large", 413, "Vault header above max_vault_header_bytes";
 
     RangeNotSatisfiable => "range_not_satisfiable", 416, "Range not satisfiable";
 
@@ -92,6 +96,8 @@ error_codes! {
     OutputKindRejected => "output_kind_rejected", 422, "Output kind rejected";
 
     UpgradeRequired => "upgrade_required", 426, "Upgrade required";
+
+    PreconditionRequired => "precondition_required", 428, "Precondition required";
 
     RateLimited => "rate_limited", 429, "Too many requests";
 

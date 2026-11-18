@@ -77,7 +77,7 @@ impl Script {
 
 /// The port methods of the recording stubs that write state, from the owners' port contracts (`contracts`).
 /// Reads, and the visitor checks of 06 whose only write is an access audit, are not listed.
-pub const STATE_CHANGING_PORT_METHODS: [&str; 31] = [
+pub const STATE_CHANGING_PORT_METHODS: [&str; 34] = [
     "TreeService::create_folder",
     "TreeService::update_node",
     "TreeService::delete_node",
@@ -109,6 +109,9 @@ pub const STATE_CHANGING_PORT_METHODS: [&str; 31] = [
     "AdminService::update_user",
     "AdminService::set_quota",
     "AccountDeletionService::request",
+    "VaultService::create_vault",
+    "VaultService::replace_header",
+    "VaultService::report_unlock_failure",
 ];
 
 pub fn unscripted(key: &'static str) -> Fault {

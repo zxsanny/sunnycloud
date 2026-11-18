@@ -187,10 +187,10 @@ fn service_rows(id: CorrelationId) -> Vec<Row> {
         Code(ErrorCode::OutputKindRejected) => WorkerJobError::OutputKindRejected,
         Fault => WorkerJobError::Storage(fault()),
         Fault => WorkerJobError::Unexpected(fault()),
-        AwaitingCode => VaultError::VaultExists,
-        Code(ErrorCode::SizeTooLarge) => VaultError::HeaderTooLarge,
+        Code(ErrorCode::VaultExists) => VaultError::VaultExists,
+        Code(ErrorCode::VaultHeaderTooLarge) => VaultError::HeaderTooLarge,
         Code(ErrorCode::NotFound) => VaultError::NotFound,
-        AwaitingCode => VaultError::PreconditionFailed,
+        Code(ErrorCode::PreconditionFailed) => VaultError::PreconditionFailed,
         Fault => VaultError::Unexpected(fault()),
     ]
 }
@@ -265,8 +265,6 @@ fn variants_without_an_sc_error_code_are_exactly_the_known_gaps() {
             "DeviceGrantError::AccessDenied",
             "DeviceGrantError::ExpiredToken",
             "UploadError::ClientKeyMismatch",
-            "VaultError::VaultExists",
-            "VaultError::PreconditionFailed",
         ]
     );
 }

@@ -10,6 +10,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# Vault header bytes travel as standard base64 in JSON (AZ-3926, owner decision 2026-11-18).
+base64 = { workspace = true }
 contracts = { path = "../../contracts" }
 sc_clock = { path = "../../shared/clock" }
 sc_error = { path = "../../shared/error" }

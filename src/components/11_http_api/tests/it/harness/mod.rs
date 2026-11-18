@@ -129,7 +129,8 @@ pub fn stub_services(script: &Script, metrics: Arc<Metrics>) -> ApiServices {
         derived: DerivedStub::new(script),
         worker_auth: WorkerAuthStub::new(script),
         worker_jobs: WorkerJobsStub::new(script),
-        vault: Some(VaultStub::new(script)),
+        // v1.0 and v1.1 builds; the vault tests fill the slot (`vault_stub`).
+        vault: None,
         readiness: Vec::new(),
         feed_shutdown: CancellationToken::new(),
         metrics,
@@ -140,6 +141,11 @@ pub fn stub_services(script: &Script, metrics: Arc<Metrics>) -> ApiServices {
         #[cfg(feature = "test-clock")]
         offset_clock,
     }
+}
+
+/// A scripted stub of 20's port for the vault slot: what a v1.2 build of 12 fills.
+pub fn vault_stub(script: &Script) -> Arc<dyn contracts::VaultService> {
+    VaultStub::new(script)
 }
 
 /// The value of the sample line `name` (with labels) in a scrape; `None` when the series is absent.

@@ -4065,6 +4065,7 @@ name = "sunnycloud-http-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.23.1",
  "contracts",
  "futures-core",
  "http-body-util",
@@ -4151,6 +4152,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
+ "base64 0.23.1",
  "chrono",
  "clap",
  "contracts",

@@ -120,9 +120,9 @@ Then the v1.2 build has `VaultService` in 11's slot and 20's hook in 12's list a
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| Open points 1-5 of `vault_http_api.md` (header encoding, ETag form, open statuses, report success status, missing `sc_error` rows) are unspecified in 20 §4 | E-30 / E-21 / E-02 owners | open | Medium |
-| The mechanism that keeps 20 out of v1.0 and v1.1 builds is open (module-layout exception 6; E-22/c03 concern); AC-7 states only the observable result | E-22, E-30 owners | open | Medium |
-| The hook position in 12's list depends on the foreign-key decision of E-30/c02 | E-30 / E-22 owners | open | High |
+| Open points 1-5 of `vault_http_api.md` (header encoding, ETag form, open statuses, report success status, missing `sc_error` rows) are unspecified in 20 §4 | E-30 / E-21 / E-02 owners | closed 2026-11-18 (owner decisions; `vault_http_api.md` 1.1.0 frozen) | Medium |
+| The mechanism that keeps 20 out of v1.0 and v1.1 builds is open (module-layout exception 6; E-22/c03 concern); AC-7 states only the observable result | E-22, E-30 owners | closed: server feature `vault` links 20 and fills 11's slot (owner decision 2026-11-14); 11 routes and documents the vault operations only for a filled slot (`registry::served_routes`, AZ-3926) | Medium |
+| The hook position in 12's list depends on the foreign-key decision of E-30/c02 | E-30 / E-22 owners | closed: 20's hook sits after 06 and before 02 (decision 2026-11-05), checked by `composition_root` | High |
 
 ## Contract
 

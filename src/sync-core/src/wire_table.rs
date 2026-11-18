@@ -110,7 +110,11 @@ pub fn map_problem(status: u16, headers: &[(&str, &str)], body: &[u8]) -> Mapped
         | ErrorCode::OutputTypeRejected
         | ErrorCode::OutputKindRejected
         | ErrorCode::VaultBoundary
-        | ErrorCode::VaultFileTooLarge => unexpected(code, &raw, &correlation),
+        | ErrorCode::VaultFileTooLarge
+        | ErrorCode::VaultExists
+        | ErrorCode::VaultHeaderTooLarge
+        | ErrorCode::PreconditionFailed
+        | ErrorCode::PreconditionRequired => unexpected(code, &raw, &correlation),
     }
 }
 

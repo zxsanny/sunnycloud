@@ -47,6 +47,34 @@ async fn foreign_unknown_tombstoned_and_file_roots_are_not_found_and_store_nothi
 }
 
 #[tokio::test]
+async fn another_accounts_vault_root_is_not_found_like_an_unknown_root() {
+    // Arrange: A's folder already holds A's vault; B has no vault.
+    let mut env = Env::new().await;
+    let (a, root_of_vault_a) = env.account().await;
+    let (b, _) = env.account().await;
+    env.service
+        .create_vault(a, b"H0", root_of_vault_a)
+        .await
+        .expect("A's vault");
+
+    // Act
+    let on_vault_root = env.service.create_vault(b, b"H1", root_of_vault_a).await;
+    let on_unknown = env.service.create_vault(b, b"H1", Uuid::new_v4()).await;
+
+    // Assert
+    assert!(
+        matches!(on_vault_root, Err(VaultError::NotFound)),
+        "{on_vault_root:?}"
+    );
+    assert!(
+        matches!(on_unknown, Err(VaultError::NotFound)),
+        "{on_unknown:?}"
+    );
+    assert_eq!(env.vaults_of(b).await, 0);
+    env.finish().await;
+}
+
+#[tokio::test]
 async fn live_empty_folder_succeeds_and_a_second_vault_on_the_same_root_is_vault_exists() {
     // Arrange
     let mut env = Env::new().await;

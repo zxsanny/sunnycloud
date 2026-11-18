@@ -30,6 +30,7 @@ const EXPECTED: &[(u16, &[&str])] = &[
             "staged_cap_reached",
             "lease_lost",
             "vault_boundary",
+            "vault_exists",
         ],
     ),
     (
@@ -37,9 +38,15 @@ const EXPECTED: &[(u16, &[&str])] = &[
         &["upload_session_gone", "parent_deleted", "resync_required"],
     ),
     (411, &["length_required"]),
+    (412, &["precondition_failed"]),
     (
         413,
-        &["size_too_large", "output_too_large", "vault_file_too_large"],
+        &[
+            "size_too_large",
+            "output_too_large",
+            "vault_file_too_large",
+            "vault_header_too_large",
+        ],
     ),
     (416, &["range_not_satisfiable"]),
     (
@@ -59,6 +66,7 @@ const EXPECTED: &[(u16, &[&str])] = &[
         ],
     ),
     (426, &["upgrade_required"]),
+    (428, &["precondition_required"]),
     (429, &["rate_limited"]),
     (500, &["internal"]),
     (503, &["service_unavailable", "overloaded"]),

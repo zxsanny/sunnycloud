@@ -16,7 +16,8 @@ use crate::limits::BodyLimits;
 use crate::metrics::HttpMetrics;
 use crate::middleware::Middleware;
 use crate::registry::{
-    OpenApiDocument, RouteContext, RouteDef, document, mount, production_routes, validate,
+    OpenApiDocument, RouteContext, RouteDef, document, mount, production_routes, served_routes,
+    validate, vault_routes,
 };
 use crate::services::ApiServices;
 use crate::spa::SpaBundle;
@@ -24,9 +25,17 @@ use crate::spa::SpaBundle;
 use crate::test_clock::{self, TestClockListener};
 use crate::version::VersionGate;
 
-/// The document of this build, as `HttpServer::openapi` returns and `GET /api/v1/openapi.json` serves it.
+/// The document of a server without the vault slot (v1.0 and v1.1 builds), as `HttpServer::openapi` returns and
+/// `GET /api/v1/openapi.json` serves it there; a server whose slot is filled adds the vault operations.
 pub fn current_document() -> OpenApiDocument {
     document(&production_routes())
+}
+
+/// The document of a v1.2 server, whose vault slot is filled: [`current_document`] plus the vault operations.
+pub fn vault_document() -> OpenApiDocument {
+    let mut routes = production_routes();
+    routes.extend(vault_routes());
+    document(&routes)
 }
 
 /// The API server: its listeners (public, internal, ops, and in test builds test-clock) over one accept loop.
@@ -67,7 +76,7 @@ impl HttpServer {
     pub fn new(services: ApiServices, config: HttpConfig) -> Result<Self, HttpServerError> {
         let accept = AcceptLoop::new(&config, &services.metrics)?;
         let http_metrics = Arc::new(HttpMetrics::register(&services.metrics)?);
-        let routes = production_routes();
+        let routes = served_routes(&services);
         validate(&routes)?;
         let middleware = Middleware::new(
             &config,

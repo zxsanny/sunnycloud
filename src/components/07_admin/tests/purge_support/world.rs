@@ -52,6 +52,8 @@ const DAY: Duration = Duration::from_secs(86_400);
 /// The real ports one purger instance holds, all on one pool.
 pub struct Wiring {
     pub accounts: Arc<IdentityAccounts>,
+    /// 03's upload and commit service on the same pool (the small-file commits of PT-07-2's other accounts).
+    pub upload: Arc<PgUploadService>,
     pub hooks: Vec<Arc<dyn AccountLifecycleHook>>,
     pub tree: Arc<PgTreeLifecycle>,
     pub media: Arc<MediaLifecycle>,
@@ -102,7 +104,13 @@ fn blobstore_config(dir: &std::path::Path) -> BlobstoreConfig {
 impl PurgeWorld {
     /// A fresh database and volume; every component reads `clock`, the purger measures its budget on it.
     pub async fn new(clock: Arc<dyn Clock>) -> PurgeWorld {
-        let settings = load_settings(Environment::Test, &PURGER_KEYS)
+        PurgeWorld::with_keys(clock, &PURGER_KEYS).await
+    }
+
+    /// Like [`PurgeWorld::new`] with `keys` in place of the harness purger keys (PT-07-2 runs the production
+    /// batch and budget).
+    pub async fn with_keys(clock: Arc<dyn Clock>, keys: &[(&str, &str)]) -> PurgeWorld {
+        let settings = load_settings(Environment::Test, keys)
             .unwrap_or_else(|error| panic!("the test settings do not load: {error}"));
         let db = TestDb::clone_template().await;
         let api = db.api().await;
@@ -196,7 +204,7 @@ impl PurgeWorld {
         let hooks: Vec<Arc<dyn AccountLifecycleHook>> = vec![
             Arc::new(PgShareLifecycle::new(db.clone())),
             tree.clone(),
-            Arc::new(PgTransferLifecycle::new(upload, gc)),
+            Arc::new(PgTransferLifecycle::new(upload.clone(), gc)),
             media.clone(),
             Arc::new(PgFeedLifecycle::new(
                 db.clone(),
@@ -207,6 +215,7 @@ impl PurgeWorld {
         ];
         Wiring {
             accounts,
+            upload,
             hooks,
             tree,
             media,

@@ -9,6 +9,8 @@ use super::document::{Document, IdParam, Operation};
 /// A UUID-formatted member that is not an ID parameter (an idempotency key such as `commit_id`).
 const PLAIN_UUID: &str = "00000000-0000-4000-8000-0000000000c1";
 const DATE_TIME: &str = "2026-11-12T08:00:00.000000Z";
+/// The smallest non-empty value of a `format: byte` (standard base64) member: one zero byte.
+const BASE64: &str = "AA==";
 
 #[derive(Debug, Clone)]
 pub enum Payload {
@@ -199,6 +201,7 @@ fn scalar(schema: &Value) -> Value {
         Some("string") => match schema["format"].as_str() {
             Some("uuid") => json!(PLAIN_UUID),
             Some("date-time") => json!(DATE_TIME),
+            Some("byte") => json!(BASE64),
             _ => json!("x"),
         },
         Some("integer" | "number") => schema.get("minimum").cloned().unwrap_or(json!(0)),

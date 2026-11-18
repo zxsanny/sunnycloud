@@ -23,6 +23,27 @@ pub struct CsrfPlan {
     pub cookieless: Vec<Operation>,
 }
 
+/// The operations `served` lists that the matrix input `input` does not: each one would get no case at all, so a
+/// non-empty list fails CI as a generator gap does.
+pub fn unlisted(input: &Document, served: &Document) -> Vec<String> {
+    served
+        .operations
+        .iter()
+        .filter(|operation| {
+            !input
+                .operations
+                .iter()
+                .any(|listed| listed.label() == operation.label())
+        })
+        .map(|operation| {
+            format!(
+                "{} is served but not in the matrix input",
+                operation.label()
+            )
+        })
+        .collect()
+}
+
 pub fn csrf_plan(
     doc: &Document,
     case_data: &dyn Fn(&str) -> bool,

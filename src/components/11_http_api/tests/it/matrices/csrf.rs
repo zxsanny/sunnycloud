@@ -2,7 +2,7 @@
 //! state.
 
 use super::document::Document;
-use super::plans::{CsrfPlan, csrf_plan};
+use super::plans::{CsrfPlan, csrf_plan, unlisted};
 use super::run::{csrf_controls, csrf_refusals, reads, refused_sets};
 use super::run_idor::failing_operations;
 use super::target::Target;
@@ -18,6 +18,9 @@ pub const READ_SCHEMA_GAPS: [&str; 2] = ["GET /api/v1/changes", "GET /api/v1/dev
 
 fn plan(target: &Target) -> (Document, CsrfPlan) {
     let doc = Document::production();
+    if let Some(served) = &target.served {
+        assert_eq!(unlisted(&doc, served), Vec::<String>::new());
+    }
     let plan = csrf_plan(&doc, &|owner| target.has_case_data(owner))
         .unwrap_or_else(|problems| panic!("the CSRF generator found gaps: {problems:#?}"));
     (doc, plan)

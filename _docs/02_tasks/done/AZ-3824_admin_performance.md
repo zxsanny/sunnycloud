@@ -78,5 +78,5 @@ Then request to finalize takes at most 5 min (failure above 15 min), the longest
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | PT-07-1 targets are proposed (07 sets none) and are replaced by the first measured baseline | E-17 owner | accepted-risk | Low |
-| The reference hardware for PT-07-2 is not yet named (performance gaps G1, G11) | Owner | open | Low |
-| PT-07-2 generates data through the API, which ties this task to E-21 and E-22 | E-17 owner | open | Low |
+| The reference hardware for PT-07-2 is not yet named (performance gaps G1, G11) | Owner | open: both timing runs are `NOT-RUN(HW-REF)` (`_docs/_process_leftovers/2026-11-18_az-3824-ref-srv.md`) | Low |
+| PT-07-2 generates data through the API, which ties this task to E-21 and E-22 | E-17 owner | deviated (2026-11-18): 07's tests cannot use the server crate, so PT-07-2 runs on the purger suite's world (real components, bulk seed as the schema owner, a paced loop for the scheduler, other accounts committing through 03's real ports); an API-level run stays with the system tier | Low |

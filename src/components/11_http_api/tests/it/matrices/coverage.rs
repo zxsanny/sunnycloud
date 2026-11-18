@@ -8,10 +8,10 @@ use axum::routing::{MethodFilter, MethodRouter, on};
 use serde_json::{Value, json};
 use sunnycloud_http_api::registry::{
     AuthClass, BodyClass, HttpMethod, Param, ParamLocation, ParamType, RouteContext, RouteDef,
-    RouteSpec, SchemaRef, production_routes,
+    RouteSpec, SchemaRef,
 };
 
-use super::document::Document;
+use super::document::{Document, registry_routes};
 use super::plans::{csrf_plan, idor_plan};
 use super::run::csrf_refusals;
 use super::samples::has_case_data;
@@ -49,7 +49,7 @@ fn per_account(owner: &str) -> bool {
 #[test]
 fn a_planted_route_without_case_data_fails_both_generators_naming_it() {
     // Arrange
-    let mut defs = production_routes();
+    let mut defs = registry_routes();
     defs.push(planted());
     let doc = Document::of(&defs);
 
@@ -78,7 +78,7 @@ fn a_planted_route_without_case_data_fails_both_generators_naming_it() {
 fn the_release_registry_has_a_case_for_every_operation_and_every_id_parameter() {
     // Arrange
     let doc = Document::production();
-    let pairs: usize = production_routes()
+    let pairs: usize = registry_routes()
         .iter()
         .map(|def| def.spec.params.iter().filter(|param| param.id).count())
         .sum();
@@ -109,7 +109,7 @@ fn a_state_changing_get_without_a_named_exemption_fails_the_csrf_generator() {
     )
     .mutating()
     .summary("A GET that writes");
-    let mut defs = production_routes();
+    let mut defs = registry_routes();
     defs.push(RouteDef::new(spec, no_content));
 
     // Act

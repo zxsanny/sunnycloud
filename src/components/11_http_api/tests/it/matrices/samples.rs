@@ -16,6 +16,12 @@ use crate::sharing::support::{allowed, derived, full, grant, shared_file};
 const WHEN: Timestamp = Timestamp::from_unix_micros(1_793_956_272_123_456);
 const NODE: Uuid = Uuid::from_u128(0xD1);
 const REVISION: Uuid = Uuid::from_u128(0xD2);
+const VAULT: Uuid = Uuid::from_u128(0xD3);
+
+/// SHA-256 of one zero byte, the header the generated requests send.
+fn vault_etag() -> ETag {
+    ETag("6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d".to_owned())
+}
 
 /// Owners whose operation calls no port: nothing to script.
 const PORTLESS: [&str; 2] = ["HttpServer::openapi", "ServerInfo::value"];
@@ -306,6 +312,31 @@ fn prepare_shares(script: &Script, owner: &str) -> bool {
             );
             download(script, "DownloadService::open_blob_content");
         }
+        "VaultService::create_vault" => script.push(
+            "VaultService::create_vault",
+            Ok::<_, VaultError>(CreatedVault {
+                vault_id: VAULT,
+                etag: vault_etag(),
+            }),
+        ),
+        "VaultService::get_header" => script.push(
+            "VaultService::get_header",
+            Ok::<_, VaultError>(VaultHeader {
+                header: vec![0],
+                etag: vault_etag(),
+                root_node_id: NODE,
+            }),
+        ),
+        "VaultService::replace_header" => {
+            script.push(
+                "VaultService::replace_header",
+                Ok::<_, VaultError>(vault_etag()),
+            );
+        }
+        "VaultService::report_unlock_failure" => script.push(
+            "VaultService::report_unlock_failure",
+            Ok::<(), VaultError>(()),
+        ),
         _ => return PORTLESS.contains(&owner),
     }
     true

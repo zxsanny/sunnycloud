@@ -3,7 +3,10 @@
 
 use std::process::{Command, Output};
 
-use sunnycloud_http_api::current_document;
+#[cfg(not(feature = "vault"))]
+use sunnycloud_http_api::current_document as served_document;
+#[cfg(feature = "vault")]
+use sunnycloud_http_api::vault_document as served_document;
 
 fn sunnycloud(args: &[&str]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_sunnycloud"));
@@ -33,10 +36,15 @@ fn openapi_is_valid_json_equal_to_the_document_the_server_serves() {
     // Act
     let output = sunnycloud(&["openapi"]);
 
-    // Assert: 11 serves `current_document()` at `GET /api/v1/openapi.json` (its parity tests compare the two).
+    // Assert: 11 serves this document at `GET /api/v1/openapi.json` (its parity tests compare the two); a v1.2
+    // build (feature `vault`) adds the vault operations.
     let document: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
     assert!(document["paths"].is_object());
-    assert_eq!(output.stdout, current_document().as_bytes());
+    assert_eq!(output.stdout, served_document().as_bytes());
+    assert_eq!(
+        document["paths"]["/api/v1/vaults"].is_object(),
+        cfg!(feature = "vault")
+    );
 }
 
 #[test]

@@ -22,3 +22,4 @@ src/components/06_sharing/src/lookup_repo.rs
 src/components/02_tree/tests/tree/real_account_repo.rs
 src/components/03_transfer/src/janitor_repo.rs
 src/components/03_transfer/tests/transfer/real_account_repo.rs
+src/components/07_admin/tests/admin_perf/pool_repo.rs

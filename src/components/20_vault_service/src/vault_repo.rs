@@ -19,6 +19,8 @@ const INSERT: &str = "INSERT INTO vaults (id, account_id, root_node_id, header, 
     ON CONFLICT DO NOTHING \
     RETURNING encode(sha256(header), 'hex')";
 
+const HAS_VAULT: &str = "SELECT EXISTS (SELECT 1 FROM vaults WHERE account_id = $1)";
+
 const GET: &str = "SELECT header, root_node_id, encode(sha256(header), 'hex') \
     FROM vaults WHERE id = $1 AND account_id = $2";
 
@@ -59,6 +61,15 @@ pub(crate) async fn insert(tx: &mut DbTx, vault: &NewVault<'_>) -> Result<Option
         .bind(vault.header)
         .bind(vault.created_at.as_unix_micros())
         .fetch_optional(tx.conn())
+        .await?)
+}
+
+/// Whether the account already has its one vault: tells a second create (`VaultExists`) from a conflict on another
+/// account's vault root, which must answer like an unknown root.
+pub(crate) async fn has_vault(tx: &mut DbTx, account: Uuid) -> Result<bool, DbError> {
+    Ok(sqlx::query_scalar(HAS_VAULT)
+        .bind(account)
+        .fetch_one(tx.conn())
         .await?)
 }
 

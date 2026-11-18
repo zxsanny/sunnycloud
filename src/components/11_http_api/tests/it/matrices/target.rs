@@ -19,7 +19,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-use super::document::{IdParam, Operation};
+use super::document::{Document, IdParam, Operation};
 use super::gates::Gate;
 use super::samples;
 use super::synth::Built;
@@ -93,6 +93,8 @@ pub struct Target {
     pub public_url: String,
     pub credentials: Credentials,
     random: AtomicU64,
+    /// The document the Mode S server serves; a real stack's is not read here.
+    pub served: Option<Document>,
     backend: Backend,
 }
 
@@ -137,15 +139,15 @@ impl Target {
             public_shares: RecordingPublicShares::new(&script),
             derived: Gate::new(RecordingDerived::new(&script), &world),
             thumbnail_states: RecordingThumbnailStates::new(&script),
+            vault: Some(Gate::new(RecordingVault::new(&script), &world)),
             ..stub_services(&script, new_metrics())
         };
         let config = default_config();
         let public_url = config.public_url.clone();
-        let bound = HttpServer::new(services, config)
-            .expect("server builds")
-            .bind()
-            .await
-            .expect("listeners bind");
+        let server = HttpServer::new(services, config).expect("server builds");
+        let served =
+            Document::parse(server.openapi().as_bytes()).expect("the served document parses");
+        let bound = server.bind().await.expect("listeners bind");
         let (public, internal) = (bound.public_addr(), bound.internal_addr());
         let (stop, signal) = oneshot::channel::<()>();
         let task = tokio::spawn(async move {
@@ -167,6 +169,7 @@ impl Target {
                 admin: ADMIN_TOKEN.to_owned(),
             },
             random: AtomicU64::new(0),
+            served: Some(served),
             backend: Backend::Stub(Stub {
                 script,
                 world,
@@ -185,6 +188,7 @@ impl Target {
             public_url: config.public_url,
             credentials: config.credentials,
             random: AtomicU64::new(0),
+            served: None,
             backend: Backend::Remote {
                 ids_a: config.ids_a,
                 ids_b: config.ids_b,

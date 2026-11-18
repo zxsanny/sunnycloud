@@ -77,7 +77,7 @@ pub use port_error::{PortError, entry_error_code};
 pub use problem::ApiProblem;
 pub use problem_schema::problem_schema;
 pub use registry::OpenApiDocument;
-pub use server::{BoundServer, HttpServer, current_document};
+pub use server::{BoundServer, HttpServer, current_document, vault_document};
 pub use server_info::ServerInfo;
 pub use services::ApiServices;
 pub use spa::SpaBundle;

@@ -49,6 +49,7 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
+base64 = { workspace = true }
 async-trait = "0.1"
 axum = { workspace = true }
 # `serve`'s binary tests send real blocks, each with its `X-Blake3` hash.

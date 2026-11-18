@@ -193,3 +193,12 @@ impl PublicShareService for RecordingPublicShares {
         self.next("PublicShareService::authorize_derived")
     }
 }
+
+recording_port!(RecordingVault: VaultService, VaultError, {
+    async fn create_vault(&self, account: Uuid, header: &[u8], root_node_id: Uuid)
+        -> Result<CreatedVault, VaultError>;
+    async fn get_header(&self, account: Uuid, vault_id: Uuid) -> Result<VaultHeader, VaultError>;
+    async fn replace_header(&self, account: Uuid, vault_id: Uuid, header: &[u8], if_match: &ETag)
+        -> Result<ETag, VaultError>;
+    async fn report_unlock_failure(&self, account: Uuid, vault_id: Uuid) -> Result<(), VaultError>;
+});

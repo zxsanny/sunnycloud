@@ -19,6 +19,7 @@ mod system;
 mod transfer;
 mod tree;
 mod validate;
+mod vault;
 mod worker;
 
 use std::sync::Arc;
@@ -50,7 +51,8 @@ pub struct RouteContext {
     pub body_limits: Arc<BodyLimits>,
 }
 
-/// Every operation the server offers. Each group of E-21 adds its own list here.
+/// Every operation of a server without the vault slot (v1.0 and v1.1 builds). Each group of E-21 adds its own
+/// list here.
 pub fn production_routes() -> Vec<RouteDef> {
     let mut routes = system::routes();
     routes.extend(signin::routes());
@@ -66,5 +68,21 @@ pub fn production_routes() -> Vec<RouteDef> {
     routes.extend(worker::routes());
     #[cfg(feature = "test-clock")]
     routes.extend(crate::test_clock::routes());
+    routes
+}
+
+/// The v1.2 vault operations (E-30/c06), served only beside a filled vault slot.
+pub fn vault_routes() -> Vec<RouteDef> {
+    vault::routes()
+}
+
+/// The operations a server over `services` offers, and so the ones its document lists: [`production_routes`],
+/// plus [`vault_routes`] when 12 filled the vault slot. An empty slot (v1.0, v1.1) leaves no vault route in the
+/// routers or the document.
+pub fn served_routes(services: &ApiServices) -> Vec<RouteDef> {
+    let mut routes = production_routes();
+    if services.vault.is_some() {
+        routes.extend(vault_routes());
+    }
     routes
 }

@@ -3,7 +3,7 @@
 
 use super::csrf::SCHEMA_GAPS;
 use super::document::Document;
-use super::plans::{Category, idor_plan};
+use super::plans::{Category, idor_plan, unlisted};
 use super::run_idor::{admin_refusals, body_account, failing_operations, two_accounts};
 use super::target::Target;
 use super::world::ACCOUNT_A;
@@ -13,6 +13,8 @@ async fn another_accounts_id_answers_like_a_random_one_on_every_pair() {
     // Arrange
     let target = Target::stub().await;
     let doc = Document::production();
+    let served = target.served.as_ref().expect("the Mode S document");
+    assert_eq!(unlisted(&doc, served), Vec::<String>::new());
     let cases = idor_plan(&doc, &|owner| target.has_per_account_fake(owner))
         .unwrap_or_else(|problems| panic!("the IDOR generator found gaps: {problems:#?}"));
 

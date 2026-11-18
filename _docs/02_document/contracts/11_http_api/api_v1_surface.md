@@ -3,7 +3,7 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c11 — `_docs/02_tasks/todo/B07-11_route_registry_openapi.md` (contributors: E-21/c04 security headers, E-21/c05 body classes and timeouts, E-21/c07 auth classes and credential transport, E-21/c08 CSRF rule, E-21/c12, c13, c14 route rows; E-21/c15 worker and test-clock rows, `_docs/02_tasks/todo/AZ-3831_internal_router_test_clock.md`); keys assigned at Step 4
 **Consumer tasks**: E-21/c18 (CSRF and IDOR generators), E-15/c13 (scope declaration check), E-30/c06 (vault routes, v1.2), E-23 (`HttpSyncClient`, all operations it calls), E-26/c06 (generated `ApiClient`), E-24 and E-27/E-28 (through `sync-core` and `mobile_backup`), E-20/c03 (worker routes), E-31 (FT-P-70, NFT-SEC-09, NFT-SEC-13, NFT-SEC-50); resolved at Step 4
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: draft
 **Last Updated**: 2026-11-11
 
@@ -208,7 +208,10 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 | Worker (c15, internal) | PUT | `/api/v1/worker-jobs/status` | W | Small | yes | `WorkerJobs::record_status` (204) |
 | Test clock (c15, feature `test-clock`) | GET | `/internal/v1/test/clock-offset` (internal listener) | W | None | no | `OffsetClock::offset` (200 `{offset_seconds}`) |
 | Test clock (c15, feature `test-clock`) | POST | `/test/clock` (`:9091`, outside the document) | none, Open point 7 | 1 KiB | yes | `OffsetClock::advance_seconds` (200 `{offset_seconds}`) |
-| Vault (E-30/c06, v1.2) | - | `/api/v1/vaults/**` | S | - | - | `VaultService` (reserved) |
+| Vault (E-30/c06, v1.2) | POST | `/api/v1/vaults` | SO | Small | yes | `VaultService::create_vault` (201, `ETag`) |
+| Vault (E-30/c06, v1.2) | GET | `/api/v1/vaults/{id}` | S | None | no | `VaultService::get_header` (`ETag`) |
+| Vault (E-30/c06, v1.2) | PUT | `/api/v1/vaults/{id}/header` | SO | Small | yes | `VaultService::replace_header` (`If-Match` required: 428 without, 412 on mismatch) |
+| Vault (E-30/c06, v1.2) | POST | `/api/v1/vaults/{id}/unlock-failures` | S | Small | yes | `VaultService::report_unlock_failure` (204, body ignored) |
 | SPA (c11) | GET | every non-`/api` path | Pub | None | no | bundled web index (fallback) |
 
 ## Invariants
@@ -222,7 +225,7 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 ## Non-Goals
 
 - Not covered: request and response bodies of each operation (owners' specs and the generated document), business outcomes, status codes per business error (`problem_details.md`).
-- Not covered: ops endpoints (`sc_observability`), the vault handlers (E-30).
+- Not covered: ops endpoints (`sc_observability`); the vault wire, `ETag` and `If-Match` rules live in `20_vault_service/vault_http_api.md`.
 
 ## Versioning Rules
 
@@ -305,3 +308,4 @@ Abbreviations: auth class `Pub`, `S`, `SoD` (SessionOrDevice), `SO` (SessionOnly
 | 1.6.0 | 2026-11-11 | Identity, account and admin routes registered (E-21/c12): section "Identity, account and admin routes", the callback is the one registered state-changing GET, `DELETE /devices/me` stays `DeviceOnly`, Open points 2, 3, 8 and 16 narrowed, Open points 34 to 41 (`complete_link` and the approval lookup have no route) | AZ-3828 |
 | 1.7.0 | 2026-11-11 | The approval lookup `GET /device-grants?user_code=` registered; `sc_ids::UserCode::from_presented` added; Open point 35 closed | AZ-3828 |
 | 1.8.0 | 2026-11-12 | The device grant answer carries `verification_uri` (`<public_url>/device`) next to `expires_in`; sync-core decodes the grant and poll answers as stated here | AZ-4231 |
+| 1.9.0 | 2026-11-18 | The four vault operations registered (E-30/c06): routed and documented only when 12 fills the vault slot (`served_routes`), so v1.0 and v1.1 documents and routers have none; wire in `vault_http_api.md` | AZ-3926 |

@@ -1,6 +1,9 @@
 use contracts::Role;
 use sc_error::ErrorCode;
-use sunnycloud_http_api::current_document;
+#[cfg(not(feature = "vault"))]
+use sunnycloud_http_api::current_document as build_document;
+#[cfg(feature = "vault")]
+use sunnycloud_http_api::vault_document as build_document;
 
 use crate::audit_commands;
 use crate::command_config;
@@ -123,9 +126,9 @@ fn version() -> Outcome {
 }
 
 /// The document of this build, byte for byte as `GET /api/v1/openapi.json` serves it. It comes from the route
-/// registry alone, so no service, database or key is built.
+/// registry alone, so no service, database or key is built. A v1.2 build (feature `vault`) lists the vault operations.
 fn openapi() -> Result<Outcome, CliError> {
-    let document = current_document();
+    let document = build_document();
     let text = std::str::from_utf8(document.as_bytes()).map_err(|error| CliError::Operator {
         code: ErrorCode::Internal.as_str(),
         detail: format!("the OpenAPI document is not UTF-8: {error}"),

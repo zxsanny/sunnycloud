@@ -117,7 +117,15 @@ impl VaultService for PgVaultService {
             .run(Scope::Account(account), async |tx| {
                 let etag = match vault_repo::insert(tx, &vault).await {
                     Ok(Some(etag)) => etag,
-                    Ok(None) => return Err(VaultError::VaultExists),
+                    // A unique conflict: the caller's own vault, or another account's vault root, which must not be
+                    // told apart from an unknown root.
+                    Ok(None) => {
+                        return match vault_repo::has_vault(tx, account).await {
+                            Ok(true) => Err(VaultError::VaultExists),
+                            Ok(false) => Err(VaultError::NotFound),
+                            Err(other) => Err(unexpected(other)),
+                        };
+                    }
                     // An unknown or foreign root: the composite foreign key refuses it.
                     Err(DbError::ForeignKeyViolation) => return Err(VaultError::NotFound),
                     Err(other) => return Err(unexpected(other)),

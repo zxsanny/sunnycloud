@@ -3,9 +3,9 @@
 **Component**: shared/error (crate `sc_error`, features `server` (default) and `client`)
 **Producer task**: E-02/c01 — `_docs/02_tasks/todo/B01-08_sc_error.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c03, E-00/c04, E-00/c05 (`ErrorCode` in port errors), E-06/c01a, E-09/c01 (`CorrelationId`); other batches: every server component, 11 (the one mapper), 13 and every client, 09, 10
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-18
 
 ## Purpose
 
@@ -40,13 +40,15 @@ Sources: `common-helpers/02_helper_error.md` (status table authoritative), `epic
 | 401 | `unauthenticated`, `password_required` |
 | 403 | `account_not_active`, `forbidden`, `csrf_rejected` |
 | 404 | `parent_not_found`, `not_found`, `content_unavailable` |
-| 409 | `name_conflict`, `edited_since`, `cycle`, `need_blocks`, `block_conflict`, `last_admin`, `session_cap_exceeded`, `staged_cap_reached` |
+| 409 | `name_conflict`, `edited_since`, `cycle`, `need_blocks`, `block_conflict`, `last_admin`, `session_cap_exceeded`, `staged_cap_reached`, `vault_exists` (20, AZ-3926) |
 | 410 | `upload_session_gone`, `parent_deleted`, `resync_required` (with `reason`: `epoch_changed`, `below_purge_horizon`, `cursor_ahead`) |
 | 411 | `length_required` |
-| 413 | `size_too_large` |
+| 412 | `precondition_failed` (20: `If-Match` differs from the stored header's ETag, AZ-3926) |
+| 413 | `size_too_large`, `vault_header_too_large` (20, AZ-3926) |
 | 416 | `range_not_satisfiable` |
 | 422 | `invalid_name`, `invalid_cursor`, `not_a_folder`, `blocklist_mismatch`, `commit_id_reused`, `batch_too_large`, `target_not_shareable`, `block_hash_mismatch`, `block_length_mismatch` |
 | 426 | `upgrade_required` |
+| 428 | `precondition_required` (11: a vault header replace without `If-Match`, AZ-3926) |
 | 429 | `rate_limited` (+ `retry_after`) |
 | 500 | `internal` (tier 3 only, no detail) |
 | 503 | `service_unavailable`, `overloaded` (+ `retry_after`) |
@@ -83,7 +85,7 @@ Naming: the Rust type is `CorrelationId`; on the wire (body field, `X-Request-Id
 
 ## Open points (flagged in the producer task)
 
-1. Codes used by other specs but absent from helper 02's table: 08 `lease_lost` (409), `revision_obsolete` (404), `thumbnail_not_ready`, `thumbnail_unavailable` (404), output too large (413) and type or kind rejected (422) on the worker routes; 20 `PreconditionFailed` (412) and a missing `If-Match` (428); 01 RFC 8628 device-poll codes (`authorization_pending`, `slow_down`, `access_denied`, `expired_token`). E-02 implements the table as written; each owning epic adds its rows (minor version).
+1. Codes used by other specs but absent from helper 02's table: 08 `lease_lost` (409), `revision_obsolete` (404), `thumbnail_not_ready`, `thumbnail_unavailable` (404), output too large (413) and type or kind rejected (422) on the worker routes; 20 `PreconditionFailed` (412) and a missing `If-Match` (428) (added by AZ-3926 as `precondition_failed` and `precondition_required`, with `vault_exists` 409 and `vault_header_too_large` 413); 01 RFC 8628 device-poll codes (`authorization_pending`, `slow_down`, `access_denied`, `expired_token`). E-02 implements the table as written; each owning epic adds its rows (minor version).
 2. Helper 02 shows the body field as `correlation_id`; E-02 fixes the wire name as `request_id`. Helper 02 needs a doc fix.
 
 ## Change Log
@@ -91,3 +93,4 @@ Naming: the Rust type is `CorrelationId`; on the wire (body field, `X-Request-Id
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B01) |
+| 1.1.0 | 2026-11-18 | Rows of 20's vault routes: 409 `vault_exists`, 412 `precondition_failed`, 413 `vault_header_too_large`, 428 `precondition_required` (owner decision 2026-11-18); open point 1 narrowed | AZ-3926 |

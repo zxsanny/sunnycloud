@@ -21,5 +21,6 @@ mod ops_metrics;
 mod registry;
 mod sharing;
 mod shutdown;
+mod vault;
 mod version;
 mod worker;

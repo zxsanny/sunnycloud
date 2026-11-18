@@ -9,7 +9,7 @@ status: in_progress
 sub_step:
   phase: 2
   name: batch-loop
-  detail: "batch 85 done; cumulative review 79-85 done 2026-11-18 (fixes: deletion NotFound, issuer config finding, composition_root split). Next batch 86: AZ-3824, AZ-3926 (owner 2026-11-18: JSON+base64 header, quoted hex SHA-256 ETag, 413 vault_header_too_large / 409 vault_exists, report 204), AZ-3835, AZ-3971. Blocked: AZ-3795 AC-4 (mock-idp); hardware spikes. Test DB: container sunnycloud-pg18, DATABASE_URL=postgres://postgres:dev@127.0.0.1:57432/postgres, CARGO_INCREMENTAL=0."
+  detail: "batch 86 done (AZ-3926 vault routes, AZ-3824 admin perf; timing NOT-RUN(HW-REF)). Cumulative review 79-85 done; next cumulative after batch 88. Next batch 87: AZ-3656, AZ-3655 (pipelines through the real binary), AZ-3835 (runner, crate graph, coverage gate; Mode R NOT-RUN until the test stack has the SUT). AZ-3971 real-server legs wait for the SUT in tests/compose (E-31). Blocked: AZ-3795 AC-4 (mock-idp); hardware spikes. Test DB: container sunnycloud-pg18, DATABASE_URL=postgres://postgres:dev@127.0.0.1:57432/postgres, CARGO_INCREMENTAL=0."
 retry_count: 0
 tracker: jira
 loop: 1

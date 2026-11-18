@@ -158,6 +158,8 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 
 The targets are proposed (the description sets none) and replaced by a measured baseline at the first run.
 
+**Implemented (AZ-3824)**: `07_admin/tests/admin_perf/listing.rs` over the real 01 (`IdentityAccounts`) and 07a (`PgQuotaAdmin`) with 500 seeded accounts (DS-29 volume; ledger rows, mixed roles, states and limits). `pt_07_1_functional_…` runs in CI on any host (3 s at 20 calls/s: 0 errors, every page equal to the seeded accounts, at most 4 API-role sessions active or in a transaction, sampled every 10 ms; times printed as `NOT-RUN(HW-REF)`); `pt_07_1_each_page_of_20_runs_two_data_statements` counts each page's statements from sqlx's statement events (`sc_testdb::statements`, without `sc_db`'s scope and transaction statements); the 2-minute timing run `pt_07_1_four_callers_…_targets` is `#[ignore = "NOT-RUN(HW-REF)…"]` and prints PASS / TARGET-MISSED / FAIL per metric on REF-SRV. The pool may open one connection more than ever ran at once (sqlx counts a returning connection as in use), so the cap is asserted on active sessions. Not run on REF-SRV yet (`_docs/_process_leftovers/2026-11-18_az-3824-ref-srv.md`).
+
 ### PT-07-2: Deletion duration of a large account
 **Summary**: a large account is fully erased within the AC-27 limit at production batch settings.
 **Traces to**: AC-27
@@ -176,6 +178,8 @@ The targets are proposed (the description sets none) and replaced by a measured 
 
 **Resource limits**:
 - Database connections: purger uses at most 2. Runs on C-REF hardware; elsewhere timings are `NOT-RUN(HW-REF)`.
+
+**Implemented (AZ-3824)**: `07_admin/tests/admin_perf/purge_load.rs` on the purger suite's world (real hooks 06, 02, 03, 08, 05, 07a, 04's GC, real 01 claim and finalize), not on the running server: 07's tests cannot depend on the server crate, so the account is seeded in bulk as the schema owner and the scheduler is replaced by a paced loop (a purger cycle every `account_delete_interval`, start to start, each followed by a GC cycle with the purge's blobs due at once; the report gives purger and GC time apart). The 20 other accounts commit one small file per second through 03's real `stage_small` and `commit_batch`. The purger runs on a pool of its own capped at 2 connections, so a step that needed a third fails (asserted: 0 failed steps); the longest purger transaction is sampled by the pool's server pids as the superuser. `pt_07_2_functional_…` runs in CI (500 files, batch 5,000, budget 300 ms, interval 200 ms: nothing of the account left, blob files gone, one `account_deleted` audit row, 0 failed steps, hook order and batch limit, every other account's commit succeeded and its files are all there); the full run `pt_07_2_large_account_…` (100,000 files, 1,000 shares, 100 sign-in sessions, 5,000 derived rows, batch 5,000, budget 5 s, interval 5 s, 60 s baseline) is `#[ignore = "NOT-RUN(HW-REF)…"]`. Not run on REF-SRV yet (`_docs/_process_leftovers/2026-11-18_az-3824-ref-srv.md`).
 
 ## Security Tests
 
