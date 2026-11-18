@@ -118,7 +118,7 @@ Harness `H1`: Rust integration binary with real PostgreSQL 18 (roles `sunnycloud
 **Summary**: the worker input equals the uploaded bytes through the normal decrypt path.
 **Traces to**: AC-72, AC-71
 **Input data**: DS-03 photo (4 MB) and DS-07 clip (150 MB) uploaded through 03; job claimed; `GET input`; also a retained non-current revision (file overwritten after job creation, retention 7 d) and a revision whose retention has expired (test clock).
-**Expected result**: `Content-Length` equals the file size exactly; BLAKE3 of the body equals the manifest `content_hash`; retained non-current (superseded or deleted but still retained) revision still served; collected (retention expired) or foreign revision 404 `revision_obsolete`; wrong holder 409; response has `Cache-Control: no-store`; a request with `Range: bytes=0-99` is ignored: 200, the full body and exact `Content-Length` (G-08-4).
+**Expected result**: `Content-Length` equals the file size exactly; BLAKE3 of the body equals the manifest `content_hash`; retained non-current (superseded or deleted but still retained) revision still served; collected (retention expired) or foreign revision 404 `revision_obsolete` on input and output while the job row stays (NULL `revision_id`, AZ-4332), then `result` `obsolete` closes it; wrong holder 409; response has `Cache-Control: no-store`; a request with `Range: bytes=0-99` is ignored: 200, the full body and exact `Content-Length` (G-08-4).
 **Max execution time**: 20 s
 **Dependencies**: PostgreSQL, 02, 03, 04
 

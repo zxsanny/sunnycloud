@@ -17,7 +17,7 @@ use tokio::task::JoinSet;
 use uuid::Uuid;
 
 use super::h2::H2;
-use super::{File, Pipeline, content, json_type};
+use super::{File, Pipeline, content, json_type, uuid_of};
 use crate::serve_support::http::Response;
 
 const IO_TIMEOUT: Duration = Duration::from_secs(60);
@@ -160,7 +160,7 @@ impl Pipeline {
             body.to_string().as_bytes(),
         );
         assert_eq!(started.status, 200, "{started:?}");
-        id(&started.json(), "upload_id")
+        uuid_of(&started.json(), "upload_id")
     }
 
     /// Every block of `file` over `lanes` h2c streams, each block generated when its lane sends it.
@@ -207,7 +207,10 @@ impl Pipeline {
         );
         assert_eq!(committed.status, 200, "{committed:?}");
         let committed = committed.json();
-        (id(&committed, "node_id"), id(&committed, "revision_id"))
+        (
+            uuid_of(&committed, "node_id"),
+            uuid_of(&committed, "revision_id"),
+        )
     }
 
     /// `file` staged and published under `parent` by its own `commits:batch`, as a new revision of the file whose
@@ -223,7 +226,7 @@ impl Pipeline {
         assert_eq!(committed.status, 200, "{committed:?}");
         let result = &committed.json()["entries"][0];
         assert_eq!(result["status"], "committed", "{result}");
-        (id(result, "node_id"), id(result, "revision_id"))
+        (uuid_of(result, "node_id"), uuid_of(result, "revision_id"))
     }
 
     /// `DELETE /api/v1/nodes/{node}`.
@@ -256,13 +259,6 @@ impl Pipeline {
         admin.close().await.expect("close admin connection");
         flagged
     }
-}
-
-pub fn id(value: &Value, member: &str) -> Uuid {
-    value[member]
-        .as_str()
-        .and_then(|id| Uuid::parse_str(id).ok())
-        .unwrap_or_else(|| panic!("no `{member}` in {value}"))
 }
 
 fn flip_byte(path: &Path, offset: u64) {

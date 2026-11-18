@@ -98,6 +98,14 @@ pub fn now_micros() -> i64 {
     i64::try_from(since.as_micros()).expect("micros fit i64")
 }
 
+/// A node, revision, upload or job id member of a JSON answer.
+pub fn uuid_of(value: &Value, member: &str) -> Uuid {
+    value[member]
+        .as_str()
+        .and_then(|id| Uuid::parse_str(id).ok())
+        .unwrap_or_else(|| panic!("no `{member}` in {value}"))
+}
+
 /// The running binary, one account and its device token.
 pub struct Pipeline {
     pub stack: Stack,

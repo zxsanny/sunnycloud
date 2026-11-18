@@ -74,7 +74,8 @@ impl JobQueue {
         retry::add(now, self.lease)
     }
 
-    /// Inserts the job unless one exists for (account, kind, content hash, params version). The statement runs on
+    /// Inserts the job unless one exists for (account, kind, content hash, params version); an existing job whose
+    /// revision was collected is adopted by this revision and queued afresh (`Enqueued`). The statement runs on
     /// `tx`, so the job exists only if the caller's transaction commits.
     pub async fn enqueue_in_tx(
         &self,

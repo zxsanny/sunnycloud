@@ -75,11 +75,15 @@ impl Pipeline {
     ///
     /// Needs `max_holds_per_principal` at 1: a probe of the same principal that is refused 429 proves that one
     /// hold of that principal is parked, and probes run one at a time, so that hold is the poll. A probe that
-    /// got in first parks for its own 1 s wait; the poll it refused is sent again.
+    /// got in first parks for its own 1 s wait; the poll it refused is sent again, each time with a longer head
+    /// start before the first probe, so a loaded host cannot keep the probe ahead of the poll.
     pub fn park(&self, token: &str, cursor: &str, wait: u64) -> Held {
         let deadline = Instant::now() + WITHIN;
+        let mut head_start = POLL_EVERY;
         loop {
             let poll = self.spawn_poll(token, cursor, wait);
+            thread::sleep(head_start);
+            head_start *= 2;
             loop {
                 assert!(Instant::now() < deadline, "the poll never parked");
                 let probe = self.changes(token, cursor, Some(1), None);

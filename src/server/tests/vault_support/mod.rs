@@ -1,132 +1,24 @@
 //! The vault routes against the real `sunnycloud serve` binary of a `vault` build on PostgreSQL 18 (`serve_support`):
-//! accounts with a folder to hold a vault, a device token and a browser cookie for the auth checks, a client that
-//! keeps response headers (`ETag`), and probes of what the database stores.
+//! accounts with a folder to hold a vault, a device token and a browser cookie for the auth checks (requests through
+//! `serve_support::http`, which keeps the response headers such as `ETag`), and probes of what the database stores.
 
 #![allow(dead_code)]
 
-use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::net::SocketAddr;
 use std::time::Duration;
 
-use serde_json::{Value, json};
+use serde_json::json;
 use sqlx::Connection;
 use uuid::Uuid;
 
 use crate::serve_support::account::Account;
+use crate::serve_support::http::{Response, send};
 use crate::serve_support::{Server, Stack};
 
 pub const WITHIN: Duration = Duration::from_secs(10);
-const HOST: &str = "cloud.example.org";
 pub const PUBLIC_URL: &str = "https://cloud.example.org";
 /// The default `session_cookie`.
 pub const SESSION_COOKIE: &str = "__Host-session";
-const IO_TIMEOUT: Duration = Duration::from_secs(60);
-
-#[derive(Debug)]
-pub struct Reply {
-    pub status: u16,
-    pub headers: Vec<(String, String)>,
-    pub body: Vec<u8>,
-}
-
-impl Reply {
-    pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(found, _)| found.eq_ignore_ascii_case(name))
-            .map(|(_, value)| value.as_str())
-    }
-
-    pub fn json(&self) -> Value {
-        serde_json::from_slice(&self.body).unwrap_or_else(|error| {
-            panic!(
-                "status {}, body is not JSON ({error}): {}",
-                self.status,
-                String::from_utf8_lossy(&self.body)
-            )
-        })
-    }
-
-    pub fn code(&self) -> String {
-        self.json()["code"].as_str().unwrap_or_default().to_owned()
-    }
-}
-
-/// One HTTP/1.1 request with `Connection: close`; panics on a transport failure.
-pub fn send(
-    addr: SocketAddr,
-    method: &str,
-    path: &str,
-    headers: &[(&str, String)],
-    body: &[u8],
-) -> Reply {
-    let attempt = || -> std::io::Result<Reply> {
-        let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2))?;
-        stream.set_read_timeout(Some(IO_TIMEOUT))?;
-        stream.set_write_timeout(Some(IO_TIMEOUT))?;
-        let mut head = format!(
-            "{method} {path} HTTP/1.1\r\nHost: {HOST}\r\nConnection: close\r\nContent-Length: {}\r\n",
-            body.len()
-        );
-        for (name, value) in headers {
-            head.push_str(&format!("{name}: {value}\r\n"));
-        }
-        head.push_str("\r\n");
-        stream.write_all(head.as_bytes())?;
-        stream.write_all(body)?;
-        let mut raw = Vec::new();
-        stream.read_to_end(&mut raw)?;
-        Ok(parse(&raw))
-    };
-    attempt().unwrap_or_else(|error| panic!("{method} {path} on {addr}: {error}"))
-}
-
-fn parse(raw: &[u8]) -> Reply {
-    let split = raw
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
-        .expect("an end of the response head");
-    let head = std::str::from_utf8(&raw[..split]).expect("the head is UTF-8");
-    let mut lines = head.split("\r\n");
-    let status = lines
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|code| code.parse().ok())
-        .expect("a status line");
-    let headers: Vec<(String, String)> = lines
-        .filter_map(|line| line.split_once(':'))
-        .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_owned()))
-        .collect();
-    let rest = &raw[split + 4..];
-    let chunked = headers
-        .iter()
-        .any(|(name, value)| name == "transfer-encoding" && value.eq_ignore_ascii_case("chunked"));
-    let body = if chunked {
-        dechunk(rest).expect("a well-formed chunked body")
-    } else {
-        rest.to_vec()
-    };
-    Reply {
-        status,
-        headers,
-        body,
-    }
-}
-
-fn dechunk(mut rest: &[u8]) -> Option<Vec<u8>> {
-    let mut body = Vec::new();
-    loop {
-        let end = rest.windows(2).position(|window| window == b"\r\n")?;
-        let size_text = std::str::from_utf8(&rest[..end]).ok()?;
-        let size = usize::from_str_radix(size_text.split(';').next()?.trim(), 16).ok()?;
-        rest = &rest[end + 2..];
-        if size == 0 {
-            return Some(body);
-        }
-        body.extend_from_slice(rest.get(..size)?);
-        rest = rest.get(size + 2..)?;
-    }
-}
 
 pub fn bearer(token: &str) -> (&'static str, String) {
     ("Authorization", format!("Bearer {token}"))
@@ -159,7 +51,13 @@ impl Running {
         self.stack.ports.public
     }
 
-    pub fn call(&self, method: &str, path: &str, headers: &[(&str, String)], body: &[u8]) -> Reply {
+    pub fn call(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, String)],
+        body: &[u8],
+    ) -> Response {
         send(self.public(), method, path, headers, body)
     }
 
@@ -171,7 +69,7 @@ impl Running {
         path: &str,
         headers: &[(&str, String)],
         body: &[u8],
-    ) -> Reply {
+    ) -> Response {
         let mut all = vec![bearer(&account.token)];
         all.extend(headers.iter().cloned());
         self.call(method, path, &all, body)
@@ -196,7 +94,7 @@ impl Running {
     }
 
     /// `POST /api/v1/vaults` on a new folder of `account` with `header`; returns the vault id and the response.
-    pub fn create_vault(&self, account: &Account, header: &[u8]) -> (Uuid, Reply) {
+    pub fn create_vault(&self, account: &Account, header: &[u8]) -> (Uuid, Response) {
         let root = self.folder(account, "Vault");
         let body = create_body(root, header);
         let reply = self.as_account(

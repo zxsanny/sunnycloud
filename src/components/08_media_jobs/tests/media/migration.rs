@@ -190,7 +190,7 @@ async fn the_tables_have_the_columns_of_the_data_model() {
     let jobs = vec![
         column("id", "uuid", "NO"),
         column("account_id", "uuid", "NO"),
-        column("revision_id", "uuid", "NO"),
+        column("revision_id", "uuid", "YES"),
         column("kind", "text", "NO"),
         column("lane", "text", "NO"),
         column("content_hash", "bytea", "NO"),

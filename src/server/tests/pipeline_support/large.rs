@@ -15,7 +15,7 @@ use tokio::task::JoinSet;
 use uuid::Uuid;
 
 use super::h2::H2;
-use super::{POLL_EVERY, Pipeline, WITHIN, content, json_type};
+use super::{POLL_EVERY, Pipeline, WITHIN, content, json_type, uuid_of};
 use crate::serve_support::http::Response;
 
 /// A file sent as 2 MiB blocks.
@@ -64,13 +64,6 @@ pub fn indexes(value: &Value) -> Vec<usize> {
         .collect()
 }
 
-fn id_of(response: &Response, member: &str) -> Uuid {
-    response.json()[member]
-        .as_str()
-        .and_then(|id| Uuid::parse_str(id).ok())
-        .unwrap_or_else(|| panic!("no `{member}` in {response:?}"))
-}
-
 impl Pipeline {
     /// `POST /api/v1/uploads` for `file` named `name` under `parent`.
     pub fn start_upload(&self, parent: Uuid, file: &LargeFile, name: &str) -> Response {
@@ -93,7 +86,7 @@ impl Pipeline {
         let started = self.start_upload(parent, file, &file.name);
         assert_eq!(started.status, 200, "{started:?}");
         assert_eq!(started.json()["outcome"], "session", "{started:?}");
-        id_of(&started, "upload_id")
+        uuid_of(&started.json(), "upload_id")
     }
 
     /// `PUT` of block `index` with `hash` as its `X-Blake3`.

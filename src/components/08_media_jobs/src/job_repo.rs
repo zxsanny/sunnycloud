@@ -279,14 +279,15 @@ pub(crate) async fn complete_skipped(
 /// A held job as `accept_output` and `open_input` need it.
 pub(crate) struct HeldJob {
     pub account: Uuid,
-    pub revision: Uuid,
+    /// `None` once the revision is collected (`ON DELETE SET NULL`): the job is obsolete.
+    pub revision: Option<Uuid>,
     pub kind: JobKind,
     pub content_hash: FileHash,
     pub params_version: u32,
 }
 
 /// account, revision, kind, content hash, params_version.
-type HeldRow = (Uuid, Uuid, String, Vec<u8>, i16);
+type HeldRow = (Uuid, Option<Uuid>, String, Vec<u8>, i16);
 
 /// System scope: the job's account is not known before this lookup.
 pub(crate) async fn held(

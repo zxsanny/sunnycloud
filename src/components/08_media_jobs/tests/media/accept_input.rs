@@ -1,6 +1,6 @@
 //! AZ-3842 AC-72 (IT-08-12, worker side): the holder of a running job reads the whole decrypted original of the
 //! job's revision through 04's reader, with its exact length, also when the revision is superseded but retained;
-//! anyone else gets `LeaseLost`, and a collected revision is obsolete. Files are published through the real 02
+//! anyone else gets `LeaseLost`, and a collected revision is obsolete (its job keeps its row, AZ-4332). Files are published through the real 02
 //! `publish` with the real media effect over blobs written by the real 04 writer.
 
 use std::sync::Arc;
@@ -238,8 +238,7 @@ async fn a_retained_revision_is_served_and_a_non_holder_a_closed_job_or_an_expir
 }
 
 #[tokio::test]
-async fn an_input_whose_revision_is_collected_after_the_holder_check_is_obsolete_and_before_it_is_lease_lost()
- {
+async fn an_input_whose_revision_is_collected_after_or_before_the_holder_check_is_obsolete() {
     // Arrange
     let mut collecting: Option<Arc<CollectingTree>> = None;
     let a = Accept::with(
@@ -266,7 +265,7 @@ async fn an_input_whose_revision_is_collected_after_the_holder_check_is_obsolete
     // Assert
     assert_eq!(
         [label(&during), label(&after)],
-        ["RevisionObsolete", "LeaseLost"]
+        ["RevisionObsolete", "RevisionObsolete"]
     );
     collecting.close().await;
     drop(collecting);

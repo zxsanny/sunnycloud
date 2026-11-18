@@ -311,7 +311,7 @@ A link follows the node, so save-in-place does not break it (AC-34). Missing, ex
 |---|---|---|
 | `id` | uuid PK | |
 | `account_id` | uuid | |
-| `revision_id` | uuid | the triggering revision; `ON DELETE CASCADE` |
+| `revision_id` | uuid NULL | the triggering revision; composite FK `(revision_id, account_id)` `ON DELETE SET NULL (revision_id)` (AZ-4332, 2026-11-18): when the revision is collected the job keeps its row with NULL here, which marks it obsolete (input and output answer 404 `revision_obsolete`, the supervisor closes it `obsolete`) |
 | `kind` | text | `stills` (thumbnail and preview in one job), `poster`, `transcode` |
 | `lane` | text GENERATED STORED | `video` for `poster` and `transcode`, `image` for `stills`; the interactive decoder is image-only, the general decoder serves both (AC-10) |
 | `content_hash` | bytea(32) | copied from the revision |
@@ -325,7 +325,7 @@ A link follows the node, so save-in-place does not break it (AC-34). Missing, ex
 | `last_error` | text NULL | bounded to 500 characters |
 | `created_at`, `finished_at` | timestamptz | |
 
-- **Unique `(account_id, kind, content_hash, params_version)`**: idempotent enqueue (`ON CONFLICT DO NOTHING`), and no work is ever shared across accounts (D4).
+- **Unique `(account_id, kind, content_hash, params_version)`**: idempotent enqueue (`ON CONFLICT DO NOTHING` while the existing job has its revision; a job whose revision is NULL is adopted by the new revision and queued afresh), and no work is ever shared across accounts (D4).
 - **Claim** (run by 08 inside the API when the supervisor asks over `:8081`): one statement selects `lane = $lane AND status IN ('queued','running') AND available_at <= $now AND attempts < 3` ordered by `(priority, available_at)` `FOR UPDATE SKIP LOCKED LIMIT 1`, and sets `status = 'running'`, `attempts + 1`, `available_at = $now + job_lease`. A running job whose lease expired is claimed again (that is the retry); the supervisor's heartbeat extends `available_at` while a decoder runs. A reaper marks `running` rows with an expired lease and `attempts >= 3` as `dead`. Failure with attempts left sets `status = 'queued'` and a backoff `available_at`.
 - Index `jobs_claim_idx (lane, priority, available_at) WHERE status IN ('queued','running')`; `(revision_id)`; `(finished_at) WHERE status IN ('succeeded','dead')` for the janitor; `jobs_queued_idx (account_id) WHERE status = 'queued'` for the per-account queued count that decides the bulk lane. Table tuned for churn: low autovacuum scale factor and low fillfactor; terminal rows deleted after `job_terminal_ttl`.
 - Jobs are not created for vault files. `jobs` is a system-scope table (claims cross accounts) reached only through the API: the supervisor has no database login and claims, heartbeats, reads input, writes output and fails jobs over `/api/v1/worker-jobs/**` on `:8081`; the queue SQL lives in 08 inside the API (section 12.3).

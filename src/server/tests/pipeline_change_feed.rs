@@ -16,11 +16,10 @@ use std::collections::BTreeSet;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use pipeline_support::download::id;
 use pipeline_support::feed::{Page, answer, production_occurrences, split};
 use pipeline_support::large::LargeFile;
 use pipeline_support::wiring::{Caller, missing_callers};
-use pipeline_support::{File, Pipeline, WITHIN, entry};
+use pipeline_support::{File, Pipeline, WITHIN, entry, uuid_of};
 use serde_json::Value;
 use serve_support::http::call;
 use uuid::Uuid;
@@ -57,8 +56,8 @@ async fn ac1_a_commit_by_device_a_wakes_device_b_within_5_s_with_the_latest_stat
     assert_eq!(page.items.len(), 1, "{:?}", page.items);
     let item = &page.items[0];
     let current = pipeline.node(node);
-    assert_eq!(id(item, "node_id"), node);
-    assert_eq!(id(item, "revision_id"), revision);
+    assert_eq!(uuid_of(item, "node_id"), node);
+    assert_eq!(uuid_of(item, "revision_id"), revision);
     assert_eq!(item["state"], "live");
     assert_eq!(item["name"], file.name.as_str());
     assert_eq!(item["size"].as_u64(), Some(file.bytes.len() as u64));
@@ -260,7 +259,7 @@ async fn prepared_commits(pipeline: &Pipeline, folder: Uuid) -> Vec<(String, Vec
 /// The node of a commit answer of either route.
 fn committed_node(answered: &Value) -> (Uuid, Uuid) {
     let result = answered["entries"].get(0).unwrap_or(answered);
-    (id(result, "node_id"), id(result, "revision_id"))
+    (uuid_of(result, "node_id"), uuid_of(result, "revision_id"))
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -310,7 +309,7 @@ async fn ac69_fifty_concurrent_commits_read_back_from_cursor_0_once_each_gapless
         .map(|item| item["seq"].as_u64().expect("a seq"))
         .collect();
     assert!(seqs.windows(2).all(|pair| pair[0] < pair[1]), "{seqs:?}");
-    let nodes: Vec<Uuid> = items.iter().map(|item| id(item, "node_id")).collect();
+    let nodes: Vec<Uuid> = items.iter().map(|item| uuid_of(item, "node_id")).collect();
     assert_eq!(
         nodes.iter().collect::<BTreeSet<_>>().len(),
         nodes.len(),
@@ -321,9 +320,9 @@ async fn ac69_fifty_concurrent_commits_read_back_from_cursor_0_once_each_gapless
         .map(|(node, revision)| {
             let item = items
                 .iter()
-                .find(|item| id(item, "node_id") == *node)
+                .find(|item| uuid_of(item, "node_id") == *node)
                 .unwrap_or_else(|| panic!("{node} missing from the feed"));
-            assert_eq!(id(item, "revision_id"), *revision);
+            assert_eq!(uuid_of(item, "revision_id"), *revision);
             assert_eq!(item["state"], "live");
             item["seq"].as_u64().expect("a seq")
         })

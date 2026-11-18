@@ -4,7 +4,7 @@
 //! planning effect at commit (AZ-3841), also inside the real 02 `publish`, and the thumbnail states and derived
 //! lookups (AZ-3844), the acceptance of worker outputs and the worker input (AZ-3842), and the worker
 //! authentication and the `WorkerJobs` facade (AZ-3843), the erase hook, blob owner cleanup and janitors
-//! (AZ-3845), and the operator port, worker presence and media metrics (AZ-3846).
+//! (AZ-3845), and the operator port, worker presence and media metrics (AZ-3846), and the jobs of a collected revision (AZ-4332).
 
 mod accept_doubles;
 mod accept_input;
@@ -30,6 +30,7 @@ mod keys;
 mod maint_support;
 mod metrics_scrape;
 mod migration;
+mod obsolete;
 mod plans;
 mod publish_support;
 mod queue_claim;

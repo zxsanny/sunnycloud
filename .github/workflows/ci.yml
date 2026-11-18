@@ -81,9 +81,16 @@ jobs:
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-llvm-cov
       - name: cargo test --workspace --locked under cargo llvm-cov (75% overall, 90% critical paths)
         run: scripts/ci/watchdog.sh --name rust-test -- scripts/ci/check-coverage.sh
+      # The vault service (v1.2) is linked only with feature `vault`, which the workspace run above leaves off.
+      - name: Server tests with the vault feature
+        working-directory: src
+        run: >-
+          ../scripts/ci/watchdog.sh --name rust-test-vault -- cargo test --locked -p sunnycloud-server --features vault
+          --test vault_http --test vault_report --test local_commands --test api_services --test composition_root
 
   # The two 1 GiB pipeline ACs (AZ-3657 AC-1, AZ-3660 AC-72) in release mode, apart from the instrumented rust-test
-  # job (owner decision 2026-11-18). Each runs by its exact name, so no other ignored test runs here.
+  # job (owner decision 2026-11-18). Each runs by its exact name, so no other ignored test runs here; run-one-test.sh
+  # fails the step unless exactly one test passed (a name that matches nothing would otherwise pass silently).
   pipelines-large:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -114,10 +121,10 @@ jobs:
           cache-on-failure: true
       - name: 1 GiB download (AZ-3657 AC-1)
         working-directory: src
-        run: ../scripts/ci/watchdog.sh --name pipeline-download-1gib -- cargo test --release --locked -p sunnycloud-server --test pipeline_download -- --ignored --exact ac1_a_1_gib_file_reads_in_full_by_range_past_the_end_and_conditionally
+        run: ../scripts/ci/watchdog.sh --name pipeline-download-1gib -- ../scripts/ci/run-one-test.sh cargo test --release --locked -p sunnycloud-server --test pipeline_download -- --ignored --exact ac1_a_1_gib_file_reads_in_full_by_range_past_the_end_and_conditionally
       - name: 1 GiB worker input (AZ-3660 AC-72)
         working-directory: src
-        run: ../scripts/ci/watchdog.sh --name pipeline-worker-1gib -- cargo test --release --locked -p sunnycloud-server --test pipeline_media_worker -- --ignored --exact ac72_the_worker_input_of_a_1_gib_file_hashes_to_its_plaintext_block_by_block
+        run: ../scripts/ci/watchdog.sh --name pipeline-worker-1gib -- ../scripts/ci/run-one-test.sh cargo test --release --locked -p sunnycloud-server --test pipeline_media_worker -- --ignored --exact ac72_the_worker_input_of_a_1_gib_file_hashes_to_its_plaintext_block_by_block
 
   # AZ-3835 AC-1: the IT-11 cases of components/11_http_api/tests.md, each with its result, duration and budget.
   # 11 holds no SQL (Mode S stub services), so the job needs no database.

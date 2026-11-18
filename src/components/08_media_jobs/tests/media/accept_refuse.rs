@@ -181,7 +181,7 @@ async fn an_expired_lease_and_another_worker_are_lease_lost() {
 }
 
 #[tokio::test]
-async fn a_revision_collected_after_the_holder_check_is_obsolete_and_one_collected_before_takes_the_job_with_it()
+async fn a_revision_collected_after_or_before_the_holder_check_is_obsolete_and_the_job_keeps_its_row()
  {
     // Arrange
     let mut collecting: Option<Arc<CollectingTree>> = None;
@@ -223,12 +223,14 @@ async fn a_revision_collected_after_the_holder_check_is_obsolete_and_one_collect
     // Assert
     assert_eq!(
         [label(&during), label(&after)],
-        ["RevisionObsolete", "LeaseLost"]
+        ["RevisionObsolete", "RevisionObsolete"]
     );
-    let jobs = a.q.count("SELECT count(*) FROM jobs").await;
+    let jobs =
+        a.q.count("SELECT count(*) FROM jobs WHERE revision_id IS NULL AND status = 'running'")
+            .await;
     assert_eq!(
-        jobs, 0,
-        "the collected revision's job is removed by the cascade"
+        jobs, 1,
+        "the collected revision's job keeps its row (AZ-4332)"
     );
     assert!(a.blobs.files().is_empty());
     // Only the collected revision's own blob row is left unreferenced (its removal is the purge's, not 08's).

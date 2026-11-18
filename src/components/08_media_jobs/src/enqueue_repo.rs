@@ -9,13 +9,19 @@ use uuid::Uuid;
 use crate::job_names::kind_name;
 use crate::job_repo::{at, micros, overflow};
 
+/// A job of the same key whose revision was collected (`revision_id` NULL) would otherwise keep the new revision
+/// of the same content from ever being processed: it is adopted by the new revision and queued afresh, whatever
+/// its status. A job that still has its revision is left as it is.
 const ENQUEUE: &str = concat!(
     "INSERT INTO jobs (id, account_id, revision_id, kind, content_hash, params_version, priority, status, \
      available_at, created_at) VALUES ($1, $2, $3, $4, $5, $6::bigint, $7, 'queued', ",
     at!("$8"),
     ", ",
     at!("$8"),
-    ") ON CONFLICT ON CONSTRAINT jobs_key DO NOTHING"
+    ") ON CONFLICT ON CONSTRAINT jobs_key DO UPDATE SET revision_id = EXCLUDED.revision_id, \
+     priority = EXCLUDED.priority, status = 'queued', attempts = 0, available_at = EXCLUDED.available_at, \
+     leased_by = NULL, outcome = NULL, last_error = NULL, created_at = EXCLUDED.created_at, finished_at = NULL \
+     WHERE jobs.revision_id IS NULL"
 );
 
 /// The account's queued jobs, at most `$2`, on `jobs_queued_idx`.

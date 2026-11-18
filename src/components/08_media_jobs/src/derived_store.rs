@@ -143,8 +143,8 @@ impl DerivedStore {
         worker_id: &str,
     ) -> Result<WorkerInput, WorkerJobError> {
         let job = self.held(job_id, worker_id, false).await?;
-        self.check_revision(&job).await?;
-        let revision = match self.tree.get_revision(job.account, job.revision).await {
+        let revision = self.check_revision(&job).await?;
+        let revision = match self.tree.get_revision(job.account, revision).await {
             Ok(revision) => revision,
             Err(TreeReaderError::NotFound) => return Err(WorkerJobError::RevisionObsolete),
             Err(error) => return Err(unexpected(error)),
@@ -228,15 +228,18 @@ impl DerivedStore {
         Ok((admitted, size))
     }
 
-    /// A collected revision is obsolete. Its job row goes with it (`ON DELETE CASCADE`), so this answers only
-    /// when the collection lands after the holder check.
-    async fn check_revision(&self, job: &HeldJob) -> Result<(), WorkerJobError> {
+    /// The job's revision while it is current or retained. A collected revision is obsolete: the job row keeps
+    /// no revision (`ON DELETE SET NULL`), or the collection lands after the holder check.
+    async fn check_revision(&self, job: &HeldJob) -> Result<Uuid, WorkerJobError> {
+        let Some(revision) = job.revision else {
+            return Err(WorkerJobError::RevisionObsolete);
+        };
         match self
             .tree
-            .is_current_or_retained(job.account, job.revision)
+            .is_current_or_retained(job.account, revision)
             .await
         {
-            Ok(true) => Ok(()),
+            Ok(true) => Ok(revision),
             Ok(false) | Err(TreeReaderError::NotFound) => Err(WorkerJobError::RevisionObsolete),
             Err(error) => Err(unexpected(error)),
         }

@@ -17,10 +17,10 @@ use std::sync::Barrier;
 use std::thread;
 
 use pipeline_support::tree::{
-    Done, Op, commit_on, copy_names, error_of, feed_nodes, names, patch_on, uuid_of,
+    Done, Op, commit_on, copy_names, error_of, feed_nodes, names, patch_on,
 };
 use pipeline_support::wiring::{Caller, missing_callers};
-use pipeline_support::{File, Pipeline, content, now_micros};
+use pipeline_support::{File, Pipeline, content, now_micros, uuid_of};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -30,7 +30,10 @@ const DEVICE_B: &str = "desk-b";
 async fn ac1_a_stale_edit_becomes_current_and_the_superseded_revision_moves_to_a_conflict_copy() {
     // Arrange: x at R1, edited by device A to R2; device B still holds R1.
     let pipeline = Pipeline::start(&[]).await;
-    let device_b = pipeline.device_named(DEVICE_B).await;
+    let device_b = pipeline
+        .stack
+        .device_token_named(&pipeline.account, DEVICE_B)
+        .await;
     let folder = pipeline.folder("ac1");
     let r1 = pipeline.commit_as(&pipeline.device, folder, "x", &content(1, 4096), None);
     let x = uuid_of(&r1, "node_id");
@@ -77,7 +80,10 @@ async fn ac2_an_edit_revives_a_deleted_file_a_stale_delete_is_edited_since_and_a
  {
     // Arrange: a tombstoned file t; a file e edited since device B's base.
     let pipeline = Pipeline::start(&[]).await;
-    let device_b = pipeline.device_named(DEVICE_B).await;
+    let device_b = pipeline
+        .stack
+        .device_token_named(&pipeline.account, DEVICE_B)
+        .await;
     let folder = pipeline.folder("ac2");
     let t = pipeline.commit_as(&pipeline.device, folder, "t.txt", &content(1, 3000), None);
     let (t_node, t_rev) = (uuid_of(&t, "node_id"), uuid_of(&t, "revision_id"));
@@ -352,7 +358,10 @@ const ROUNDS: usize = 20;
 async fn ac70_a_move_of_the_folder_racing_an_edit_of_its_file_keeps_both_with_no_conflict_copy() {
     // Arrange
     let pipeline = Pipeline::start(&[]).await;
-    let device_b = pipeline.device_named(DEVICE_B).await;
+    let device_b = pipeline
+        .stack
+        .device_token_named(&pipeline.account, DEVICE_B)
+        .await;
     let public = pipeline.stack.ports.public;
     for round in 0..ROUNDS {
         let f = pipeline.folder(&format!("f-{round}"));

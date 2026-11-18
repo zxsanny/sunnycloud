@@ -8,10 +8,8 @@
 //! runs in the Compose test stack of E-31/c05. Durations are set short through config and polled
 //! (`_docs/02_document/tests/environment.md`): `job_lease` at its 5 s minimum, the job reaper every second, and
 //! for AC-3 `retention` 0 s with the GC loop every second, so "retention expired" is real time, not a test clock.
-//!
-//! Known failure, kept honest: AC-3's collected case asserts the contract (`worker_job_protocol.md`: 404
-//! `revision_obsolete`, then the job closed `obsolete`), but `jobs` cascades on the revision delete, so the GC
-//! removes the job with its revision and the input answers 409 `lease_lost` (08 description, AZ-3842 as built).
+//! AC-3's collected case asserts the contract (`worker_job_protocol.md`: 404 `revision_obsolete`, then the job
+//! closed `obsolete`); a job keeps its row when its revision is collected (AZ-4332).
 
 mod pipeline_support;
 mod root_support;
@@ -21,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use pipeline_support::large::LargeFile;
 use pipeline_support::media::{WORKER_TOKEN, jpeg_bytes};
-use pipeline_support::tree::uuid_of;
+use pipeline_support::uuid_of;
 use pipeline_support::wiring::{Caller, missing_callers};
 use pipeline_support::{File, Pipeline, entries, entry, now_micros};
 use sc_ids::{hash_block, rollup};
@@ -180,7 +178,6 @@ async fn ac2_an_expired_lease_is_taken_over_with_attempt_plus_one_and_the_reaper
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "KNOWN-FAIL(AZ-4332): jobs are deleted with their collected revision (ON DELETE CASCADE); the contract wins (owner 2026-11-18), un-ignore with the fix"]
 async fn ac3_the_input_of_a_collected_revision_is_404_revision_obsolete_and_the_job_closes_obsolete()
  {
     // Arrange: retention 0 s and the GC loop every second, so a deleted file's revision is collected at once.

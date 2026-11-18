@@ -1,5 +1,5 @@
-//! AC-2: the unique job key, the unique derived key and blob id, the cascade from a revision to its jobs, the
-//! generated lane, and the account match of every composite reference.
+//! AC-2: the unique job key, the unique derived key and blob id, a collected revision clearing only its jobs'
+//! revision (AZ-4332), the generated lane, and the account match of every composite reference.
 
 use sqlx::{Connection, PgConnection};
 use uuid::Uuid;
@@ -21,12 +21,17 @@ async fn lane_of(conn: &mut PgConnection, id: Uuid) -> String {
         .expect("read lane")
 }
 
-async fn job_count(conn: &mut PgConnection, revision: Uuid) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM jobs WHERE revision_id = $1")
-        .bind(revision)
-        .fetch_one(conn)
-        .await
-        .expect("count jobs")
+/// (jobs of `revision`, jobs of `account` with no revision).
+async fn job_counts(conn: &mut PgConnection, account: Uuid, revision: Uuid) -> (i64, i64) {
+    sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE revision_id = $2), count(*) FILTER (WHERE revision_id IS NULL) \
+         FROM jobs WHERE account_id = $1",
+    )
+    .bind(account)
+    .bind(revision)
+    .fetch_one(conn)
+    .await
+    .expect("count jobs")
 }
 
 #[tokio::test]
@@ -148,7 +153,7 @@ async fn a_second_derived_row_with_the_same_key_or_the_same_blob_is_refused() {
 }
 
 #[tokio::test]
-async fn deleting_a_revision_deletes_its_jobs_and_no_other() {
+async fn deleting_a_revision_keeps_its_jobs_without_a_revision_and_leaves_the_others() {
     // Arrange
     let fixture = Fixture::new().await;
     let mut conn = fixture.owner_conn().await;
@@ -170,8 +175,8 @@ async fn deleting_a_revision_deletes_its_jobs_and_no_other() {
         .await
         .expect("job of b");
     let before = (
-        job_count(&mut conn, revision_a).await,
-        job_count(&mut conn, revision_b).await,
+        job_counts(&mut conn, a, revision_a).await,
+        job_counts(&mut conn, b, revision_b).await,
     );
 
     // Act
@@ -181,13 +186,13 @@ async fn deleting_a_revision_deletes_its_jobs_and_no_other() {
         .await
         .expect("delete the revision");
     let after = (
-        job_count(&mut conn, revision_a).await,
-        job_count(&mut conn, revision_b).await,
+        job_counts(&mut conn, a, revision_a).await,
+        job_counts(&mut conn, b, revision_b).await,
     );
 
     // Assert
-    assert_eq!(before, (3, 1));
-    assert_eq!(after, (0, 1));
+    assert_eq!(before, ((3, 0), (1, 0)));
+    assert_eq!(after, ((0, 3), (1, 0)));
     conn.close().await.expect("close owner connection");
     fixture.finish().await;
 }

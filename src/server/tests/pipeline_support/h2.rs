@@ -60,6 +60,14 @@ impl H2 {
             .unwrap_or_else(|error| panic!("{method} {path} over h2c: {error}"));
         assert_eq!(response.version(), hyper::Version::HTTP_2);
         let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(name, value)| {
+                let value = String::from_utf8_lossy(value.as_bytes()).trim().to_owned();
+                (name.as_str().to_owned(), value)
+            })
+            .collect();
         let body = response
             .into_body()
             .collect()
@@ -67,6 +75,10 @@ impl H2 {
             .unwrap_or_else(|error| panic!("{method} {path} body over h2c: {error}"))
             .to_bytes()
             .to_vec();
-        Response { status, body }
+        Response {
+            status,
+            headers,
+            body,
+        }
     }
 }

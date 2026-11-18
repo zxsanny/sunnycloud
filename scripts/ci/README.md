@@ -54,14 +54,16 @@ The database tests seed their files only in temporary directories and create and
 
 ## PR gate: `.github/workflows/ci.yml` and its scripts (AZ-3761)
 
-The workflow only checks out, caches and calls these scripts, each under `watchdog.sh`. Jobs: `rust-lint`, `rust-test`, `pg18-migrations`, `supply-chain`, `images`; triggers: pull request to `dev`, push to `dev`.
+The workflow only checks out, caches and calls these scripts, each under `watchdog.sh`. Jobs: `rust-lint`, `rust-test`, `pipelines-large`, `http-api-suite`, `pg18-migrations`, `supply-chain`, `images`, `vault-core`; triggers: pull request to `dev`, push to `dev`.
 
 | Script | Job | What it does |
 |--------|-----|--------------|
 | `setup-rust.sh` | all cargo jobs | `rustup toolchain install` from `src/rust-toolchain.toml`, verifies the pinned channel |
 | `install-tools.sh TOOL...` | all cargo jobs | pinned `cargo-deny`, `cargo-llvm-cov`, `gitleaks` (SHA-256 verified downloads), `cargo-audit`, `sqlx-cli` (`cargo install --locked --version`); the versions live in that script |
-| `rust-lint.sh` | `rust-lint` | `cargo fmt --check`, clippy `-D warnings`, `sqlx migrate run`, `check-sqlx-prepare.sh` (needs `DATABASE_URL`) |
+| `rust-lint.sh` | `rust-lint` | `cargo fmt --check`, clippy `-D warnings` over the workspace, then clippy `-D warnings` of `sunnycloud-server --features vault` (the vault service is linked only with that feature), `sqlx migrate run`, `check-sqlx-prepare.sh` (needs `DATABASE_URL`) |
 | `check-coverage.sh` | `rust-test` | `cargo llvm-cov test --workspace --locked` (lists every test), then 75% overall and 90% per entry of `critical-paths.txt` (an entry may carry its own minimum, `PATH MIN`); prints the measured values |
+| (inline `cargo test`) | `rust-test` | after the coverage step: `cargo test --locked -p sunnycloud-server --features vault` over `vault_http`, `vault_report`, `local_commands`, `api_services`, `composition_root` (the feature-gated server tests the workspace run leaves off) |
+| `run-one-test.sh CMD...` | `pipelines-large` | runs one `cargo test ... -- --ignored --exact NAME` (the 1 GiB download and worker ACs, release mode), passes its output through, and fails unless exactly one test passed: a name that matches nothing would otherwise exit 0 with `0 passed` |
 | `check-migrations.sh` | `pg18-migrations` | see above |
 | `check-it-suite.sh` | `http-api-suite` | runs IT-11-1..20 of `components/11_http_api/tests.md` through `it_suite.py` and the id-to-test map `src/components/11_http_api/tests/it_cases.txt`; prints each case with result and duration; fails on a case with no test, a prefix that selects nothing, an unknown id, a failing run or a case over its max execution time |
 | `check-pinning.sh [ROOT]` | `supply-chain` | `uses:` = 40-hex SHA + `# vX.Y.Z`, images by digest, default `permissions: contents: read`, no fork checkout under `pull_request_target` |
@@ -72,7 +74,7 @@ The workflow only checks out, caches and calls these scripts, each under `watchd
 | `build-images.sh` | `images` | builds api, worker, decoder and the `-test` api and worker images, then runs `deploy/tests/check-images.sh`; never pushes |
 | `watchdog.sh [--name N] -- CMD...` | every long step | heartbeat every 30 s (`WATCHDOG_TICK`), STALLED and abort of the whole process group after 120 s without output (`WATCHDOG_STALL`), exit 124 |
 
-Tests: `tests/run-script-tests.sh` (run by `supply-chain`) covers the pinning, audit, coverage-threshold, IT-suite runner, watchdog (fast), secret-scan and quiet-flag checks. Run separately: `tests/test-watchdog-realtime.sh` (about 2.5 minutes, default 30 s / 120 s) and `tests/test-check-coverage-real.sh` (needs `cargo-llvm-cov`).
+Tests: `tests/run-script-tests.sh` (run by `supply-chain`) covers the pinning, audit, coverage-threshold, IT-suite runner, one-test runner, watchdog (fast), secret-scan and quiet-flag checks. Run separately: `tests/test-watchdog-realtime.sh` (about 2.5 minutes, default 30 s / 120 s) and `tests/test-check-coverage-real.sh` (needs `cargo-llvm-cov`).
 
 Advisory ignore format in `src/deny.toml`: `{ id = "RUSTSEC-YYYY-NNNN", reason = "added=YYYY-MM-DD; expires=YYYY-MM-DD; why=..." }`.
 

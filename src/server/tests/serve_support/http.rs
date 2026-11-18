@@ -1,5 +1,5 @@
 //! A blocking HTTP/1.1 client over a plain socket (the API image has no client either): one request per
-//! connection, `Connection: close`, body read to the end.
+//! connection, `Connection: close`, body read to the end, response headers kept (names lowercased).
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -13,10 +13,19 @@ const IO_TIMEOUT: Duration = Duration::from_secs(60);
 #[derive(Debug)]
 pub struct Response {
     pub status: u16,
+    /// Header names lowercased, values trimmed, in the order received.
+    pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
 }
 
 impl Response {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(found, _)| found.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
     pub fn json(&self) -> Value {
         serde_json::from_slice(&self.body).unwrap_or_else(|error| {
             panic!(
@@ -26,11 +35,16 @@ impl Response {
             )
         })
     }
+
+    /// The `code` field of a JSON error body, empty when it has none.
+    pub fn code(&self) -> String {
+        self.json()["code"].as_str().unwrap_or_default().to_owned()
+    }
 }
 
 /// The status of `GET path`, or `None` when nothing answers.
 pub fn get_status(addr: SocketAddr, path: &str) -> Option<u16> {
-    send(addr, "GET", path, &[], &[])
+    exchange(addr, "GET", path, &[], &[])
         .ok()
         .map(|answer| answer.status)
 }
@@ -47,10 +61,21 @@ pub fn call(
     let mut all = vec![("Authorization", format!("Bearer {token}"))];
     all.extend(headers.iter().cloned());
     send(addr, method, path, &all, body)
+}
+
+/// `method path` with exactly `headers` (no implied credentials) and a body; panics on a transport failure.
+pub fn send(
+    addr: SocketAddr,
+    method: &str,
+    path: &str,
+    headers: &[(&str, String)],
+    body: &[u8],
+) -> Response {
+    exchange(addr, method, path, headers, body)
         .unwrap_or_else(|error| panic!("{method} {path} on {addr}: {error}"))
 }
 
-fn send(
+fn exchange(
     addr: SocketAddr,
     method: &str,
     path: &str,
@@ -90,16 +115,23 @@ fn parse(raw: &[u8]) -> std::io::Result<Response> {
         .and_then(|line| line.split_whitespace().nth(1))
         .and_then(|code| code.parse().ok())
         .ok_or_else(|| invalid("no status line"))?;
-    let chunked = lines.any(|line| {
-        line.to_ascii_lowercase()
-            .starts_with("transfer-encoding: chunked")
-    });
+    let headers: Vec<(String, String)> = lines
+        .filter_map(|line| line.split_once(':'))
+        .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_owned()))
+        .collect();
+    let chunked = headers
+        .iter()
+        .any(|(name, value)| name == "transfer-encoding" && value.eq_ignore_ascii_case("chunked"));
     let body = if chunked {
         dechunk(body).ok_or_else(|| invalid("bad chunked body"))?
     } else {
         body.to_vec()
     };
-    Ok(Response { status, body })
+    Ok(Response {
+        status,
+        headers,
+        body,
+    })
 }
 
 fn dechunk(mut rest: &[u8]) -> Option<Vec<u8>> {

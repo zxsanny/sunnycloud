@@ -15,7 +15,8 @@ use tokio::task::JoinSet;
 use uuid::Uuid;
 
 use super::h2::H2;
-use super::{File, Pipeline, entry, json_type, now_micros, stage_on, staged_headers, staged_path};
+use super::uuid_of;
+use super::{File, Pipeline, entry, json_type, stage_on, staged_headers, staged_path};
 use crate::serve_support::http::{Response, call};
 
 /// How often the usage is sampled while concurrent operations run.
@@ -39,14 +40,6 @@ pub enum Done {
 pub struct Mix {
     pub samples: Vec<i64>,
     pub done: Vec<Done>,
-}
-
-/// A node or revision id member of a JSON answer.
-pub fn uuid_of(value: &Value, member: &str) -> Uuid {
-    value[member]
-        .as_str()
-        .and_then(|id| Uuid::parse_str(id).ok())
-        .unwrap_or_else(|| panic!("no `{member}` in {value}"))
 }
 
 /// The names of a listing.
@@ -198,27 +191,6 @@ impl Pipeline {
             quota["used"].as_i64().expect("used"),
             quota["limit_bytes"].as_i64(),
         )
-    }
-
-    /// A second signed-in device of the account whose label is `label`, in 01's table as the serve harness
-    /// stores a device token (SHA-256 of the text).
-    pub async fn device_named(&self, label: &str) -> String {
-        let token = format!("sc_dev_serve{}", Uuid::new_v4().simple());
-        let mut admin = self.stack.root.db.admin().await;
-        sqlx::query(
-            "INSERT INTO device_tokens (id, account_id, token_hash, device_name, platform, created_at) \
-             VALUES (gen_random_uuid(), $1, sha256(convert_to($2, 'UTF8')), $3, 'linux', \
-             'epoch'::timestamptz + $4::bigint * interval '1 microsecond')",
-        )
-        .bind(self.account.id)
-        .bind(&token)
-        .bind(label)
-        .bind(now_micros())
-        .execute(&mut admin)
-        .await
-        .expect("insert device token");
-        admin.close().await.expect("close admin connection");
-        token
     }
 
     /// The `blob_gc` row of the blob of `revision`: its reason and `due_at` in Unix microseconds.

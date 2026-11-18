@@ -87,18 +87,24 @@ impl Stack {
         Account { id, root, token }
     }
 
-    /// A live device token of `account` (a signed-in desktop device), in 01's table as 01 stores it (SHA-256 of
-    /// the text).
+    /// A live device token of `account` (a signed-in desktop device named `laptop`), in 01's table as 01 stores it
+    /// (SHA-256 of the text).
     pub async fn device_token(&self, account: &Account) -> String {
+        self.device_token_named(account, "laptop").await
+    }
+
+    /// A live device token of `account` whose device name is `name`, stored as `device_token` stores it.
+    pub async fn device_token_named(&self, account: &Account, name: &str) -> String {
         let token = format!("sc_dev_serve{}", Uuid::new_v4().simple());
         let mut admin = self.root.db.admin().await;
         sqlx::query(
             "INSERT INTO device_tokens (id, account_id, token_hash, device_name, platform, created_at) \
-             VALUES (gen_random_uuid(), $1, sha256(convert_to($2, 'UTF8')), 'laptop', 'linux', \
-             'epoch'::timestamptz + $3::bigint * interval '1 microsecond')",
+             VALUES (gen_random_uuid(), $1, sha256(convert_to($2, 'UTF8')), $3, 'linux', \
+             'epoch'::timestamptz + $4::bigint * interval '1 microsecond')",
         )
         .bind(account.id)
         .bind(&token)
+        .bind(name)
         .bind(now_micros())
         .execute(&mut admin)
         .await

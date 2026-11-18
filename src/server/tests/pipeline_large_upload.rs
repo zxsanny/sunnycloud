@@ -12,15 +12,13 @@ mod pipeline_support;
 mod root_support;
 mod serve_support;
 
-use std::thread;
 use std::time::{Duration, Instant};
 
 use pipeline_support::large::{LargeFile, indexes};
 use pipeline_support::wiring::{Caller, missing_callers};
-use pipeline_support::{Pipeline, WITHIN};
+use pipeline_support::{Pipeline, WITHIN, uuid_of};
 use sc_ids::{BLOCK_SIZE, hash_block};
 use serde_json::Value;
-use serve_support::http::{Response, call};
 use uuid::Uuid;
 
 const MIB: usize = 1024 * 1024;
@@ -32,42 +30,30 @@ const SHORT_SESSIONS: [(&str, &str); 2] = [
 ];
 /// Long enough for a session to expire (1 min after its last checkpoint) and the reaper to run.
 const EXPIRY_BOUND: Duration = Duration::from_secs(150);
+/// One held poll per principal, so a probe answered 429 proves the poll is parked (`Pipeline::park`).
+const ONE_HOLD: (&str, &str) = ("max_holds_per_principal", "1");
+/// The long-poll's `wait`, longer than the commit takes.
+const HOLD_SECONDS: u64 = 25;
+/// `session_cache_ttl` at its maximum: how long an authenticated principal is served from the cache.
+const SESSION_CACHE_TTL: Duration = Duration::from_secs(3);
 
 fn all_blocks(file: &LargeFile) -> Vec<usize> {
     (0..file.blocks()).collect()
 }
 
-fn id(value: &Value, member: &str) -> Uuid {
-    value[member]
-        .as_str()
-        .and_then(|id| Uuid::parse_str(id).ok())
-        .unwrap_or_else(|| panic!("no `{member}` in {value}"))
-}
-
-/// A long-poll of the account's feed from its head, held on its own connection.
-fn hold_long_poll(pipeline: &Pipeline) -> thread::JoinHandle<(Response, Instant)> {
-    let path = format!("/api/v1/changes?cursor={}&wait=25", pipeline.feed_cursor());
-    let (public, device) = (pipeline.stack.ports.public, pipeline.device.clone());
-    thread::spawn(move || {
-        let answer = call(public, "GET", &path, &device, &[], &[]);
-        (answer, Instant::now())
-    })
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn ac1_a_64_mib_file_over_four_h2_lanes_commits_wakes_a_long_poll_and_downloads_with_the_same_hash()
  {
-    // Arrange
-    let pipeline = Pipeline::start(&[]).await;
+    // Arrange: the long-poll from the feed head is proven parked on the server before the commit is sent.
+    let pipeline = Pipeline::start(&[ONE_HOLD]).await;
     let folder = pipeline.folder("ac1");
     let file = LargeFile::new("large.bin", 64 * MIB, 3);
     let seq_before = pipeline.feed_seq();
-    let poll = hold_long_poll(&pipeline);
     let upload = pipeline.started(folder, &file);
     pipeline
         .put_blocks(upload, &file, &all_blocks(&file), LANES)
         .await;
-    let held_until_commit = !poll.is_finished();
+    let poll = pipeline.park(&pipeline.device, &pipeline.feed_cursor(), HOLD_SECONDS);
 
     // Act
     let sent = Instant::now();
@@ -79,22 +65,18 @@ async fn ac1_a_64_mib_file_over_four_h2_lanes_commits_wakes_a_long_poll_and_down
     assert_eq!(committed.status, 200, "{committed:?}");
     let committed = committed.json();
     assert_eq!(committed["outcome"], "published");
-    let node = id(&committed, "node_id");
+    let node = uuid_of(&committed, "node_id");
     assert_eq!(
         pipeline.node(node)["current_revision"],
         committed["revision_id"]
     );
     assert_eq!(seq_after, seq_before + 1);
-    assert!(
-        held_until_commit,
-        "the long-poll answered before the commit"
-    );
     assert_eq!(polled.status, 200, "{polled:?}");
     let woken: Vec<Uuid> = polled.json()["items"]
         .as_array()
         .expect("items")
         .iter()
-        .map(|item| id(item, "node_id"))
+        .map(|item| uuid_of(item, "node_id"))
         .collect();
     assert_eq!(woken, [node]);
     assert!(
@@ -129,7 +111,7 @@ async fn ac2_after_a_dropped_connection_the_session_asks_only_for_the_missing_bl
     // Assert
     assert_eq!(need, (10..32).collect::<Vec<_>>());
     assert_eq!(committed.status, 200, "{committed:?}");
-    let stored = pipeline.download(id(&committed.json(), "node_id"));
+    let stored = pipeline.download(uuid_of(&committed.json(), "node_id"));
     assert!(
         stored
             .chunks(BLOCK_SIZE)
@@ -182,10 +164,15 @@ async fn ac3_quota_bad_hash_early_commit_and_bad_name_reach_the_client_as_typed_
     pipeline.finish().await;
 }
 
+const DELETING: &str = "UPDATE accounts SET state = 'deleting' WHERE id = $1";
+
 #[tokio::test(flavor = "multi_thread")]
 async fn ac4_a_commit_of_a_deleting_account_is_refused_as_account_not_active() {
     // Arrange: the device's principal stays cached for `session_cache_ttl` (its 3 s maximum), so a commit sent
-    // within it passes authentication and meets the guard inside the commit transaction.
+    // within it passes authentication and meets the guard inside the commit transaction. The cache entry is stored
+    // on a miss and not renewed on a hit, so its age at the commit is not observable: a commit that missed it is
+    // refused 401 at authentication. Then (once) the account is made active again, one authenticated call refills
+    // the entry (a refused miss stores nothing, so that call is the fill) and the deleting commit is sent again.
     let pipeline = Pipeline::start(&[("session_cache_ttl", "3s")]).await;
     let folder = pipeline.folder("ac4");
     let file = LargeFile::jpeg("photo.jpg", 3 * MIB, 8);
@@ -193,15 +180,32 @@ async fn ac4_a_commit_of_a_deleting_account_is_refused_as_account_not_active() {
     pipeline
         .put_blocks(upload, &file, &all_blocks(&file), LANES)
         .await;
+    let mut filled = Instant::now();
     let blob = pipeline.session_blob(upload).await.expect("the session");
-    pipeline
-        .arrange("UPDATE accounts SET state = 'deleting' WHERE id = $1")
-        .await;
+    pipeline.arrange(DELETING).await;
 
     // Act
-    let refused = pipeline.commit_upload(upload, folder, &file);
+    let mut sent = Instant::now();
+    let mut refused = pipeline.commit_upload(upload, folder, &file);
+    if refused.status == 401 {
+        eprintln!("AC-4: the commit missed the session cache (401); refilled and sent again");
+        pipeline
+            .arrange("UPDATE accounts SET state = 'active' WHERE id = $1")
+            .await;
+        filled = Instant::now();
+        let refill = pipeline.upload_state(upload);
+        assert_eq!(refill.status, 200, "{refill:?}");
+        pipeline.arrange(DELETING).await;
+        sent = Instant::now();
+        refused = pipeline.commit_upload(upload, folder, &file);
+    }
 
     // Assert
+    let age = sent.duration_since(filled);
+    assert!(
+        age < SESSION_CACHE_TTL,
+        "the commit was sent {age:?} after the cache fill, past session_cache_ttl {SESSION_CACHE_TTL:?}"
+    );
     assert_eq!(refused.json()["code"], "account_not_active", "{refused:?}");
     assert_eq!(pipeline.revision_count().await, 0);
     assert_eq!(pipeline.job_count().await, 0);
@@ -247,7 +251,7 @@ async fn ac4_a_jpeg_commit_runs_the_blob_and_media_effects_in_its_transaction_be
 
     // Assert
     assert_eq!(committed.status, 200, "{committed:?}");
-    let revision = id(&committed.json(), "revision_id");
+    let revision = uuid_of(&committed.json(), "revision_id");
     assert_eq!(pipeline.job_kinds(revision).await, ["stills"]);
     assert_eq!(jobs_after_commit, 1);
     assert_eq!(
@@ -375,7 +379,7 @@ async fn ac68_sigkill_during_the_commit_leaves_either_a_whole_revision_or_a_clea
         assert_eq!(pipeline.dangling_revisions().await, Vec::<String>::new());
         assert_eq!(pipeline.reserved_bytes().await, 0);
         let listed = pipeline.children(folder);
-        let node = id(&listed[0], "node_id");
+        let node = uuid_of(&listed[0], "node_id");
         assert!(
             pipeline.download(node) == file.bytes,
             "the stored file differs"

@@ -53,3 +53,7 @@ Then it passes every time
 ## Constraints
 
 - Migrations are additive (a new migration; the shipped one is not edited). No table or column rename.
+
+## Status notes
+
+- 2026-11-18 implemented (uncommitted): migration `20261118100000_keep_jobs_on_revision_collect` (`ON DELETE SET NULL (revision_id)`, `revision_id` nullable); 08 treats a NULL revision as obsolete on input and output; enqueue adopts a job whose revision is NULL. AC-1/AC-2: `tests/media/obsolete.rs` `input_and_output_of_a_collected_revision_are_obsolete_and_the_job_closes_obsolete`; AC-3: `erase_removes_the_jobs_of_collected_and_live_revisions_alike`; AC-4: `pipeline_media_worker` AC-3 collected test un-ignored, 3 of 3 runs green.

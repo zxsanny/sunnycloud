@@ -5,8 +5,8 @@ SPEC_MD: the component's tests.md; each `### IT-<c>-<n>:` heading is a case and 
 line the budget.
 CASES_FILE: per line `<case id> <test target> <prefix>...`; `#` starts a comment; a case may take several lines.
 A prefix selects every test of the target whose full name starts with it.
-Each target is built and listed first (`cargo test -p PACKAGE --test TARGET -- --list`, not timed); each case then
-runs its selected tests with `--exact` and is reported with its result, test count and duration.
+Each target is built and listed first (`cargo test --locked -p PACKAGE --test TARGET -- --list`, not timed); each
+case then runs its selected tests with `--exact` and is reported with its result, test count and duration.
 It fails when a case has no line, a line names a case the spec lacks, a prefix selects no test, a run fails or
 passes no test, or a case takes longer than its budget.
 CARGO (environment) overrides the cargo command, for the tests of this script.
@@ -61,7 +61,7 @@ def read_cases(path: str) -> dict[str, list[tuple[str, list[str]]]]:
 def cargo(package: str, target: str, test_args: list[str], workspace: str, echo: bool) -> tuple[int, list[str]]:
     """Exit code and stdout lines of one cargo test call. stderr (build progress) passes through and stdout is
     echoed as it comes when `echo` is set, so the watchdog never sees a silent build or run."""
-    command = [os.environ.get("CARGO", "cargo"), "test", "-p", package, "--test", target, "--", *test_args]
+    command = [os.environ.get("CARGO", "cargo"), "test", "--locked", "-p", package, "--test", target, "--", *test_args]
     lines = []
     with subprocess.Popen(command, cwd=workspace, stdout=subprocess.PIPE, text=True) as process:
         assert process.stdout is not None
