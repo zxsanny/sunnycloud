@@ -2,8 +2,10 @@
 
 usage: coverage_gate.py SUMMARY_JSON WORKSPACE_DIR CRITICAL_PATHS_FILE MIN_OVERALL MIN_CRITICAL
 Line coverage is covered/total instrumented lines; crates and files without instrumented lines do not count.
-CRITICAL_PATHS_FILE: one path per line, relative to WORKSPACE_DIR (a file or a directory prefix); `#` starts a comment.
-Every critical-path entry is measured on its own and must reach MIN_CRITICAL; an entry that matches no file fails.
+CRITICAL_PATHS_FILE: one path per line, relative to WORKSPACE_DIR (a file or a directory prefix), optionally followed
+by its own minimum percentage (a per-crate floor such as `components/x/src 75`); `#` starts a comment.
+Every entry is measured on its own and must reach its minimum, MIN_CRITICAL when none is given; an entry that
+matches no file fails.
 Exit 0 pass, 1 below a threshold or unmeasurable, 2 usage.
 """
 
@@ -50,12 +52,21 @@ def main():
 
     entries = []
     for raw in Path(critical_path).read_text().splitlines():
-        text = raw.split("#", 1)[0].strip()
-        if text:
-            entries.append(text.rstrip("/"))
+        words = raw.split("#", 1)[0].split()
+        if not words:
+            continue
+        if len(words) > 2:
+            print(f"[coverage] {critical_path}: '{raw.strip()}' is not 'PATH [MIN]'", file=sys.stderr)
+            return 2
+        try:
+            minimum = float(words[1]) if len(words) == 2 else min_critical
+        except ValueError:
+            print(f"[coverage] {critical_path}: minimum '{words[1]}' is not a number", file=sys.stderr)
+            return 2
+        entries.append((words[0].rstrip("/"), minimum))
     if not entries:
         print(f"[coverage] critical paths: none listed in {critical_path}; the {min_critical:g}% gate has nothing to measure yet")
-    for entry in entries:
+    for entry, minimum in entries:
         matched = [value for name, value in measured.items() if name == entry or name.startswith(entry + "/")]
         covered = sum(c for c, _ in matched)
         count = sum(n for _, n in matched)
@@ -64,10 +75,10 @@ def main():
             failures.append(f"critical path {entry} matches no measured file")
             continue
         value = percent(covered, count)
-        verdict = "OK" if value >= min_critical else "BELOW"
-        print(f"[coverage] critical path {entry}: {value:.2f}% ({covered}/{count}), minimum {min_critical:g}%: {verdict}")
-        if value < min_critical:
-            failures.append(f"critical path {entry} line coverage {value:.2f}% is below {min_critical:g}%")
+        verdict = "OK" if value >= minimum else "BELOW"
+        print(f"[coverage] critical path {entry}: {value:.2f}% ({covered}/{count}), minimum {minimum:g}%: {verdict}")
+        if value < minimum:
+            failures.append(f"critical path {entry} line coverage {value:.2f}% is below {minimum:g}%")
 
     for failure in failures:
         print(f"[coverage] FAILED: {failure}", file=sys.stderr)

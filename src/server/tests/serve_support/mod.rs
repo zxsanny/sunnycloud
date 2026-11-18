@@ -270,6 +270,14 @@ impl Server {
         Instant::now()
     }
 
+    /// SIGKILL, a crash: no shutdown step runs. Returns the exit, which has no code (ended by the signal).
+    pub fn crash(&mut self) -> Exited {
+        self.signal("KILL");
+        let exited = self.wait_exit(Duration::from_secs(10));
+        assert_eq!(exited.code, None, "{}", exited.stderr_text());
+        exited
+    }
+
     /// Waits for the exit; past `within` the process is killed and the test fails.
     pub fn wait_exit(&mut self, within: Duration) -> Exited {
         let deadline = Instant::now() + within;

@@ -309,6 +309,8 @@ Default Mode S config: `SUNNYCLOUD_PUBLIC_URL=https://sunnycloud.test`, `SUNNYCL
 1. Mode S: build `HttpServer` with stub `ApiServices` in a Rust integration test; listen on ephemeral ports; the harness picks the h2c/h1 client.
 2. Mode R: `tests/run.sh --profile core` with the test image (and the release image for IT-11-9); seed accounts through invites.
 
+3. CI (AZ-3835): `scripts/ci/check-it-suite.sh` (job `http-api-suite`) runs every IT case of this file with the tests that `src/components/11_http_api/tests/it_cases.txt` lists for it (test-name prefixes per test target) and reports each id with result, test count and duration. A case with no line, a prefix that selects no test, or a case over its **Max execution time** fails the job. The Mode R parts of IT-11-9 and IT-11-17 are not in that job: they need the Compose stack with the api, Caddy and both images (E-31).
+
 **Teardown procedure**:
 1. Stop the server (the shutdown path is itself under test in IT-11-16); reset the clock offset; ctl account purge for Mode R.
 

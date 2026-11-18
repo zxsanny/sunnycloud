@@ -60,6 +60,9 @@ const NO_SQLX: &[&str] = &[
     "media-shared",
 ];
 
+/// 11, the delivery layer: binds, calls one port and maps the result (ADR-015).
+const HTTP_API: &str = "sunnycloud-http-api";
+
 const WASM_FORBIDDEN: &[&str] = &["sync-core", "tokio", "reqwest", "mio"];
 
 const CLIENTS: &[&str] = &[
@@ -177,6 +180,10 @@ fn violations(graph: &Graph) -> Vec<String> {
                     "{} depends on sc_testdb outside dev-dependencies",
                     package.name
                 ));
+            }
+            // ADR-015: the delivery layer holds no SQL; a component edge into or out of 11 is caught above.
+            if package.name == HTTP_API && dep == "sc_db" && !package.dev_only.contains(dep) {
+                found.push(format!("{HTTP_API} depends on sc_db"));
             }
             // A test database needs SQL; only a normal dependency puts sqlx into the shipped crate.
             if dep == "sqlx"
@@ -337,6 +344,78 @@ fn testdb_as_a_dev_dependency_is_accepted() {
 
     let found = violations(&graph);
 
+    assert!(found.is_empty(), "forbidden edges: {found:?}");
+}
+
+#[test]
+fn http_api_importing_a_component_crate_is_rejected() {
+    // Arrange
+    let mut graph = workspace_graph();
+    add_edge(&mut graph, HTTP_API, "sunnycloud-tree");
+
+    // Act
+    let found = violations(&graph);
+
+    // Assert
+    assert_eq!(
+        found,
+        vec!["component edge sunnycloud-http-api -> sunnycloud-tree"]
+    );
+}
+
+#[test]
+fn http_api_importing_sc_db_is_rejected() {
+    // Arrange
+    let mut graph = workspace_graph();
+    add_edge(&mut graph, HTTP_API, "sc_db");
+
+    // Act
+    let found = violations(&graph);
+
+    // Assert
+    assert_eq!(found, vec!["sunnycloud-http-api depends on sc_db"]);
+}
+
+#[test]
+fn http_api_importing_sqlx_is_rejected() {
+    // Arrange
+    let mut graph = workspace_graph();
+    add_edge(&mut graph, HTTP_API, "sqlx");
+
+    // Act
+    let found = violations(&graph);
+
+    // Assert
+    assert_eq!(found, vec!["sunnycloud-http-api depends on sqlx"]);
+}
+
+#[test]
+fn a_component_importing_http_api_is_rejected() {
+    // Arrange
+    let mut graph = workspace_graph();
+    add_edge(&mut graph, "sunnycloud-sharing", HTTP_API);
+
+    // Act
+    let found = violations(&graph);
+
+    // Assert
+    assert_eq!(
+        found,
+        vec!["component edge sunnycloud-sharing -> sunnycloud-http-api"]
+    );
+}
+
+#[test]
+fn http_api_dev_edges_to_a_component_and_sc_db_are_accepted() {
+    // Arrange
+    let mut graph = workspace_graph();
+    add_dev_edge(&mut graph, HTTP_API, "sunnycloud-tree");
+    add_dev_edge(&mut graph, HTTP_API, "sc_db");
+
+    // Act
+    let found = violations(&graph);
+
+    // Assert
     assert!(found.is_empty(), "forbidden edges: {found:?}");
 }
 

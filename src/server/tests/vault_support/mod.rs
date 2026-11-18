@@ -8,7 +8,6 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
-use sc_clock::{Clock, SystemClock};
 use serde_json::{Value, json};
 use sqlx::Connection;
 use uuid::Uuid;
@@ -212,23 +211,9 @@ impl Running {
         (Uuid::parse_str(&id).expect("a UUID"), reply)
     }
 
-    /// A live device token of `account`, in 01's table as 01 stores it (SHA-256 of the text).
+    /// A live device token of `account` (`Stack::device_token`).
     pub async fn device_token(&self, account: &Account) -> String {
-        let token = format!("sc_dev_vault{}", Uuid::new_v4().simple());
-        let mut admin = self.stack.root.db.admin().await;
-        sqlx::query(
-            "INSERT INTO device_tokens (id, account_id, token_hash, device_name, platform, created_at) \
-             VALUES (gen_random_uuid(), $1, sha256(convert_to($2, 'UTF8')), 'laptop', 'linux', \
-             'epoch'::timestamptz + $3::bigint * interval '1 microsecond')",
-        )
-        .bind(account.id)
-        .bind(&token)
-        .bind(SystemClock::new().now_utc().as_unix_micros())
-        .execute(&mut admin)
-        .await
-        .expect("insert device token");
-        admin.close().await.expect("close admin connection");
-        token
+        self.stack.device_token(account).await
     }
 
     /// PostgreSQL's lowercase hex SHA-256 of `bytes`.

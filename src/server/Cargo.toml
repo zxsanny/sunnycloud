@@ -49,6 +49,10 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
+# HTTP/2 (h2c) client of the pipeline tests (AZ-3656 AC-1), the same crates and versions 11's tests use.
+http-body-util = "0.1"
+hyper = { workspace = true, features = ["client", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 base64 = { workspace = true }
 async-trait = "0.1"
 axum = { workspace = true }

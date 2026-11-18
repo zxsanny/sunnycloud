@@ -2,3 +2,13 @@
 # One path per line, relative to src/: a file or a directory prefix. Each entry is measured on its own.
 # A path where a bug would cause data loss, a security breach, a financial error or an outage belongs here
 # (quality-thresholds). The list starts empty and grows per epic; an entry that matches no measured file fails the gate.
+# An entry may carry its own minimum after the path (`PATH MIN`); without one it is held to the 90% gate.
+
+# 11 http_api (AZ-3835 AC-5): the CSRF layer, auth extraction, the error mapper (problem body and per-port
+# conversion) and the content-serving header mapper at 90%; the whole crate source at 75%.
+components/11_http_api/src/csrf
+components/11_http_api/src/auth
+components/11_http_api/src/problem.rs
+components/11_http_api/src/port_error
+components/11_http_api/src/content
+components/11_http_api/src 75

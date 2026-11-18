@@ -1,0 +1,27 @@
+# The IT-11 cases of `_docs/02_document/components/11_http_api/tests.md` and the tests that run each one
+# (AZ-3835 AC-1, run by scripts/ci/check-it-suite.sh). One line: case id, test target of sunnycloud-http-api, then
+# test-name prefixes; a prefix selects every test of the target whose full name starts with it (a module path such
+# as `errors::status::` or one test name). A case may take several lines, one per target. A case of tests.md with no
+# line, or a prefix that selects no test, fails the suite.
+# IT-11-9 and IT-11-17 list their Mode S parts here; their Mode R parts run on the Compose stack (E-31).
+IT-11-1   it  errors::status:: errors::extras:: errors::schema:: errors::port_table:: errors::not_found::
+IT-11-2   it  errors::opaque:: datapath::ordering::
+IT-11-3   it  middleware::panic::
+IT-11-4   it  middleware::request_id::
+IT-11-5   it  middleware::headers::
+IT-11-6   it  csrf:: matrices::csrf:: matrices::coverage::
+IT-11-7   it  version::gate:: version::config::
+IT-11-8   it  version::server_info::
+IT-11-9   it  worker:: auth::worker:: registry::placement:: ops::ops_paths_answer_404_on_the_public_and_internal_listeners_and_api_paths_404_on_ops
+IT-11-10  it  auth::classes:: auth::credentials:: auth::dead:: matrices::idor::
+IT-11-11  it  registry::parity:: registry::declarations:: registry::naming:: registry::spa::
+IT-11-12  it  registry::diff::
+IT-11-13  it  limits::
+IT-11-14  it  content::headers:: content::ranges:: content::errors::
+IT-11-15  it  middleware::client_ip:: errors::extras::rate_limited_and_service_unavailable_carry_retry_after_equal_to_the_body
+IT-11-16  it  shutdown::
+IT-11-17  it  ops:: ops_metrics:: middleware::metrics_log::
+IT-11-18  it  h2_settings:: keepalive::
+IT-11-19  it  cap:: abuse::
+IT-11-19  auth_before_body  unauthenticated_block_puts_are_refused_without_reading_the_body_or_growing_memory
+IT-11-20  it  content::abort:: identity::signin::the_session_cookie_is_exactly_what_the_port_result_states_and_adds_no_attribute

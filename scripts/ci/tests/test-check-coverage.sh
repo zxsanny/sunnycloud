@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # AC-6 threshold logic of check-coverage.sh on fixture llvm-cov summaries (no cargo run):
-# 80% overall passes, 70% fails and prints the measured value, critical paths below 90% / matching nothing fail.
+# 80% overall passes, 70% fails and prints the measured value, critical paths below 90% / matching nothing fail;
+# an entry with its own minimum (`PATH MIN`, AZ-3835 per-crate floor) is held to that minimum.
 set -euo pipefail
 
 ci_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -50,4 +51,7 @@ run critical-ok pass "$work/eighty.json" $'vault/a.rs   # 90%\n' "critical path 
 run critical-dir-prefix pass "$work/eighty.json" $'vault\n' "critical path vault: 90.00%"
 run critical-below fail "$work/vault-low.json" $'vault\n' "critical path vault: 80.00%"
 run critical-missing fail "$work/eighty.json" $'nothing/here.rs\n' "matches no file"
+run own-minimum-ok pass "$work/eighty.json" $'other 70   # a per-crate floor\n' "critical path other: 70.00% (70/100), minimum 70%: OK"
+run own-minimum-below fail "$work/eighty.json" $'vault\nother 75\n' "critical path other: 70.00% (70/100), minimum 75%: BELOW"
+run own-minimum-not-a-number fail "$work/eighty.json" $'other many\n' "is not a number"
 echo "$tag OK"

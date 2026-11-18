@@ -9,7 +9,7 @@ status: in_progress
 sub_step:
   phase: 2
   name: batch-loop
-  detail: "batch 86 done (AZ-3926 vault routes, AZ-3824 admin perf; timing NOT-RUN(HW-REF)). Cumulative review 79-85 done; next cumulative after batch 88. Next batch 87: AZ-3656, AZ-3655 (pipelines through the real binary), AZ-3835 (runner, crate graph, coverage gate; Mode R NOT-RUN until the test stack has the SUT). AZ-3971 real-server legs wait for the SUT in tests/compose (E-31). Blocked: AZ-3795 AC-4 (mock-idp); hardware spikes. Test DB: container sunnycloud-pg18, DATABASE_URL=postgres://postgres:dev@127.0.0.1:57432/postgres, CARGO_INCREMENTAL=0."
+  detail: "batch 87 done (AZ-3656, AZ-3655 pipelines; AZ-3835 partly: Mode R NOT-RUN until the test stack has the SUT). Cumulative review 86-88 due after batch 88. Waiting on E-31 test stack: AZ-3664, AZ-3654 (mock-idp), AZ-3971 (SUT), AZ-3835 AC-2/3. Blocked: AZ-3795 AC-4 (mock-idp); hardware spikes. Test DB: container sunnycloud-pg18, DATABASE_URL=postgres://postgres:dev@127.0.0.1:57432/postgres, CARGO_INCREMENTAL=0."
 retry_count: 0
 tracker: jira
 loop: 1

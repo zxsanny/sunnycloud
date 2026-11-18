@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs the workspace tests under cargo llvm-cov (the rust-test job step: output lists every test by name) and
-# fails when line coverage is below COVERAGE_MIN_OVERALL (75) or a critical path is below COVERAGE_MIN_CRITICAL (90).
+# fails when line coverage is below COVERAGE_MIN_OVERALL (75) or a critical path is below its minimum (its own, else
+# COVERAGE_MIN_CRITICAL, 90).
 # Prints the measured values. Needs cargo-llvm-cov and the llvm-tools-preview component (src/rust-toolchain.toml).
 # CRITICAL_PATHS_FILE      default scripts/ci/critical-paths.txt
 # COVERAGE_SUMMARY_JSON    apply the gate to an existing `cargo llvm-cov report --json --summary-only` file; no test run (tests of the gate)

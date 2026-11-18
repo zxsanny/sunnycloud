@@ -103,4 +103,4 @@ Then the CSRF layer, auth extraction, error mapper and content header mapper eac
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | Re-estimated from the planned 5 to 3 points: the Mode S assertions of each IT-11 case are written by the task that owns that layer (batch convention), so this task keeps the runner, the Mode R parts, the crate graph and the coverage gate | E-21 owner | open | Low |
-| Per-area coverage measurement needs a tool that reports by module; the tool is chosen with E-00/c09's coverage gate | E-00, E-21 owners | open | Low |
+| Per-area coverage measurement needs a tool that reports by module; the tool is chosen with E-00/c09's coverage gate | E-00, E-21 owners | resolved 2026-11-18: `cargo llvm-cov` per-file summary; `scripts/ci/critical-paths.txt` entries per area at 90% and `components/11_http_api/src 75` | Low |

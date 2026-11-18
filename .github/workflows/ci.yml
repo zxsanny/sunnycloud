@@ -82,6 +82,25 @@ jobs:
       - name: cargo test --workspace --locked under cargo llvm-cov (75% overall, 90% critical paths)
         run: scripts/ci/watchdog.sh --name rust-test -- scripts/ci/check-coverage.sh
 
+  # AZ-3835 AC-1: the IT-11 cases of components/11_http_api/tests.md, each with its result, duration and budget.
+  # 11 holds no SQL (Mode S stub services), so the job needs no database.
+  http-api-suite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          cache-on-failure: true
+      - name: IT-11-1 to IT-11-20 with their max execution times and the missing-case check
+        run: scripts/ci/watchdog.sh --name http-api-suite -- scripts/ci/check-it-suite.sh
+
   pg18-migrations:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
