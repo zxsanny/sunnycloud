@@ -117,4 +117,4 @@ Integration through the real binaries; the system scenarios stay in E-31.
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | 409 for `edited_since` decided 2026-11-07 (E-21/c02, G-11-1) | E-21 | resolved | Low |
-| NFC/NFD stored form (G-1) is an owner item (E-13/c01) and changes AC-3's case matrix | Owner via E-13 spike | open | Low |
+| NFC/NFD stored form (G-1) is an owner item (E-13/c01) and changes AC-3's case matrix | Owner via E-13 spike | resolved (owner 2026-11-11, AZ-3705, `tests/spec-gaps.md` G-1: one name, stored as sent; AC-3 G-1 case in `pipeline_tree_conflicts.rs`) | Low |

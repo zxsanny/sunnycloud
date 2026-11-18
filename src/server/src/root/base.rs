@@ -8,7 +8,9 @@ use sc_audit::{AuditReader, AuditWriter};
 use sc_clock::Clock;
 use sc_config::Settings;
 use sc_db::{Db, DbConfig, DbRole};
-use sc_observability::{BuildInfo, CheckFuture, Metrics, ReadinessCheck, ReadinessItem};
+use sc_observability::{
+    BuildInfo, CheckFuture, Metrics, ReadinessCheck, ReadinessItem, db_collector,
+};
 use sc_ratelimit::{AbuseLimiter, LimitId, LimitSpec, LimitTable};
 use tokio_util::sync::CancellationToken;
 
@@ -27,6 +29,10 @@ pub struct Shutdown {
     pub feed: CancellationToken,
     pub janitors: CancellationToken,
 }
+
+/// The pool families of the API `Db` (`db_up`, `db_pool_connections{state}`, `db_query_duration_seconds{op}`,
+/// `migrations_pending`) on the metrics registry. A context builds it once, so the collector is registered once.
+pub struct DbMetrics;
 
 pub(super) fn register(builder: ContextBuilder, clock: Arc<dyn Clock>) -> ContextBuilder {
     builder
@@ -59,6 +65,14 @@ pub(super) fn register(builder: ContextBuilder, clock: Arc<dyn Clock>) -> Contex
             })
             .map_err(|error| failed("the metrics registry", error))?;
             Ok(Arc::new(metrics))
+        })
+        .register::<DbMetrics, _, _>(|services| async move {
+            let db = services.get::<Db>().await?;
+            let metrics = services.get::<Metrics>().await?;
+            db_collector(Db::clone(&db))
+                .register(&metrics)
+                .map_err(|error| failed("the database metrics", error))?;
+            Ok(Arc::new(DbMetrics))
         })
         .register::<AbuseLimiter, _, _>(|services| async move {
             let settings = services.get::<ServeSettings>().await?;

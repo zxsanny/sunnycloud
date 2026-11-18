@@ -55,17 +55,32 @@ pub struct Ports {
     pub ops: SocketAddr,
 }
 
+/// Every port this test process has handed out. The probe listener is closed before `serve` binds the port, and
+/// the kernel may give that port to the next `bind(0)` of a parallel test; a port is therefore never handed out
+/// twice in one process.
+static HANDED_OUT: Mutex<Vec<u16>> = Mutex::new(Vec::new());
+
 impl Ports {
-    /// Three loopback ports free right now.
+    /// Three loopback ports free right now and not given to another test of this process.
     fn free() -> Ports {
-        let held: Vec<TcpListener> = (0..3)
-            .map(|_| TcpListener::bind("127.0.0.1:0").expect("a loopback port is free"))
-            .collect();
-        let addr = |index: usize| held[index].local_addr().expect("bound address");
+        let mut handed_out = lock(&HANDED_OUT);
+        // Listeners of refused ports stay open until the end, so the kernel offers other ports meanwhile.
+        let mut refused = Vec::new();
+        let mut chosen = Vec::new();
+        while chosen.len() < 3 {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port is free");
+            let addr = listener.local_addr().expect("bound address");
+            if handed_out.contains(&addr.port()) {
+                refused.push(listener);
+            } else {
+                handed_out.push(addr.port());
+                chosen.push(addr);
+            }
+        }
         Ports {
-            public: addr(0),
-            internal: addr(1),
-            ops: addr(2),
+            public: chosen[0],
+            internal: chosen[1],
+            ops: chosen[2],
         }
     }
 

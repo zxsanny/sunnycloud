@@ -82,6 +82,43 @@ jobs:
       - name: cargo test --workspace --locked under cargo llvm-cov (75% overall, 90% critical paths)
         run: scripts/ci/watchdog.sh --name rust-test -- scripts/ci/check-coverage.sh
 
+  # The two 1 GiB pipeline ACs (AZ-3657 AC-1, AZ-3660 AC-72) in release mode, apart from the instrumented rust-test
+  # job (owner decision 2026-11-18). Each runs by its exact name, so no other ignored test runs here.
+  pipelines-large:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:18-trixie@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}-release
+          cache-on-failure: true
+      - name: 1 GiB download (AZ-3657 AC-1)
+        working-directory: src
+        run: ../scripts/ci/watchdog.sh --name pipeline-download-1gib -- cargo test --release --locked -p sunnycloud-server --test pipeline_download -- --ignored --exact ac1_a_1_gib_file_reads_in_full_by_range_past_the_end_and_conditionally
+      - name: 1 GiB worker input (AZ-3660 AC-72)
+        working-directory: src
+        run: ../scripts/ci/watchdog.sh --name pipeline-worker-1gib -- cargo test --release --locked -p sunnycloud-server --test pipeline_media_worker -- --ignored --exact ac72_the_worker_input_of_a_1_gib_file_hashes_to_its_plaintext_block_by_block
+
   # AZ-3835 AC-1: the IT-11 cases of components/11_http_api/tests.md, each with its result, duration and budget.
   # 11 holds no SQL (Mode S stub services), so the job needs no database.
   http-api-suite:

@@ -7,8 +7,12 @@
 
 #![allow(dead_code)]
 
+pub mod download;
+pub mod feed;
 pub mod h2;
 pub mod large;
+pub mod media;
+pub mod tree;
 pub mod wiring;
 
 use std::net::SocketAddr;

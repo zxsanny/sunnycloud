@@ -172,7 +172,7 @@ Recommended execution order (topological; ties by key). Test-epic refs (E-31) ar
 | AZ-3797 | key_commands | 3 | AZ-3788, AZ-3789, AZ-3725, AZ-3746 | AZ-3647 |
 | AZ-3798 | scrub_commands | 3 | AZ-3788, AZ-3789, AZ-3745 | AZ-3647 |
 | AZ-3805 | media_commands | 2 | AZ-3788, AZ-3789, AZ-3846 | AZ-3647 |
-| AZ-3660 | pipeline_media_queue_worker_api | 3 | AZ-3742, AZ-3741, AZ-3801, AZ-3806, AZ-3831, AZ-3789, AZ-3791, AZ-3792, AZ-3805, AZ-3840, AZ-3841, AZ-3843, AZ-3845, AZ-3738, AZ-3728, AZ-3707, AZ-3655, AZ-3652 | AZ-3647 |
+| AZ-3660 | pipeline_media_queue_worker_api | 3 | AZ-3742, AZ-3741, AZ-3801, AZ-3806, AZ-3831, AZ-3789, AZ-3791, AZ-3792, AZ-3805, AZ-3840, AZ-3841, AZ-3843, AZ-3845, AZ-3738, AZ-3728, AZ-3707, AZ-3655, AZ-3652, AZ-4332 | AZ-3647 |
 | AZ-3807 | doctor_aggregation | 3 | AZ-3788, AZ-3789, AZ-3768 | AZ-3647 |
 | AZ-3796 | epoch_restore_gc_commands | 3 | AZ-3788, AZ-3789, AZ-3807, AZ-3779, AZ-3715, AZ-3730, AZ-3765 | AZ-3647 |
 | AZ-3663 | pipeline_gc_retention_restore | 3 | AZ-3742, AZ-3765, AZ-3831, AZ-3789, AZ-3791, AZ-3792, AZ-3796, AZ-3729, AZ-3730, AZ-3743, AZ-3714, AZ-3715, AZ-3717, AZ-3845, AZ-3778, AZ-3756, AZ-3659, AZ-3652 | AZ-3647 |
@@ -386,3 +386,4 @@ Recommended execution order (topological; ties by key). Test-epic refs (E-31) ar
 | AZ-4310 | share_authorize_derived | 3 | AZ-3700, AZ-3699, AZ-3701 | AZ-3619 |
 | AZ-4311 | media_effect_account_per_commit | 2 | AZ-3843 | AZ-3629 |
 | AZ-4318 | spawned_task_logs | 2 | AZ-3791 | AZ-3647 |
+| AZ-4332 | remediate_media_jobs_obsolete | 3 | AZ-3842 | AZ-3629 |

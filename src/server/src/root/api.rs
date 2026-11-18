@@ -5,7 +5,7 @@ use sc_clock::Clock;
 use sc_observability::Metrics;
 use sunnycloud_http_api::ApiServices;
 
-use super::base::Shutdown;
+use super::base::{DbMetrics, Shutdown};
 use super::domain::{Admin, Feed, Identity, Sharing, Transfer, Tree};
 use super::lists::ReadinessChecks;
 use super::media::{Media, MediaPlanning};
@@ -25,6 +25,8 @@ pub async fn api_services(services: &ServiceContext) -> Result<ApiServices, CliE
     let media = services.get::<Media>().await?;
     let readiness = services.get::<ReadinessChecks>().await?;
     let shutdown = services.get::<Shutdown>().await?;
+    // The pool families reach `/metrics` with the services 11 serves (observability.md, ops listener).
+    services.get::<DbMetrics>().await?;
     #[cfg(feature = "vault")]
     let vault: Option<std::sync::Arc<dyn contracts::VaultService>> =
         Some(services.get::<super::vault::Vault>().await?.service.clone());
