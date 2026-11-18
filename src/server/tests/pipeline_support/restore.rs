@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use serde_json::Value;
@@ -168,19 +168,6 @@ fn query_value(text: &str) -> String {
             other => format!("%{other:02X}"),
         })
         .collect()
-}
-
-/// The production text of a workspace source (before its `#[cfg(test)]` module).
-pub fn production_source(file: &str) -> String {
-    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("the server crate sits inside the workspace");
-    let text =
-        fs::read_to_string(workspace.join(file)).unwrap_or_else(|error| panic!("{file}: {error}"));
-    match text.find("#[cfg(test)]") {
-        Some(at) => text[..at].to_owned(),
-        None => text,
-    }
 }
 
 impl Pipeline {

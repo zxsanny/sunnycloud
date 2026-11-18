@@ -39,7 +39,7 @@ mod test_build {
     use uuid::Uuid;
 
     use super::serve_support::Stack;
-    use super::serve_support::http::{call, send};
+    use super::serve_support::http::{call, janitor_cycles, send};
     use super::*;
     use crate::root_support::address;
 
@@ -54,18 +54,8 @@ mod test_build {
         json!({"offset_seconds": seconds})
     }
 
-    /// `sunnycloud_janitor_cycles_total{task="session_reaper",result="ok"}` on the ops listener's `/metrics`.
     fn reaper_cycles(stack: &Stack) -> u64 {
-        let scrape = send(stack.ports.ops, "GET", "/metrics", &[], b"");
-        let text = String::from_utf8_lossy(&scrape.body);
-        text.lines()
-            .filter(|line| line.starts_with("sunnycloud_janitor_cycles_total{"))
-            .filter(|line| {
-                line.contains(r#"task="session_reaper""#) && line.contains(r#"result="ok""#)
-            })
-            .filter_map(|line| line.rsplit(' ').next()?.parse::<f64>().ok())
-            .map(|count| count as u64)
-            .sum()
+        janitor_cycles(stack.ports.ops, "session_reaper")
     }
 
     /// Polls `done` every 200 ms; panics past [`WITHIN`].
@@ -198,8 +188,13 @@ mod release_build {
     async fn ac3_serve_starts_with_the_test_clock_port_taken_and_the_clock_offset_route_is_404() {
         // Arrange
         let stack = Stack::new().await;
-        // Taken by this test or by another process: a build that bound it would refuse the start.
-        let held = TcpListener::bind(DEFAULT_TEST_CLOCK);
+        // Taken by this test or already by another process (`AddrInUse`): a build that bound it would refuse the
+        // start. Any other bind failure would leave the premise unproven, so it fails the test.
+        let held = match TcpListener::bind(DEFAULT_TEST_CLOCK) {
+            Ok(listener) => Some(listener),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => None,
+            Err(error) => panic!("the default test-clock address cannot be held: {error}"),
+        };
         let mut server = stack.spawn();
 
         // Act

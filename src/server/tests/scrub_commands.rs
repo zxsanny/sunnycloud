@@ -1,12 +1,15 @@
 //! AZ-3798: `scrub run` and `scrub status` through the real handler with a scripted `Scrubber`.
 
+mod key_support;
 mod scrub_support;
 mod support;
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use contracts::{ByteRate, ScrubMode, ScrubStatus, ScrubSummary, Scrubber};
+use contracts::{
+    ByteRate, KeyError, MasterKeyring, ScrubMode, ScrubStatus, ScrubSummary, Scrubber,
+};
 use sc_clock::Timestamp;
 use scrub_support::{Scripted, as_service, step};
 use serde_json::Value;
@@ -16,7 +19,16 @@ use support::{Captured, Harness};
 const PROGRESS: Duration = Duration::from_millis(500);
 
 fn run(scrubber: &Arc<Scripted>, args: &[&str]) -> Captured {
+    run_with_keyring(scrubber, &Arc::new(key_support::Scripted::new()), args)
+}
+
+fn run_with_keyring(
+    scrubber: &Arc<Scripted>,
+    keyring: &Arc<key_support::Scripted>,
+    args: &[&str],
+) -> Captured {
     let service = as_service(scrubber);
+    let keys = key_support::as_service(keyring);
     Harness::new()
         .real_handler()
         .settings(CliSettings {
@@ -26,6 +38,10 @@ fn run(scrubber: &Arc<Scripted>, args: &[&str]) -> Captured {
         .service::<dyn Scrubber, _, _>(move |_| {
             let service = Arc::clone(&service);
             async move { Ok(service) }
+        })
+        .service::<dyn MasterKeyring, _, _>(move |_| {
+            let keys = Arc::clone(&keys);
+            async move { Ok(keys) }
         })
         .run(args)
 }
@@ -194,4 +210,23 @@ fn a_rate_of_zero_negative_or_not_a_number_exits_3_with_no_start_call() {
         assert_eq!(out.exit, 3, "{rate}: {}", out.stderr);
         assert_eq!(scrubber.calls(), (Vec::new(), 0, 0), "{rate}");
     }
+}
+
+#[test]
+fn a_run_checks_the_key_ring_first_and_a_refusal_exits_2_with_no_start_call() {
+    // Arrange
+    let scrubber = Arc::new(Scripted::new(vec![step(1, 0, 0, true)]));
+    let keyring = Arc::new(key_support::Scripted::new().verify(|| Err(KeyError::FileMissing)));
+
+    // Act
+    let out = run_with_keyring(&scrubber, &keyring, &["scrub", "run", "--full"]);
+
+    // Assert
+    assert_eq!(out.exit, 2, "{}", out.stderr);
+    assert!(
+        out.stderr.contains("master key file missing"),
+        "{}",
+        out.stderr
+    );
+    assert_eq!(scrubber.calls(), (Vec::new(), 0, 0));
 }

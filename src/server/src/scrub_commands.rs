@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use contracts::{ByteRate, ScrubError, ScrubMode, ScrubRun, Scrubber, StepResult};
+use contracts::{ByteRate, MasterKeyring, ScrubError, ScrubMode, ScrubRun, Scrubber, StepResult};
 use sc_error::ErrorCode;
 use sc_observability::log_error;
 use tokio::time::{MissedTickBehavior, interval};
@@ -14,6 +14,7 @@ use crate::context::ServiceContext;
 use crate::error::CliError;
 use crate::exit::Exit;
 use crate::handler::Call;
+use crate::key_commands::refusal as key_refusal;
 use crate::outcome::{Class, Outcome};
 use crate::settings::CliSettings;
 
@@ -43,6 +44,9 @@ pub(crate) async fn run(
     rate_mib: Option<u32>,
     call: &Call<'_>,
 ) -> Result<Outcome, CliError> {
+    // Verifying a blob reads its data key, so the key ring loads before the first step, as `serve` and `key-check` do.
+    let keyring = call.services.get::<dyn MasterKeyring>().await?;
+    keyring.load_and_verify().await.map_err(key_refusal)?;
     let scrubber = call.services.get::<dyn Scrubber>().await?;
     let progress = call.services.get::<CliSettings>().await?.progress_interval;
     let mode = if full {

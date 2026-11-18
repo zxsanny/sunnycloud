@@ -98,6 +98,16 @@ pub fn copy_names(stem: &str, ext: &str, label: &str, from: i64, to: i64) -> Vec
 }
 
 impl Pipeline {
+    /// The stored usage equals `live` (the sum of the live file sizes), nothing is reserved, and `doctor`'s quota
+    /// drift check agrees.
+    pub async fn assert_quota_settled(&mut self, live: i64) {
+        assert_eq!(self.used_bytes().await, live);
+        assert_eq!(self.reserved_bytes().await, 0);
+        let drift = self.quota_drift_findings();
+        let matches = ("ok", "stored usage matches the files for every account");
+        assert_eq!(drift, [(matches.0.to_owned(), matches.1.to_owned())]);
+    }
+
     /// `POST /api/v1/nodes` of a folder `name` under `parent`, the answer as it comes.
     pub fn create_folder(&self, parent: Uuid, name: &str) -> Response {
         let body = json!({"parent_id": parent, "name": name}).to_string();

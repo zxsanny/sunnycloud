@@ -122,7 +122,7 @@ fn report(call: &Call<'_>, rewrapped: u64) {
     }
 }
 
-fn refusal(error: KeyError) -> CliError {
+pub(crate) fn refusal(error: KeyError) -> CliError {
     CliError::Operator {
         code: key_kind(&error),
         detail: operator_message(&error),

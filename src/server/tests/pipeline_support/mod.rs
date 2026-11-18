@@ -14,6 +14,7 @@ pub mod h2;
 pub mod large;
 pub mod media;
 pub mod restore;
+pub mod scrub;
 pub mod tree;
 pub mod wiring;
 

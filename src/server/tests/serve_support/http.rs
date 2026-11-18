@@ -75,6 +75,19 @@ pub fn send(
         .unwrap_or_else(|error| panic!("{method} {path} on {addr}: {error}"))
 }
 
+/// `sunnycloud_janitor_cycles_total{task, result="ok"}` of the ops listener's `/metrics`.
+pub fn janitor_cycles(ops: SocketAddr, task: &str) -> u64 {
+    let scrape = send(ops, "GET", "/metrics", &[], b"");
+    let text = String::from_utf8_lossy(&scrape.body);
+    let label = format!("task=\"{task}\"");
+    text.lines()
+        .filter(|line| line.starts_with("sunnycloud_janitor_cycles_total{"))
+        .filter(|line| line.contains(&label) && line.contains(r#"result="ok""#))
+        .filter_map(|line| line.rsplit(' ').next()?.parse::<f64>().ok())
+        .map(|count| count as u64)
+        .sum()
+}
+
 fn exchange(
     addr: SocketAddr,
     method: &str,

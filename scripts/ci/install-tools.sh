@@ -19,6 +19,11 @@ GITLEAKS_VERSION=8.30.1
 GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 CARGO_AUDIT_VERSION=0.22.2
 SQLX_CLI_VERSION=0.9.0
+# The exact package version is a supply-chain pin. PGDG's apt.postgresql.org index keeps only the newest few
+# versions of a package (18.7, 18.6 and 18.4 on 2026-11-18) and moves the rest to apt-archive.postgresql.org, so
+# this value must be bumped when a newer 18.x release has pushed it out of the index (the job then fails with
+# "version not found"): read the current one from
+# https://apt.postgresql.org/pub/repos/apt/dists/noble-pgdg/main/binary-amd64/Packages.gz and update it here.
 PG_CLIENT_VERSION=18.7-1.pgdg24.04+2
 PGDG_KEY_URL=https://www.postgresql.org/media/keys/ACCC4CF8.asc
 PGDG_KEY_FINGERPRINT=B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8

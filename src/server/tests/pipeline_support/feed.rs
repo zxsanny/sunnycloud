@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use sqlx::Connection;
 
+use super::wiring::production_text;
 use super::{POLL_EVERY, Pipeline, WITHIN};
 use crate::serve_support::http::{Response, call};
 
@@ -194,14 +195,10 @@ fn visit(workspace: &Path, dir: &Path, needle: &str, found: &mut Vec<String>) {
             }
             continue;
         }
-        if !name.ends_with(".rs") || name == "tests.rs" || name.ends_with("_tests.rs") {
+        if !name.ends_with(".rs") {
             continue;
         }
-        let text =
-            fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-        let production = text
-            .find("#[cfg(test)]")
-            .map_or(&text[..], |at| &text[..at]);
+        let production = production_text(&path);
         let relative = path.strip_prefix(workspace).unwrap_or(&path).display();
         for _ in production.matches(needle) {
             found.push(relative.to_string());

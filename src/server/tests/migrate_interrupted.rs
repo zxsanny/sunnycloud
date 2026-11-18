@@ -235,16 +235,24 @@ async fn migrate_killed_while_a_migration_waits_leaves_it_unapplied_and_serve_re
 const APPLICATION_TABLES: &str = "SELECT string_agg(format('%I.%I', schemaname, tablename), ', ' \
      ORDER BY tablename) FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_sqlx_migrations'";
 
-/// The columns and constraints of the public schema as one text: equal before and after means a migration left
-/// nothing of itself behind.
+/// The columns, constraints, indexes, row-level policies and triggers of the public schema as one text: equal
+/// before and after means a migration left nothing of itself behind. (The lock the test holds blocks only
+/// migrations that need a stronger lock than ACCESS SHARE; a newest migration that only creates objects never
+/// waits, and the test then fails at its "never started waiting" deadline, not silently.)
 async fn schema_fingerprint(db: &TestDb) -> String {
     let mut conn = db.admin().await;
     let fingerprint: String = sqlx::query_scalar(
-        "SELECT coalesce((SELECT string_agg(table_name || '.' || column_name || ':' || data_type || ':' \
-         || is_nullable, ',' ORDER BY table_name, column_name) FROM information_schema.columns \
-         WHERE table_schema = 'public'), '') || '|' || coalesce((SELECT string_agg(conname || ':' \
-         || pg_get_constraintdef(oid), ',' ORDER BY conname) FROM pg_constraint \
-         WHERE connamespace = 'public'::regnamespace), '')",
+        "SELECT concat_ws('|', \
+         (SELECT string_agg(table_name || '.' || column_name || ':' || data_type || ':' || is_nullable, ',' \
+          ORDER BY table_name, column_name) FROM information_schema.columns WHERE table_schema = 'public'), \
+         (SELECT string_agg(conname || ':' || pg_get_constraintdef(oid), ',' ORDER BY conname) \
+          FROM pg_constraint WHERE connamespace = 'public'::regnamespace), \
+         (SELECT string_agg(indexdef, ',' ORDER BY indexname) FROM pg_indexes WHERE schemaname = 'public'), \
+         (SELECT string_agg(tablename || '.' || policyname || ':' || cmd || ':' || coalesce(qual, '') \
+          || ':' || coalesce(with_check, ''), ',' ORDER BY tablename, policyname) \
+          FROM pg_policies WHERE schemaname = 'public'), \
+         (SELECT string_agg(tgname || ':' || pg_get_triggerdef(oid), ',' ORDER BY tgname) \
+          FROM pg_trigger WHERE NOT tgisinternal))",
     )
     .fetch_one(&mut conn)
     .await

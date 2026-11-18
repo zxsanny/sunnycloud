@@ -1,13 +1,14 @@
 //! AZ-3798 AC-4: SIGINT during `scrub run` lets the running step return, starts no new step, calls `finish_run`
 //! once and ends within 5 s. One test on purpose: it raises a real SIGINT at the test process.
 
+mod key_support;
 mod scrub_support;
 mod support;
 
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
-use contracts::Scrubber;
+use contracts::{MasterKeyring, Scrubber};
 use scrub_support::{Scripted, as_service, step};
 use support::Harness;
 
@@ -29,11 +30,16 @@ fn sigint_stops_after_the_running_step_and_closes_the_run_once() {
             .on_step(move || started_tx.send(()).expect("the test is listening")),
     );
     let service = as_service(&scrubber);
+    let keys = key_support::as_service(&Arc::new(key_support::Scripted::new()));
     let harness = Harness::new()
         .real_handler()
         .service::<dyn Scrubber, _, _>(move |_| {
             let service = Arc::clone(&service);
             async move { Ok(service) }
+        })
+        .service::<dyn MasterKeyring, _, _>(move |_| {
+            let keys = Arc::clone(&keys);
+            async move { Ok(keys) }
         });
     let run = std::thread::spawn(move || harness.run(&["scrub", "run"]));
     started_rx

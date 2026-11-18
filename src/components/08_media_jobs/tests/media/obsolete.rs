@@ -200,3 +200,31 @@ async fn a_new_revision_of_the_same_content_adopts_an_obsolete_job_and_queues_it
     );
     q.finish().await;
 }
+
+#[tokio::test]
+async fn an_obsolete_job_of_one_account_is_never_adopted_by_another_accounts_enqueue() {
+    // Arrange: account A's job (content 5) lost its revision; account B names the same content.
+    let q = Queue::new().await;
+    let job_of_a = q.add(JobKind::Stills, 5, Priority::Bulk).await;
+    collect(&q, q.revision).await;
+    let (account_b, revision_b) = q.second_account().await;
+
+    // Act
+    let outcome = q
+        .enqueue(
+            q.spec_of(account_b, revision_b, JobKind::Stills, 5),
+            Priority::Interactive,
+        )
+        .await;
+    let job_of_b = q
+        .id_of(&q.spec_of(account_b, revision_b, JobKind::Stills, 5))
+        .await;
+
+    // Assert: B gets a job of its own; A's job keeps its state, priority and NULL revision.
+    assert_eq!(outcome, EnqueueOutcome::Enqueued);
+    assert_ne!(job_of_b, job_of_a);
+    assert_eq!(revision_of(&q, job_of_a).await, None);
+    assert_eq!(q.row(job_of_a).await.priority, 1);
+    assert_eq!(revision_of(&q, job_of_b).await, Some(revision_b));
+    q.finish().await;
+}

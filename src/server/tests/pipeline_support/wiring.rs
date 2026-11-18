@@ -8,7 +8,7 @@ use std::path::Path;
 pub type Caller = (&'static str, &'static str, &'static [&'static str]);
 
 /// The text of a source outside test files and `#[cfg(test)]` modules.
-fn production_text(path: &Path) -> String {
+pub fn production_text(path: &Path) -> String {
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -24,11 +24,20 @@ fn production_text(path: &Path) -> String {
     }
 }
 
+/// The production text of a workspace source, named relative to the workspace root.
+pub fn production_source(file: &str) -> String {
+    production_text(&workspace().join(file))
+}
+
+fn workspace() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the server crate sits inside the workspace")
+}
+
 /// One line per needle that its file's production text lacks.
 pub fn missing_callers(callers: &[Caller]) -> Vec<String> {
-    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("the server crate sits inside the workspace");
+    let workspace = workspace();
     callers
         .iter()
         .flat_map(|(operation, file, needles)| {

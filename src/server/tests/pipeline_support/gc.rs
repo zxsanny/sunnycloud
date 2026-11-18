@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use super::media::WORKER_TOKEN;
 use super::{POLL_EVERY, Pipeline, json_type, now_micros};
-use crate::serve_support::http::{Response, call, send};
+use crate::serve_support::http::{Response, call, janitor_cycles, send};
 
 pub const DAY: u64 = 86_400;
 
@@ -74,17 +74,9 @@ impl Pipeline {
         moved.json()["offset_seconds"].as_u64().expect("an offset")
     }
 
-    /// `sunnycloud_janitor_cycles_total{task, result="ok"}` of the ops listener's `/metrics`.
+    /// Finished cycles of the janitor `task` so far.
     pub fn janitor_cycles(&self, task: &str) -> u64 {
-        let scrape = send(self.stack.ports.ops, "GET", "/metrics", &[], b"");
-        let text = String::from_utf8_lossy(&scrape.body);
-        let label = format!("task=\"{task}\"");
-        text.lines()
-            .filter(|line| line.starts_with("sunnycloud_janitor_cycles_total{"))
-            .filter(|line| line.contains(&label) && line.contains(r#"result="ok""#))
-            .filter_map(|line| line.rsplit(' ').next()?.parse::<f64>().ok())
-            .map(|count| count as u64)
-            .sum()
+        janitor_cycles(self.stack.ports.ops, task)
     }
 
     /// Polls until `count` more cycles of `task` have finished ok; panics past `deadline`.

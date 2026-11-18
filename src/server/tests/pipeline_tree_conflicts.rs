@@ -492,10 +492,6 @@ async fn ac74_usage_stays_exact_and_within_quota_under_1000_concurrent_commits_e
         .iter()
         .map(|node| node["size"].as_i64().expect("a size"))
         .sum();
-    assert_eq!(pipeline.used_bytes().await, live);
-    assert_eq!(pipeline.reserved_bytes().await, 0);
-    let drift = pipeline.quota_drift_findings();
-    let matches = ("ok", "stored usage matches the files for every account");
-    assert_eq!(drift, [(matches.0.to_owned(), matches.1.to_owned())]);
+    pipeline.assert_quota_settled(live).await;
     pipeline.finish().await;
 }

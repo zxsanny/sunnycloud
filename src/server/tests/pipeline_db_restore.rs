@@ -17,7 +17,8 @@ use std::collections::BTreeSet;
 use std::fs;
 
 use pipeline_support::feed::{Page, split};
-use pipeline_support::restore::{Restored, production_source, restored};
+use pipeline_support::restore::{Restored, restored};
+use pipeline_support::wiring::production_source;
 use pipeline_support::wiring::{Caller, missing_callers};
 use pipeline_support::{File, Pipeline, uuid_of};
 use serve_support::{messages, positions};
