@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytes::Bytes;
 use mobile_backup::{
-    AccessLevel, AssetDescriptor, AssetGone, AssetSource, ChangeToken, ReadableFd,
+    AccessLevel, AssetDescriptor, AssetSource, ChangeToken, OpenError, OpenedAsset, SourceError,
 };
 use sync_core::{FileIdentity, FileSource};
 
@@ -69,6 +69,8 @@ struct State {
     items: BTreeMap<i64, Item>,
     generation: u64,
     limited: bool,
+    denied: bool,
+    redacted: bool,
 }
 
 #[derive(Default)]
@@ -152,6 +154,15 @@ impl FakeSource {
         self.state().limited = limited;
     }
 
+    pub fn set_denied(&self, denied: bool) {
+        self.state().denied = denied;
+    }
+
+    /// Originals open with their location data removed.
+    pub fn set_redacted(&self, redacted: bool) {
+        self.state().redacted = redacted;
+    }
+
     pub fn bytes_of(&self, asset_id: i64) -> Vec<u8> {
         let state = self.state();
         let item = state.items.get(&asset_id).expect("a known asset");
@@ -172,7 +183,11 @@ impl FakeSource {
 }
 
 impl AssetSource for FakeSource {
-    fn assets_after(&self, token: &ChangeToken, limit: u32) -> Vec<AssetDescriptor> {
+    fn assets_after(
+        &self,
+        token: &ChangeToken,
+        limit: u32,
+    ) -> Result<Vec<AssetDescriptor>, SourceError> {
         self.listed_pages.fetch_add(1, Ordering::SeqCst);
         let after = generation_of(token);
         let limit = self
@@ -188,67 +203,75 @@ impl AssetSource for FakeSource {
             .map(|(id, item)| (item.generation, *id))
             .collect();
         listed.sort_unstable();
-        listed
+        Ok(listed
             .into_iter()
             .take(limit as usize)
             .map(|(_, id)| Self::descriptor(id, &state.items[&id]))
-            .collect()
+            .collect())
     }
 
-    fn current_token(&self) -> ChangeToken {
-        token_of(self.state().generation)
+    fn current_token(&self) -> Result<ChangeToken, SourceError> {
+        Ok(token_of(self.state().generation))
     }
 
-    fn list_visible_ids(&self, page: u32) -> Vec<i64> {
+    fn list_visible_ids(&self, page: u32) -> Result<Vec<i64>, SourceError> {
         self.visible_id_pages.fetch_add(1, Ordering::SeqCst);
-        self.state()
+        Ok(self
+            .state()
             .items
             .iter()
             .filter(|(_, item)| item.visible)
             .map(|(id, _)| *id)
             .skip(page as usize * 100)
             .take(100)
-            .collect()
+            .collect())
     }
 
-    fn visible_count(&self) -> u64 {
-        self.state()
+    fn visible_count(&self) -> Result<u64, SourceError> {
+        Ok(self
+            .state()
             .items
             .values()
             .filter(|item| item.visible)
-            .count() as u64
+            .count() as u64)
     }
 
-    fn describe(&self, asset_ids: &[i64]) -> Vec<AssetDescriptor> {
+    fn describe(&self, asset_ids: &[i64]) -> Result<Vec<AssetDescriptor>, SourceError> {
         self.described.lock().expect("described").extend(asset_ids);
         let state = self.state();
-        asset_ids
+        Ok(asset_ids
             .iter()
             .filter_map(|id| state.items.get(id).map(|item| Self::descriptor(*id, item)))
-            .collect()
+            .collect())
     }
 
-    fn open_read(&self, asset_id: i64) -> Result<ReadableFd, AssetGone> {
+    fn open_read(&self, asset_id: i64) -> Result<OpenedAsset, OpenError> {
         if self
             .vanishing
             .lock()
             .expect("vanishing")
             .contains(&asset_id)
         {
-            return Err(AssetGone);
+            return Err(OpenError::Gone);
         }
         let state = self.state();
-        let item = state.items.get(&asset_id).ok_or(AssetGone)?;
-        Ok(std::sync::Arc::new(MemFile(Bytes::from(content(
-            asset_id, item.edit, item.size,
-        )))))
+        let item = state.items.get(&asset_id).ok_or(OpenError::Gone)?;
+        Ok(OpenedAsset {
+            file: std::sync::Arc::new(MemFile(Bytes::from(content(
+                asset_id, item.edit, item.size,
+            )))),
+            location_redacted: state.redacted,
+        })
     }
 
-    fn access_level(&self) -> AccessLevel {
-        if self.state().limited {
+    fn access_level(&self) -> Result<AccessLevel, SourceError> {
+        let state = self.state();
+        Ok(if state.denied {
+            AccessLevel::Denied
+        } else if state.limited {
             AccessLevel::Limited
         } else {
             AccessLevel::Full
-        }
+        })
     }
 }

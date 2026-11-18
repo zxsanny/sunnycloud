@@ -20,7 +20,7 @@ async fn rows_of_a_paged_listing_exist_before_the_stored_token_advances_to_the_c
     for id in 1..=250 {
         rig.source.add(id, 1024);
     }
-    let target = rig.source.current_token();
+    let target = rig.source.current_token().expect("a token");
     let pages_before = rig.source.listed_pages.load(Ordering::SeqCst);
     rig.db.fail_token_writes();
 

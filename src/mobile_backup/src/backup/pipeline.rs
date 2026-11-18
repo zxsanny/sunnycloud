@@ -13,13 +13,13 @@ use sync_core::{
     SmallFile, SyncError, UploadCheckpoint, UploadRequest, UploadState, takes_staged_path,
 };
 use sync_core_proto::{BatchEntry, CommitOutcome, FileHash, client_key_for_mobile};
-use tracing::warn;
 use uuid::Uuid;
 
 use super::Backup;
-use crate::checkpoint::{Acknowledged, PendingAsset};
+use super::verdict::Halt;
+use crate::checkpoint::{Acknowledged, AssetEnd, PendingAsset};
 use crate::outcome::{BackupOutcome, RunContext, RunError};
-use crate::source::{AssetGone, AssetSource, ReadableFd};
+use crate::source::{AssetSource, OpenError, ReadableFd};
 
 /// Counts of bytes are the host's concern (E-27/c07 `status`); the loop needs none.
 struct NoProgress;
@@ -41,29 +41,28 @@ struct Ready {
 
 pub(super) struct Run<'a> {
     backup: &'a Backup,
-    ctx: RunContext,
+    /// The end of the run's time budget; a budget too long to count is no deadline.
+    deadline: Option<Instant>,
     source: Arc<dyn AssetSource>,
     folder: Option<Uuid>,
+    /// The location flag last stored, so an unchanged flag is not written again.
+    redacted: Option<bool>,
 }
 
 impl<'a> Run<'a> {
     pub(super) fn new(backup: &'a Backup, ctx: RunContext, source: Arc<dyn AssetSource>) -> Self {
         Self {
             backup,
-            ctx,
+            deadline: ctx
+                .deadline
+                .and_then(|budget| Instant::now().checked_add(budget)),
             source,
             folder: None,
+            redacted: None,
         }
     }
 
-    pub(super) async fn drive(mut self) -> Result<BackupOutcome, RunError> {
-        match self.work().await {
-            Err(RunError::Sync(SyncError::Cancelled)) => self.partial(),
-            other => other,
-        }
-    }
-
-    async fn work(&mut self) -> Result<BackupOutcome, RunError> {
+    pub(super) async fn work(&mut self) -> Result<BackupOutcome, Halt> {
         let window = usize::try_from(self.backup.config.hash_ahead)
             .unwrap_or(usize::MAX)
             .saturating_add(1);
@@ -110,30 +109,56 @@ impl<'a> Run<'a> {
     fn stopped(&self) -> bool {
         self.backup.cancel.load(Ordering::Acquire)
             || self
-                .ctx
                 .deadline
                 .is_some_and(|deadline| Instant::now() >= deadline)
     }
 
-    fn partial(&self) -> Result<BackupOutcome, RunError> {
-        Ok(BackupOutcome::Partial {
-            remaining: self.backup.assets.pending_count()?,
-        })
+    fn partial(&self) -> Result<BackupOutcome, Halt> {
+        Ok(self.backup.partial()?)
+    }
+
+    /// `Some(value)` when `result` is `Ok`. A failed call settles `asset_id` (ended, or a pause or fatal error that
+    /// stops the run) and gives `None`.
+    fn settled<T>(&self, asset_id: i64, result: Result<T, SyncError>) -> Result<Option<T>, Halt> {
+        match result {
+            Ok(value) => Ok(Some(value)),
+            Err(error) => self.backup.settle(asset_id, error).map(|()| None),
+        }
+    }
+
+    fn note_redaction(&mut self, redacted: bool) -> Result<(), RunError> {
+        if self.redacted != Some(redacted) {
+            self.backup.assets.set_location_redacted(redacted)?;
+            self.redacted = Some(redacted);
+        }
+        Ok(())
     }
 
     /// Opens the original and gets its hash: from the row when it was stored, otherwise by hashing now. `None` when
-    /// the asset is gone.
-    async fn prepare(&self, row: PendingAsset) -> Result<Option<Ready>, RunError> {
-        let source = match self.source.open_read(row.asset_id) {
-            Ok(source) => source,
-            Err(AssetGone) => {
-                self.backup.assets.mark_skipped_gone(row.asset_id)?;
+    /// the asset ended instead (gone, or an error that closes it).
+    async fn prepare(&mut self, row: PendingAsset) -> Result<Option<Ready>, Halt> {
+        let opened = match self.source.open_read(row.asset_id) {
+            Ok(opened) => opened,
+            Err(OpenError::Gone) => {
+                self.backup
+                    .assets
+                    .mark_ended(row.asset_id, AssetEnd::Gone)?;
+                return Ok(None);
+            }
+            Err(OpenError::Failed) => {
+                self.backup
+                    .fail_asset(row.asset_id, "the host could not open the original")?;
                 return Ok(None);
             }
         };
+        self.note_redaction(opened.location_redacted)?;
+        let source = opened.file;
         let size = source
             .len()
-            .map_err(|error| RunError::Source(error.kind()))?;
+            .map_err(|error| SyncError::Io { kind: error.kind() });
+        let Some(size) = self.settled(row.asset_id, size)? else {
+            return Ok(None);
+        };
         let staged = takes_staged_path(size);
         let stored = match row.hashed {
             Some((hash, key)) if staged => Some((hash, key, None)),
@@ -144,7 +169,10 @@ impl<'a> Run<'a> {
         };
         let (file_hash, key, blocks) = match stored {
             Some(stored) => stored,
-            None => self.hash(row.asset_id, &source, staged).await?,
+            None => match self.hash(row.asset_id, &source, staged).await? {
+                Some(hashed) => hashed,
+                None => return Ok(None),
+            },
         };
         Ok(Some(Ready {
             asset_id: row.asset_id,
@@ -178,7 +206,7 @@ impl<'a> Run<'a> {
         asset_id: i64,
         source: &ReadableFd,
         staged: bool,
-    ) -> Result<(FileHash, Uuid, Option<HashedFile>), RunError> {
+    ) -> Result<Option<(FileHash, Uuid, Option<HashedFile>)>, Halt> {
         let local_key = asset_id.to_string();
         let hashed = self
             .backup
@@ -192,7 +220,10 @@ impl<'a> Run<'a> {
                     commit_id: Uuid::nil(),
                 },
             )
-            .await?;
+            .await;
+        let Some(hashed) = self.settled(asset_id, hashed)? else {
+            return Ok(None);
+        };
         let key = client_key_for_mobile(self.backup.device_id, &local_key, &hashed.file_hash);
         if !staged {
             self.backup.store.save(
@@ -210,14 +241,18 @@ impl<'a> Run<'a> {
             .assets
             .mark_hashed(asset_id, &hashed.file_hash, key)?;
         let file_hash = hashed.file_hash;
-        Ok((file_hash, key, (!staged).then_some(hashed)))
+        Ok(Some((file_hash, key, (!staged).then_some(hashed))))
     }
 
-    async fn parent(&mut self) -> Result<Uuid, RunError> {
+    async fn parent(&mut self) -> Result<Uuid, Halt> {
         if let Some(folder) = self.folder {
             return Ok(folder);
         }
-        let folder = self.backup.camera_folder().await?;
+        let folder = self
+            .backup
+            .camera_folder()
+            .await
+            .map_err(|error| self.backup.halt_run(error))?;
         self.folder = Some(folder);
         Ok(folder)
     }
@@ -226,7 +261,7 @@ impl<'a> Run<'a> {
         json!({ "device": self.backup.device_id.to_string(), "asset_id": asset_id.to_string() })
     }
 
-    async fn upload_blocks(&mut self, item: Ready, hashed: HashedFile) -> Result<(), RunError> {
+    async fn upload_blocks(&mut self, item: Ready, hashed: HashedFile) -> Result<(), Halt> {
         let request = UploadRequest {
             local_key: item.asset_id.to_string(),
             parent: self.parent().await?,
@@ -242,15 +277,17 @@ impl<'a> Run<'a> {
             .backup
             .api
             .upload(request, self.backup.store.clone(), Arc::new(NoProgress))
-            .await?;
-        self.backup
-            .assets
-            .mark_uploaded(&[acknowledged(item.key, outcome)])?;
+            .await;
+        if let Some(outcome) = self.settled(item.asset_id, outcome)? {
+            self.backup
+                .assets
+                .mark_uploaded(&[acknowledged(item.key, outcome)])?;
+        }
         Ok(())
     }
 
     /// The results are stored by the batch sink before `sync-core` clears the batch record.
-    async fn upload_staged(&mut self, group: Vec<Ready>) -> Result<(), RunError> {
+    async fn upload_staged(&mut self, group: Vec<Ready>) -> Result<(), Halt> {
         let parent = self.parent().await?;
         let files = group
             .into_iter()
@@ -272,11 +309,9 @@ impl<'a> Run<'a> {
             .backup
             .api
             .upload_small(files, self.backup.store.clone(), sink)
-            .await?;
-        for file in left_out {
-            warn!(error = %file.error, "a staged file was left out of its batch");
-        }
-        Ok(())
+            .await
+            .map_err(|error| self.backup.halted(error))?;
+        self.backup.settle_left_out(left_out)
     }
 }
 

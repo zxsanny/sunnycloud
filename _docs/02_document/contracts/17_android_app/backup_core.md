@@ -19,13 +19,13 @@ Sources: `components/17_android_app/description.md` §2, §2a, §4, §5, §10, �
 
 | Method | Input | Output | Errors (`BackupError`) | Blocking? |
 |---|---|---|---|---|
-| construction | host-supplied app-private directory, client version, device label (open point 1) | handle | none; the checkpoint DB opens lazily on first use | sync |
+| construction | host-supplied app-private directory, client version (the device label is an input of `Backup::new`, built with the session, c08) | handle | none; the checkpoint DB opens lazily on first use | sync |
 | `set_server` | `url` | `ServerCheck{trust}` (open point 2 for other fields) | `HttpsRequired`, `ServerUnreachable`, `UpgradeRequired{message}` | async |
 | `exchange_code` | `code`, `code_verifier`, device label | `()`; tokens stored through the host credential store | `InvalidCode`, `ServerUnreachable`, `UpgradeRequired{message}` | async |
 | `refresh` | none | `()` (single flight in 13) | `NotSignedIn`, `TokenRejected`, `ServerUnreachable` | async |
 | `sign_out` | none | `()`; server revoke attempted, then the host store is cleared even if the server is unreachable | none | async |
 | `run_backup` | `RunContext{trigger, deadline, network_policy}`, `AssetSource` | `BackupOutcome` | `NotSignedIn`, `ServerUnreachable`, `UpgradeRequired{message}`, `TokenRejected` | async |
-| `status` | none | `BackupStatus` | none | sync (reads the checkpoint) |
+| `status` | none | `BackupStatus` | `CheckpointUnavailable` | sync (reads the checkpoint) |
 | `rebuild_checkpoint` | listing page callback | `RebuildReport` (open point 3) | `ServerUnreachable` | async |
 | `cancel` | none | `()`; sets a flag the run checks between blocks; in-flight 13 operations end `Cancelled` within 1 s | none | sync |
 
@@ -57,23 +57,40 @@ Sources: `components/17_android_app/description.md` §2, §2a, §4, §5, §10, �
 
 | From 13 (`sync_api.md`) or the host | Result | Loop continues? |
 |---|---|---|
-| `QuotaExceeded` (507) | `Paused(QuotaExceeded)`; retried on the next trigger | no |
-| `SizeTooLarge` | asset `skipped_size` | yes |
-| `InvalidName` | asset `skipped_name` | yes |
-| `AssetGone` (host) | asset `skipped_gone` | yes |
+| `QuotaExceeded`, `FreeSpaceFloor` (507) | `Paused(QuotaExceeded)`; asset stays pending, retried next run | no |
 | `AccountNotActive` | `Paused(AccountNotActive)` | no |
-| `UpgradeRequired{message}` (426) | `Paused(UpgradeRequired)`, server text kept in `last_error` | no |
-| `ParentNotFound`, `ParentGone` | camera folder recreated, the asset retried once (E-27/c13) | yes |
-| `StagedCapReached` | paced inside 13 | yes |
-| network policy not met | `Paused(NoNetwork)` or `Paused(MeteredNetwork)` | no |
+| `UpgradeRequired{message}` (426) | `Paused(UpgradeRequired)`; server text in `last_error` | no |
+| `SizeTooLarge`; batch entry `size_too_large` | asset `skipped_size` | yes |
+| `InvalidName`; batch entry `invalid_name` | asset `skipped_name` | yes |
+| host `OpenError::Gone` (host `NotFound`/`PermissionDenied`), or `Io{NotFound\|PermissionDenied}` | asset `skipped_gone` | yes |
+| `SourceChanged`, other `Io`, host `OpenError::Failed`, `BlocklistMismatch`, `Unexpected{code, request_id}`, batch entry with any other code | asset `failed`, `last_error` with a correlation id; final until the change token moves | yes |
+| batch entry `upload_session_gone`, `parent_not_found`, `parent_deleted` | asset stays pending (next run; c13) | yes |
+| `ParentNotFound`, `ParentGone` | `Err` until E-27/c13 recreates the folder | no |
+| `Unauthorized` (`TokenRejected`) | `Err(RunError::Sync(Unauthorized))`; the host store is cleared and sign-in shown | no |
+| `Transport`, `RateLimited`, `CredentialUnavailable`, `SessionCapReached`, `StagedCapReached`, any other error not listed | `Err(RunError::Sync(..))`, assets stay pending | no |
+| host call without an answer (`assets_after`, `current_token`, `list_visible_ids`, `visible_count`, `describe`, `access_level`) | `Err(RunError::Source)`; nothing in the checkpoint changes; the next run retries | no |
+| network policy not met | `Paused(NoNetwork)` or `Paused(MeteredNetwork)`, checked first, no call made | no |
 | `access_level() = Denied` | `Paused(PermissionDenied)` | no |
-| `TokenRejected` | error returned; the host store is cleared and sign-in shown | no |
 
 Checkpoint asset states: `new, hashing, uploading, uploaded, skipped_gone, skipped_name, skipped_size, failed`.
 
 ### Run loop as built (E-27/c06, AZ-3990)
 
 Plain Rust API, no UniFFI export yet (E-27/c07): `Backup::new(api, db, AndroidConfig, device_id, device_label)`, `run_backup(RunContext{trigger, deadline}, Arc<dyn AssetSource>) -> Result<BackupOutcome, RunError>`, `cancel()`. One `Backup` per process holds the run mutex; a concurrent call answers `Skipped(AlreadyRunning)`. `device_id` is a constructor input so two processes with separate checkpoints derive the same `client_key` (who stores it is c07/c08). Additions to `AssetSource` that the loop needs: `visible_count()` and `describe(ids)` (name, size and token of an id); `list_visible_ids(page)` pages from 0 until an empty page; `open_read` answers `AssetGone` for a vanished file. The change token is opaque bytes stored as a BLOB under the `cursor` key `change_token` (also `access_level`, `visible_count`, `camera_folder`); hosts must return strictly increasing tokens and never split equal tokens across a page. `client_meta` is `{"device", "asset_id"}` on both upload paths. Asset states used: `new`, `uploading` (hashed, key stored, not acknowledged), `uploaded`, `skipped_gone`; a changed token resets an asset to `new`. `network_policy` of `RunContext` and the mapping of permanent per-asset errors to `skipped_*` and pauses come with c07.
+
+### `BackupCore` as built (E-27/c07, AZ-3991)
+
+Exported through UniFFI (feature `uniffi`; async methods use `async_runtime = "tokio"`): `BackupCore::new(directory, client_version)`, `async set_server(url) -> ServerCheck`, `status() -> BackupStatus`, `cancel()`. Rust-only: `BackupCore::with_probe(db, client_version, probe)`, `checkpoint() -> Arc<CheckpointDb>`, `attach(Arc<Backup>)`. `run_backup` is not exported until the c08 credential provider exists (open item: "export `run_backup` with a connected-client factory"). Kotlin bindings were generated from the built library with uniffi 0.32.2 (`BackupCore`, `ForeignAssetSource`, `RunContext`, `BackupOutcome`, `BackupStatus`, `ServerCheck` and the enums); the drift check is c18.
+
+- `ServerCheck { trust: ServerTrust }`, `ServerTrust = System | UserAdded`; `trust` is always `System` until c12.
+- `set_server`: sync-core's `ServerUrl::parse` refuses `http://` before any socket (unless the debug-only feature `allow-plain-http`), then `connect` checks `GET /api/v1/server-info`. `ConnectError` maps: `InsecureScheme` to `HttpsRequired`; `Unreachable` to `ServerUnreachable`; `UpgradeRequired{message}` to `UpgradeRequired{message}`; `InvalidConfig{server_url}` to `InvalidServerUrl`; `ProtocolMismatch`, `Unauthorized`, other `InvalidConfig`, `TrustStoreUninitialized` to `ServerUnreachable` (cause logged).
+- `BackupError = NotSignedIn | ServerUnreachable | UpgradeRequired{message} | TokenRejected | InvalidCode | HttpsRequired | InvalidServerUrl | CheckpointUnavailable` (the last two are new, non-breaking).
+- `BackupStatus { visible, uploaded, pending, paused: Option<PauseReason>, skipped: SkippedCounts{gone, name, size, failed}, last_error: Option<LastError{message, correlation_id}>, access_level, location_redacted }`, read from the checkpoint (counts from `asset`; `paused`, `last_error`, `last_error_id`, `access_level`, `location_redacted` are `cursor` keys). `visible` is `count(*)` of `asset`, queried apart from the per-state counts so the sum rule is a real check; `pending` = `new`, `hashing`, `uploading`; `failed` counts under `skipped.failed`. `paused` and `last_error` are cleared when a run starts; `last_error` survives a restart. `correlation_id` is the server request id when the error has one, else a fresh UUIDv7 that is also in the log line.
+- `RunContext{trigger, deadline: Option<Duration>, network_policy}`: `deadline` is a budget from the start of the run; `network_policy = {wifi_only, network: Offline|Metered|Unmetered}`.
+- `AssetSource` (Rust): every method except `open_read` returns `Result<_, SourceError>`; `open_read` returns `Result<OpenedAsset{file, location_redacted}, OpenError{Gone|Failed}>`. UniFFI foreign twin `ForeignAssetSource` (`with_foreign`): every method answers `Result<_, HostError>`, `open_read` returns `ForeignOpened{file: ForeignFileSource, location_redacted}`, `describe` takes `Vec<i64>`, `ChangeToken` crosses as bytes; `sync_core::Foreign<dyn ForeignAssetSource>` adapts it, and a host exception arrives as `HostError::Failed`, never a panic.
+- `Backup::cancel()` (and `BackupCore::cancel()` through `attach`) sets the stop flag and calls `BackupApi::cancel()` only while a run is in progress; a real sync client stays cancelled for good, so each run after a cancel needs a new connected client and a new `Backup`.
+
+Open points: 5 is answered as "`failed` is final until the change token moves"; 7 (`FreeSpaceFloor`) maps to `QuotaExceeded` with its own `last_error` text ("free space floor reached").
 
 ### Library form and checkpoint store (E-27/c05, AZ-3989)
 

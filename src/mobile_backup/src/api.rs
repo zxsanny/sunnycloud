@@ -13,6 +13,10 @@ use sync_core_proto::{CommitOutcome, ListingPage, NodeView, PageToken};
 use uuid::Uuid;
 
 pub trait BackupApi: Send + Sync {
+    /// Ends every operation in flight with `Cancelled`; nothing is sent afterwards. The sync client stays cancelled
+    /// for good, so a `Backup` that was cancelled is not run again over the same client.
+    fn cancel(&self);
+
     /// The server's `batch_max_entries`, learnt at connect.
     fn batch_commit_max(&self) -> usize;
 
@@ -60,6 +64,10 @@ pub trait BackupApi: Send + Sync {
 }
 
 impl BackupApi for HttpSyncClient {
+    fn cancel(&self) {
+        SyncApi::cancel(self);
+    }
+
     fn batch_commit_max(&self) -> usize {
         usize::try_from(self.limits().batch_max_entries).unwrap_or(usize::MAX)
     }

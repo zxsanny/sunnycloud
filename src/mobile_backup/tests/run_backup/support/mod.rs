@@ -3,6 +3,8 @@
 
 pub mod api;
 pub mod db;
+pub mod log;
+pub mod record;
 pub mod server;
 pub mod source;
 
@@ -11,7 +13,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mobile_backup::{
-    AndroidConfig, Backup, BackupOutcome, CheckpointDb, RunContext, RunError, Trigger,
+    AndroidConfig, Backup, BackupCore, BackupOutcome, CheckpointDb, HttpProbe, NetworkPolicy,
+    RunContext, RunError, Trigger,
 };
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -28,6 +31,7 @@ pub fn ctx(trigger: Trigger) -> RunContext {
     RunContext {
         trigger,
         deadline: None,
+        network_policy: NetworkPolicy::default(),
     }
 }
 
@@ -39,14 +43,20 @@ pub struct Rig {
     pub server: Arc<Server>,
     pub api: Arc<FakeApi>,
     pub backup: Arc<Backup>,
+    /// The `status` and `cancel` of the surface, over the checkpoint the loop writes.
+    pub core: Arc<BackupCore>,
     hash_ahead: u32,
     batch_max: usize,
 }
 
-fn backup_over(path: &PathBuf, api: &Arc<FakeApi>, hash_ahead: u32) -> Arc<Backup> {
-    Arc::new(Backup::new(
+fn backup_over(
+    db: &Arc<CheckpointDb>,
+    api: &Arc<FakeApi>,
+    hash_ahead: u32,
+) -> (Arc<Backup>, Arc<BackupCore>) {
+    let backup = Arc::new(Backup::new(
         Arc::clone(api) as _,
-        Arc::new(CheckpointDb::new(path)),
+        Arc::clone(db),
         AndroidConfig {
             catchup_interval: Duration::from_secs(15 * 60),
             unmetered_only: true,
@@ -55,7 +65,10 @@ fn backup_over(path: &PathBuf, api: &Arc<FakeApi>, hash_ahead: u32) -> Arc<Backu
         },
         DEVICE,
         LABEL.to_owned(),
-    ))
+    ));
+    let core = BackupCore::with_probe(Arc::clone(db), "1.0.0".to_owned(), Arc::new(HttpProbe));
+    core.attach(Arc::clone(&backup));
+    (backup, core)
 }
 
 impl Rig {
@@ -89,7 +102,7 @@ impl Rig {
         let db = Db::new(&path);
         let api = FakeApi::new(Arc::clone(&server), batch_max);
         api.watch(db.clone());
-        let backup = backup_over(&path, &api, hash_ahead);
+        let (backup, core) = backup_over(&Arc::new(CheckpointDb::new(&path)), &api, hash_ahead);
         Self {
             _dir: dir,
             path,
@@ -98,6 +111,7 @@ impl Rig {
             server,
             api,
             backup,
+            core,
             hash_ahead,
             batch_max,
         }
@@ -107,13 +121,21 @@ impl Rig {
     pub fn restart(&mut self) {
         self.api = FakeApi::new(Arc::clone(&self.server), self.batch_max);
         self.api.watch(self.db.clone());
-        self.backup = backup_over(&self.path, &self.api, self.hash_ahead);
+        let (backup, core) = backup_over(
+            &Arc::new(CheckpointDb::new(&self.path)),
+            &self.api,
+            self.hash_ahead,
+        );
+        self.backup = backup;
+        self.core = core;
     }
 
     pub async fn try_run(&self, trigger: Trigger) -> Result<BackupOutcome, RunError> {
-        self.backup
-            .run_backup(ctx(trigger), self.source.clone())
-            .await
+        self.try_run_with(ctx(trigger)).await
+    }
+
+    pub async fn try_run_with(&self, ctx: RunContext) -> Result<BackupOutcome, RunError> {
+        self.backup.run_backup(ctx, self.source.clone()).await
     }
 
     pub async fn run(&self, trigger: Trigger) -> BackupOutcome {

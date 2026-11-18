@@ -10,7 +10,9 @@ use std::sync::{Mutex, PoisonError};
 use rusqlite::{Connection, OpenFlags};
 use thiserror::Error;
 
-pub(crate) use asset_repo::{Acknowledged, AssetStore, PendingAsset};
+pub(crate) use asset_repo::{
+    ACCESS_LEVEL_KEY, Acknowledged, AssetEnd, AssetStore, PendingAsset, StoredError,
+};
 pub use repo::SqliteCheckpointStore;
 
 /// Forward migrations, oldest first: entry `n` takes a database from version `n` to `n + 1`.

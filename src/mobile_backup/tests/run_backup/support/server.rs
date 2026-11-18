@@ -38,6 +38,8 @@ pub struct ServerState {
     batches: HashMap<Uuid, BatchResult>,
     pub published: usize,
     pub nothing_to_send: usize,
+    /// Entries of a batch the server refuses, by name, with the wire code of the refusal.
+    pub refused: HashMap<String, String>,
 }
 
 #[derive(Default)]
@@ -140,6 +142,9 @@ impl Server {
         let results = entries
             .iter()
             .map(|entry| {
+                if let Some(code) = self.state().refused.get(&entry.name).cloned() {
+                    return EntryResult::EntryError { code };
+                }
                 let file = self.new_file(entry.parent, &entry.name, entry.file_hash);
                 let (node_id, revision_id) = (file.node, file.revision);
                 let existing = self.state().files.get(&entry.staged_key).cloned();

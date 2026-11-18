@@ -118,7 +118,8 @@ async fn a_deadline_that_has_passed_ends_the_run_partial_with_the_assets_still_w
     }
     let ctx = mobile_backup::RunContext {
         trigger: Trigger::AppOpen,
-        deadline: Some(std::time::Instant::now()),
+        deadline: Some(std::time::Duration::ZERO),
+        network_policy: mobile_backup::NetworkPolicy::default(),
     };
 
     // Act

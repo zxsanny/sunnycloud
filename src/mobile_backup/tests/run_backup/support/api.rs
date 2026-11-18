@@ -2,15 +2,17 @@
 //! contract of `upload_small` (record saved before the first staging, results to the sink before the record is
 //! cleared); the server it talks to is idempotent by key and commit id.
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use mobile_backup::BackupApi;
 use sc_clock::SystemClock;
-use serde_json::Value;
+use sync_core::Credential;
 use sync_core::{
     BatchOutcome, BatchReport, BatchRunError, BatchSink, BoxFuture, CheckpointStore, FileSource,
     HashCheckpoint, HashedFile, ProgressSink, SkippedFile, SmallFile, SourceResolver, SyncError,
-    UploadCheckpoint, UploadRequest, new_batch,
+    UploadRequest, new_batch,
 };
 use sync_core_proto::{
     BLOCK_SIZE, CommitOutcome, FileHash, ListingPage, NodeKind, NodeView, PageToken, hash_block,
@@ -20,51 +22,8 @@ use tokio::sync::Notify;
 use uuid::Uuid;
 
 use super::db::Db;
+pub use super::record::{CommitSeen, Gate, LargeCall, Record};
 use super::server::{ROOT, Server};
-
-/// A call that waits here until the test lets it go.
-#[derive(Default)]
-pub struct Gate {
-    pub entered: Notify,
-    pub release: Notify,
-}
-
-#[derive(Clone, Debug)]
-pub struct LargeCall {
-    pub local_key: String,
-    pub key: Uuid,
-    pub name: String,
-    pub parent: Uuid,
-    pub meta: Option<Value>,
-    pub session: Option<UploadCheckpoint>,
-    pub bytes_sent: u64,
-}
-
-#[derive(Clone, Debug)]
-pub struct CommitSeen {
-    pub commit_id: Uuid,
-    pub entries: Vec<(Uuid, Uuid, Option<Value>)>,
-    pub stored_before_staging: bool,
-}
-
-#[derive(Default)]
-pub struct Record {
-    pub calls: usize,
-    /// `local_key` of every `hash_file` call.
-    pub hashed: Vec<String>,
-    /// The most rows holding a stored hash and not yet uploaded, counted when an upload starts.
-    pub most_unfinished: usize,
-    pub acked: usize,
-    pub large: Vec<LargeCall>,
-    /// Entries per `upload_small` call.
-    pub groups: Vec<usize>,
-    pub commits: Vec<CommitSeen>,
-    pub resumed: Vec<Uuid>,
-    pub creates: usize,
-    pub lists: usize,
-    /// Keys whose row had no stored hash when their upload started.
-    pub unstored: Vec<Uuid>,
-}
 
 type Hook = Box<dyn FnMut(usize) + Send>;
 
@@ -74,7 +33,19 @@ pub struct FakeApi {
     db: Mutex<Option<Db>>,
     record: Mutex<Record>,
     gate: Mutex<Option<Arc<Gate>>>,
+    /// Like `gate`, but only `upload` and `upload_small` wait at it.
+    upload_gate: Mutex<Option<Arc<Gate>>>,
     after_ack: Mutex<Option<Hook>>,
+    on_call: Mutex<Option<Hook>>,
+    /// Like the real client, cancelled for good: every later call ends `Cancelled` and sends nothing.
+    cancelled: AtomicBool,
+    cancel_signal: Notify,
+    /// Errors by upload name (`IMG_<id>.jpg`).
+    faults: Mutex<HashMap<String, SyncError>>,
+    hash_faults: Mutex<HashMap<String, SyncError>>,
+    quota_after: Mutex<Option<usize>>,
+    /// The signed-in session the sync layer holds; the surface under test never sees it.
+    credential: Mutex<Option<Credential>>,
 }
 
 impl FakeApi {
@@ -85,8 +56,65 @@ impl FakeApi {
             db: Mutex::new(None),
             record: Mutex::default(),
             gate: Mutex::new(None),
+            upload_gate: Mutex::new(None),
             after_ack: Mutex::new(None),
+            on_call: Mutex::new(None),
+            cancelled: AtomicBool::new(false),
+            cancel_signal: Notify::new(),
+            faults: Mutex::default(),
+            hash_faults: Mutex::default(),
+            quota_after: Mutex::new(None),
+            credential: Mutex::new(None),
         })
+    }
+
+    /// Every call reads this credential, as the real request path does.
+    pub fn sign_in(&self, credential: Credential) {
+        *self.credential.lock().expect("credential") = Some(credential);
+    }
+
+    /// The upload of the file with this name ends with `error`.
+    pub fn fail_upload(&self, name: &str, error: SyncError) {
+        self.faults
+            .lock()
+            .expect("faults")
+            .insert(name.to_owned(), error);
+    }
+
+    pub fn fail_hash(&self, asset_id: i64, error: SyncError) {
+        self.hash_faults
+            .lock()
+            .expect("hash faults")
+            .insert(asset_id.to_string(), error);
+    }
+
+    pub fn clear_faults(&self) {
+        self.faults.lock().expect("faults").clear();
+        self.hash_faults.lock().expect("hash faults").clear();
+        *self.quota_after.lock().expect("quota") = None;
+    }
+
+    /// Uploads end `QuotaExceeded` once this many assets are acknowledged.
+    pub fn quota_after(&self, acknowledged: usize) {
+        *self.quota_after.lock().expect("quota") = Some(acknowledged);
+    }
+
+    pub fn raise_quota(&self) {
+        *self.quota_after.lock().expect("quota") = None;
+    }
+
+    /// Runs at the start of every call that reaches the server side, with the number of calls so far.
+    pub fn on_call(&self, hook: impl FnMut(usize) + Send + 'static) {
+        *self.on_call.lock().expect("hook") = Some(Box::new(hook));
+    }
+
+    fn quota_full(&self) -> bool {
+        let limit = *self.quota_after.lock().expect("quota");
+        limit.is_some_and(|limit| self.record().acked >= limit)
+    }
+
+    fn fault(&self, name: &str) -> Option<SyncError> {
+        self.faults.lock().expect("faults").get(name).cloned()
     }
 
     pub fn record(&self) -> MutexGuard<'_, Record> {
@@ -104,6 +132,12 @@ impl FakeApi {
         gate
     }
 
+    pub fn hold_uploads(&self) -> Arc<Gate> {
+        let gate = Arc::new(Gate::default());
+        *self.upload_gate.lock().expect("gate") = Some(Arc::clone(&gate));
+        gate
+    }
+
     pub fn open_gate(&self, gate: &Gate) {
         *self.gate.lock().expect("gate") = None;
         gate.release.notify_one();
@@ -114,14 +148,41 @@ impl FakeApi {
         *self.after_ack.lock().expect("hook") = Some(Box::new(hook));
     }
 
-    async fn enter(&self) {
-        self.record().calls += 1;
+    async fn enter(&self) -> Result<(), SyncError> {
+        if self.cancelled.load(Ordering::Acquire) {
+            return Err(SyncError::Cancelled);
+        }
+        let signed_in = self.credential.lock().expect("credential").is_some();
+        let calls = {
+            let mut record = self.record();
+            record.calls += 1;
+            record.bearer_uses += usize::from(signed_in);
+            record.calls
+        };
+        if let Some(hook) = self.on_call.lock().expect("hook").as_mut() {
+            hook(calls);
+        }
         let gate = self.gate.lock().expect("gate").clone();
+        self.wait_at(gate).await?;
+        tokio::task::yield_now().await;
+        Ok(())
+    }
+
+    /// An upload is about to be sent: it waits here when the test holds uploads.
+    async fn hold_upload(&self) -> Result<(), SyncError> {
+        let gate = self.upload_gate.lock().expect("gate").clone();
+        self.wait_at(gate).await
+    }
+
+    async fn wait_at(&self, gate: Option<Arc<Gate>>) -> Result<(), SyncError> {
         if let Some(gate) = gate {
             gate.entered.notify_one();
-            gate.release.notified().await;
+            tokio::select! {
+                () = gate.release.notified() => {}
+                () = self.cancel_signal.notified() => return Err(SyncError::Cancelled),
+            }
         }
-        tokio::task::yield_now().await;
+        Ok(())
     }
 
     /// An upload is starting: its assets must have their hash stored, and the rows holding a stored hash that
@@ -177,13 +238,19 @@ fn read_all(source: &dyn FileSource) -> Vec<u8> {
 }
 
 impl BackupApi for FakeApi {
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+        self.cancel_signal.notify_waiters();
+        self.cancel_signal.notify_one();
+    }
+
     fn batch_commit_max(&self) -> usize {
         self.batch_max
     }
 
     fn root_node(&self) -> BoxFuture<'_, Result<NodeView, SyncError>> {
         Box::pin(async move {
-            self.enter().await;
+            self.enter().await?;
             Ok(NodeView {
                 node_id: ROOT,
                 parent_id: None,
@@ -200,7 +267,7 @@ impl BackupApi for FakeApi {
         _after: Option<&'a PageToken>,
     ) -> BoxFuture<'a, Result<ListingPage, SyncError>> {
         Box::pin(async move {
-            self.enter().await;
+            self.enter().await?;
             self.record().lists += 1;
             Ok(self.server.children(node))
         })
@@ -212,7 +279,7 @@ impl BackupApi for FakeApi {
         name: &'a str,
     ) -> BoxFuture<'a, Result<NodeView, SyncError>> {
         Box::pin(async move {
-            self.enter().await;
+            self.enter().await?;
             self.record().creates += 1;
             self.server.create_folder(parent, name)
         })
@@ -225,7 +292,16 @@ impl BackupApi for FakeApi {
         checkpoint: HashCheckpoint,
     ) -> BoxFuture<'a, Result<HashedFile, SyncError>> {
         Box::pin(async move {
-            self.enter().await;
+            self.enter().await?;
+            if let Some(error) = self
+                .hash_faults
+                .lock()
+                .expect("hash faults")
+                .get(&checkpoint.local_key)
+                .cloned()
+            {
+                return Err(error);
+            }
             let bytes = read_all(source.as_ref());
             self.record().hashed.push(checkpoint.local_key);
             Ok(HashedFile {
@@ -245,7 +321,14 @@ impl BackupApi for FakeApi {
         _progress: Arc<dyn ProgressSink>,
     ) -> BoxFuture<'_, Result<CommitOutcome, SyncError>> {
         Box::pin(async move {
-            self.enter().await;
+            self.enter().await?;
+            self.hold_upload().await?;
+            if self.quota_full() {
+                return Err(SyncError::QuotaExceeded);
+            }
+            if let Some(error) = self.fault(&request.name) {
+                return Err(error);
+            }
             self.started(&[request.client_key]);
             let session = checkpoints.load(&request.local_key).expect("session row");
             let size = request.source.len().expect("len");
@@ -281,9 +364,29 @@ impl BackupApi for FakeApi {
         sink: Arc<dyn BatchSink>,
     ) -> BoxFuture<'_, Result<Vec<SkippedFile>, BatchRunError>> {
         Box::pin(async move {
-            self.enter().await;
+            self.enter().await?;
             self.record().groups.push(files.len());
-            for chunk in files.chunks(self.batch_max) {
+            self.hold_upload().await?;
+            if self.quota_full() {
+                return Err(SyncError::QuotaExceeded.into());
+            }
+            let mut left_out = Vec::new();
+            let mut kept = Vec::new();
+            for file in files {
+                match self.fault(&file.entry.name) {
+                    Some(
+                        error @ (SyncError::SourceChanged
+                        | SyncError::Io { .. }
+                        | SyncError::SizeTooLarge),
+                    ) => left_out.push(SkippedFile {
+                        entry: file.entry,
+                        error,
+                    }),
+                    Some(error) => return Err(error.into()),
+                    None => kept.push(file),
+                }
+            }
+            for chunk in kept.chunks(self.batch_max) {
                 let entries: Vec<_> = chunk.iter().map(|file| file.entry.clone()).collect();
                 let keys: Vec<Uuid> = entries.iter().map(|entry| entry.staged_key).collect();
                 self.started(&keys);
@@ -320,7 +423,7 @@ impl BackupApi for FakeApi {
                 })?;
                 store.clear_batch(batch.commit_id)?;
             }
-            Ok(Vec::new())
+            Ok(left_out)
         })
     }
 
@@ -331,7 +434,7 @@ impl BackupApi for FakeApi {
         resolve: SourceResolver<'a>,
     ) -> BoxFuture<'a, Result<Vec<SkippedFile>, BatchRunError>> {
         Box::pin(async move {
-            self.enter().await;
+            self.enter().await?;
             for record in store.load_batches()? {
                 for entry in &record.entries {
                     assert!(

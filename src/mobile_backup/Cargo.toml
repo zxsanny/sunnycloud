@@ -14,22 +14,26 @@ workspace = true
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
-# The UniFFI scaffolding and the foreign-callback traits of sync-core; the business surface arrives with E-27/c07.
+# The UniFFI scaffolding, the foreign-callback traits of sync-core and the exports of `BackupCore`.
 uniffi = ["dep:uniffi", "sync-core/uniffi"]
+# Debug builds only: `set_server` accepts an `http://` address. sync-core refuses this feature in a release build.
+allow-plain-http = ["sync-core/allow-plain-http"]
 
 [dependencies]
+sc_clock = { path = "../shared/clock" }
 sc_config = { path = "../shared/config" }
+sc_error = { path = "../shared/error", default-features = false, features = ["client"] }
+sc_ids = { path = "../shared/ids_hashing" }
 sync-core = { path = "../sync-core" }
 sync-core-proto = { path = "../sync-core-proto" }
+bytes = { workspace = true }
 rusqlite = { workspace = true, features = ["bundled"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 uuid = { workspace = true }
-uniffi = { workspace = true, optional = true }
+uniffi = { workspace = true, features = ["tokio"], optional = true }
 
 [dev-dependencies]
-sc_clock = { path = "../shared/clock" }
 tempfile = "3"
-bytes = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
