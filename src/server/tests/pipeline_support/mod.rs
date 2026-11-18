@@ -9,6 +9,7 @@
 
 pub mod download;
 pub mod feed;
+pub mod gc;
 pub mod h2;
 pub mod large;
 pub mod media;

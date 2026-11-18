@@ -96,7 +96,7 @@ jobs:
         working-directory: src
         run: >-
           ../scripts/ci/watchdog.sh --name rust-test-test-clock -- cargo test --locked -p sunnycloud-server
-          --features test-clock --test test_clock_serve --test api_services --test composition_root
+          --features test-clock --test test_clock_serve --test pipeline_gc_retention --test api_services --test composition_root
 
   # The two 1 GiB pipeline ACs (AZ-3657 AC-1, AZ-3660 AC-72) in release mode, apart from the instrumented rust-test
   # job (owner decision 2026-11-18). Each runs by its exact name, so no other ignored test runs here; run-one-test.sh

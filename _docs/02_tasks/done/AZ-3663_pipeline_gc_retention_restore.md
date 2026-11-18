@@ -112,3 +112,10 @@ Integration through the real binaries; the system scenarios stay in E-31.
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
 | GC interval and trigger (G-21) is a decompose-time gap (E-31/c03) | E-31 / owner | open | Low |
+
+## Status notes
+
+- 2026-11-18: implemented as `src/server/tests/pipeline_gc_retention.rs` (gated `#![cfg(feature = "test-clock")]`) with helpers in `src/server/tests/pipeline_support/gc.rs`; AC-1..AC-6 green over 3 runs (`cargo test -p sunnycloud-server --features test-clock --test pipeline_gc_retention`). No production change.
+- Time: `serve` moves through the test-clock offset (AC-1 scheduler case, AC-2, AC-4, AC-5 with production `retention` 7 d and `tombstone_horizon` 90 d). `admin gc-run` and `admin restore` are separate processes whose `OffsetClock` starts at 0, so AC-1's `gc-run` case and AC-3 use short `retention` on real time.
+- AC-3 third file: `beyond_retention` comes from `PgTreeRestore`'s time cut (`at` older than now minus retention); after collection the revision row itself is gone (02's owner cleanup), so no path reaches the reinstate refusal.
+- AC-5: the "after unlink" window is 04's park (rename to `<file>.gc`) before the settle transaction; the test holds `FOR UPDATE` on the revision row so 02's `DELETE FROM revisions` waits, kills `serve`, releases the lock and restarts; the next cycle (park `Earlier`) removes the rows and the parked file with no error log.
