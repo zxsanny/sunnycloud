@@ -1,0 +1,8 @@
+# Leftover: AZ-3990 real-server legs
+
+kind: test (NOT-RUN(NO-SERVICE))
+recorded: 2026-11-18
+blocked action: AC-78 against the real server with two processes (IT-17-3, FT-P-76: 100 assets, exactly 100 server files, same `client_key` per asset) and the AC-5 blackbox (kill after the commit acknowledgement, restart, `NothingToSend`, one server file)
+reason: needs a running server and database in the test stack (E-31); the unit tests use a fake server that is idempotent by `client_key` and `commit_id`, which proves the client's keys and batch order, not the server's behaviour
+
+Replay: when the E-31 stack serves the API, run the two cases from `tests/` against it and delete this file.

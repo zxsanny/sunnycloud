@@ -1,6 +1,7 @@
 //! The checkpoint database (17 §4): app-private SQLite in WAL mode with one connection, so the crate is its only
 //! writer. The file is created and migrated on first use, never at construction. Every write is one transaction.
 
+mod asset_repo;
 mod repo;
 
 use std::path::{Path, PathBuf};
@@ -9,6 +10,7 @@ use std::sync::{Mutex, PoisonError};
 use rusqlite::{Connection, OpenFlags};
 use thiserror::Error;
 
+pub(crate) use asset_repo::{Acknowledged, AssetStore, PendingAsset};
 pub use repo::SqliteCheckpointStore;
 
 /// Forward migrations, oldest first: entry `n` takes a database from version `n` to `n + 1`.
