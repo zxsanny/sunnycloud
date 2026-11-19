@@ -24,7 +24,9 @@ const UNICODE_PASSWORD: &str = "пароль-🔑-é-密码";
 const SLOW_ARGON2: &str = "8192,2,1";
 /// A cost that keeps the one permit held while every not-found token is tried.
 const HOLDING_ARGON2: &str = "65536,4,1";
-const NOT_FOUND_BUDGET: Duration = Duration::from_millis(2);
+/// Far above a database lookup on a loaded host and far below one HOLDING_ARGON2 check (about 100 ms), so a call that
+/// waited for the permit or hashed would miss it.
+const NOT_FOUND_BUDGET: Duration = Duration::from_millis(25);
 
 /// 1,024 bytes of four-byte characters.
 fn kilobyte_password() -> String {

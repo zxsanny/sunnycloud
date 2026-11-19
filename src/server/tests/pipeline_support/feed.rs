@@ -125,8 +125,20 @@ impl Pipeline {
         }
     }
 
-    /// `sunnycloud_db_pool_connections{state="in_use"}` of the ops listener's `/metrics`.
+    /// The lowest `sunnycloud_db_pool_connections{state="in_use"}` of ten scrapes of the ops listener's `/metrics`,
+    /// 50 ms apart: a connection that a request uses for a moment is not held, while a held one shows in every scrape.
     pub fn pool_in_use(&self) -> u64 {
+        (0..10)
+            .map(|_| {
+                let in_use = self.pool_in_use_now();
+                thread::sleep(Duration::from_millis(50));
+                in_use
+            })
+            .min()
+            .expect("ten scrapes")
+    }
+
+    fn pool_in_use_now(&self) -> u64 {
         let scraped = call(self.stack.ports.ops, "GET", "/metrics", "", &[], &[]);
         assert_eq!(scraped.status, 200, "{scraped:?}");
         let text = String::from_utf8(scraped.body).expect("metrics are UTF-8");
