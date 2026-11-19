@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Installs pinned CI tools into $TOOLS_BIN (default: ${CARGO_HOME:-~/.cargo}/bin, which the cargo cache restores).
-# usage: install-tools.sh TOOL...      TOOL: cargo-deny cargo-audit cargo-llvm-cov sqlx-cli gitleaks pg-client-18
+# usage: install-tools.sh TOOL...      TOOL: cargo-deny cargo-audit cargo-llvm-cov sqlx-cli gitleaks pg-client-18 keyring-test-deps
 # Downloaded archives are verified against a pinned SHA-256 (also published by the upstream release); cargo
 # installs use --locked and an exact version. Linux x86_64 only. To bump a tool, change its version and checksum here.
 # pg-client-18 is the PostgreSQL 18 client (pg_dump, pg_restore, psql) from the PGDG apt repository at an exact
 # package version, installed with apt (sudo when not root) into /usr/lib/postgresql/18/bin; the repository key is
 # accepted only with the pinned fingerprint, and apt verifies the packages against the signed index. Ubuntu only.
+# keyring-test-deps is gnome-keyring, secret-tool and dbus-run-session from the Ubuntu archive: the desktop daemon's
+# token_keyring tests start a real keyring on a private session bus. Ubuntu only.
 set -euo pipefail
 
 tag="[install-tools]"
@@ -118,7 +120,16 @@ install_tool() {
       echo "$tag $tool $PG_CLIENT_VERSION in $PG_CLIENT_BIN (SC_PG_TOOLS)"
       return
       ;;
-    *) fail "unknown tool '$tool' (cargo-deny cargo-audit cargo-llvm-cov sqlx-cli gitleaks pg-client-18)" ;;
+    keyring-test-deps)
+      if command -v gnome-keyring-daemon >/dev/null && command -v secret-tool >/dev/null && command -v dbus-run-session >/dev/null; then
+        echo "$tag $tool already installed"
+        return
+      fi
+      as_root apt-get update
+      as_root env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+        gnome-keyring libsecret-tools dbus
+      ;;
+    *) fail "unknown tool '$tool' (cargo-deny cargo-audit cargo-llvm-cov sqlx-cli gitleaks pg-client-18 keyring-test-deps)" ;;
   esac
   echo "$tag $tool installed"
 }

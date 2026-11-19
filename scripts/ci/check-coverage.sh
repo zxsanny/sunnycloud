@@ -24,8 +24,8 @@ else
   trap 'rm -rf "$work"' EXIT
   summary="$work/summary.json"
   cd "$workspace_dir"
-  echo "$tag step 1/3: cargo llvm-cov test --workspace --locked (instrumented test run)"
-  cargo llvm-cov test --workspace --locked --no-report
+  echo "$tag step 1/3: cargo llvm-cov test --workspace --locked --no-fail-fast (instrumented test run)"
+  cargo llvm-cov test --workspace --locked --no-fail-fast --no-report
   echo "$tag step 2/3: cargo llvm-cov report --json --summary-only"
   cargo llvm-cov report --json --summary-only --output-path "$summary"
 fi

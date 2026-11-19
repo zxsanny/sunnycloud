@@ -83,6 +83,9 @@ jobs:
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-llvm-cov
       - name: Install the PostgreSQL 18 client (PGDG, pinned version and key)
         run: scripts/ci/watchdog.sh --name install-pg-client -- scripts/ci/install-tools.sh pg-client-18
+      # The daemon's token_keyring tests start a real gnome-keyring on a private session bus.
+      - name: Install gnome-keyring, secret-tool and dbus
+        run: scripts/ci/watchdog.sh --name install-keyring -- scripts/ci/install-tools.sh keyring-test-deps
       - name: cargo test --workspace --locked under cargo llvm-cov (75% overall, 90% critical paths)
         # The instrumented workspace compile and link prints nothing for minutes (the 120 s default stalled it).
         env:
