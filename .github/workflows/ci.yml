@@ -84,16 +84,23 @@ jobs:
       - name: Install the PostgreSQL 18 client (PGDG, pinned version and key)
         run: scripts/ci/watchdog.sh --name install-pg-client -- scripts/ci/install-tools.sh pg-client-18
       - name: cargo test --workspace --locked under cargo llvm-cov (75% overall, 90% critical paths)
+        # The instrumented workspace compile and link prints nothing for minutes (the 120 s default stalled it).
+        env:
+          WATCHDOG_STALL: 600
         run: scripts/ci/watchdog.sh --name rust-test -- scripts/ci/check-coverage.sh
       # The vault service (v1.2) is linked only with feature `vault`, which the workspace run above leaves off.
       - name: Server tests with the vault feature
         working-directory: src
+        env:
+          WATCHDOG_STALL: 600
         run: >-
           ../scripts/ci/watchdog.sh --name rust-test-vault -- cargo test --locked -p sunnycloud-server --features vault
           --test vault_http --test vault_report --test local_commands --test api_services --test composition_root
       # The -test images build `serve` with feature `test-clock` (AZ-4334): one OffsetClock moved through :9091.
       - name: Server tests with the test-clock feature
         working-directory: src
+        env:
+          WATCHDOG_STALL: 600
         run: >-
           ../scripts/ci/watchdog.sh --name rust-test-test-clock -- cargo test --locked -p sunnycloud-server
           --features test-clock --test test_clock_serve --test pipeline_gc_retention --test api_services --test composition_root

@@ -4,6 +4,13 @@ yanked = "deny"
 # scripts/ci/audit.sh reads this list; there is no second one.
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "added=2026-11-06; expires=2027-02-04; why=rsa (Marvin timing side channel, no patched version) enters through openidconnect, which uses it only to verify id-token signatures with the issuer's public key; no private-key operation runs in sunnycloud" },
+    # Unmaintained notices with no fixed upgrade (found 2026-11-19, first red supply-chain run 2026-11-17). Each is a
+    # transitive crate of a dependency we do not control; revisit when the parent releases a replacement.
+    { id = "RUSTSEC-2026-0374", reason = "added=2026-11-19; expires=2027-02-17; why=basic-toml unmaintained, no fix; reached only through askama_derive (build-time template macro), parses no runtime input" },
+    { id = "RUSTSEC-2026-0543", reason = "added=2026-11-19; expires=2027-02-17; why=chrono unmaintained, no fix; oauth2 and openidconnect require its types and sunnycloud-identity and sunnycloud-server pass the injected clock through them" },
+    { id = "RUSTSEC-2026-0371", reason = "added=2026-11-19; expires=2027-02-17; why=zbus_names unmaintained, no fix; desktop-only Secret Service path (keyring, secret-service, zbus), never in the server or Android build" },
+    { id = "RUSTSEC-2026-0370", reason = "added=2026-11-19; expires=2027-02-17; why=zvariant unmaintained, no fix; same zbus chain as RUSTSEC-2026-0371" },
+    { id = "RUSTSEC-2026-0372", reason = "added=2026-11-19; expires=2027-02-17; why=zvariant_derive unmaintained, no fix; same zbus chain as RUSTSEC-2026-0371" },
 ]
 
 [licenses]

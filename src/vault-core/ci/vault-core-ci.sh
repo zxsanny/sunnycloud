@@ -20,9 +20,28 @@ tools_dir="${VAULT_TOOLS_DIR:-$src_dir/target/vault-ci-tools}"
 native_features="passphrase-policy,os-rng,uniffi"
 
 WASM_PACK_VERSION=0.15.1
-WASM_PACK_SHA256=410101009739b9d01c7d5affaaad6e9c9a24b4cba6791a4805db8e89b9bf7af2
 WASM_BINDGEN_VERSION=0.2.130
-WASM_BINDGEN_SHA256=9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f
+# Per host: release target triple and the SHA-256 of its wasm-pack and wasm-bindgen archives. wasm-bindgen's
+# values are its published .sha256sum files; wasm-pack publishes none, so those were recorded at pin time.
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64)
+    host_triple=x86_64-unknown-linux-musl
+    WASM_PACK_SHA256=410101009739b9d01c7d5affaaad6e9c9a24b4cba6791a4805db8e89b9bf7af2
+    WASM_BINDGEN_SHA256=9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f ;;
+  Darwin-arm64)
+    host_triple=aarch64-apple-darwin
+    WASM_PACK_SHA256=bcaf2a418ae39c874b072ea122fec58e11970862cbd8fd4eca2f00a17f76c536
+    WASM_BINDGEN_SHA256=b90ddb9357f584b1af897d58ad77e4cce2b48fc17e2a967bc249a87f72809444 ;;
+  Darwin-x86_64)
+    host_triple=x86_64-apple-darwin
+    WASM_PACK_SHA256=9387715ad345a1fe58751d60c80f49d9139957540728bafd0668d005a37cef62
+    WASM_BINDGEN_SHA256=eb209c115b7cb95832423c1aa3f4d06d6c53f63ef74fc4b6fb79ef0b2eea5f10 ;;
+  *)
+    host_triple=
+    WASM_PACK_SHA256=
+    WASM_BINDGEN_SHA256= ;;
+esac
+if [ "$(uname -s)" = "Darwin" ]; then lib_ext=dylib; else lib_ext=so; fi
 KOTLIN_VERSION=2.4.21
 KOTLIN_SHA256=7cc140e76daf416a0424a5557f99afd7ca89ebd463ea1101261e3e01c33e75cd
 JNA_VERSION=5.19.1
@@ -41,12 +60,26 @@ fetch() {
     curl --fail --show-error --location --retry 3 --no-progress-meter --output "$file.part" "$url"
     mv "$file.part" "$file"
   fi
-  echo "$sha256  $file" | sha256sum --check - || { rm -f "$file"; fail "$file does not match the pinned SHA-256 $sha256"; }
+  sha256_matches "$sha256" "$file" || { rm -f "$file"; fail "$file does not match the pinned SHA-256 $sha256"; }
 }
 
-# untar ARCHIVE DIR -> extracts the verified archive into $tools_dir/DIR once
+# sha256_matches SHA256 FILE -> Linux has sha256sum, macOS has shasum
+sha256_matches() {
+  if command -v sha256sum >/dev/null; then
+    echo "$1  $2" | sha256sum --check -
+  else
+    echo "$1  $2" | shasum -a 256 --check -
+  fi
+}
+
+# untar ARCHIVE DIR BINARY -> extracts the verified archive into $tools_dir/DIR unless DIR/BINARY is already
+# there. The binary is the test, not the directory: a cache restore can leave DIR empty.
 untar() {
-  [ -d "$tools_dir/$2" ] || tar -xzf "$tools_dir/$1" -C "$tools_dir"
+  if [ ! -x "$tools_dir/$2/$3" ]; then
+    rm -rf "${tools_dir:?}/$2"
+    tar -xzf "$tools_dir/$1" -C "$tools_dir"
+  fi
+  [ -x "$tools_dir/$2/$3" ] || fail "$1 did not provide $2/$3"
 }
 
 build_cdylib() {
@@ -77,12 +110,13 @@ leg_wasm() {
   cargo build -v -p vault-core --locked --target wasm32-unknown-unknown --features wasm
   cargo build -v -p vault-core --locked --target wasm32-unknown-unknown --features wasm,passphrase-policy
   echo "$tag step 2/3: pinned wasm-pack $WASM_PACK_VERSION and wasm-bindgen $WASM_BINDGEN_VERSION"
-  local pack="wasm-pack-v$WASM_PACK_VERSION-x86_64-unknown-linux-musl"
-  local bindgen="wasm-bindgen-$WASM_BINDGEN_VERSION-x86_64-unknown-linux-musl"
+  [ -n "$host_triple" ] || fail "no pinned wasm-pack and wasm-bindgen for $(uname -s) $(uname -m)"
+  local pack="wasm-pack-v$WASM_PACK_VERSION-$host_triple"
+  local bindgen="wasm-bindgen-$WASM_BINDGEN_VERSION-$host_triple"
   fetch "https://github.com/wasm-bindgen/wasm-pack/releases/download/v$WASM_PACK_VERSION/$pack.tar.gz" "$WASM_PACK_SHA256" "$pack.tar.gz"
   fetch "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$WASM_BINDGEN_VERSION/$bindgen.tar.gz" "$WASM_BINDGEN_SHA256" "$bindgen.tar.gz"
-  untar "$pack.tar.gz" "$pack"
-  untar "$bindgen.tar.gz" "$bindgen"
+  untar "$pack.tar.gz" "$pack" wasm-pack
+  untar "$bindgen.tar.gz" "$bindgen" wasm-bindgen
   export PATH="$tools_dir/$bindgen:$tools_dir/$pack:$PATH"
   wasm-pack --version
   wasm-bindgen --version
@@ -93,17 +127,20 @@ leg_wasm() {
 leg_uniffi() {
   echo "$tag step 1/4: cdylib with the uniffi feature"
   build_cdylib
-  local lib="$src_dir/target/debug/libvault_core.so" out="$src_dir/target/vault-uniffi/kotlin"
+  local lib="$src_dir/target/debug/libvault_core.$lib_ext" out="$src_dir/target/vault-uniffi/kotlin"
   echo "$tag step 2/4: Kotlin bindings"
   bindings kotlin "$lib" "$out"
   echo "$tag step 3/4: pinned Kotlin $KOTLIN_VERSION compiler and JNA $JNA_VERSION"
   fetch "https://github.com/JetBrains/kotlin/releases/download/v$KOTLIN_VERSION/kotlin-compiler-$KOTLIN_VERSION.zip" "$KOTLIN_SHA256" "kotlin-compiler-$KOTLIN_VERSION.zip"
   fetch "https://repo1.maven.org/maven2/net/java/dev/jna/jna/$JNA_VERSION/jna-$JNA_VERSION.jar" "$JNA_SHA256" "jna-$JNA_VERSION.jar"
   local kotlin_home="$tools_dir/kotlin-$KOTLIN_VERSION" jna="$tools_dir/jna-$JNA_VERSION.jar"
-  if [ ! -d "$kotlin_home" ]; then
+  # The compiler is the test, not the directory: a cache restore can leave kotlin_home empty.
+  if [ ! -x "$kotlin_home/kotlinc/bin/kotlinc" ]; then
+    rm -rf "$kotlin_home"
     mkdir -p "$kotlin_home"
     (cd "$kotlin_home" && unzip -q "$tools_dir/kotlin-compiler-$KOTLIN_VERSION.zip")
   fi
+  [ -x "$kotlin_home/kotlinc/bin/kotlinc" ] || fail "the Kotlin compiler archive did not provide kotlinc/bin/kotlinc"
   java -version
   echo "$tag step 4/4: compile the bindings with the smoke test and run it on the JVM"
   "$kotlin_home/kotlinc/bin/kotlinc" -include-runtime -cp "$jna" -d "$out/smoke.jar" \
