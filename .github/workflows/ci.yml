@@ -51,7 +51,8 @@ jobs:
 
   rust-test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    # The instrumented debug run of the whole workspace took over 22 minutes before the last binaries, so 25 cut it off.
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:18-trixie@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
@@ -108,7 +109,7 @@ jobs:
           ../scripts/ci/watchdog.sh --name rust-test-test-clock -- cargo test --locked -p sunnycloud-server
           --features test-clock --test test_clock_serve --test pipeline_gc_retention --test api_services --test composition_root
 
-  # The two 1 GiB pipeline ACs (AZ-3657 AC-1, AZ-3660 AC-72) in release mode, apart from the instrumented rust-test
+  # The three 1 GiB ACs (AZ-3657 AC-1, AZ-3660 AC-72, AZ-3758 AC-3) in release mode, apart from the instrumented rust-test
   # job (owner decision 2026-11-18). Each runs by its exact name, so no other ignored test runs here; run-one-test.sh
   # fails the step unless exactly one test passed (a name that matches nothing would otherwise pass silently).
   pipelines-large:
@@ -142,6 +143,9 @@ jobs:
       - name: 1 GiB download (AZ-3657 AC-1)
         working-directory: src
         run: ../scripts/ci/watchdog.sh --name pipeline-download-1gib -- ../scripts/ci/run-one-test.sh cargo test --release --locked -p sunnycloud-server --test pipeline_download -- --ignored --exact ac1_a_1_gib_file_reads_in_full_by_range_past_the_end_and_conditionally
+      - name: 1 GiB range abuse stays bounded (AZ-3758 AC-3)
+        working-directory: src
+        run: ../scripts/ci/watchdog.sh --name range-memory-1gib -- ../scripts/ci/run-one-test.sh cargo test --release --locked -p sunnycloud-transfer --test range_memory -- --ignored --exact range_abuse_on_a_one_gib_file_answers_one_full_stream_and_stays_bounded
       - name: 1 GiB worker input (AZ-3660 AC-72)
         working-directory: src
         run: ../scripts/ci/watchdog.sh --name pipeline-worker-1gib -- ../scripts/ci/run-one-test.sh cargo test --release --locked -p sunnycloud-server --test pipeline_media_worker -- --ignored --exact ac72_the_worker_input_of_a_1_gib_file_hashes_to_its_plaintext_block_by_block

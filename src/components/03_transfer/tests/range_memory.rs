@@ -344,6 +344,7 @@ async fn settled() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "1 GiB: runs in the release CI job `pipelines-large` (10 s there; over 15 min in the instrumented debug job)"]
 async fn range_abuse_on_a_one_gib_file_answers_one_full_stream_and_stays_bounded() {
     // Arrange
     let db = TestDb::clone_template().await;
