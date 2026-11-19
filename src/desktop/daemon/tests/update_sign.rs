@@ -70,9 +70,12 @@ fn update_sign(
         .stderr(Stdio::piped());
     let mut child = command.spawn().expect("spawn update-sign");
     let mut input = child.stdin.take().expect("stdin");
-    input
-        .write_all(stdin.unwrap_or_default())
-        .expect("write stdin");
+    // update-sign refuses key material on stdin without reading it, so it may exit before this write lands.
+    match input.write_all(stdin.unwrap_or_default()) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
+        Err(error) => panic!("write stdin: {error}"),
+    }
     drop(input);
     child.wait_with_output().expect("update-sign output")
 }

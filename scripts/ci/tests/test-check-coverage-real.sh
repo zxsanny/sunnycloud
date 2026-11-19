@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AC-6 end to end with a real cargo llvm-cov run on a scratch workspace (needs cargo-llvm-cov and llvm-tools-preview):
+# AC-6 end to end with a real cargo llvm-cov run on a scratch workspace (needs cargo-llvm-cov, cargo-nextest and llvm-tools-preview):
 # one tested and two untested functions -> below 75% -> exit 1 and the measured value is printed;
 # adding the missing tests -> passes. Never touches the repository.
 set -euo pipefail
@@ -62,7 +62,7 @@ set -e
 cat "$work/low.out"
 [ "$rc" -eq 1 ] || fail "expected exit 1, got $rc"
 grep -E 'overall line coverage [0-9.]+%' "$work/low.out" >/dev/null || fail "measured value not printed"
-grep -F 'test tests::tested_doubles ... ok' "$work/low.out" >/dev/null || fail "the test is not listed by name"
+grep -E 'PASS .*scratch-coverage tests::tested_doubles' "$work/low.out" >/dev/null || fail "the test is not listed by name"
 
 echo "$tag adding the missing tests must pass"
 python3 -I - "$work/ws/src/lib.rs" <<'PY'

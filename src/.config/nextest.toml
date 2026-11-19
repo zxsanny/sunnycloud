@@ -1,0 +1,12 @@
+# cargo nextest runs every test in its own process and runs the tests of all test binaries side by side, so a test
+# cannot lean on an in-process lock to keep another test of its binary away.
+
+[profile.default]
+# A hung test is stopped and reported after 10 minutes instead of holding the job until its timeout.
+slow-timeout = { period = "60s", terminate-after = 10 }
+
+# The free-space floor tests measure the free bytes of the shared filesystem and set their floor from them (they take
+# a lock for it inside their binary), so nothing else may write while they run.
+[[profile.default.overrides]]
+filter = "binary(volume_floor)"
+threads-required = "num-test-threads"

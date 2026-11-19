@@ -286,14 +286,16 @@ impl Server {
         );
     }
 
-    /// Sends `signal` (`TERM`, `INT`) to the process.
+    /// Sends `signal` (`TERM`, `INT`) to the process and returns the instant just before it was sent: the process
+    /// can react before `kill` returns on a loaded host, so an instant taken after it could be later than the reaction.
     pub fn signal(&self, signal: &str) -> Instant {
+        let before = Instant::now();
         let status = Command::new("kill")
             .args([&format!("-{signal}"), &self.pid().to_string()])
             .status()
             .expect("kill starts");
         assert!(status.success(), "kill -{signal} failed");
-        Instant::now()
+        before
     }
 
     /// SIGKILL, a crash: no shutdown step runs. Returns the exit, which has no code (ended by the signal).

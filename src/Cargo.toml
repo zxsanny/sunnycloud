@@ -89,3 +89,13 @@ unused_must_use = "deny"
 
 [workspace.lints.clippy]
 let_underscore_must_use = "deny"
+
+# Tests run unoptimised. The crypto and hashing of the dependencies (argon2, sha2, blake3, AEAD) is most of the CPU
+# time of the heavy suites (transfer: 175 s -> 90 s on 4 cores), and dependency coverage is not measured, so those
+# build optimised. Workspace crates stay at opt-level 0 so line coverage keeps its meaning. Line tables are enough for
+# panic backtraces and cut the compile and link time of the 400+ test binaries.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 3

@@ -20,6 +20,6 @@ if [ -n "$hits" ]; then
   exit 1
 fi
 
-grep -F 'cargo llvm-cov test --workspace --locked --no-fail-fast --no-report' "$ci_dir/check-coverage.sh" >/dev/null \
+grep -F 'cargo llvm-cov nextest --workspace --locked --no-fail-fast --no-report' "$ci_dir/check-coverage.sh" >/dev/null \
   || { echo "$tag FAILED: check-coverage.sh does not run the verbose workspace test command" >&2; exit 1; }
 echo "$tag OK: 0 hits for cargo test -q, --quiet, pytest -q"

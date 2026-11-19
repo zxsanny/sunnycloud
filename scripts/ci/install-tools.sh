@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs pinned CI tools into $TOOLS_BIN (default: ${CARGO_HOME:-~/.cargo}/bin, which the cargo cache restores).
-# usage: install-tools.sh TOOL...      TOOL: cargo-deny cargo-audit cargo-llvm-cov sqlx-cli gitleaks pg-client-18 keyring-test-deps
+# usage: install-tools.sh TOOL...      TOOL: cargo-deny cargo-audit cargo-llvm-cov cargo-nextest sqlx-cli gitleaks pg-client-18 keyring-test-deps
 # Downloaded archives are verified against a pinned SHA-256 (also published by the upstream release); cargo
 # installs use --locked and an exact version. Linux x86_64 only. To bump a tool, change its version and checksum here.
 # pg-client-18 is the PostgreSQL 18 client (pg_dump, pg_restore, psql) from the PGDG apt repository at an exact
@@ -17,6 +17,10 @@ CARGO_DENY_VERSION=0.20.2
 CARGO_DENY_SHA256=9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
 CARGO_LLVM_COV_VERSION=0.9.1
 CARGO_LLVM_COV_SHA256=b3f68e625481fed9b16444174f3fa5ebcdbde4a1878803a35eabe2dcefcdc41a
+# cargo-nextest runs the tests of all test binaries in one pool (cargo test runs the binaries one after another).
+# The upstream release publishes no checksum file; this one was computed from the downloaded archive.
+CARGO_NEXTEST_VERSION=0.9.152
+CARGO_NEXTEST_SHA256=d039b43c3e0958441b6ad0a39c8884d018b3d2e8fb9928f209074b1100b5e17a
 GITLEAKS_VERSION=8.30.1
 GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 CARGO_AUDIT_VERSION=0.22.2
@@ -97,6 +101,11 @@ install_tool() {
       if [ "$have" = "cargo-llvm-cov $CARGO_LLVM_COV_VERSION" ]; then echo "$tag $tool $CARGO_LLVM_COV_VERSION already installed"; return; fi
       download_install cargo-llvm-cov "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v$CARGO_LLVM_COV_VERSION/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz" "$CARGO_LLVM_COV_SHA256" cargo-llvm-cov
       ;;
+    cargo-nextest)
+      have="$(installed_version cargo-nextest nextest --version)"
+      if [[ "$have" == "cargo-nextest $CARGO_NEXTEST_VERSION "* ]]; then echo "$tag $tool $CARGO_NEXTEST_VERSION already installed"; return; fi
+      download_install cargo-nextest "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-$CARGO_NEXTEST_VERSION/cargo-nextest-$CARGO_NEXTEST_VERSION-x86_64-unknown-linux-gnu.tar.gz" "$CARGO_NEXTEST_SHA256" cargo-nextest
+      ;;
     gitleaks)
       have="$(installed_version gitleaks version)"
       if [ "$have" = "$GITLEAKS_VERSION" ]; then echo "$tag $tool $GITLEAKS_VERSION already installed"; return; fi
@@ -129,7 +138,7 @@ install_tool() {
       as_root env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
         gnome-keyring libsecret-tools dbus
       ;;
-    *) fail "unknown tool '$tool' (cargo-deny cargo-audit cargo-llvm-cov sqlx-cli gitleaks pg-client-18 keyring-test-deps)" ;;
+    *) fail "unknown tool '$tool' (cargo-deny cargo-audit cargo-llvm-cov cargo-nextest sqlx-cli gitleaks pg-client-18 keyring-test-deps)" ;;
   esac
   echo "$tag $tool installed"
 }
