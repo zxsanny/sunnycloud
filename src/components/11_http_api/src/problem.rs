@@ -180,3 +180,65 @@ pub(crate) fn insert_request_id(headers: &mut HeaderMap, request_id: Correlation
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use axum::http::StatusCode;
+    use sc_clock::SystemClock;
+    use sc_error::CorrelationId;
+    use sc_observability::logging::Level;
+    use sc_observability::{Component, LineSink, LogConfig, LogFormat, subscriber};
+    use uuid::Uuid;
+
+    use super::status_of;
+
+    #[derive(Clone, Default)]
+    struct Lines(Arc<Mutex<Vec<String>>>);
+
+    impl LineSink for Lines {
+        fn write_line(&self, line: &str) -> io::Result<()> {
+            self.0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(line.to_owned());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn status_of_answers_a_table_entry_that_is_no_http_status_as_internal_error_and_logs_it() {
+        // Arrange
+        let lines = Lines::default();
+        let config = LogConfig {
+            format: LogFormat::Json,
+            level: Level::INFO,
+            component: Component::Api,
+        };
+        let (logger, _stats) = subscriber(
+            config,
+            Arc::new(SystemClock::new()),
+            Arc::new(lines.clone()),
+        );
+        let request_id = CorrelationId::new(Uuid::from_u128(1));
+
+        // Act
+        let (invalid, valid) = tracing::subscriber::with_default(logger, || {
+            (status_of(0, request_id), status_of(409, request_id))
+        });
+
+        // Assert
+        assert_eq!(
+            (invalid, valid),
+            (StatusCode::INTERNAL_SERVER_ERROR, StatusCode::CONFLICT)
+        );
+        let logged = lines.0.lock().unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(logged.len(), 1, "{logged:?}");
+        assert!(
+            logged[0].contains("status table entry is not an HTTP status"),
+            "{logged:?}"
+        );
+    }
+}
