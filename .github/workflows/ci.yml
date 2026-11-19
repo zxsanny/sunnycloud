@@ -42,7 +42,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src
-          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
       - name: Install sqlx-cli
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh sqlx-cli
@@ -75,10 +75,12 @@ jobs:
           persist-credentials: false
       - name: Install the pinned toolchain
         run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      # Cargo.toml holds the dev profile (optimised dependencies): a cache saved under a key is never overwritten, so a
+      # profile change needs a new key or every run rebuilds the dependencies.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src
-          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
       - name: Install cargo-llvm-cov and cargo-nextest
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-llvm-cov cargo-nextest
@@ -164,7 +166,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src
-          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
       - name: IT-11-1 to IT-11-20 with their max execution times and the missing-case check
         run: scripts/ci/watchdog.sh --name http-api-suite -- scripts/ci/check-it-suite.sh
@@ -195,7 +197,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src
-          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
       - name: Install sqlx-cli
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh sqlx-cli
@@ -225,7 +227,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src
-          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
       - name: Install cargo-deny, cargo-audit and gitleaks
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-deny cargo-audit gitleaks
@@ -279,7 +281,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src
-          key: vault-core-${{ matrix.leg }}-${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          key: vault-core-${{ matrix.leg }}-${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
       - name: Install cargo-deny
         if: matrix.leg == 'native'
@@ -313,7 +315,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src
-          key: mobile-${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}
+          key: mobile-${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

@@ -106,22 +106,30 @@ async fn a_file_on_disk_that_gets_bytes_appended_while_hashing_is_a_changed_sour
 }
 
 #[tokio::test]
-async fn a_share_of_five_percent_takes_much_longer_than_a_full_core_for_the_same_blocks() {
+async fn a_share_of_five_percent_rests_nineteen_times_the_hashing_time_after_every_block() {
     // Arrange
     let blocks = 8;
-    let (full_api, _full_fixture) = connected(Script::new()).await;
-    let (slow_api, _slow_fixture) = slow_client(5).await;
+    let (api, _fixture) = slow_client(5).await;
+    let block = vec![7u8; BLOCK as usize];
+    let one_hash = (0..5)
+        .map(|_| {
+            let started = Instant::now();
+            sc_ids::hash_block(&block);
+            started.elapsed()
+        })
+        .min()
+        .expect("five timings");
+
     // Act
-    let at_full = timed(&full_api, blocks).await;
-    let at_five_percent = timed(&slow_api, blocks).await;
+    let at_five_percent = timed(&api, blocks).await;
 
     // Assert
-    // Only the hashing of each block is rested (19x its time at 5%), and hashing is about a seventh of a block's
-    // wall time here (read, spawn and scheduling make up the rest), so the ratio is 4 to 6; 2 is the floor that
-    // shows the share works. The exact formula is unit-tested in hash_ops.
+    // Each block is followed by a rest of 19 times its hashing time, and a sleep never ends early, so this is a floor
+    // however loaded the host is; half of it leaves room for a hashing run faster than the fastest sample.
+    let floor = one_hash * 19 * blocks as u32 / 2;
     assert!(
-        at_five_percent >= at_full * 2,
-        "5% took {at_five_percent:?}, 100% took {at_full:?}"
+        at_five_percent >= floor,
+        "5% took {at_five_percent:?}, the rests alone are at least {floor:?} (one hash {one_hash:?})"
     );
 }
 
