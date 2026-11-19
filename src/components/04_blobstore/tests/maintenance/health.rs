@@ -11,6 +11,8 @@ use sunnycloud_blobstore::{BlobHealth, BlobHealthContributor};
 use crate::support::Rig;
 
 const MIB: u64 = 1 << 20;
+/// Free space other tests may add or take on the shared filesystem while the probes run (a CI run measured 3.3 MB).
+const SHARED_FILESYSTEM_DRIFT: u64 = 16 * MIB;
 
 fn health(rig: &Rig, reserve: u64) -> Arc<BlobHealth> {
     let mut config = rig.config.clone();
@@ -98,10 +100,14 @@ async fn free_bytes_follow_the_filesystem_and_the_floor_decides_below_floor() {
     assert!(under.below_floor);
     assert!(!above.below_floor);
     assert!(!none.below_floor);
+    // Other tests of the run write on the same filesystem, so the reading lies between the two statvfs readings
+    // around the probes, give or take SHARED_FILESYSTEM_DRIFT, not within a fixed distance of each.
+    let (lowest, highest) = (free.min(after), free.max(after));
     for state in [under, above, none] {
         assert!(
-            state.free_bytes.abs_diff(free) <= MIB && state.free_bytes.abs_diff(after) <= MIB,
-            "{} against {free} and {after}",
+            state.free_bytes + SHARED_FILESYSTEM_DRIFT >= lowest
+                && state.free_bytes <= highest + SHARED_FILESYSTEM_DRIFT,
+            "{} outside {lowest}..{highest}",
             state.free_bytes
         );
     }

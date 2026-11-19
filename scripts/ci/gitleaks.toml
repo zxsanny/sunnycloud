@@ -11,3 +11,14 @@ description = "Jira task ids in task dependency lists"
 targetRules = ["generic-api-key"]
 regexTarget = "secret"
 regexes = ['''^AZ-\d+_[a-z0-9_]+$''']
+
+# Test fixtures with made-up values: a redaction test plants token-shaped strings on purpose, and the tree and sharing
+# tests use base64 of "wrapped-1" and a dummy secret. The allowlist names the three files and the generic rule only.
+[[allowlists]]
+description = "Planted fake secrets of three test files"
+targetRules = ["generic-api-key"]
+paths = [
+    '''src/shared/observability/tests/logging_redaction\.rs''',
+    '''src/components/02_tree/tests/tree/vault_moves\.rs''',
+    '''src/components/06_sharing/tests/sharing/config\.rs''',
+]
