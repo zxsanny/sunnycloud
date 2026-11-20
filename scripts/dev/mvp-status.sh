@@ -4,6 +4,7 @@ set -euo pipefail
 # shellcheck source=scripts/dev/mvp-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/mvp-lib.sh"
 load_env
+require_systemd_user
 
 unhealthy=0
 echo "== docker"
@@ -13,15 +14,22 @@ for service in db caddy; do
   [ "$state" = running ] || unhealthy=1
 done
 
-echo "== host processes"
+echo "== host processes (systemd --user)"
 for name in "${PROCESSES[@]}"; do
-  pid="$(running_pid "$name")"
-  if [ -n "$pid" ]; then
-    printf '%-22s running pid %s since %s\n' "$name" "$pid" "$(ps -o lstart= -p "$pid")"
+  if unit_active "$name"; then
+    printf '%-22s active pid %-8s restarts %-4s since %s\n' "$name" "$(unit_property "$name" MainPID)" \
+      "$(unit_property "$name" NRestarts)" "$(unit_property "$name" ActiveEnterTimestamp)"
   else
-    printf '%-22s NOT RUNNING\n' "$name"
+    printf '%-22s NOT RUNNING (%s)\n' "$name" "$(unit_property "$name" ActiveState)"
     unhealthy=1
   fi
+done
+
+echo "== media tools on PATH=$SUPERVISED_PATH"
+for tool in "${MEDIA_TOOLS[@]}"; do
+  found="$(PATH="$SUPERVISED_PATH" command -v "$tool" || true)"
+  printf '%-14s %s\n' "$tool" "${found:-MISSING}"
+  [ -n "$found" ] || unhealthy=1
 done
 
 echo "== health"

@@ -11,6 +11,7 @@ MIN_FREE_GIB="${MVP_MIN_FREE_GIB:-50}"
 
 "$REPO_ROOT/scripts/dev/mvp-secrets.sh"
 load_env
+require_systemd_user
 
 free_gib=$(( $(df --output=avail -B1G "$MVP_DATA" | tail -n 1) ))
 [ "$free_gib" -ge "$MIN_FREE_GIB" ] || die "only ${free_gib} GiB free on $MVP_DATA, need $MIN_FREE_GIB (MVP_MIN_FREE_GIB)"
@@ -40,7 +41,14 @@ build() {
   fi
   log "build done in $(($(date +%s) - started)) s: $(tail -n 1 "$build_log")"
 }
-build
+if [ "${MVP_SKIP_BUILD:-}" = 1 ]; then
+  log "MVP_SKIP_BUILD=1: using the binaries in $BIN_DIR"
+else
+  build
+fi
+for tool in "${MEDIA_TOOLS[@]}"; do
+  PATH="$SUPERVISED_PATH" command -v "$tool" > /dev/null || die "$tool is not on $SUPERVISED_PATH; the decoder refuses to start without it"
+done
 
 # The web bundle is built by its own package; until it exists the placeholder page is served.
 if [ -z "${WEB_DIST:-}" ]; then

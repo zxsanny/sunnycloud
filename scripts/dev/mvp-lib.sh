@@ -38,8 +38,21 @@ load_env() {
 
 is_placeholder() { [[ "$(tr -d '\r\n' < "$1")" == "$PLACEHOLDER_PREFIX"* ]]; }
 
-pid_file() { printf '%s/%s.pid' "$MVP_RUN" "$1"; }
 log_file() { printf '%s/%s.log' "$MVP_RUN" "$1"; }
+unit_of() { printf 'sunnycloud-mvp-%s.service' "$1"; }
+
+# `systemctl --user` is the supervisor: Restart=always keeps each process alive (user lingering keeps the
+# user manager across logouts and reboots; units are transient, so mvp-up.sh recreates them).
+userctl() { systemctl --user "$@"; }
+
+require_systemd_user() {
+  userctl show --property=Version > /dev/null || die "systemctl --user does not work on this host"
+}
+
+# A property of a unit, for example ActiveState, MainPID or NRestarts.
+unit_property() { userctl show --property="$2" --value "$(unit_of "$1")"; }
+
+unit_active() { [ "$(unit_property "$1" ActiveState)" = active ]; }
 
 binary_of() {
   case "$1" in
@@ -48,20 +61,6 @@ binary_of() {
     decoder-*) printf '%s/decoder-runner' "$BIN_DIR" ;;
     *) die "unknown process $1" ;;
   esac
-}
-
-# Prints the pid of a running process of ours, or nothing. A pid file whose pid is gone or belongs to another
-# program counts as not running. The program is recognised by /proc/<pid>/comm (the first 15 characters of the
-# binary name): the decoder switches off its core dumps, which also hides /proc/<pid>/exe from its own user.
-running_pid() {
-  local file pid expected
-  file="$(pid_file "$1")"
-  [ -f "$file" ] || return 0
-  pid="$(cat "$file")"
-  expected="$(basename "$(binary_of "$1")")"
-  if [ -r "/proc/$pid/comm" ] && [ "$(cat "/proc/$pid/comm")" = "${expected:0:15}" ]; then
-    printf '%s' "$pid"
-  fi
 }
 
 # Environment that differs per process.
@@ -76,24 +75,52 @@ process_env() {
   esac
 }
 
-# Starts one host process detached, once. The pid is written by the process's own shell before exec, so it is
-# the pid of the final program.
+# Directories the decoder finds its tools in: it refuses to start without vipsthumbnail, vipsheader, ffmpeg and
+# ffprobe on PATH, and a transient unit starts with a minimal environment.
+SUPERVISED_PATH="/usr/local/bin:/usr/bin:/bin"
+# shellcheck disable=SC2034 # used by mvp-up.sh and mvp-status.sh
+MEDIA_TOOLS=(vipsthumbnail vipsheader ffmpeg ffprobe)
+
+# Starts one process under systemd --user, once. Restart=always with a delay that grows from 1 s to 5 s;
+# systemd never resets the step counter while the unit lives (NRestarts only grows), so the cap is kept low: a
+# decoder that ends after a hostile file is back within 5 s. StartLimitIntervalSec=0 so the unit is never given up. SIGTERM, then 60 s (the API's
+# shutdown grace is 25 s) before SIGKILL on stop. Output is appended to the process log.
 start_process() {
-  local name="$1" pid
-  pid="$(running_pid "$name")"
-  if [ -n "$pid" ]; then
-    log "$name already running (pid $pid)"
+  local name="$1" var
+  if unit_active "$name"; then
+    log "$name already running (pid $(unit_property "$name" MainPID))"
     return 0
   fi
+  # A unit left in the failed state keeps its name until it is cleared.
+  [ "$(unit_property "$name" ActiveState)" = failed ] && userctl reset-failed "$(unit_of "$name")"
   local -a command=("$(binary_of "$name")")
   [ "$name" = api ] && command+=(serve)
-  local -a overrides
-  mapfile -t overrides < <(process_env "$name")
-  rm -f "$(pid_file "$name")"
-  # shellcheck disable=SC2016 # $$ and $@ are meant for the inner shell
-  env "${overrides[@]}" setsid nohup bash -c 'echo $$ > "$1"; shift; exec "$@"' _ \
-    "$(pid_file "$name")" "${command[@]}" >> "$(log_file "$name")" 2>&1 < /dev/null &
-  log "$name started (log $(log_file "$name"))"
+  local -a setenv=("--setenv=PATH=$SUPERVISED_PATH")
+  while IFS= read -r var; do
+    setenv+=("--setenv=$var=${!var}")
+  done < <(compgen -e | grep '^SUNNYCLOUD_')
+  local entry
+  while IFS= read -r entry; do
+    [ -n "$entry" ] && setenv+=("--setenv=$entry")
+  done < <(process_env "$name")
+  systemd-run --user --quiet --unit="$(unit_of "$name")" --description="sunnycloud MVP $name" \
+    --property=Restart=always --property=RestartSec=1 --property=RestartSteps=3 \
+    --property=RestartMaxDelaySec=5 --property=StartLimitIntervalSec=0 --property=TimeoutStopSec=60 \
+    --property="StandardOutput=append:$(log_file "$name")" --property="StandardError=append:$(log_file "$name")" \
+    "${setenv[@]}" "${command[@]}"
+  log "$name started under systemd --user as $(unit_of "$name") (log $(log_file "$name"))"
+}
+
+# Stops a supervised process and removes its unit; returns after the process is gone.
+stop_process() {
+  local name="$1"
+  if ! unit_active "$name" && [ "$(unit_property "$name" LoadState)" = not-found ]; then
+    log "$name not running"
+    return 0
+  fi
+  userctl stop "$(unit_of "$name")"
+  [ "$(unit_property "$name" ActiveState)" = failed ] && userctl reset-failed "$(unit_of "$name")"
+  log "$name stopped"
 }
 
 # Waits until the URL answers 200 on a GET; $3 = one optional curl option (for example --insecure).

@@ -9,7 +9,7 @@ Postgres 18 and Caddy run in Docker (`deploy/compose/compose.mvp.yml`, `deploy/c
 | Scripts | `scripts/dev/mvp-secrets.sh`, `mvp-up.sh`, `mvp-down.sh`, `mvp-status.sh`, `mvp-cli.sh` (shared code in `mvp-lib.sh`) |
 | Secrets and the editable settings (gitignored) | `secrets-dev/` |
 | Settings example (committed) | `deploy/mvp/mvp.env.example`; the live copy is `secrets-dev/mvp.env` |
-| Data, pid files, logs | `/develop/zxsanny/sunnycloud-data/{blobs,scratch-*,run}` (`run/<process>.log`, `run/<process>.pid`, `run/build.log`) |
+| Data and logs | `/develop/zxsanny/sunnycloud-data/{blobs,scratch-*,run}` (`run/<process>.log`, `run/build.log`) |
 | Binaries | `/develop/zxsanny/targets/stack/release/` (`CARGO_TARGET_DIR`; `src/target` is not touched) |
 | Web bundle | `src/web/dist` when it has an `index.html`, else `deploy/mvp/web-placeholder` |
 
@@ -17,15 +17,26 @@ Postgres 18 and Caddy run in Docker (`deploy/compose/compose.mvp.yml`, `deploy/c
 
 ```bash
 scripts/dev/mvp-up.sh       # secrets, build, docker (db + caddy), migrate, key check, 4 host processes, health waits
-scripts/dev/mvp-status.sh   # docker state, the four pids, the three health URLs, free disk; exit 1 when anything is down
-scripts/dev/mvp-down.sh     # SIGTERM to worker, api, decoders (60 s grace each), then docker compose down
+scripts/dev/mvp-status.sh   # docker state, the four processes with restart counts, media tools found, the three health URLs, free disk; exit 1 when anything is down
+scripts/dev/mvp-down.sh     # stops the four systemd units (SIGTERM, 60 s grace each), then docker compose down
 ```
 
-- `mvp-up.sh` is safe to run twice: a running process is left alone, `migrate` and `admin keycheck-init` are idempotent, Caddy is recreated only when its compose config changed. A new binary does not replace a running process: run `mvp-down.sh` then `mvp-up.sh`.
+- `mvp-up.sh` is safe to run twice: a running process is left alone, `migrate` and `admin keycheck-init` are idempotent, Caddy is recreated only when its compose config changed. A new binary does not replace a running process: run `mvp-down.sh` then `mvp-up.sh` (`MVP_SKIP_BUILD=1 scripts/dev/mvp-up.sh` skips the build and uses the binaries already in `/develop/zxsanny/targets/stack/release`).
 - A cold build takes minutes; the script prints progress every 30 s and the full output is in `run/build.log`.
 - `mvp-down.sh` keeps the Docker volumes (database `pgdata`, certificates `caddy_data`) and everything under `sunnycloud-data`. Never run `docker compose down -v`: it deletes the database and the certificates.
 - Start refuses when less than 50 GiB is free (`MVP_MIN_FREE_GIB`).
 - The three health URLs: `http://127.0.0.1:9090/readyz` (API ops), `http://127.0.0.1:9092/readyz` (worker ops), `https://drive.zxsanny.com/api/v1/server-info` (through Caddy).
+
+## Supervision
+
+api, worker and the two decoder-runners run as transient `systemd --user` units `sunnycloud-mvp-<name>.service` (`api`, `worker`, `decoder-interactive`, `decoder-general`) with `Restart=always`, a restart delay growing from 1 s to 5 s, no start limit and output appended to `run/<name>.log`. Any exit restarts the process: a crash, `kill -9`, or the decoder's deliberate exit 3 after a hostile-class outcome (the worker reports "decoder unreachable" until it is back, a few seconds). systemd never resets the delay step while the unit lives, so after a few restarts every restart waits the 5 s cap; `mvp-down.sh` then `mvp-up.sh` resets it. User lingering is on for this account, so the units survive logout, but they are transient: after a host reboot run `mvp-up.sh`.
+
+```bash
+systemctl --user status sunnycloud-mvp-decoder-general.service
+journalctl --user -u sunnycloud-mvp-decoder-general.service -n 20
+```
+
+The decoder refuses to start unless `vipsthumbnail`, `vipsheader`, `ffmpeg` and `ffprobe` are on its `PATH`; the units get `PATH=/usr/local/bin:/usr/bin:/bin`. `mvp-up.sh` checks it before starting and `mvp-status.sh` prints the path of each tool.
 
 ## Logs
 
@@ -38,10 +49,12 @@ docker logs -f sunnycloud-mvp-db-1
 ## CLI and health report
 
 ```bash
-scripts/dev/mvp-cli.sh doctor                 # exit 1 on a warning
+scripts/dev/mvp-cli.sh doctor                 # exit 1 on a warning (see the note below)
 scripts/dev/mvp-cli.sh admin setup-token      # prints the one-time token while no account exists
 scripts/dev/mvp-cli.sh admin invite --admin <admin account id> create   # see `mvp-cli.sh admin invite --help`
 ```
+
+Expected `doctor` warning on this host: `the decoder image is ~20,000 days old` (`media_worker` check). The host decoder reports no image build date, so the age check reads 1970. It is not a failure and stays until the decoder moves into its container stage (AZ-3863, AZ-3864).
 
 ## Certificate: staging now, production later
 
