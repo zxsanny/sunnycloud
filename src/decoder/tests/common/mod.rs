@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod media;
+
 use std::io::Read;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -174,6 +176,8 @@ pub fn config(path: PathBuf, scratch_root: PathBuf, alive_interval: Duration) ->
         write_timeout: Duration::from_secs(5),
         cancel_wait: Duration::from_secs(4),
         ceilings: ceilings(),
+        memory_poll_interval: Duration::from_millis(100),
+        photo_max_pixels: 250_000_000,
     }
 }
 

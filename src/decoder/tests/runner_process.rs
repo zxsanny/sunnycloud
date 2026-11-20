@@ -1,5 +1,5 @@
 //! Process-level cases: the real binary, its environment and a protocol client.
-//! AC-1, AC-2, AC-6, AC-8 and the honest report of the missing executors.
+//! AC-1, AC-2, AC-6 and AC-8.
 mod common;
 
 use std::io::Read;
@@ -21,6 +21,7 @@ fn command(socket: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_decoder-runner"));
     command
         .env_clear()
+        .env("PATH", std::env::var("PATH").expect("PATH"))
         .env("SUNNYCLOUD_ENVIRONMENT", "development")
         .env("SUNNYCLOUD_DECODER_SOCKET_PATH", socket);
     command
@@ -248,7 +249,7 @@ fn ac8_invalid_duration_and_unknown_variable_refuse_start_and_are_both_listed() 
 }
 
 #[test]
-fn jobs_are_reported_unsupported_and_self_check_fails_while_no_executor_exists() {
+fn a_job_that_is_no_media_is_unsupported_and_the_self_check_reports_only_what_it_ran() {
     let runner = Runner::start();
     let mut client = runner.connect();
 
@@ -263,9 +264,12 @@ fn jobs_are_reported_unsupported_and_self_check_fails_while_no_executor_exists()
     let Response::SelfCheck(report) = check else {
         panic!("expected a self-check report");
     };
-    assert!(report.0.iter().all(|item| !item.ok));
+    let names: Vec<&str> = report.0.iter().map(|item| item.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["proc_status_readable", "not_root", "no_capabilities"]
+    );
 }
-
 #[test]
 fn health_fails_without_a_socket_and_passes_with_one() {
     let down = run_to_completion(|command| {

@@ -6,9 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 
-use media_shared::decoder_protocol::{
-    Capabilities, DecodeError, Response, SelfCheckItem, SelfCheckReport,
-};
+use media_shared::decoder_protocol::{Capabilities, Response, SelfCheckReport};
 use media_shared::policy::Plan;
 
 use crate::limits::{JobLimits, LimitClass};
@@ -62,14 +60,21 @@ pub struct JobContext {
     input: File,
     cancel: Arc<AtomicBool>,
     messages: Sender<JobMessage>,
+    hostile: Arc<AtomicBool>,
 }
 
 impl JobContext {
-    pub(crate) fn new(input: File, cancel: Arc<AtomicBool>, messages: Sender<JobMessage>) -> Self {
+    pub(crate) fn new(
+        input: File,
+        cancel: Arc<AtomicBool>,
+        messages: Sender<JobMessage>,
+        hostile: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             input,
             cancel,
             messages,
+            hostile,
         }
     }
 
@@ -84,6 +89,12 @@ impl JobContext {
     /// A job that sees it kills its processes, removes `work/` and returns.
     pub fn is_cancelled(&self) -> bool {
         self.cancel.load(Ordering::Acquire)
+    }
+
+    /// Marks the job's outcome as hostile-class (10 section 3, containment): the loop sends the
+    /// typed response and then ends the runner so that the container is restarted clean.
+    pub fn mark_hostile(&self) {
+        self.hostile.store(true, Ordering::Release);
     }
 
     /// Forwards one executor progress line as a `Progress` event.
@@ -107,36 +118,4 @@ pub trait JobHandler: Send + Sync + 'static {
     /// Runs the job to its response. By the time it returns, its processes are killed and its
     /// `work/` is removed (10 section 3). Must poll [`JobContext::is_cancelled`].
     fn run(&self, job: &Job, context: &JobContext) -> Response;
-}
-
-/// The handler of this build: no executor exists yet (E-19/c08 to c11), so no job is decoded
-/// and every job request is answered `Unsupported`. It never produces a result.
-pub struct NoExecutors;
-
-impl JobHandler for NoExecutors {
-    fn capabilities(&self) -> Capabilities {
-        // The versions and the build timestamp are E-19/c12; 1 is the lowest timestamp the
-        // protocol accepts and marks "unknown".
-        Capabilities {
-            protocol: crate::PROTOCOL_VERSION,
-            vips: "unavailable".into(),
-            ffmpeg: "unavailable".into(),
-            libheif: "unavailable".into(),
-            build_timestamp: 1,
-            nvenc_probe_ok: false,
-            nvenc_sessions: 0,
-        }
-    }
-
-    fn self_check(&self, _forbidden_targets: &[String]) -> SelfCheckReport {
-        SelfCheckReport(vec![SelfCheckItem {
-            name: "executors".into(),
-            ok: false,
-        }])
-    }
-
-    fn run(&self, _job: &Job, _context: &JobContext) -> Response {
-        sc_observability::log_error!("job refused: this build has no decode executors");
-        Response::Error(DecodeError::Unsupported)
-    }
 }

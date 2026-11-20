@@ -138,6 +138,8 @@ fn config(socket: PathBuf, scratch_root: PathBuf, alive_interval: Duration) -> R
             photo: limits(Duration::from_secs(30)),
             video: limits(Duration::from_secs(60)),
         },
+        memory_poll_interval: Duration::from_millis(100),
+        photo_max_pixels: 250_000_000,
     }
 }
 

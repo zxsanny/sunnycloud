@@ -21,6 +21,8 @@ pub enum RunnerError {
     JobStuck,
     #[error("a job thread panicked")]
     JobPanicked,
+    #[error("the media tool `{0}` is not on PATH")]
+    ToolMissing(&'static str),
     #[error("unknown subcommand, expected none or `health`")]
     Usage,
     #[error(transparent)]

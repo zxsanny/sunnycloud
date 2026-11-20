@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use decoder_runner::{
-    Exit, Heartbeat, NoExecutors, RunnerConfig, RunnerError, Watchdog, disable_dumps, health,
-    serve, socket,
+    Exit, Heartbeat, MediaHandler, RunnerConfig, RunnerError, Tools, Watchdog, become_subreaper,
+    disable_dumps, health, serve, socket,
 };
 use sc_config::ConfigSources;
 use sc_observability::logging::Level;
@@ -13,6 +13,8 @@ use sc_observability::{Component, LogConfig, LogFormat, init_logging, log_error,
 const EXIT_FAILURE: u8 = 1;
 /// A client violation: the typed reply is sent and the process ends so the container restarts.
 const EXIT_VIOLATION: u8 = 2;
+/// A hostile-class job outcome: the typed reply is sent and the process ends, same reason.
+const EXIT_HOSTILE: u8 = 3;
 
 fn main() -> ExitCode {
     let sources = ConfigSources {
@@ -57,6 +59,7 @@ fn run(sources: &ConfigSources) -> ExitCode {
     match serve_process(sources) {
         Ok(Exit::Stopped) => ExitCode::SUCCESS,
         Ok(Exit::ProtocolViolation) => ExitCode::from(EXIT_VIOLATION),
+        Ok(Exit::HostileOutcome) => ExitCode::from(EXIT_HOSTILE),
         Err(error) => {
             log_error!("decoder runner stopped", err = &error);
             ExitCode::from(EXIT_FAILURE)
@@ -67,15 +70,18 @@ fn run(sources: &ConfigSources) -> ExitCode {
 fn serve_process(sources: &ConfigSources) -> Result<Exit, RunnerError> {
     let config = RunnerConfig::load(sources)?;
     disable_dumps()?;
+    become_subreaper()?;
     #[cfg(feature = "test-freeze")]
     decoder_runner::test_freeze::install()?;
+    let tools = Tools::locate(&std::env::var("PATH").unwrap_or_default())?;
+    let handler = Arc::new(MediaHandler::new(tools, &config));
     let listener = socket::bind(&config.socket_path, config.socket_gid)?;
     log_info!("decoder runner listening");
     let heartbeat = Arc::new(Heartbeat::new());
     let _watchdog = Watchdog::spawn(Arc::clone(&heartbeat), config.watchdog)?;
     serve(
         &listener,
-        &Arc::new(NoExecutors),
+        &handler,
         &config,
         &AtomicBool::new(false),
         &heartbeat,

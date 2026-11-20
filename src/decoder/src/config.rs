@@ -25,6 +25,10 @@ pub struct RunnerConfig {
     pub write_timeout: Duration,
     pub cancel_wait: Duration,
     pub ceilings: Ceilings,
+    /// How often the guard reads the memory of a child's process group.
+    pub memory_poll_interval: Duration,
+    /// An image above this many pixels is refused from its header, before any decode.
+    pub photo_max_pixels: u64,
 }
 
 impl RunnerConfig {
@@ -85,6 +89,17 @@ impl RunnerConfig {
             settings.decoder_stall_kill.get(),
             settings.decoder_max_output_video.bytes(),
         );
+        let memory_poll_interval = settings.decoder_memory_poll_interval.get();
+        require_nonzero(
+            "decoder_memory_poll_interval",
+            memory_poll_interval.is_zero(),
+            &mut problems,
+        );
+        require_nonzero(
+            "photo_max_pixels",
+            settings.photo_max_pixels == 0,
+            &mut problems,
+        );
         check_limits(&PHOTO_KEYS, &photo, &mut problems);
         check_limits(&VIDEO_KEYS, &video, &mut problems);
         require_nonzero(
@@ -106,6 +121,8 @@ impl RunnerConfig {
             write_timeout: watchdog / 2,
             cancel_wait: CANCEL_WAIT,
             ceilings: Ceilings { photo, video },
+            memory_poll_interval,
+            photo_max_pixels: settings.photo_max_pixels,
         })
     }
 }
@@ -191,6 +208,8 @@ mod tests {
         assert_eq!(config.ceilings.video.max_output_bytes, 10 << 30);
         assert_eq!(config.ceilings.video.stall_timeout, Duration::from_secs(90));
         assert_eq!(config.alive_interval, Duration::from_secs(5));
+        assert_eq!(config.memory_poll_interval, Duration::from_secs(1));
+        assert_eq!(config.photo_max_pixels, 250_000_000);
     }
 
     #[test]

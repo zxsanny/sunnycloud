@@ -91,6 +91,7 @@ fn ac3_idle_runner_binary_aborts_within_the_watchdog_after_sigusr1() {
     make_job(&scratch, "job", CONTROL_BYTES);
     let child = Command::new(env!("CARGO_BIN_EXE_decoder-runner"))
         .env_clear()
+        .env("PATH", std::env::var("PATH").expect("PATH"))
         .env("SUNNYCLOUD_ENVIRONMENT", "development")
         .env("SUNNYCLOUD_DECODER_SOCKET_PATH", &socket)
         .env("SUNNYCLOUD_DECODER_SCRATCH_ROOT", &scratch)

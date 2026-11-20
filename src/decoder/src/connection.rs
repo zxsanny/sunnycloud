@@ -33,12 +33,15 @@ pub enum ConnectionEnd {
     Closed,
     /// The peer broke the protocol; the typed reply was sent. The runner exits.
     Violation,
+    /// A job ended hostile-class; its typed reply was sent. The runner exits (10 section 3).
+    Hostile,
     /// The runner cannot continue and exits.
     Fatal(RunnerError),
 }
 
 struct RunningJob {
     cancel: Arc<AtomicBool>,
+    hostile: Arc<AtomicBool>,
     messages: Receiver<JobMessage>,
     thread: JoinHandle<()>,
     cancel_requested: bool,
@@ -187,8 +190,14 @@ impl<H: JobHandler> Connection<'_, H> {
             }
         };
         let cancel = Arc::new(AtomicBool::new(false));
+        let hostile = Arc::new(AtomicBool::new(false));
         let (sender, messages) = channel();
-        let context = JobContext::new(input, Arc::clone(&cancel), sender.clone());
+        let context = JobContext::new(
+            input,
+            Arc::clone(&cancel),
+            sender.clone(),
+            Arc::clone(&hostile),
+        );
         let handler = Arc::clone(self.handler);
         let spawned = thread::Builder::new()
             .name("decoder-job".into())
@@ -203,6 +212,7 @@ impl<H: JobHandler> Connection<'_, H> {
             Ok(thread) => {
                 self.job = Some(RunningJob {
                     cancel,
+                    hostile,
                     messages,
                     thread,
                     cancel_requested: false,
@@ -253,13 +263,18 @@ impl<H: JobHandler> Connection<'_, H> {
         } else {
             response
         };
-        match self.send(Message::Response(response)) {
+        let sent = match self.send(Message::Response(response)) {
             Err(WriteError::Invalid(violation)) => {
                 log_error!("job response refused by the protocol", err = &violation);
                 self.reply(Response::Error(DecodeError::OutputInvalid))
             }
             other => other.map_err(|error| self.write_failed(error)),
+        };
+        if job.hostile.load(Ordering::Acquire) {
+            log_error!("hostile-class job outcome: the runner ends after its reply");
+            return Err(ConnectionEnd::Hostile);
         }
+        sent
     }
 
     fn send_alive_if_due(&mut self) -> Result<(), ConnectionEnd> {
@@ -334,6 +349,12 @@ impl<H: JobHandler> Connection<'_, H> {
             return ConnectionEnd::Fatal(error);
         }
         match job.thread.join() {
+            Ok(())
+                if job.hostile.load(Ordering::Acquire) && matches!(end, ConnectionEnd::Closed) =>
+            {
+                log_error!("hostile-class job outcome: the runner ends");
+                ConnectionEnd::Hostile
+            }
             Ok(()) => end,
             Err(_) => ConnectionEnd::Fatal(RunnerError::JobPanicked),
         }

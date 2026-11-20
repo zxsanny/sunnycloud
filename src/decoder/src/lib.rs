@@ -21,27 +21,46 @@
 //!   only) `SIGUSR1` freezes the loop so that this can be shown.
 //! - A client violation is answered `ProtocolViolation` and [`serve`] returns
 //!   [`Exit::ProtocolViolation`]; the binary then exits with code 2.
+//! - After every job the handler kills every descendant of the runner (it is a subreaper) and
+//!   removes `work/` before the response goes out. A hostile-class job outcome (a crash, a limit
+//!   exceeded, a descendant found alive) is answered and then ends the runner: [`Exit::HostileOutcome`],
+//!   exit code 3.
 
 pub mod config;
 mod connection;
+mod containment;
 pub mod error;
+mod exec;
+mod failure;
+mod ffprobe;
+pub mod handler;
 pub mod health;
+mod image;
 pub mod job;
 pub mod limits;
+mod poster;
+pub mod proc_table;
+mod process;
 pub mod safe_open;
+mod self_check;
 pub mod server;
+pub mod sniff;
 pub mod socket;
 mod sys;
 #[cfg(feature = "test-freeze")]
 pub mod test_freeze;
+pub mod tools;
 pub mod watchdog;
 
 pub use config::RunnerConfig;
 pub use connection::TICK;
+pub use containment::become_subreaper;
 pub use error::RunnerError;
-pub use job::{Job, JobContext, JobHandler, JobSpec, NoExecutors};
+pub use handler::MediaHandler;
+pub use job::{Job, JobContext, JobHandler, JobSpec};
 pub use limits::{Ceilings, JobLimits, LimitClass};
 pub use server::{Exit, serve};
+pub use tools::Tools;
 pub use watchdog::{Heartbeat, Watchdog, disable_dumps};
 
 /// The only protocol version this runner speaks.

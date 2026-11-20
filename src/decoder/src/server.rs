@@ -21,6 +21,9 @@ pub enum Exit {
     Stopped,
     /// The client broke the protocol and got the typed reply; the process exits (10 section 3).
     ProtocolViolation,
+    /// A job ended hostile-class and got its typed reply; the process exits so that the
+    /// container restarts with clean memory (10 section 3, containment).
+    HostileOutcome,
 }
 
 /// Runs the accept loop. Every pass of it, idle or serving, bumps `heartbeat`.
@@ -42,6 +45,7 @@ pub fn serve<H: JobHandler>(
                 match serve_connection(stream, handler, config, heartbeat) {
                     ConnectionEnd::Closed => log_info!("connection closed"),
                     ConnectionEnd::Violation => return Ok(Exit::ProtocolViolation),
+                    ConnectionEnd::Hostile => return Ok(Exit::HostileOutcome),
                     ConnectionEnd::Fatal(error) => return Err(error),
                 }
             }
