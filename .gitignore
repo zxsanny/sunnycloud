@@ -8,3 +8,7 @@ secrets/
 secrets-dev/
 # Coverage profiles that instrumented child processes of the tests write in their working directory.
 *.profraw
+
+# Web app (src/web)
+src/web/node_modules/
+src/web/dist/

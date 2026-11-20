@@ -1,0 +1,6 @@
+dist
+node_modules
+openapi
+package-lock.json
+src/lib/api/generated
+src/styles/tokens.css

@@ -416,3 +416,21 @@ jobs:
         run: scripts/ci/watchdog.sh --name mobile-test -- scripts/ci/mobile-test.sh
       - name: Seeded failures (4 KB library, changed BackupCore method, vault-core dependency)
         run: scripts/ci/watchdog.sh --name mobile-check-seeds -- scripts/ci/tests/test-mobile-checks.sh
+
+  # AZ-3935: the web app (src/web). Lint, svelte-check, unit tests (they include a scan of a real production build for
+  # inline scripts and foreign URLs, the CSP of the deployment), the production build, client drift against the OpenAPI
+  # snapshot, npm audit. Steps live in src/web/ci/web-ci.sh.
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
+      - name: lint, svelte-check, tests, build, client drift, audit
+        run: scripts/ci/watchdog.sh --name web -- src/web/ci/web-ci.sh
