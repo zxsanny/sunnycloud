@@ -1,21 +1,28 @@
-//! NFR: `now_utc` and `monotonic` do not allocate. One test per binary, so no other thread allocates
-//! while the counter is read.
+//! NFR: `now_utc` and `monotonic` do not allocate. The counter is per thread, so an allocation by another thread of
+//! the process (the test harness, the coverage runtime) is not counted against the clock.
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
 use std::hint::black_box;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use sc_clock::{Clock, ManualClock, SystemClock, Timestamp};
 
 struct CountingAllocator;
 
-static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
+thread_local! {
+    // A const initialiser without a destructor: reading it from inside the allocator does not allocate.
+    static ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
+}
+
+fn count_allocation() {
+    ALLOCATIONS.with(|count| count.set(count.get() + 1));
+}
 
 // SAFETY: every call is forwarded unchanged to the system allocator; only a counter is added.
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+        count_allocation();
         unsafe { System.alloc(layout) }
     }
 
@@ -24,7 +31,7 @@ unsafe impl GlobalAlloc for CountingAllocator {
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+        count_allocation();
         unsafe { System.realloc(ptr, layout, new_size) }
     }
 }
@@ -33,11 +40,11 @@ unsafe impl GlobalAlloc for CountingAllocator {
 static GLOBAL: CountingAllocator = CountingAllocator;
 
 fn allocations_during<T>(read: impl Fn() -> T) -> usize {
-    let before = ALLOCATIONS.load(Ordering::SeqCst);
+    let before = ALLOCATIONS.with(Cell::get);
     for _ in 0..1_000 {
         black_box(read());
     }
-    ALLOCATIONS.load(Ordering::SeqCst) - before
+    ALLOCATIONS.with(Cell::get) - before
 }
 
 #[test]
