@@ -103,3 +103,27 @@ async fn session_reaper_racing_commit_upload_has_exactly_one_winner_each_round()
     drop(reaper);
     rig.finish().await;
 }
+
+#[tokio::test]
+async fn a_commit_whose_staged_file_the_reaper_already_removed_is_upload_not_found() {
+    // Arrange
+    let rig = Rig::new().await;
+    let upload = rig
+        .upload_bytes("gone.bin", "gone.bin", content(7, SIZE))
+        .await;
+    rig.send_all(&upload).await;
+    std::fs::remove_file(sunnycloud_blobstore::blob_path(&rig.volume, upload.blob))
+        .expect("staged file removed");
+
+    // Act
+    let result = rig
+        .commit(commit_request(&upload, rig.root, "gone.bin", None))
+        .await;
+
+    // Assert
+    assert!(
+        matches!(result, Err(CommitServiceError::UploadNotFound)),
+        "{result:?}"
+    );
+    rig.finish().await;
+}

@@ -11,9 +11,9 @@
 use std::sync::Arc;
 
 use contracts::{
-    CommitActor, CommitEffect, CommitServiceError, CommitUpload, Committed, EntryFailure,
-    EntryResult, NewRevision, PublishEntry, PublishOutcome, PublishResult, Target, TreeCommitError,
-    TreeReaderError, UploadError,
+    BlobError, CommitActor, CommitEffect, CommitServiceError, CommitUpload, Committed,
+    EntryFailure, EntryResult, NewRevision, PublishEntry, PublishOutcome, PublishResult, Target,
+    TreeCommitError, TreeReaderError, UploadError,
 };
 use sc_ids::{FileHash, Hash32, rollup};
 use sc_observability::log_error;
@@ -142,7 +142,9 @@ impl PgUploadService {
         let hashes = check_blocklist(&session.lock(), blocklist)?;
         let file_hash = rollup(&hashes);
         let handle = &session.info().handle;
-        let head = self
+        // The reaper deletes an expired session's file outside this commit: a vanished file is a lost race, the
+        // same answer as a vanished session row.
+        let head = match self
             .reader
             .read_head(
                 handle.plan.blob_id,
@@ -152,7 +154,11 @@ impl PgUploadService {
                 HEAD_LEN,
             )
             .await
-            .map_err(unexpected)?;
+        {
+            Ok(head) => head,
+            Err(BlobError::BlobMissing) => return Err(CommitServiceError::UploadNotFound),
+            Err(other) => return Err(unexpected(other)),
+        };
         Ok(Checked {
             file_hash,
             blocklist: hashes,
