@@ -70,7 +70,7 @@ The database tests seed their files only in temporary directories and create and
 
 ## PR gate: `.github/workflows/ci.yml` and its scripts (AZ-3761)
 
-The workflow only checks out, caches and calls these scripts, each under `watchdog.sh`. Jobs: `rust-lint`, `rust-test`, `pipelines-large`, `http-api-suite`, `pg18-migrations`, `supply-chain`, `images`, `vault-core`, `mobile`; triggers: pull request to `dev`, push to `dev`.
+The workflow only checks out, caches and calls these scripts, each under `watchdog.sh`. Jobs: `rust-lint`, `rust-test`, `pipelines-large`, `http-api-suite`, `pg18-migrations`, `supply-chain`, `image-build`, `images`, `vault-core`, `mobile`; triggers: pull request to `dev`, push to `dev`.
 
 | Script | Job | What it does |
 |--------|-----|--------------|
@@ -87,7 +87,7 @@ The workflow only checks out, caches and calls these scripts, each under `watchd
 | `audit.sh` | `supply-chain` | validates the dated ignores in `src/deny.toml` (`added`, `expires`, `why`; not expired; `added` at most 90 days old), passes the same ids to `cargo audit --deny warnings`, runs `cargo deny check advisories bans licenses sources`. `DENY_TOML` and `AUDIT_TODAY` override the file and the date |
 | `build-wasm.sh` | `supply-chain` | wasm32 build of `sync-core-wasm` and `sc_ids` |
 | `secret-scan.sh` | `supply-chain` | gitleaks over the full history with `gitleaks.toml` (built-in rules plus a task-id allowlist); findings name the file, values are redacted; a shallow clone is refused |
-| `build-images.sh` | `images` | builds api, worker, decoder and the `-test` api and worker images, then runs `deploy/tests/check-images.sh`; never pushes |
+| `build-images.sh` | `image-build`, `images` | `build NAME FILE` builds one of the five images (api, worker, decoder, api-test, worker-test; one matrix leg each) and saves it; `check` runs `deploy/tests/check-images.sh` on the five loaded images; without arguments it does both locally; never pushes |
 | `watchdog.sh [--name N] -- CMD...` | every long step | heartbeat every 30 s (`WATCHDOG_TICK`), STALLED and abort of the whole process group after 120 s without output (`WATCHDOG_STALL`), exit 124 |
 
 Tests: `tests/run-script-tests.sh` (run by `supply-chain`) covers the pinning, audit, coverage-threshold, IT-suite runner, one-test runner, watchdog (fast), secret-scan and quiet-flag checks. Run separately: `tests/test-watchdog-realtime.sh` (about 2.5 minutes, default 30 s / 120 s) and `tests/test-check-coverage-real.sh` (needs `cargo-llvm-cov`).

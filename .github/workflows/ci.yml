@@ -282,23 +282,56 @@ jobs:
       - name: Tests of the CI scripts
         run: scripts/ci/watchdog.sh --name script-tests -- scripts/ci/tests/run-script-tests.sh
 
-  images:
+  # One leg per image: the five builds are independent, and api and api-test alone take 4 minutes each.
+  image-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api, worker, decoder, api-test, worker-test]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The cook layer hangs on the recipe, which holds every Cargo.toml: a manifest change needs a new key, because
+      # actions/cache never overwrites an existing one.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/buildx-cache
-          key: buildx-${{ hashFiles('src/Cargo.lock', 'src/rust-toolchain.toml', 'deploy/docker/*.Dockerfile') }}
-          restore-keys: buildx-
-      - name: Build api, worker, decoder and the -test images (no push)
+          key: buildx-${{ matrix.target }}-${{ hashFiles('src/Cargo.lock', 'src/rust-toolchain.toml', 'src/**/Cargo.toml', 'deploy/docker/*.Dockerfile') }}
+          restore-keys: buildx-${{ matrix.target }}-
+      - name: Build ${{ matrix.target }} (no push)
         env:
           BUILDX_CACHE_DIR: ${{ runner.temp }}/buildx-cache
-        run: scripts/ci/watchdog.sh --name build-images -- scripts/ci/build-images.sh
+        run: >-
+          scripts/ci/watchdog.sh --name build-image-${{ matrix.target }} --
+          scripts/ci/build-images.sh build ${{ matrix.target }} ${{ runner.temp }}/${{ matrix.target }}.tar
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-${{ matrix.target }}
+          path: ${{ runner.temp }}/${{ matrix.target }}.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  images:
+    needs: image-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: image-*
+          path: ${{ runner.temp }}/images
+          merge-multiple: true
+      - name: Load the five images
+        run: for tar in "${RUNNER_TEMP}"/images/*.tar; do docker load --input "$tar"; done
+      - name: Users, labels, health checks and layers of the five images
+        run: scripts/ci/watchdog.sh --name check-images -- scripts/ci/build-images.sh check
       - name: Release api and worker images contain no test-clock symbol
         run: >-
           scripts/ci/watchdog.sh --name check-release-symbols -- scripts/ci/check-release-symbols.sh
