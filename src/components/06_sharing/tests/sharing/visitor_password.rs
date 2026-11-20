@@ -23,8 +23,8 @@ const UNICODE_PASSWORD: &str = "пароль-🔑-é-密码";
 /// An Argon2id cost that makes one check take milliseconds, so the 50 checks overlap.
 const SLOW_ARGON2: &str = "8192,2,1";
 /// A cost that keeps the one permit held while every not-found token is tried.
-const HOLDING_ARGON2: &str = "65536,4,1";
-/// Far above a database lookup on a loaded host and far below one HOLDING_ARGON2 check (about 100 ms), so a call that
+const HOLDING_ARGON2: &str = "65536,16,1";
+/// Far above a database lookup on a loaded host and far below one HOLDING_ARGON2 check (about 400 ms), so a call that
 /// waited for the permit or hashed would miss it.
 const NOT_FOUND_BUDGET: Duration = Duration::from_millis(25);
 

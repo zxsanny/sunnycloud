@@ -10,3 +10,9 @@ slow-timeout = { period = "60s", terminate-after = 10 }
 [[profile.default.overrides]]
 filter = "binary(volume_floor)"
 threads-required = "num-test-threads"
+
+# Tests that assert a wall-clock bound on product code (a transaction under a second, a not-found answer under 25 ms)
+# run alone, so other tests starving the CPUs cannot break the bound.
+[[profile.default.overrides]]
+filter = "test(it_07_11_cycles_stop_at_the_budget) | test(a_token_that_is_not_a_live_password_link)"
+threads-required = "num-test-threads"

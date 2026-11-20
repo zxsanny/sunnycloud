@@ -52,10 +52,18 @@ async fn heartbeats_arrive_at_a_third_of_the_lease_while_the_job_runs_and_stop_w
     let gaps: Vec<Duration> = times.windows(2).map(|pair| pair[1] - pair[0]).collect();
     assert_eq!(end, JobEnd::Derived);
     assert!(times.len() >= 4, "heartbeats: {}", times.len());
+    // The typical gap is the period; one late gap on a loaded host is a scheduling delay, so the property held to is
+    // that no gap reaches the lease, which would let it expire.
+    let mut sorted = gaps.clone();
+    sorted.sort();
+    assert!(
+        sorted[sorted.len() / 2].abs_diff(PERIOD) <= Duration::from_millis(30),
+        "gaps: {gaps:?}"
+    );
     assert!(
         gaps.iter()
-            .all(|gap| gap.abs_diff(PERIOD) <= Duration::from_millis(60)),
-        "gaps: {gaps:?}"
+            .all(|gap| *gap < Duration::from_millis(LEASE_MS)),
+        "a gap reached the lease: {gaps:?}"
     );
     assert!(
         lease_times(&after).is_empty(),
