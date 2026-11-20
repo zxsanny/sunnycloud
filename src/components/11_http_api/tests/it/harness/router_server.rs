@@ -109,6 +109,7 @@ pub fn route_context_for(
         version_gate,
         csrf,
         body_limits,
+        realtime: sunnycloud_http_api::RealtimeLimits::default(),
     }
 }
 

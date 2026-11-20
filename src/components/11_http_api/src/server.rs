@@ -15,6 +15,7 @@ use crate::error::{HttpServerError, Listener};
 use crate::limits::BodyLimits;
 use crate::metrics::HttpMetrics;
 use crate::middleware::Middleware;
+use crate::realtime::RealtimeLimits;
 use crate::registry::{
     OpenApiDocument, RouteContext, RouteDef, document, mount, production_routes, served_routes,
     validate, vault_routes,
@@ -51,6 +52,7 @@ pub struct HttpServer {
     routes: Vec<RouteDef>,
     openapi: OpenApiDocument,
     spa: Option<Arc<SpaBundle>>,
+    realtime: RealtimeLimits,
 }
 
 /// A server whose listeners are bound, with their local addresses known.
@@ -108,12 +110,19 @@ impl HttpServer {
             routes,
             openapi,
             spa: None,
+            realtime: RealtimeLimits::default(),
         })
     }
 
     /// Serves the bundled web app: its static files, and its index for every other non-`/api` path.
     pub fn with_spa(mut self, bundle: SpaBundle) -> Self {
         self.spa = Some(Arc::new(bundle));
+        self
+    }
+
+    /// Other numbers for the realtime channel than the contract's defaults (tests shorten them).
+    pub fn with_realtime_limits(mut self, limits: RealtimeLimits) -> Self {
+        self.realtime = limits;
         self
     }
 
@@ -150,6 +159,7 @@ impl HttpServer {
             version_gate: Arc::clone(&self.version_gate),
             csrf: Arc::clone(&self.csrf),
             body_limits: Arc::clone(&self.body_limits),
+            realtime: self.realtime,
         };
         let routers = mount(&self.routes, &context, self.spa.clone());
         Ok(BoundServer {

@@ -13,8 +13,13 @@ use super::target::Target;
 /// `X-Blake3` must be 64 hex digits.
 pub const SCHEMA_GAPS: [&str; 1] = ["PUT /api/v1/uploads/{upload_id}/blocks/{index}"];
 
-/// As [`SCHEMA_GAPS`], for reads: `cursor` must be `epoch.seq` and `user_code` a device user code.
-pub const READ_SCHEMA_GAPS: [&str; 2] = ["GET /api/v1/changes", "GET /api/v1/device-grants"];
+/// As [`SCHEMA_GAPS`], for reads: `cursor` must be `epoch.seq`, `user_code` a device user code, and a plain GET
+/// on the WebSocket route is not an upgrade (400).
+pub const READ_SCHEMA_GAPS: [&str; 3] = [
+    "GET /api/v1/changes",
+    "GET /api/v1/device-grants",
+    "GET /api/v1/realtime",
+];
 
 fn plan(target: &Target) -> (Document, CsrfPlan) {
     let doc = Document::production();

@@ -49,6 +49,7 @@ pub struct RouteContext {
     pub version_gate: Arc<VersionGate>,
     pub csrf: Arc<CsrfGuard>,
     pub body_limits: Arc<BodyLimits>,
+    pub realtime: crate::realtime::RealtimeLimits,
 }
 
 /// Every operation of a server without the vault slot (v1.0 and v1.1 builds). Each group of E-21 adds its own
@@ -65,6 +66,7 @@ pub fn production_routes() -> Vec<RouteDef> {
     routes.extend(tree::routes());
     routes.extend(transfer::routes());
     routes.extend(feed::routes());
+    routes.extend(crate::realtime::routes());
     routes.extend(worker::routes());
     #[cfg(feature = "test-clock")]
     routes.extend(crate::test_clock::routes());

@@ -18,6 +18,7 @@ mod matrices;
 mod middleware;
 mod ops;
 mod ops_metrics;
+mod realtime;
 mod registry;
 mod sharing;
 mod shutdown;

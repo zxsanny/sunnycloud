@@ -23,6 +23,9 @@
 //! [`CsrfGuard`] is layer 9: after auth, a cookie-authenticated POST, PUT, PATCH or DELETE must prove the
 //! public origin (`Sec-Fetch-Site: same-origin` or an exact `Origin`) or it is 403 `csrf_rejected`; bearers are exempt.
 //!
+//! [`realtime`](RealtimeLimits) is the WebSocket channel of the web client (`realtime.md`): the handshake is a
+//! registry route and the socket pushes the change feed as `packbin` frames.
+//!
 //! [`content_response`] is the one mapping from 03's `Download` to the status and headers of every content
 //! route (`content_serving_headers.md`): hostile types are attachments, Range and validators are the same
 //! everywhere, and a failed stream aborts the connection or stream.
@@ -50,6 +53,7 @@ mod openapi_diff;
 mod port_error;
 mod problem;
 mod problem_schema;
+mod realtime;
 pub mod registry;
 mod server;
 mod server_info;
@@ -76,6 +80,7 @@ pub use openapi_diff::{Breaking, diff as diff_documents};
 pub use port_error::{PortError, entry_error_code};
 pub use problem::ApiProblem;
 pub use problem_schema::problem_schema;
+pub use realtime::RealtimeLimits;
 pub use registry::OpenApiDocument;
 pub use server::{BoundServer, HttpServer, current_document, vault_document};
 pub use server_info::ServerInfo;

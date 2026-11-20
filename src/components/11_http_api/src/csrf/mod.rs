@@ -59,6 +59,15 @@ impl CsrfGuard {
         handler.route_layer(from_fn_with_state(Arc::clone(self), check))
     }
 
+    /// True when the one `Origin` header equals the public origin. A WebSocket handshake always carries it
+    /// (browsers send it on every handshake), so this route takes no `Sec-Fetch-Site` instead.
+    pub(crate) fn origin_is_public(&self, headers: &HeaderMap) -> bool {
+        single(headers, &ORIGIN)
+            .and_then(|value| value.to_str().ok())
+            .and_then(origin::canonical)
+            .is_some_and(|origin| origin == self.public_origin)
+    }
+
     /// True for `Sec-Fetch-Site: same-origin` or an `Origin` equal to the public origin. A repeated header
     /// proves nothing.
     fn proves_same_origin(&self, headers: &HeaderMap) -> bool {

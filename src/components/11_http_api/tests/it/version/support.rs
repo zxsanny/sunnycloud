@@ -130,6 +130,7 @@ impl Gated {
             version_gate,
             csrf,
             body_limits,
+            realtime: sunnycloud_http_api::RealtimeLimits::default(),
         };
         let Routers { public, internal } = mount(&defs, &context, None);
         Gated {

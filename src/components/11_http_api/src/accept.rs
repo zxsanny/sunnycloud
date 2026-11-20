@@ -179,7 +179,7 @@ async fn serve_connection(
         app: TowerToHyperService::new(app),
         peer: PeerAddr(peer),
     };
-    let connection = builder.serve_connection(TokioIo::new(stream), service);
+    let connection = builder.serve_connection_with_upgrades(TokioIo::new(stream), service);
     tokio::pin!(connection);
     let mut closing = false;
     loop {
