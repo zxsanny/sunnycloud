@@ -12,3 +12,4 @@ secrets-dev/
 # Web app (src/web)
 src/web/node_modules/
 src/web/dist/
+src/web/wasm/

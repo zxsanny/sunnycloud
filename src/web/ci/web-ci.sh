@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The web job (AZ-3935): the same steps on a laptop and in CI. Needs Node >= 22 and npm.
+# The web job (AZ-3935): the same steps on a laptop and in CI. Needs Node >= 22, npm and the Rust toolchain of
+# src/rust-toolchain.toml (wasm32-unknown-unknown target); wasm-pack is installed when missing.
 # usage: src/web/ci/web-ci.sh
 set -euo pipefail
 
@@ -7,6 +8,12 @@ cd "$(dirname "$0")/.."
 
 echo "[web] npm ci"
 npm ci --no-audit --no-fund
+
+echo "[web] sync-core-wasm for the browser (wasm-pack, pinned Rust toolchain)"
+if ! command -v wasm-pack >/dev/null; then
+  cargo install wasm-pack --locked --version 0.15.1
+fi
+npm run build:wasm
 
 echo "[web] lint (eslint, prettier)"
 npm run lint

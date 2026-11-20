@@ -1,7 +1,16 @@
+import { matchRoute, type RouteDef } from './match';
+
 class RouteState {
+  /** The table the Router renders; set once by it, so parameters can be read from any page. */
+  table: RouteDef<unknown>[] = [];
   path = $state(globalThis.location.pathname);
   search = $state(globalThis.location.search);
   hash = $state(globalThis.location.hash);
+
+  /** Parameters of the matched route, such as `id` of `/folders/:id`. */
+  get params(): Record<string, string> {
+    return matchRoute(this.table, this.path)?.params ?? {};
+  }
 
   get query(): URLSearchParams {
     return new URLSearchParams(this.search);

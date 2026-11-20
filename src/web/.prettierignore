@@ -4,3 +4,4 @@ openapi
 package-lock.json
 src/lib/api/generated
 src/styles/tokens.css
+wasm

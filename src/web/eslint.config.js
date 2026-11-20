@@ -6,7 +6,7 @@ import ts from 'typescript-eslint';
 import svelteConfig from './svelte.config.js';
 
 export default defineConfig(
-  { ignores: ['dist/', 'node_modules/', 'openapi/', 'src/lib/api/generated/'] },
+  { ignores: ['dist/', 'node_modules/', 'openapi/', 'wasm/', 'src/lib/api/generated/'] },
   js.configs.recommended,
   ts.configs.recommended,
   svelte.configs.recommended,

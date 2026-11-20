@@ -15,7 +15,9 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run --reporter verbose",
-    "gen:api": "node scripts/gen-api.mjs"
+    "gen:api": "node scripts/gen-api.mjs",
+    "build:wasm": "bash scripts/build-wasm.sh",
+    "check:large": "vitest run --config vitest.manual.config.ts --reporter verbose"
   },
   "dependencies": {
     "@fontsource-variable/manrope": "5.3.0",

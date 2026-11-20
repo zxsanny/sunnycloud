@@ -79,3 +79,9 @@ export function isAppLevelError(error: ApiError): boolean {
     status === 426 || status === 429 || status === 507 || status >= 500 || error.code === 'internal'
   );
 }
+
+/** A failure that may go away by itself: no answer, 429, or a server fault. */
+export function isTransientError(error: ApiError): boolean {
+  const status = error.status ?? 0;
+  return error.kind === 'network' || status === 429 || status >= 500;
+}

@@ -60,6 +60,32 @@ describe('the production bundle under the CSP (script-src and style-src self)', 
     expect(findings).toEqual([]);
   });
 
+  it('serves sync-core-wasm as a content-hashed file that the Worker loads by URL, never inlined', () => {
+    // Arrange
+    const names = readdirSync(join(out, 'assets'));
+    const wasm = names.find((name) => /^sync_core_wasm_bg-[\w-]+\.wasm$/.test(name));
+    const worker = names.find((name) => /^transfer\.worker-[\w-]+\.js$/.test(name));
+
+    // Act
+    const workerSource = worker ? readFileSync(join(out, 'assets', worker), 'utf8') : '';
+    const inlined = names
+      .filter((name) => name.endsWith('.js'))
+      .some((name) =>
+        /data:application\/wasm|new Uint8Array\(atob\(/.test(
+          readFileSync(join(out, 'assets', name), 'utf8'),
+        ),
+      );
+
+    // Assert
+    expect(wasm).toBeDefined();
+    expect(worker).toBeDefined();
+    expect(workerSource).toContain(`/assets/${wasm}`);
+    expect(inlined).toBe(false);
+    expect(readFileSync(join(out, 'assets', wasm ?? '')).subarray(0, 4)).toEqual(
+      Buffer.from([0, 0x61, 0x73, 0x6d]),
+    );
+  });
+
   it('serves Manrope and JetBrains Mono as separate woff2 files from its own origin', () => {
     // Act
     const fonts = readdirSync(join(out, 'assets')).filter((name) => name.endsWith('.woff2'));

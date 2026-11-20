@@ -14,7 +14,8 @@
     "allowJs": true,
     "noEmit": true,
     "paths": {
-      "$lib/*": ["./src/lib/*"]
+      "$lib/*": ["./src/lib/*"],
+      "$wasm/*": ["./wasm/pkg/*"]
     }
   },
   "include": [

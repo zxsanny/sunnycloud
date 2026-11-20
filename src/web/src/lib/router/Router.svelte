@@ -11,7 +11,10 @@
   let { routes, notFound }: { routes: RouteDef<PageComponent>[]; notFound: PageComponent } =
     $props();
 
-  const Page = $derived(matchRoute(routes, route.path)?.component ?? notFound);
+  $effect.pre(() => {
+    route.table = routes;
+  });
+  const Page = $derived(matchRoute(routes, route.path)?.route.component ?? notFound);
 </script>
 
 <Page />

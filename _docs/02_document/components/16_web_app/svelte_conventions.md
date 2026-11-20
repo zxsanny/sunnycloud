@@ -20,13 +20,23 @@ disagrees with the component description, the description wins; flag the differe
 - `src/lib/<module>/` is a module with a **barrel** `index.ts`. Everything outside the module imports `$lib/<module>`
   only; `$lib/<module>/<file>` is a lint error. Inside a module, use relative imports.
 - Modules: `api` (generated client, wrapper, `ApiError`), `router`, `ui` (shared components), `theme`, `notices`,
-  `session`, `auth`, `format`. The transfer facade `lib/transfer` arrives with the transfer engine.
+  `session`, `auth`, `format`, `files` (folder store, preview and render rules), `transfer` (the upload facade, the Worker
+  and its engine).
 - `src/pages/` pages and the signed-in shell; `src/app/` the root component, the route table and the app-level error
   mapping. Pages call the server only through `$lib/api`.
 - One component per file, PascalCase; logic that is not about markup goes in a `.ts` module next to it. At most 500 lines
   per file.
 - Tests sit beside the code as `<name>.test.ts`. Test-only components live in a `fixtures/` folder. Cross-cutting tests
   and helpers live in `tests/`.
+
+## Worker and WASM
+
+- Hashing and every upload request run in the module Worker of `lib/transfer`, never on the main thread. The engine
+  (`engine.ts`) takes its WASM, API client and `post` function as arguments, so Node tests and the manual large-file
+  check run the same code without a Worker.
+- `sync-core-wasm` is built by `scripts/build-wasm.sh` into `wasm/pkg` (gitignored) and imported through `$wasm/...`.
+  The `.wasm` stays a separate content-hashed file (`?url`, `assetsInlineLimit: 0`); a bundle test fails if it is inlined.
+- Block hashes, roll-ups, commit IDs and the upload planner come only from that module; do not write a JavaScript copy.
 
 ## Security (the CSP is `script-src 'self' 'wasm-unsafe-eval'`, `style-src 'self'`)
 
