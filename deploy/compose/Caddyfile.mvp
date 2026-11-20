@@ -1,0 +1,54 @@
+# MVP edge for the real stack on one Linux host (_docs/04_deploy/mvp_runbook.md).
+# Differences from Caddyfile.dev: a public name with a Let's Encrypt certificate from Caddy's own ACME client,
+# the API on 127.0.0.1 (Caddy runs on the host network), the SPA served from a mounted folder, the SPA CSP of
+# AZ-4021, and an HTTP/1.1 upstream for the WebSocket route.
+#
+# Environment (compose.mvp.yml): PUBLIC_HOST, ACME_CA (default: Let's Encrypt STAGING; the production
+# directory is https://acme-v02.api.letsencrypt.org/directory), ACME_EMAIL_LINE (`email <address>` or empty).
+{
+	admin off
+	servers {
+		protocols h1 h2
+	}
+	acme_ca {$ACME_CA:https://acme-staging-v02.api.letsencrypt.org/directory}
+	{$ACME_EMAIL_LINE}
+}
+
+{$PUBLIC_HOST} {
+	tls {
+		protocols tls1.3
+	}
+	request_body {
+		max_size 64GB
+	}
+
+	# Go's HTTP/2 client cannot carry an HTTP/1.1 Upgrade, so the WebSocket route goes to the API over
+	# HTTP/1.1. Every other /api request keeps h2c, as in Caddyfile.dev. The route has no response timeout:
+	# the connection lives as long as the socket.
+	@realtime path /api/v1/realtime
+	handle @realtime {
+		reverse_proxy 127.0.0.1:8080 {
+			flush_interval -1
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8080 {
+			flush_interval -1
+			transport http {
+				versions h2c
+				response_header_timeout 60s
+			}
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	# Everything else is the web app; an unknown path gets index.html and the client router decides.
+	handle {
+		root * /srv/web
+		header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		try_files {path} /index.html
+		file_server
+	}
+}
