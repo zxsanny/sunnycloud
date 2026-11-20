@@ -6,3 +6,5 @@ e2e-results/
 .env
 secrets/
 secrets-dev/
+# Coverage profiles that instrumented child processes of the tests write in their working directory.
+*.profraw

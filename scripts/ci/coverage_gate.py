@@ -1,4 +1,4 @@
-"""Applies the coverage thresholds to a `cargo llvm-cov report --json --summary-only` file.
+"""Applies the coverage thresholds to a `cargo llvm-cov report --json --summary-only` file (or the merge_lcov.py output).
 
 usage: coverage_gate.py SUMMARY_JSON WORKSPACE_DIR CRITICAL_PATHS_FILE MIN_OVERALL MIN_CRITICAL
 Line coverage is covered/total instrumented lines; crates and files without instrumented lines do not count.

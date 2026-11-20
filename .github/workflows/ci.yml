@@ -49,10 +49,19 @@ jobs:
       - name: fmt, clippy, offline query data
         run: scripts/ci/watchdog.sh --name rust-lint -- scripts/ci/rust-lint.sh
 
+  # The workspace tests run in 6 parts on their own runners (every part compiles the whole workspace, 4 minutes, and runs a
+  # sixth of the tests); the `coverage` job merges their lcov files and applies the gate. Leg `features` runs the two
+  # feature builds of the server that the workspace run leaves off.
   rust-test:
+    name: rust-test (${{ matrix.shard }})
     runs-on: ubuntu-24.04
-    # The instrumented debug run of the whole workspace took over 22 minutes before the last binaries, so 25 cut it off.
-    timeout-minutes: 60
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+        include:
+          - shard: features
     services:
       postgres:
         image: postgres:18-trixie@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
@@ -76,11 +85,12 @@ jobs:
       - name: Install the pinned toolchain
         run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
       # Cargo.toml holds the dev profile (optimised dependencies): a cache saved under a key is never overwritten, so a
-      # profile change needs a new key or every run rebuilds the dependencies.
+      # profile change needs a new key or every run rebuilds the dependencies. Leg `features` builds other targets, so
+      # it saves its own cache: the first leg to finish would otherwise fix the content of the shared one.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src
-          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
+          key: ${{ matrix.shard == 'features' && 'features-' || '' }}${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
       - name: Install cargo-llvm-cov and cargo-nextest
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-llvm-cov cargo-nextest
@@ -89,13 +99,25 @@ jobs:
       # The daemon's token_keyring tests start a real gnome-keyring on a private session bus.
       - name: Install gnome-keyring, secret-tool and dbus
         run: scripts/ci/watchdog.sh --name install-keyring -- scripts/ci/install-tools.sh keyring-test-deps
-      - name: cargo llvm-cov nextest --workspace --locked (75% overall, 90% critical paths)
+      - name: cargo llvm-cov nextest, one sixth of the workspace tests
+        if: matrix.shard != 'features'
         # The instrumented workspace compile and link prints nothing for minutes (the 120 s default stalled it).
         env:
           WATCHDOG_STALL: 600
+          COVERAGE_PARTITION: ${{ matrix.shard }}/6
+          COVERAGE_LCOV_OUT: ${{ runner.temp }}/coverage-${{ matrix.shard }}.lcov
         run: scripts/ci/watchdog.sh --name rust-test -- scripts/ci/check-coverage.sh
-      # The vault service (v1.2) is linked only with feature `vault`, which the workspace run above leaves off.
+      - name: Keep the coverage of this part
+        if: matrix.shard != 'features'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-${{ matrix.shard }}
+          path: ${{ runner.temp }}/coverage-${{ matrix.shard }}.lcov
+          retention-days: 3
+          if-no-files-found: error
+      # The vault service (v1.2) is linked only with feature `vault`, which the workspace run leaves off.
       - name: Server tests with the vault feature
+        if: matrix.shard == 'features'
         working-directory: src
         env:
           WATCHDOG_STALL: 600
@@ -104,12 +126,32 @@ jobs:
           --test vault_http --test vault_report --test local_commands --test api_services --test composition_root
       # The -test images build `serve` with feature `test-clock` (AZ-4334): one OffsetClock moved through :9091.
       - name: Server tests with the test-clock feature
+        if: matrix.shard == 'features'
         working-directory: src
         env:
           WATCHDOG_STALL: 600
         run: >-
           ../scripts/ci/watchdog.sh --name rust-test-test-clock -- cargo test --locked -p sunnycloud-server
           --features test-clock --test test_clock_serve --test pipeline_gc_retention --test api_services --test composition_root
+
+  # The gate on the lcov files of the 6 parts: line coverage 75% overall, 90% on the critical paths. No Rust needed.
+  coverage:
+    needs: rust-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/lcov
+      - name: Merge the coverage of the parts and apply the gate
+        env:
+          COVERAGE_LCOV_DIR: ${{ runner.temp }}/lcov
+        run: scripts/ci/watchdog.sh --name coverage -- scripts/ci/check-coverage.sh
 
   # The three 1 GiB ACs (AZ-3657 AC-1, AZ-3660 AC-72, AZ-3758 AC-3) in release mode, apart from the instrumented rust-test
   # job (owner decision 2026-11-18). Each runs by its exact name, so no other ignored test runs here; run-one-test.sh
