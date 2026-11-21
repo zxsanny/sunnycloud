@@ -1,8 +1,9 @@
 //! A snapshot of `/proc`: which processes exist, who their parents and groups are and how much
 //! memory they hold.
 
-use std::fs;
-use std::io;
+use std::fs::{self, File};
+use std::io::{self, Read};
+use std::path::Path;
 
 use crate::sys::page_size;
 
@@ -30,21 +31,31 @@ pub fn snapshot() -> io::Result<Vec<Process>> {
         else {
             continue;
         };
-        match fs::read_to_string(entry.path().join("stat")) {
-            Ok(stat) => match parse_stat(pid, &stat, page) {
-                Some(process) => processes.push(process),
-                None => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "unreadable /proc/<pid>/stat",
-                    ));
-                }
-            },
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
-        }
+        let Some(stat) = read_stat(&entry.path().join("stat"))? else {
+            continue;
+        };
+        let process = parse_stat(pid, &stat, page).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "unreadable /proc/<pid>/stat")
+        })?;
+        processes.push(process);
     }
     Ok(processes)
+}
+
+/// The text of one `stat` file, or `None` when the process is gone. A process that is reaped
+/// between the `open` and the `read` makes the `read` fail with `ESRCH` rather than `ENOENT`,
+/// and on a busy machine that window is wide (the scanner is preempted inside it).
+fn read_stat(path: &Path) -> io::Result<Option<String>> {
+    let mut stat = String::new();
+    match File::open(path).and_then(|mut file| file.read_to_string(&mut stat)) {
+        Ok(_) => Ok(Some(stat)),
+        Err(error) if process_is_gone(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn process_is_gone(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::NotFound || error.raw_os_error() == Some(libc::ESRCH)
 }
 
 /// The resident memory of every process in group `pgrp`.
@@ -104,6 +115,37 @@ mod tests {
         let stat = "42 (x) Z 7 9 9 0 -1 4194560 1 0 0 0 0 0 0 0 20 0 1 0 100 0 0 0";
 
         assert!(parse_stat(42, stat, 4096).expect("parsed").zombie);
+    }
+
+    #[test]
+    fn a_process_reaped_between_the_open_and_the_read_is_a_gone_process_not_an_error() {
+        let mut child = std::process::Command::new("/bin/sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let path = format!("/proc/{}/stat", child.id());
+        let mut open = File::open(&path).expect("open stat while the process lives");
+        child.kill().expect("kill");
+        child.wait().expect("reap");
+
+        let mut text = String::new();
+        let raw = open
+            .read_to_string(&mut text)
+            .expect_err("the kernel refuses the read");
+        let scanned = read_stat(Path::new(&path)).expect("a gone process is not an error");
+
+        assert_eq!(raw.raw_os_error(), Some(libc::ESRCH), "{raw}");
+        assert_eq!(scanned, None);
+    }
+
+    #[test]
+    fn a_stat_of_a_live_process_is_read() {
+        let text = read_stat(Path::new("/proc/self/stat")).expect("read");
+
+        assert!(
+            text.expect("own stat")
+                .contains(&std::process::id().to_string())
+        );
     }
 
     #[test]

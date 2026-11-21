@@ -7,12 +7,12 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use common::media::{
-    Media, MediaRunner, WAIT, image_result, limits, path_with_stub, render, wait_until_gone,
+    Media, MediaRunner, RunnerEnd, WAIT, image_result, limits, path_with_stub, render,
+    wait_until_gone,
 };
 use media_shared::decoder_protocol::{DecodeError, LimitKind, Request, Response};
 
 const EXIT_HOSTILE: i32 = 3;
-const FIVE_SECONDS: Duration = Duration::from_secs(5);
 
 fn photo() -> Vec<u8> {
     Media::new().image("photo.jpg", 400, 300)
@@ -37,8 +37,13 @@ fn hostile_runner(stub: &str) -> (tempfile::TempDir, MediaRunner) {
 
 #[test]
 fn a_descendant_that_left_its_process_group_is_killed_before_the_reply_and_the_runner_ends() {
-    let (_bin, mut runner) =
-        hostile_runner("setsid -f sh -c 'trap \"\" TERM HUP; exec sleep 59.401'");
+    // The stub waits until the descendant has really left the group (it writes `escaped` after
+    // `setsid`). Without the wait a slow machine lets the stub end first, and the guard then
+    // kills the not yet escaped process as a group member: the straggler path, tested below.
+    let (_bin, mut runner) = hostile_runner(
+        "setsid -f sh -c 'echo > escaped; trap \"\" TERM HUP; exec sleep 59.401'\n\
+         while [ ! -e escaped ]; do :; done",
+    );
     let mut client = runner.connect();
     let job = runner.job(&photo());
 
@@ -46,20 +51,37 @@ fn a_descendant_that_left_its_process_group_is_killed_before_the_reply_and_the_r
 
     assert_eq!(response, Response::Error(DecodeError::OutputInvalid));
     wait_until_gone(&["59.401"]);
-    assert_eq!(runner.exit_code_within(FIVE_SECONDS), Some(EXIT_HOSTILE));
+    assert_eq!(runner.end_within(WAIT), RunnerEnd::Exited(EXIT_HOSTILE));
+}
+
+#[test]
+fn a_member_of_the_tools_own_group_left_alive_is_killed_and_ends_the_runner() {
+    let (_bin, mut runner) = hostile_runner("sleep 59.407 &");
+    let mut client = runner.connect();
+    let job = runner.job(&photo());
+
+    let response = render(&mut client, &job, 320, limits());
+
+    assert_eq!(response, Response::Error(DecodeError::OutputInvalid));
+    wait_until_gone(&["59.407"]);
+    assert_eq!(runner.end_within(WAIT), RunnerEnd::Exited(EXIT_HOSTILE));
 }
 
 #[test]
 fn every_hostile_class_outcome_is_answered_and_then_ends_the_runner() {
-    let cases: [(&str, &str, Response); 3] = [
+    // Only the wall case may have a short wall: the other two stubs must reach their outcome
+    // (a crash, 700 MB resident) however slowly the machine runs them.
+    let cases: [(&str, &str, u64, Response); 3] = [
         (
             "a crash by signal",
             "kill -SEGV $$",
+            30_000,
             Response::Error(DecodeError::Corrupt),
         ),
         (
             "the wall limit",
             "exec sleep 59.402",
+            800,
             Response::Error(DecodeError::LimitExceeded {
                 limit: LimitKind::Wall,
             }),
@@ -67,26 +89,27 @@ fn every_hostile_class_outcome_is_answered_and_then_ends_the_runner() {
         (
             "the memory limit",
             "dd if=/dev/zero bs=700M count=1 | sleep 59.403",
+            30_000,
             Response::Error(DecodeError::LimitExceeded {
                 limit: LimitKind::Memory,
             }),
         ),
     ];
 
-    for (name, stub, expected) in cases {
+    for (name, stub, wall, expected) in cases {
         let (_bin, mut runner) = hostile_runner(stub);
         let mut client = runner.connect();
         let job = runner.job(&photo());
         let mut small = limits();
-        small.wall = 800;
+        small.wall = wall;
         small.memory_bytes = 128 << 20;
 
         let response = render(&mut client, &job, 320, small);
 
         assert_eq!(response, expected, "{name}");
         assert_eq!(
-            runner.exit_code_within(FIVE_SECONDS),
-            Some(EXIT_HOSTILE),
+            runner.end_within(WAIT),
+            RunnerEnd::Exited(EXIT_HOSTILE),
             "{name}"
         );
         wait_until_gone(&["59.402", "59.403"]);
@@ -110,7 +133,7 @@ fn a_pixel_limit_refusal_is_hostile_class_too() {
             limit: LimitKind::Pixels
         })
     );
-    assert_eq!(runner.exit_code_within(FIVE_SECONDS), Some(EXIT_HOSTILE));
+    assert_eq!(runner.end_within(WAIT), RunnerEnd::Exited(EXIT_HOSTILE));
 }
 
 #[test]
@@ -129,7 +152,10 @@ fn clean_failures_keep_the_same_runner_serving() {
     assert_eq!(corrupt, Response::Error(DecodeError::Corrupt));
     assert_eq!(unsupported, Response::Error(DecodeError::Unsupported));
     assert_eq!(image_result(rendered).width, 320);
-    assert_eq!(runner.exit_code_within(Duration::from_millis(300)), None);
+    assert_eq!(
+        runner.end_within(Duration::from_millis(300)),
+        RunnerEnd::StillRunning
+    );
 }
 
 fn work_of(job: &Path) -> std::path::PathBuf {

@@ -4,9 +4,11 @@
 //! runner's own.
 mod common;
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use common::media::{Media, MediaRunner, limits, path_with_stub, render, wait_until_gone};
+use common::media::{
+    Media, MediaRunner, RunnerEnd, WAIT, limits, path_with_stub, render, wait_until_gone,
+};
 use media_shared::decoder_protocol::{DecodeError, LimitKind, Response};
 
 fn photo() -> Vec<u8> {
@@ -31,14 +33,11 @@ fn a_hung_tool_is_killed_at_the_wall_limit_and_nothing_of_it_stays_alive() {
             limit: LimitKind::Wall
         })
     );
-    assert!(
-        started.elapsed() < Duration::from_secs(3),
-        "{:?}",
-        started.elapsed()
-    );
+    // The stub sleeps 59 s: an answer before WAIT is the wall kill, however slow the machine.
+    assert!(started.elapsed() < WAIT, "{:?}", started.elapsed());
     wait_until_gone(&["59.111", "59.222"]);
     assert!(!job.join("work").exists());
-    assert_eq!(runner.exit_code_within(Duration::from_secs(5)), Some(3));
+    assert_eq!(runner.end_within(WAIT), RunnerEnd::Exited(3));
 }
 
 #[test]
@@ -51,7 +50,7 @@ fn a_tool_that_crashes_on_the_input_is_a_typed_corrupt_answer() {
     let response = render(&mut client, &job, 320, limits());
 
     assert_eq!(response, Response::Error(DecodeError::Corrupt));
-    assert_eq!(runner.exit_code_within(Duration::from_secs(5)), Some(3));
+    assert_eq!(runner.end_within(WAIT), RunnerEnd::Exited(3));
 }
 
 #[test]

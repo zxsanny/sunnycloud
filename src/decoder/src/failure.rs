@@ -17,6 +17,9 @@ pub(crate) enum Failure {
     /// A child ended by a signal the limits did not raise: a crash on hostile input. Answered
     /// `Corrupt` and hostile-class.
     Crashed,
+    /// The child ended but left a live process behind. Nothing it wrote can be trusted:
+    /// answered `OutputInvalid` and hostile-class.
+    LeftProcesses,
     /// The client cancelled or the connection ended; the loop answers `Cancelled` or nothing.
     Cancelled,
 }
@@ -37,7 +40,9 @@ impl Failure {
     pub(crate) fn is_hostile(self) -> bool {
         matches!(
             self,
-            Failure::Crashed | Failure::Decode(DecodeError::LimitExceeded { .. })
+            Failure::Crashed
+                | Failure::LeftProcesses
+                | Failure::Decode(DecodeError::LimitExceeded { .. })
         )
     }
 
@@ -45,6 +50,7 @@ impl Failure {
         match self {
             Failure::Decode(error) => Response::Error(error),
             Failure::Crashed => Response::Error(DecodeError::Corrupt),
+            Failure::LeftProcesses => Response::Error(DecodeError::OutputInvalid),
             Failure::Cancelled => Response::Cancelled,
         }
     }
@@ -63,8 +69,9 @@ struct ChildFailed {
 /// signal is a crash on hostile input and `Corrupt` too.
 pub(crate) fn check(tool: &'static str, finished: &Finished) -> Result<(), Failure> {
     let failure = match finished.outcome {
-        Outcome::Exited(0) => return Ok(()),
         Outcome::Killed(Kill::Cancelled) => return Err(Failure::Cancelled),
+        Outcome::Exited(_) | Outcome::Signaled(_) if finished.stragglers => Failure::LeftProcesses,
+        Outcome::Exited(0) => return Ok(()),
         Outcome::Killed(Kill::Wall) | Outcome::Signaled(SIGXCPU) => Failure::limit(LimitKind::Wall),
         Outcome::Killed(Kill::Memory) | Outcome::Signaled(SIGKILL) => {
             Failure::limit(LimitKind::Memory)
@@ -92,6 +99,7 @@ mod tests {
         Finished {
             outcome,
             stdout: Vec::new(),
+            stragglers: false,
             stderr_tail: String::new(),
         }
     }
@@ -123,6 +131,21 @@ mod tests {
 
             assert_eq!(result, Err(expected), "{outcome:?}");
         }
+    }
+
+    #[test]
+    fn a_clean_exit_that_left_a_live_process_behind_is_hostile_and_not_a_success() {
+        let mut done = finished(Outcome::Exited(0));
+        done.stragglers = true;
+
+        let result = check("tool", &done);
+
+        assert_eq!(result, Err(Failure::LeftProcesses));
+        assert!(Failure::LeftProcesses.is_hostile());
+        assert_eq!(
+            Failure::LeftProcesses.response(),
+            Response::Error(DecodeError::OutputInvalid)
+        );
     }
 
     #[test]

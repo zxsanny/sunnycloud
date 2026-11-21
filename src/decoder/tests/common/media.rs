@@ -4,6 +4,7 @@
 use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread;
@@ -83,19 +84,30 @@ impl MediaRunner {
         job
     }
 
-    /// The exit code, once the runner has ended within `within`.
-    pub fn exit_code_within(&mut self, within: Duration) -> Option<i32> {
+    /// How the runner ended, waiting at most `within` for it to end.
+    pub fn end_within(&mut self, within: Duration) -> RunnerEnd {
         let deadline = Instant::now() + within;
         loop {
             if let Some(status) = self.child.try_wait().expect("try_wait") {
-                return status.code();
+                return match (status.code(), status.signal()) {
+                    (Some(code), _) => RunnerEnd::Exited(code),
+                    (None, signal) => RunnerEnd::Signaled(signal),
+                };
             }
             if Instant::now() >= deadline {
-                return None;
+                return RunnerEnd::StillRunning;
             }
             thread::sleep(Duration::from_millis(10));
         }
     }
+}
+
+/// How a runner process ended; a signal and "did not end" are different failures.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RunnerEnd {
+    Exited(i32),
+    Signaled(Option<i32>),
+    StillRunning,
 }
 
 impl Drop for MediaRunner {
