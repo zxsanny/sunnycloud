@@ -40,7 +40,7 @@ const region = (page: Page) => page.getByRole("region", { name: "Files" });
 const rowOf = (page: Page, name: string): Locator => region(page).locator("li", { has: page.getByTitle(name, { exact: true }) });
 const chip = (page: Page) => page.locator('[aria-label^="Live updates:"]');
 const mediaNamed = (name: string) => media.find((m) => m.name === name)!;
-const titles = (page: Page) => region(page).locator("a[title], button[title]").evaluateAll((els) => els.map((e) => e.getAttribute("title")).filter((t) => t !== "Download" && t !== "Download and check" && t !== "Delete"));
+const titles = (page: Page) => region(page).locator("a[title], button[title]").evaluateAll((els) => els.map((e) => e.getAttribute("title")).filter((t) => t !== "Download" && t !== "Download and check" && t !== "Delete" && t !== "Share link…" && !t?.startsWith("Folder sharing is not available")));
 
 async function openGrid(page: Page, url: string): Promise<void> {
   await page.goto(url);

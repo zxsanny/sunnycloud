@@ -6,6 +6,7 @@ import DeviceApprovalPage from '../pages/DeviceApprovalPage.svelte';
 import FilesPage from '../pages/FilesPage.svelte';
 import NotFoundPage from '../pages/NotFoundPage.svelte';
 import SetupPage from '../pages/SetupPage.svelte';
+import SharePublicPage from '../pages/SharePublicPage.svelte';
 import SignInPage from '../pages/SignInPage.svelte';
 
 /** `/invite#<token>` is the sign-in page in its invite state. */
@@ -18,6 +19,9 @@ export const routes: RouteDef<PageComponent>[] = [
   { path: '/login', component: SignInPage, public: true },
   { path: '/invite', component: SignInPage, public: true },
   { path: '/setup', component: SetupPage, public: true },
+  // The public share page: no session, no app shell. `/s` is the address after the token was removed from it.
+  { path: '/s/:token', component: SharePublicPage, public: true },
+  { path: '/s', component: SharePublicPage, public: true },
 ];
 
 export const notFound: PageComponent = NotFoundPage;

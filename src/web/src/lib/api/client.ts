@@ -32,6 +32,9 @@ export type AdminUserUpdate = components['schemas']['AdminUserUpdate'];
 export type AdminHealth = components['schemas']['AdminHealth'];
 export type InviteList = components['schemas']['InviteList'];
 export type CreatedInvite = components['schemas']['CreatedInvite'];
+export type ShareList = components['schemas']['ShareList'];
+export type ShareCreateRequest = components['schemas']['ShareCreateRequest'];
+export type CreatedShare = components['schemas']['CreatedShare'];
 
 /** A content route that answers Range: the node's current revision, or one named revision. */
 export type ContentRoute = { kind: 'node' | 'revision'; id: string };
@@ -170,6 +173,21 @@ export function createApi(options: ApiOptions = {}) {
       send(() => client.GET('/api/v1/revisions/{id}', { params: { path: { id } } })),
     getPublicShare: (token: string) =>
       send(() => client.GET('/api/v1/public-shares/{token}', { params: { path: { token } } })),
+    /** 204 sets the grant cookie (HttpOnly, path-scoped to this link); the password travels only in this body. */
+    postSharePasswordVerification: (token: string, password: string) =>
+      send(() =>
+        client.POST('/api/v1/public-shares/{token}/password-verifications', {
+          params: { path: { token } },
+          body: { password },
+        }),
+      ),
+    /** The links of one file; never carries a token. */
+    getShares: (nodeId: string) =>
+      send(() => client.GET('/api/v1/shares', { params: { query: { node_id: nodeId } } })),
+    /** The answer carries the plaintext token, the only time any answer does. Omit `expires_in` for the server's default. */
+    postShare: (body: ShareCreateRequest) => send(() => client.POST('/api/v1/shares', { body })),
+    deleteShare: (id: string) =>
+      send(() => client.DELETE('/api/v1/shares/{id}', { params: { path: { id } } })),
     /** Bytes `start..=end` of a file's content, as a stream: the body is never read into one buffer. */
     getContentRange: (route: ContentRoute, start: number, end: number, signal?: AbortSignal) =>
       send<ContentAnswer>(async () => {

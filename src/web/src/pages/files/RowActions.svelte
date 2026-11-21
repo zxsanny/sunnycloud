@@ -1,14 +1,17 @@
 <script lang="ts">
   import Download from '@lucide/svelte/icons/download';
+  import Link from '@lucide/svelte/icons/link';
   import ShieldCheck from '@lucide/svelte/icons/shield-check';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import type { NodeView } from '$lib/api';
   import { contentUrl, folderStore } from '$lib/files';
   import { transfer } from '$lib/transfer';
   import { Button } from '$lib/ui';
+  import ShareDialog from './ShareDialog.svelte';
 
   let { node }: { node: NodeView } = $props();
 
+  let sharing = $state(false);
   let confirming = $state(false);
   let deleting = $state(false);
   let refusal = $state<string | null>(null);
@@ -64,6 +67,18 @@
           <ShieldCheck class="size-4" aria-hidden="true" />
         </Button>
       {/if}
+      <!-- Links are for files in v1.0 (06, decision 15); a folder keeps the control and says why it is off. -->
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label="Share link for {node.name}"
+        title="Share link…"
+        disabled={node.kind === 'folder'}
+        disabledReason="Folder sharing is not available in this version"
+        onclick={() => (sharing = true)}
+      >
+        <Link class="size-4" aria-hidden="true" />
+      </Button>
       <Button
         variant="danger-ghost"
         size="sm"
@@ -79,3 +94,6 @@
     <p class="text-small font-semibold text-danger" role="alert">{refusal}</p>
   {/if}
 </div>
+{#if sharing}
+  <ShareDialog {node} onclose={() => (sharing = false)} />
+{/if}

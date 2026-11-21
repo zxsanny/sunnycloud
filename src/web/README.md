@@ -184,8 +184,25 @@ data loading by route. It holds the location in a reactive object, matches exact
 renders the matching page or the not-found page, follows same-origin link clicks without a page load (links under
 `/api/`, new-tab links and downloads stay with the browser), and handles back and forward. `:param` segments are supported (`/folders/:id`); `route.params` reads them from any page.
 
+## Share links (`src/lib/shares`, `src/pages/files/ShareDialog.svelte`, `src/pages/SharePublicPage.svelte`)
+
+Owner side: the link icon of a file row opens the share dialog (a folder row shows it disabled with its reason). It creates a
+link (`POST /shares`), shows the full URL once from that answer (the token is in no other answer, no list and no storage),
+lists the file's links by node id (`GET /shares?node_id=`, so they follow a rename or move) and revokes inline
+(`DELETE /shares/{id}`). The expiry is a field of whole days; empty omits `expires_in` and the server applies its default. No
+operation tells the client the default or the longest lifetime, so none is held here: the created answer shows the real
+expiry and a value above the server's longest lifetime is refused by the server and shown next to the field.
+
+Visitor side: `/s/<token>` is a public route (no session, no app shell). The page keeps the token in memory, and after its
+first answer replaces the address and history entry with `/s`, so a reload opens the "This link isn't available" page.
+`GET /public-shares/{token}` decides: 200 shows name, size, type and expiry, with an inline `<img>` or `<video>` only for the
+seven allowlisted types (`renderMode`) and a download for the rest; 401 `password_required` shows the password form (nothing about
+the file is in the page; the password goes only into the `password-verifications` body and the grant is the server's
+HttpOnly cookie); 429 shows a local countdown from `Retry-After`; every other failure is the one identical "not available"
+page. Download is `transfer.download({ shareToken })`, which ends "not verified" because the link answer carries no file hash.
+
 ## Routes today
 
 `/` and `/folders/:id` (the file browser), `/login`, `/invite#<token>` (the sign-in page in its invite state; the format follows the
-placeholder in the mockup and is an open point of AZ-3936), `/setup`. Not built yet: shares, device approval, admin, account
+placeholder in the mockup and is an open point of AZ-3936), `/setup`, `/s/:token` (public share page; `/s` after the token was removed). Not built yet: device approval, admin, account
 page, vault, rename and move, folder uploads, resume across reloads, downloads with verification.
