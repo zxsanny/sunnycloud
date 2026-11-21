@@ -45,6 +45,20 @@ describe('lightboxSource', () => {
     expect(source.kind).toBe('poster');
   });
 
+  it('asks for the small size of a video poster, the only size a video has', () => {
+    // Arrange
+    const node = makeNode({ name: 'a.mov', kind: 'file', media_type: 'video/quicktime' });
+
+    // Act
+    const source = lightboxSource(node, 'ready');
+
+    // Assert
+    expect(source).toEqual({
+      kind: 'poster',
+      url: `/api/v1/nodes/${node.node_id}/thumbnail?size=small`,
+    });
+  });
+
   it('falls back to the original for an allowlisted image whose thumbnail is not ready', () => {
     // Arrange
     const node = makeNode({ name: 'a.png', kind: 'file', media_type: 'image/png' });

@@ -28,8 +28,10 @@ export type LightboxSource =
 export function lightboxSource(node: NodeView, thumb: ThumbState): LightboxSource {
   const kind = previewKind(node.media_type);
   if (thumb === 'ready' && kind !== 'none') {
-    const url = thumbnailUrl(node.node_id, 'preview');
-    return kind === 'video' ? { kind: 'poster', url } : { kind: 'image', url };
+    // A video has only its poster frame, derived as a `thumb` (08_media_jobs): no `preview` size exists for it.
+    return kind === 'video'
+      ? { kind: 'poster', url: thumbnailUrl(node.node_id, 'small') }
+      : { kind: 'image', url: thumbnailUrl(node.node_id, 'preview') };
   }
   if (kind === 'image' && renderMode(node.media_type) === 'inline') {
     return { kind: 'image', url: contentUrl(node.node_id) };
