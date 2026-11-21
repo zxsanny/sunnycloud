@@ -93,7 +93,7 @@ describe('the sign-in page', () => {
     await user.click(await screen.findByRole('button', { name: /Continue with Google/ }));
 
     // Assert
-    const attempt = calls.find((c) => c.method === 'POST');
+    const attempt = calls.find((c) => c.url.pathname === '/api/v1/auth/login-attempts');
     expect(attempt?.body).toEqual({
       provider: 'oidc',
       return_to: '/files/x',
@@ -119,7 +119,9 @@ describe('the sign-in page', () => {
     await user.click(await screen.findByRole('button', { name: /Continue with Google/ }));
 
     // Assert
-    expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ return_to: '/' });
+    expect(calls.find((c) => c.url.pathname === '/api/v1/auth/login-attempts')?.body).toMatchObject(
+      { return_to: '/' },
+    );
   });
 
   it('moves to the first-run page, keeping the error, while the server has no accounts', async () => {
@@ -169,9 +171,11 @@ describe('the sign-in page', () => {
 
     // Assert
     expect(screen.getByText('You have an invite.')).toBeInTheDocument();
-    expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({
-      invite_token: 'sc_inv_secret123',
-    });
+    expect(calls.find((c) => c.url.pathname === '/api/v1/auth/login-attempts')?.body).toMatchObject(
+      {
+        invite_token: 'sc_inv_secret123',
+      },
+    );
     expect(calls.every((c) => !c.url.href.includes('secret123'))).toBe(true);
     expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain('secret123');
   });

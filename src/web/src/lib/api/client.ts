@@ -3,6 +3,7 @@ import { type ApiError, type Result, networkError, parseHttpError } from './erro
 import type { components, paths } from './generated/schema';
 import { type ServerLimits, serverLimitsOf } from './limits';
 import { uuidV7 } from './requestId';
+import { withRenewal } from './renewal';
 
 export type Account = components['schemas']['Account'];
 export type ProviderList = components['schemas']['ProviderList'];
@@ -36,10 +37,11 @@ export interface ApiOptions {
  */
 export function createApi(options: ApiOptions = {}) {
   const version = options.version ?? __APP_VERSION__;
+  const origin = options.origin ?? globalThis.location.origin;
   const client = createClient<paths>({
-    baseUrl: options.origin ?? globalThis.location.origin,
+    baseUrl: origin,
     credentials: 'same-origin',
-    fetch: options.fetch ?? ((request) => globalThis.fetch(request)),
+    fetch: options.fetch ?? withRenewal((request) => globalThis.fetch(request), origin, version),
   });
   const headers: Middleware = {
     onRequest({ request }) {
