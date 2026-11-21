@@ -26,6 +26,7 @@
     "@lucide/svelte": "1.73.0",
     "@tailwindcss/vite": "4.3.5",
     "openapi-fetch": "0.17.0",
+    "packbin": "0.5.1",
     "svelte": "5.57.3",
     "tailwindcss": "4.3.5"
   },

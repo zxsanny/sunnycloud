@@ -51,21 +51,22 @@ notices (`isAppLevelError` says which failures are the app's; the rest go to the
 Every dependency is pinned exactly in `package.json`; `bun.lock` is committed; the registry is
 registry.npmjs.org.
 
-| Package                                                                                                        | Job                                                                                             |
-| -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `svelte`                                                                                                       | The framework (runes). 5.57.3 is the version the packaging spike AZ-3930 measured.              |
-| `vite`, `@sveltejs/vite-plugin-svelte`                                                                         | Build, dev server, Svelte compiler integration (spike versions).                                |
-| `tailwindcss`, `@tailwindcss/vite`                                                                             | Utility classes mapped to the design tokens (DESIGN.md section 7).                              |
-| `openapi-fetch`                                                                                                | The small typed `fetch` client (about 6 kB) that the wrapper is built on.                       |
-| `openapi-typescript` (dev)                                                                                     | Generates the types from the OpenAPI document.                                                  |
-| `@lucide/svelte`                                                                                               | The icon set of DESIGN.md (Lucide); imported per icon, so only used icons ship.                 |
-| `@fontsource-variable/manrope`, `@fontsource/jetbrains-mono`                                                   | The two fonts as woff2 files served from our own origin (the CSP allows no font host). SIL OFL. |
-| `typescript` 5.9.3 (dev)                                                                                       | Types. Not 7: `svelte-check` and `openapi-typescript` accept only 5.x and 6.x as peers.         |
-| `svelte-check` (dev)                                                                                           | Type check of `.svelte` files.                                                                  |
-| `eslint`, `@eslint/js`, `typescript-eslint`, `eslint-plugin-svelte`, `globals` (dev)                           | Lint, including the rules that keep the bundle inside the CSP.                                  |
-| `prettier`, `prettier-plugin-svelte` (dev)                                                                     | Formatting.                                                                                     |
-| `vitest`, `jsdom`, `@testing-library/svelte`, `@testing-library/user-event`, `@testing-library/jest-dom` (dev) | Unit and component tests.                                                                       |
-| `@types/node` (dev)                                                                                            | Types for the tests and config that use `node:` modules.                                        |
+| Package                                                                                                        | Job                                                                                                                                                                           |
+| -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `svelte`                                                                                                       | The framework (runes). 5.57.3 is the version the packaging spike AZ-3930 measured.                                                                                            |
+| `vite`, `@sveltejs/vite-plugin-svelte`                                                                         | Build, dev server, Svelte compiler integration (spike versions).                                                                                                              |
+| `tailwindcss`, `@tailwindcss/vite`                                                                             | Utility classes mapped to the design tokens (DESIGN.md section 7).                                                                                                            |
+| `packbin`                                                                                                      | The binary frame codec of the realtime channel (exact 0.5.1, the version the server's Rust crate packs identically). Brings `@noble/hashes` for frame sessions we do not use. |
+| `openapi-fetch`                                                                                                | The small typed `fetch` client (about 6 kB) that the wrapper is built on.                                                                                                     |
+| `openapi-typescript` (dev)                                                                                     | Generates the types from the OpenAPI document.                                                                                                                                |
+| `@lucide/svelte`                                                                                               | The icon set of DESIGN.md (Lucide); imported per icon, so only used icons ship.                                                                                               |
+| `@fontsource-variable/manrope`, `@fontsource/jetbrains-mono`                                                   | The two fonts as woff2 files served from our own origin (the CSP allows no font host). SIL OFL.                                                                               |
+| `typescript` 5.9.3 (dev)                                                                                       | Types. Not 7: `svelte-check` and `openapi-typescript` accept only 5.x and 6.x as peers.                                                                                       |
+| `svelte-check` (dev)                                                                                           | Type check of `.svelte` files.                                                                                                                                                |
+| `eslint`, `@eslint/js`, `typescript-eslint`, `eslint-plugin-svelte`, `globals` (dev)                           | Lint, including the rules that keep the bundle inside the CSP.                                                                                                                |
+| `prettier`, `prettier-plugin-svelte` (dev)                                                                     | Formatting.                                                                                                                                                                   |
+| `vitest`, `jsdom`, `@testing-library/svelte`, `@testing-library/user-event`, `@testing-library/jest-dom` (dev) | Unit and component tests.                                                                                                                                                     |
+| `@types/node` (dev)                                                                                            | Types for the tests and config that use `node:` modules.                                                                                                                      |
 
 ## Uploads: the transfer module (`src/lib/transfer`)
 
@@ -96,9 +97,9 @@ all come from that one Rust implementation; there is no JavaScript copy of them.
 
 Routes `/` (the account's root) and `/folders/:id`. Every visit reads the folder, its first page (200 rows) and its
 ancestors again; nothing is cached by path. `folderStore` holds the open folder. Rows merge by node id and feed position
-(`upsert`: a lower `seq` is stale, a tombstone removes); the REST first load, the node read after an upload and, on day
-3, pushed realtime frames all go through it. `setThumbState(hash, state)` is the seam for a pushed thumbnail-state frame.
-Nothing in the page asks the server on a timer.
+(`upsert`: a lower `seq` is stale, a tombstone removes); the REST first load, the answer of a create and the pushed
+realtime frames all go through it. Nothing in the page asks the server on a timer; a finished upload appears through its
+Change frame (if the socket is down, when it reconnects and catches up).
 
 Thumbnails: after each page one `POST /thumbnail-states` for the previewable files (image and video media types).
 `ready` shows `<img src=".../thumbnail?size=small" loading="lazy" decoding="async">`; `pending` a skeleton with "Preview
@@ -106,6 +107,33 @@ pending"; `failed`, no job, and kinds with no preview an icon with "No preview".
 there is no `<video>` element. A click on an image opens a lightbox with `size=preview`; without a ready thumbnail only an
 allowlisted image type (`renderMode`) falls back to the original. HTML, SVG, PDF and everything else get a download link. The
 server's media type decides, never the file name. Download is a plain link to `/api/v1/nodes/{id}/content`.
+
+## Realtime (`src/lib/realtime`, `src/app/realtime.ts`)
+
+Live state arrives only as pushed frames over one WebSocket (`GET /api/v1/realtime`, contract `realtime.md`); REST is for
+first load and writes. `frames.ts` has the packbin 0.5.1 schemes of every frame; `decodeServerFrame` returns a typed
+result or a typed refusal (`empty`, `unknown_type`, `malformed`, `invalid_value`) and never throws on bytes from the network;
+`u64` is `bigint`. packbin reads member names from the source text of the accessor lambdas, so `tests/bundle.test.ts`
+builds `frames.ts` minified and runs every vector of `src/components/11_http_api/tests/fixtures/realtime_frames.txt`
+through that build.
+
+`RealtimeClient` (`client.svelte.ts`, a rune class with `state`: `idle`, `connecting`, `live`, `reconnecting`,
+`signed-out`, `failed`) lives for as long as the file browser is open:
+
+1. open the socket; wait for `Hello` (version 1, else close and show "reload to update");
+2. the REST first load, read after Hello: `GET /changes/head` first, then the listing of the open folder (the head before the
+   listing, so a change in between is re-sent by the subscription, never missed);
+3. `Subscribe{epoch, seq}` at that head. The resume point moves only on a `Change` with `end` set.
+4. `Ping` every `ping_interval_s` with a nonce; no `Pong` in 10 s, no `Hello` in 10 s, or 90 s without any message means a dead
+   socket: leave it and reconnect. These timers and the reconnect backoff (1 s doubling to 30 s, up to 25 % jitter) are the
+   only timers; none of them asks the server for data.
+5. After a drop: `Subscribe` at the last resume point and one `POST /thumbnail-states` for the pending hashes. Close 4401
+   goes to sign-in through the 401 path; 1002 stops and shows a reload notice; every other code reconnects.
+6. `Reset`: the listing is read once over REST, then `Subscribe` at the head the frame names.
+
+`src/app/realtime.ts` wires it: a `Change` becomes a row of the open folder when its parent is that folder (a tombstone or a
+node that left the folder removes it) and sets the thumbnail state of its content hash; `ThumbState` goes to
+`folderStore.setThumbState`. The app shell shows a chip: Live, Reconnecting or Offline.
 
 ## Memory check (`bun run check:large`)
 
@@ -138,4 +166,4 @@ renders the matching page or the not-found page, follows same-origin link clicks
 
 `/` and `/folders/:id` (the file browser), `/login`, `/invite#<token>` (the sign-in page in its invite state; the format follows the
 placeholder in the mockup and is an open point of AZ-3936), `/setup`. Not built yet: shares, device approval, admin, account
-page, vault, rename and move, folder uploads, resume across reloads, downloads with verification, the realtime client.
+page, vault, rename and move, folder uploads, resume across reloads, downloads with verification.

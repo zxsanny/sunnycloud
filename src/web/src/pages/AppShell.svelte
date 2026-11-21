@@ -4,6 +4,8 @@
   import { navigate } from '$lib/router';
   import { session } from '$lib/session';
   import { BrandMark, Button, ThemeToggle } from '$lib/ui';
+  import { realtime } from '../app/realtime';
+  import ConnectionChip from './ConnectionChip.svelte';
 
   let { children }: { children: Snippet } = $props();
 
@@ -21,6 +23,7 @@
   <header class="flex h-16 flex-none items-center gap-3 px-4 lg:px-8">
     <a href="/" class="rounded-control text-ink no-underline"><BrandMark /></a>
     <div class="flex-1"></div>
+    <ConnectionChip state={realtime.state} />
     <ThemeToggle />
     {#if session.account}
       <span class="hidden text-row text-ink-2 md:inline">{session.account.display_name}</span>

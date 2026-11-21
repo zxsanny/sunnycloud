@@ -21,7 +21,7 @@ disagrees with the component description, the description wins; flag the differe
   only; `$lib/<module>/<file>` is a lint error. Inside a module, use relative imports.
 - Modules: `api` (generated client, wrapper, `ApiError`), `router`, `ui` (shared components), `theme`, `notices`,
   `session`, `auth`, `format`, `files` (folder store, preview and render rules), `transfer` (the upload facade, the Worker
-  and its engine).
+  and its engine), `realtime` (the frames and the WebSocket client).
 - `src/pages/` pages and the signed-in shell; `src/app/` the root component, the route table and the app-level error
   mapping. Pages call the server only through `$lib/api`.
 - One component per file, PascalCase; logic that is not about markup goes in a `.ts` module next to it. At most 500 lines
@@ -37,6 +37,16 @@ disagrees with the component description, the description wins; flag the differe
 - `sync-core-wasm` is built by `scripts/build-wasm.sh` into `wasm/pkg` (gitignored) and imported through `$wasm/...`.
   The `.wasm` stays a separate content-hashed file (`?url`, `assetsInlineLimit: 0`); a bundle test fails if it is inlined.
 - Block hashes, roll-ups, commit IDs and the upload planner come only from that module; do not write a JavaScript copy.
+
+## Realtime
+
+- Live state arrives only as frames pushed over the one WebSocket; REST is for first load and writes. No timer asks the
+  server anything: the only timers in `lib/realtime` are the keepalive and the reconnect backoff. A test advances 30 minutes of
+  fake time and counts the requests.
+- Frames use packbin, whose TypeScript API reads member names from the source text of the accessor lambdas: write them as
+  `(x: Row) => x.member` and nothing else. Decoding bytes from the network returns a refusal value and never throws.
+- The client takes its WebSocket constructor and random source as arguments, and tests drive a fake socket under
+  fake timers; no test opens a real socket (`tests/setup.ts` stubs `WebSocket`).
 
 ## Security (the CSP is `script-src 'self' 'wasm-unsafe-eval'`, `style-src 'self'`)
 

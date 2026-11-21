@@ -26,7 +26,13 @@ export default defineConfig(
     },
   },
   {
-    files: ['scripts/**/*.mjs', 'vite.config.ts', 'eslint.config.js', 'svelte.config.js'],
+    files: [
+      'scripts/**/*.mjs',
+      'tests/**/*.mjs',
+      'vite.config.ts',
+      'eslint.config.js',
+      'svelte.config.js',
+    ],
     languageOptions: { globals: globals.node },
   },
   {

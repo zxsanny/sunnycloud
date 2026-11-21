@@ -102,6 +102,7 @@ export function createApi(options: ApiOptions = {}) {
       const result = await send(() => client.GET('/api/v1/server-info'));
       return result.ok ? { ok: true, value: serverLimitsOf(result.value) } : result;
     },
+    getChangesHead: () => send(() => client.GET('/api/v1/changes/head')),
     getNodesRoot: () => send(() => client.GET('/api/v1/nodes/root')),
     getNode: (id: string) =>
       send(() => client.GET('/api/v1/nodes/{id}', { params: { path: { id } } })),

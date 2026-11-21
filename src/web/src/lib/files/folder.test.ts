@@ -126,20 +126,4 @@ describe('the folder store: merging rows by node id and feed position', () => {
     // Assert
     expect(folderStore.thumbs.h1).toBe('ready');
   });
-
-  it('reads the real row of a finished upload and merges it', async () => {
-    // Arrange
-    const created = server.add(server.root, {
-      name: 'new.jpg',
-      kind: 'file',
-      media_type: 'image/jpeg',
-    });
-
-    // Act
-    folderStore.adopt(created.node_id);
-
-    // Assert
-    await vi.waitFor(() => expect(names()).toContain('new.jpg'));
-    expect(folderStore.items.find((i) => i.name === 'new.jpg')?.media_type).toBe('image/jpeg');
-  });
 });

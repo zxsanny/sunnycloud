@@ -30,12 +30,6 @@ export interface JobProgress {
   errorText?: string;
 }
 
-export interface UploadedEvent {
-  nodeId: string;
-  parentId: string;
-  name: string;
-}
-
 export type EnqueueResult =
   { ok: true; value: string[] } | { ok: false; error: { code: UploadError; text: string } };
 
@@ -89,7 +83,6 @@ export class TransferService {
   private readonly queuedSmall: Job[] = [];
   private readonly queuedLarge: Job[] = [];
   private readonly pending: Job[] = [];
-  private readonly listeners = new Set<(event: UploadedEvent) => void>();
   /* eslint-enable svelte/prefer-svelte-reactivity */
   private staging = 0;
   private largeActive = 0;
@@ -101,12 +94,6 @@ export class TransferService {
   private ready: Promise<void> | null = null;
 
   constructor(private readonly deps: TransferDeps) {}
-
-  /** A job finished and the server holds a node for it; the file browser merges it into the open folder. */
-  onUploaded(listener: (event: UploadedEvent) => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
 
   async enqueueUpload(files: File[], parentId: string): Promise<EnqueueResult> {
     if (files.length > MAX_SELECTION_FILES) {
@@ -327,8 +314,6 @@ export class TransferService {
         row.bytesDone = row.size;
         row.lanes = 0;
         this.finish(job, row, 'done');
-        if (m.nodeId !== null)
-          this.emit({ nodeId: m.nodeId, parentId: job.parentId, name: job.name });
         break;
       }
       case 'failed': {
@@ -367,7 +352,6 @@ export class TransferService {
       if (entry?.status === 'committed') {
         row.bytesDone = row.size;
         this.finish(job, row, 'done');
-        this.emit({ nodeId: entry.nodeId, parentId: job.parentId, name: job.name });
       } else {
         // A staged key is single-use once committed or refused; a retry stages the file again.
         job.stagedKey = undefined;
@@ -434,10 +418,6 @@ export class TransferService {
   private setRunning(job: Job) {
     const row = this.rows.get(job.id);
     if (row) row.state = 'running';
-  }
-
-  private emit(event: UploadedEvent) {
-    for (const listener of this.listeners) listener(event);
   }
 
   /** Stops the Worker; tests and hot reload use it. */

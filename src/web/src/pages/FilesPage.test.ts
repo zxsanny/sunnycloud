@@ -389,45 +389,6 @@ describe('the file browser: views and uploads', () => {
     expect(enqueue).toHaveBeenCalledExactlyOnceWith([file], server.root.node_id);
     expect(await screen.findByText('Folders are not uploaded yet.')).toBeInTheDocument();
   });
-
-  it('merges a finished upload into the open folder by reading its node', async () => {
-    // Arrange
-    let announce: (e: { nodeId: string; parentId: string; name: string }) => void = () => {};
-    vi.spyOn(transfer, 'onUploaded').mockImplementation((listener) => {
-      announce = listener;
-      return () => {};
-    });
-    open();
-    await screen.findByText('This folder is empty');
-    const created = server.add(server.root, { name: 'fresh.txt', kind: 'file' });
-
-    // Act
-    announce({ nodeId: created.node_id, parentId: server.root.node_id, name: 'fresh.txt' });
-
-    // Assert
-    expect(await screen.findByText('fresh.txt')).toBeInTheDocument();
-    expect(
-      server.requests.filter((r) => r.path === `/api/v1/nodes/${created.node_id}`),
-    ).toHaveLength(1);
-  });
-
-  it('ignores a finished upload that went to another folder', async () => {
-    // Arrange
-    let announce: (e: { nodeId: string; parentId: string; name: string }) => void = () => {};
-    vi.spyOn(transfer, 'onUploaded').mockImplementation((listener) => {
-      announce = listener;
-      return () => {};
-    });
-    open();
-    await screen.findByText('This folder is empty');
-    const requestsBefore = server.requests.length;
-
-    // Act
-    announce({ nodeId: 'x', parentId: 'another-folder', name: 'x' });
-
-    // Assert
-    expect(server.requests.length).toBe(requestsBefore);
-  });
 });
 
 describe('the transfers panel', () => {

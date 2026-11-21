@@ -256,24 +256,6 @@ describe('the transfer service: errors, cancel, retry', () => {
     expect(server.nodes).toHaveLength(1);
   });
 
-  it('tells the file browser which node a finished upload created', async () => {
-    // Arrange
-    const { service, server } = setup();
-    const events: { nodeId: string; name: string }[] = [];
-    service.onUploaded((e) => events.push({ nodeId: e.nodeId, name: e.name }));
-
-    // Act
-    await service.enqueueUpload(
-      [new File([new Uint8Array(3)], 'x.txt'), patternFile(2 * MIB + 1, 'big')],
-      PARENT,
-    );
-    await settle(service);
-
-    // Assert
-    expect(events.map((e) => e.name).sort()).toEqual(['big', 'x.txt']);
-    expect(events.map((e) => e.nodeId).sort()).toEqual(server.nodes.map((n) => n.nodeId).sort());
-  });
-
   it('drops a finished row from the panel without touching the others', async () => {
     // Arrange
     const { service } = setup();

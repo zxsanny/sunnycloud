@@ -45,6 +45,8 @@ export class TreeServer {
   readonly root: Node;
   /** Answer of `POST /thumbnail-states`, by content hash; a hash not listed is left out of the answer. */
   thumbStates: Record<string, string> = {};
+  /** The cursor `GET /changes/head` answers. */
+  head = '1.100';
   /** Delays or fails a route: return a Response (or a promise of one) to answer instead. */
   intercept: ((method: string, path: string) => Response | Promise<Response> | undefined) | null =
     null;
@@ -86,6 +88,11 @@ export class TreeServer {
     if (forced) return forced;
     const path = url.pathname;
     if (request.method === 'GET' && path === '/api/v1/accounts/me') return json(account);
+    if (request.method === 'GET' && path === '/api/v1/auth/providers') {
+      return json({ providers: [{ key: 'oidc', display_name: 'Google' }], setup_required: false });
+    }
+    if (request.method === 'GET' && path === '/api/v1/changes/head')
+      return json({ cursor: this.head });
     if (request.method === 'GET' && path === '/api/v1/nodes/root') return json(this.root);
     const children = /^\/api\/v1\/nodes\/([^/]+)\/children$/.exec(path);
     if (request.method === 'GET' && children)

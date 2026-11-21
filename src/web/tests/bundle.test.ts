@@ -3,7 +3,9 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { decodeClientFrame, decodeServerFrame } from '../src/lib/realtime/frames';
 import { scanAsset, scanHtml, type Finding } from './support/bundleScan';
+import { hexOf, loadVectors } from './support/realtimeVectors';
 
 // Vitest runs from the project root.
 const root = process.cwd();
@@ -179,4 +181,61 @@ describe('the bundle scanner, on seeded violations', () => {
     // Assert
     expect(findings).toEqual([]);
   });
+});
+
+describe('the realtime frames in a minified production build', () => {
+  it('decode and encode every shared vector exactly as the unminified module does', () => {
+    // Arrange
+    const out = mkdtempSync(join(tmpdir(), 'sunnycloud-frames-'));
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !name.startsWith('VITEST')),
+    );
+    execFileSync(
+      process.execPath,
+      [
+        join(root, 'node_modules/vite/bin/vite.js'),
+        'build',
+        '--config',
+        'tests/support/frames.bundle.config.ts',
+        '--outDir',
+        out,
+        '--emptyOutDir',
+      ],
+      { cwd: root, env: { ...env, NODE_ENV: 'production' }, stdio: 'pipe' },
+    );
+    const bundle = join(out, 'frames.js');
+    const vectors = loadVectors();
+    const input = JSON.stringify(
+      Object.fromEntries([...vectors].map(([name, bytes]) => [name, hexOf(bytes)])),
+    );
+
+    // Act
+    const run = execFileSync(
+      process.execPath,
+      [join(root, 'tests/support/runBundledFrames.mjs'), bundle],
+      {
+        input,
+        env,
+      },
+    ).toString();
+    rmSync(out, { recursive: true, force: true });
+
+    // Assert
+    const built = JSON.parse(run) as {
+      server: Record<string, string>;
+      client: Record<string, string>;
+      encoded: Record<string, string>;
+    };
+    const text = (value: unknown) =>
+      JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+    for (const [name, bytes] of vectors) {
+      expect(built.server[name], `server decode of ${name}`).toBe(text(decodeServerFrame(bytes)));
+      expect(built.client[name], `client decode of ${name}`).toBe(text(decodeClientFrame(bytes)));
+    }
+    expect(built.server.change_file).toContain('"nodeKind":"file"');
+    expect(built.server.change_file).toContain('"name":"IMG_0001.HEIC"');
+    expect(built.server.bad_server_hello_truncated).toContain('"ok":false');
+    expect(built.encoded.subscribe).toBe(hexOf(vectors.get('subscribe') ?? new Uint8Array()));
+    expect(built.encoded.ping).toBe(hexOf(vectors.get('ping') ?? new Uint8Array()));
+  }, 120_000);
 });

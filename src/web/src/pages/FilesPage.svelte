@@ -9,6 +9,7 @@
   import { route } from '$lib/router';
   import { session } from '$lib/session';
   import { transfer } from '$lib/transfer';
+  import { realtime } from '../app/realtime';
   import { Banner, Button, EmptyState, Skeleton } from '$lib/ui';
   import AppShell from './AppShell.svelte';
   import Breadcrumb from './files/Breadcrumb.svelte';
@@ -38,9 +39,8 @@
   onMount(() => {
     viewPreference.init();
     void session.load();
-    return transfer.onUploaded((event) => {
-      if (event.parentId === folderStore.folder?.node_id) folderStore.adopt(event.nodeId);
-    });
+    realtime.start();
+    return () => realtime.stop();
   });
 
   async function upload(files: File[]) {

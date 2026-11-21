@@ -2,8 +2,6 @@ import { api, type ApiError, type NodeView, type Result } from '$lib/api';
 import { previewKind, type ThumbState } from './preview';
 
 const PAGE_SIZE = 200;
-/** Completion reads of finished uploads running at once. */
-const ADOPT_PARALLEL = 4;
 
 export type FolderStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
@@ -17,9 +15,10 @@ function compare(a: NodeView, b: NodeView): number {
 
 /**
  * The open folder as the server lists it. Rows come from three places and merge by node id: the REST first
- * load and its pages, the answer of an upload or a create, and (day 3) frames pushed over the realtime channel.
- * `upsert`, `remove` and `setThumbState` are the entry points for all of them; the rule is "the higher feed
- * position (`seq`) wins". No path is cached: every open reads the folder and its ancestors again.
+ * load and its pages, the answer of a create, and the frames pushed over the realtime channel (a Change is a
+ * row, a ThumbState a thumbnail state). `upsert`, `remove` and `setThumbState` are the entry points for all of
+ * them; the rule is "the higher feed position (`seq`) wins". No path is cached: every open reads the folder and
+ * its ancestors again.
  */
 class FolderStore {
   status = $state<FolderStatus>('idle');
@@ -34,12 +33,18 @@ class FolderStore {
   thumbs = $state<Record<string, ThumbState>>({});
 
   private generation = 0;
-  private adopting = 0;
-  private readonly adoptQueue: string[] = [];
+  private openedId: string | null = null;
+  private opening: Promise<void> = Promise.resolve();
 
   /** Opens a folder by id, or the account's root when `id` is null. */
-  async open(id: string | null) {
+  open(id: string | null): Promise<void> {
     const generation = (this.generation += 1);
+    this.openedId = id;
+    this.opening = this.load(id, generation);
+    return this.opening;
+  }
+
+  private async load(id: string | null, generation: number) {
     this.status = 'loading';
     this.items = [];
     this.next = null;
@@ -66,6 +71,30 @@ class FolderStore {
     this.status = 'ready';
     void this.loadThumbStates(this.items);
     void this.loadTrail(folder, generation);
+  }
+
+  /**
+   * Reads the first page of the open folder again, in place (no skeleton), and drops the later pages. The realtime
+   * client calls it after Hello and after a Reset. A folder whose open failed is opened again. True when the
+   * listing is current.
+   */
+  async reload(): Promise<boolean> {
+    await this.opening;
+    if (this.status === 'idle') return true;
+    if (this.status !== 'ready' || !this.folder) {
+      await this.open(this.openedId);
+      return this.status === 'ready';
+    }
+    const generation = this.generation;
+    const folder = this.folder;
+    const page = await api.getNodeChildren(folder.node_id, null, PAGE_SIZE);
+    if (generation !== this.generation) return true;
+    if (!page.ok) return false;
+    this.items = page.value.items.filter((item) => item.state === 'live');
+    this.next = page.value.next;
+    this.moreFailed = false;
+    void this.loadThumbStates(this.items);
+    return true;
   }
 
   /** The next page by the cursor the server gave. */
@@ -141,31 +170,35 @@ class FolderStore {
     return result;
   }
 
-  /** A finished upload created `nodeId`: read the real row (media type, hash) and merge it. */
-  adopt(nodeId: string) {
-    this.adoptQueue.push(nodeId);
-    this.drainAdopt();
-  }
-
-  private drainAdopt() {
-    while (this.adopting < ADOPT_PARALLEL) {
-      const nodeId = this.adoptQueue.shift();
-      if (nodeId === undefined) return;
-      this.adopting += 1;
-      const generation = this.generation;
-      void api.getNode(nodeId).then((result) => {
-        this.adopting -= 1;
-        if (result.ok && generation === this.generation) this.upsert(result.value);
-        this.drainAdopt();
-      });
-    }
-  }
-
-  /** A file that just appeared has no thumbnail yet; its state arrives as a pushed frame (day 3). */
+  /** A file that just appeared has no thumbnail yet; its state arrives as a pushed frame. */
   private expectPreview(node: NodeView) {
     const hash = node.content_hash;
     if (hash && previewKind(node.media_type) !== 'none' && this.thumbs[hash] === undefined) {
       this.thumbs[hash] = 'pending';
+    }
+  }
+
+  /**
+   * One `POST /thumbnail-states` for the hashes of this folder whose preview is still pending: the realtime
+   * client's catch-up after a reconnect (a ready flip during the gap is not replayed). Not a timer's call.
+   */
+  async refreshPendingThumbs() {
+    const generation = this.generation;
+    const hashes = [
+      ...new Set(
+        this.items
+          .map((item) => item.content_hash)
+          .filter(
+            (hash): hash is string => typeof hash === 'string' && this.thumbs[hash] === 'pending',
+          ),
+      ),
+    ];
+    if (hashes.length === 0) return;
+    const answer = await api.postThumbnailStates(hashes);
+    if (generation !== this.generation || !answer.ok) return;
+    for (const hash of hashes) {
+      const state = answer.value.states[hash];
+      if (state) this.thumbs[hash] = state;
     }
   }
 
