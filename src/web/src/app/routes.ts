@@ -1,6 +1,7 @@
 import type { PageComponent, RouteDef } from '$lib/router';
 import { matchRoute } from '$lib/router';
 import AccountPage from '../pages/AccountPage.svelte';
+import AdminPage from '../pages/AdminPage.svelte';
 import DeviceApprovalPage from '../pages/DeviceApprovalPage.svelte';
 import FilesPage from '../pages/FilesPage.svelte';
 import NotFoundPage from '../pages/NotFoundPage.svelte';
@@ -12,6 +13,7 @@ export const routes: RouteDef<PageComponent>[] = [
   { path: '/', component: FilesPage },
   { path: '/folders/:id', component: FilesPage },
   { path: '/account', component: AccountPage },
+  { path: '/admin', component: AdminPage },
   { path: '/device', component: DeviceApprovalPage },
   { path: '/login', component: SignInPage, public: true },
   { path: '/invite', component: SignInPage, public: true },

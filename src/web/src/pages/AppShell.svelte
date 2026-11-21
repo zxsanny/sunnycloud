@@ -1,5 +1,6 @@
 <script lang="ts">
   import LogOut from '@lucide/svelte/icons/log-out';
+  import Shield from '@lucide/svelte/icons/shield';
   import User from '@lucide/svelte/icons/user';
   import type { Snippet } from 'svelte';
   import { navigate } from '$lib/router';
@@ -7,6 +8,7 @@
   import { BrandMark, Button, ThemeToggle } from '$lib/ui';
   import { realtime } from '../app/realtime';
   import ConnectionChip from './ConnectionChip.svelte';
+  import { isAdmin } from './admin/view';
 
   let { children }: { children: Snippet } = $props();
 
@@ -26,6 +28,14 @@
     <div class="flex-1"></div>
     <ConnectionChip state={realtime.state} />
     <ThemeToggle />
+    {#if isAdmin(session.account)}
+      <a
+        href="/admin"
+        class="inline-flex h-8 items-center gap-1.5 rounded-control px-3 text-small font-[650] text-ink no-underline hover:bg-hover"
+      >
+        <Shield class="size-4" aria-hidden="true" />Admin
+      </a>
+    {/if}
     <a
       href="/account"
       class="inline-flex h-8 items-center gap-1.5 rounded-control px-3 text-small font-[650] text-ink no-underline hover:bg-hover"

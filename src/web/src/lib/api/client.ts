@@ -27,6 +27,11 @@ export type IdentityLinkAttemptRequest = components['schemas']['IdentityLinkAtte
 export type AccountDeletionAccepted = components['schemas']['AccountDeletionAccepted'];
 export type DeviceGrantApproval = components['schemas']['DeviceGrantApproval'];
 export type DeviceGrantDecision = components['schemas']['DeviceGrantDecision']['decision'];
+export type AdminUserList = components['schemas']['AdminUserList'];
+export type AdminUserUpdate = components['schemas']['AdminUserUpdate'];
+export type AdminHealth = components['schemas']['AdminHealth'];
+export type InviteList = components['schemas']['InviteList'];
+export type CreatedInvite = components['schemas']['CreatedInvite'];
 
 /** A content route that answers Range: the node's current revision, or one named revision. */
 export type ContentRoute = { kind: 'node' | 'revision'; id: string };
@@ -134,6 +139,25 @@ export function createApi(options: ApiOptions = {}) {
           body: { decision },
         }),
       ),
+    getAdminUsers: (offset?: number, limit?: number) =>
+      send(() => client.GET('/api/v1/admin/users', { params: { query: { offset, limit } } })),
+    patchAdminUser: (id: string, body: AdminUserUpdate) =>
+      send(() => client.PATCH('/api/v1/admin/users/{id}', { params: { path: { id } }, body })),
+    /** `limit` in whole bytes; null restores the installation default. */
+    putAdminUserQuota: (id: string, limit: number | null) =>
+      send(() =>
+        client.PUT('/api/v1/admin/users/{id}/quota', {
+          params: { path: { id } },
+          body: { limit },
+        }),
+      ),
+    getAdminInvites: () => send(() => client.GET('/api/v1/admin/invites')),
+    /** The answer carries the plaintext token, the only time any answer does. */
+    postAdminInvite: (note: string) =>
+      send(() => client.POST('/api/v1/admin/invites', { body: { note } })),
+    deleteAdminInvite: (id: string) =>
+      send(() => client.DELETE('/api/v1/admin/invites/{id}', { params: { path: { id } } })),
+    getAdminHealth: () => send(() => client.GET('/api/v1/admin/health')),
     getServerLimits: async (): Promise<Result<ServerLimits>> => {
       const result = await send(() => client.GET('/api/v1/server-info'));
       return result.ok ? { ok: true, value: serverLimitsOf(result.value) } : result;
