@@ -81,7 +81,7 @@ stub_port!(DeviceGrantStub: DeviceGrantService, DeviceGrantError, {
 
 stub_port!(InviteStub: InviteService, InviteError, {
     async fn create_invite(&self, admin_account: Uuid, note: &str)
-        -> Result<InviteToken, InviteError>;
+        -> Result<CreatedInvite, InviteError>;
     async fn list(&self, admin_account: Uuid) -> Result<Vec<InviteInfo>, InviteError>;
     async fn revoke(&self, admin_account: Uuid, invite_id: Uuid) -> Result<(), InviteError>;
 });

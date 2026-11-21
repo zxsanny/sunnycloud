@@ -93,7 +93,7 @@ flowchart LR
 
 | Port | Method | Input -> Output | Errors |
 |---|---|---|---|
-| `AdminService` | `list_users(page)` | -> `[AdminUserView{account, role, state, last_login, used, limit}]` | none |
+| `AdminService` | `list_users(page)` | -> `[AdminUserView{account, display_name, role, state, last_login, used, limit}]` | none |
 | | `update_user(account, role?, state?)` | one tx: `lock_active_admins`, guard, `set_role`/`set_state` (01 revokes sessions/tokens on disable) | `LastAdmin` (409), `NotFound` |
 | | `set_quota(account, limit)` | -> `QuotaAdmin.set_limit` | `NotFound`, `InvalidLimit` |
 | | `health()` | -> `HealthReport` from contributors (database, blob volume vs floor, master key, scrub result, dead jobs, janitor lag) | none |

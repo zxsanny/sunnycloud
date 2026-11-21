@@ -14,7 +14,9 @@ pub use auth::{
     RevalidatorError,
 };
 pub use device::{ApprovalView, Decision, DeviceGrantError, DeviceGrantService};
-pub use invite::{InviteError, InviteService, OperatorIdentityError, OperatorIdentityOps};
+pub use invite::{
+    CreatedInvite, InviteError, InviteService, OperatorIdentityError, OperatorIdentityOps,
+};
 pub use model::{
     AccountFilter, AccountInfo, AccountProfile, AccountState, AccountStatus, ClientKind,
     Credential, DeviceAuthorization, DeviceInfo, DeviceToken, IdentityView, InviteInfo,

@@ -272,16 +272,30 @@ impl SessionService for IdentitySessions {
             })
             .await
             .map_err(unexpected)?;
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .filter(|row| !row.revoked && row.refresh_expires_at_micros > now)
-            .map(|row| SessionInfo {
-                id: row.id,
-                label: row.label,
-                created_at: row.created_at,
-                last_seen_at: row.last_seen_at,
+            .map(|row| {
+                let ip = row
+                    .ip
+                    .map(|text| {
+                        text.parse().map_err(|_| {
+                            unexpected(IdentityError::UnexpectedColumnValue {
+                                column: "sessions.created_ip",
+                                value: text,
+                            })
+                        })
+                    })
+                    .transpose()?;
+                Ok(SessionInfo {
+                    id: row.id,
+                    label: row.label,
+                    client_kind: row.client_kind,
+                    ip,
+                    created_at: row.created_at,
+                    last_seen_at: row.last_seen_at,
+                })
             })
-            .collect())
+            .collect()
     }
 
     async fn touch(&self, principal: &Principal) -> Result<(), SessionError> {

@@ -14,12 +14,12 @@ use crate::registry::request::{Answer, BODY_LIMIT, Services, User, refused, uuid
 pub(super) async fn create(State(services): State<Services>, user: User, body: Body) -> Answer {
     let body = json_body::read(body, BODY_LIMIT, user.request_id).await?;
     let note = wire::invite_request(&body).ok_or_else(|| malformed(user.request_id))?;
-    let token = services
+    let invite = services
         .invites
         .create_invite(user.account, &note)
         .await
         .map_err(refused(user.request_id))?;
-    Ok(Json(wire::created_invite(&token)).into_response())
+    Ok(Json(wire::created_invite(&invite)).into_response())
 }
 
 pub(super) async fn list(State(services): State<Services>, user: User) -> Answer {

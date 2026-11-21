@@ -6,8 +6,9 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use contracts::{
-    AccountState, Actor, AdminError, AdminService, AdminUserView, Fault, HealthReport, InviteError,
-    InviteInfo, InviteService, InviteToken, OperatorIdentityError, OperatorIdentityOps, Page, Role,
+    AccountState, Actor, AdminError, AdminService, AdminUserView, CreatedInvite, Fault,
+    HealthReport, InviteError, InviteInfo, InviteService, InviteToken, OperatorIdentityError,
+    OperatorIdentityOps, Page, Role,
 };
 use sc_clock::Timestamp;
 use sc_ids::{RawToken, TokenKind};
@@ -69,9 +70,12 @@ impl OperatorIdentityOps for Ports {
 
 #[async_trait]
 impl InviteService for Ports {
-    async fn create_invite(&self, admin: Uuid, note: &str) -> Result<InviteToken, InviteError> {
+    async fn create_invite(&self, admin: Uuid, note: &str) -> Result<CreatedInvite, InviteError> {
         locked(&self.calls).push(format!("create_invite {admin} [{note}]"));
-        Ok(InviteToken(token()))
+        Ok(CreatedInvite {
+            token: InviteToken(token()),
+            expires_at: Timestamp::from_unix_micros(1_794_052_800_000_000),
+        })
     }
 
     async fn list(&self, admin: Uuid) -> Result<Vec<InviteInfo>, InviteError> {

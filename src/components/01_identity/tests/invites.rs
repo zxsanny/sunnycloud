@@ -40,7 +40,8 @@ async fn a_member_invite_is_returned_once_listed_without_its_token_and_redeems_o
     let token = service
         .create_invite(admin, "for Bob")
         .await
-        .expect("create");
+        .expect("create")
+        .token;
 
     // Act
     let listed = service.list(admin).await.expect("list");
@@ -117,7 +118,11 @@ async fn a_revoked_invite_gives_invitation_required() {
     let mut rig = Rig::new(POOL, |_| {}, Vec::new()).await;
     let admin = admin(&mut rig).await;
     let service = invites(&rig.world.harness);
-    let token = service.create_invite(admin, "").await.expect("create");
+    let token = service
+        .create_invite(admin, "")
+        .await
+        .expect("create")
+        .token;
     let hash = sha256_of(&mut rig.world.conn, token.0.expose()).await;
     let id = token_rows(&mut rig.world.conn)
         .await
@@ -212,5 +217,32 @@ async fn an_operator_admin_invite_creates_a_second_admin_and_has_no_creator() {
         ("admin", None, Some(second))
     );
     drop(operator);
+    rig.finish().await;
+}
+
+#[tokio::test]
+async fn a_created_member_invite_reports_when_it_expires() {
+    // Arrange
+    let mut rig = Rig::new(POOL, |_| {}, Vec::new()).await;
+    let admin = admin(&mut rig).await;
+    let service = invites(&rig.world.harness);
+    rig.world.harness.clock.tick(Duration::from_secs(1));
+
+    // Act
+    let created = service
+        .create_invite(admin, "for Dan")
+        .await
+        .expect("create");
+
+    // Assert
+    let ttl = rig.world.harness.config.invite_ttl;
+    let listed = service.list(admin).await.expect("list");
+    let mine = listed
+        .iter()
+        .find(|info| info.note == "for Dan")
+        .expect("listed");
+    assert_eq!(Some(created.expires_at), mine.created_at.checked_add(ttl));
+    assert_eq!(created.expires_at, mine.expires_at);
+    drop(service);
     rig.finish().await;
 }

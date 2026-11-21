@@ -211,6 +211,7 @@ impl DeviceGrantService for IdentityDeviceGrants {
             grant_id: grant.id,
             expires_at: Timestamp::from_unix_micros(grant.expires_at_micros),
             device: grant.device_name,
+            platform: grant.platform,
             requester_ip,
             requester_location: grant.requester_location,
             approver_ip,

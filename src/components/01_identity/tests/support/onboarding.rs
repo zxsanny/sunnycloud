@@ -46,7 +46,16 @@ pub async fn member_by_invite(
         .create_invite(admin, "member")
         .await
         .expect("create a member invite");
-    session_tokens(sign_in(&rig.world, OIDC, subject, Some(invite.0.expose()), |_| {}).await)
+    session_tokens(
+        sign_in(
+            &rig.world,
+            OIDC,
+            subject,
+            Some(invite.token.0.expose()),
+            |_| {},
+        )
+        .await,
+    )
 }
 
 /// A further sign-in of the known identity `subject`: another session of its account.

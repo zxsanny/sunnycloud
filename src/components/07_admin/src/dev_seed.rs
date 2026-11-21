@@ -197,7 +197,10 @@ impl DevSeedImpl {
                 .create_invite(admin, INVITE_NOTE)
                 .await
                 .map_err(unexpected)?;
-            users.push(self.sign_up(subject, Redeem::Invite(invite.0)).await?);
+            users.push(
+                self.sign_up(subject, Redeem::Invite(invite.token.0))
+                    .await?,
+            );
         }
         Ok(Some((admin, users)))
     }

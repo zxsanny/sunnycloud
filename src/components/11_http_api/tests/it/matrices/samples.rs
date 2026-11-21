@@ -105,7 +105,10 @@ pub fn prepare(script: &Script, owner: &str) -> bool {
         }
         "InviteService::create_invite" => script.push(
             "InviteService::create_invite",
-            Ok::<_, InviteError>(InviteToken(token(TokenKind::Invite, "inv-token"))),
+            Ok::<_, InviteError>(CreatedInvite {
+                token: InviteToken(token(TokenKind::Invite, "inv-token")),
+                expires_at: WHEN,
+            }),
         ),
         "InviteService::list" => script.push(
             "InviteService::list",
@@ -139,6 +142,7 @@ pub fn prepare(script: &Script, owner: &str) -> bool {
                 grant_id: Uuid::from_u128(0xC1),
                 expires_at: WHEN,
                 device: "laptop".to_owned(),
+                platform: "linux".to_owned(),
                 requester_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
                 requester_location: None,
                 approver_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),

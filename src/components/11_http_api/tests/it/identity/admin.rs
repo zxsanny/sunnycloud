@@ -1,6 +1,6 @@
 use contracts::{
-    AccountStatus, AdminError, AdminUserView, HealthItem, HealthReport, HealthStatus, InviteError,
-    InviteInfo, InviteToken, Role,
+    AccountStatus, AdminError, AdminUserView, CreatedInvite, HealthItem, HealthReport,
+    HealthStatus, InviteError, InviteInfo, InviteToken, Role,
 };
 use sc_ids::TokenKind;
 use serde_json::json;
@@ -40,6 +40,7 @@ async fn the_user_list_acts_as_the_admin_and_pages_by_offset_and_limit() {
         LIST_USERS,
         Ok::<_, AdminError>(vec![AdminUserView {
             account: TARGET,
+            display_name: "Ada Lovelace".to_owned(),
             role: Role::Admin,
             state: AccountStatus::Disabled,
             last_login: Some(WHEN),
@@ -60,7 +61,8 @@ async fn the_user_list_acts_as_the_admin_and_pages_by_offset_and_limit() {
     assert_eq!(
         listed.json(),
         json!({"items": [{
-            "id": TARGET, "role": "admin", "state": "disabled", "last_login": WHEN_TEXT,
+            "id": TARGET, "display_name": "Ada Lovelace", "role": "admin", "state": "disabled",
+            "last_login": WHEN_TEXT,
             "used": 10, "limit": null,
         }]})
     );
@@ -205,7 +207,10 @@ async fn an_invite_shows_its_token_once_and_the_list_never_shows_one() {
     let stack = Stack::start().await;
     stack.script.push(
         "InviteService::create_invite",
-        Ok::<_, InviteError>(InviteToken(token(TokenKind::Invite, SECRET))),
+        Ok::<_, InviteError>(CreatedInvite {
+            token: InviteToken(token(TokenKind::Invite, SECRET)),
+            expires_at: WHEN,
+        }),
     );
     stack.script.push(
         "InviteService::list",
@@ -233,7 +238,10 @@ async fn an_invite_shows_its_token_once_and_the_list_never_shows_one() {
     .await;
 
     // Assert
-    assert_eq!(created.json(), json!({"token": SECRET}));
+    assert_eq!(
+        created.json(),
+        json!({"token": SECRET, "expires_at": WHEN_TEXT})
+    );
     let listing = String::from_utf8_lossy(&listed.body).into_owned();
     assert!(
         !listing.contains(SECRET) && !listing.contains("token"),

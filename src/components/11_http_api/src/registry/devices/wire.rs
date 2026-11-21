@@ -45,13 +45,14 @@ pub(super) fn authorization(grant: &DeviceAuthorization, verification_uri: &str)
     })
 }
 
-/// What the approver sees: the grant id `decide` takes, the code's expiry, the device's name, both addresses and
+/// What the approver sees: the grant id `decide` takes, the code's expiry, the device's name and platform, both addresses and
 /// their locations (`null` when unknown), and whether the two addresses disagree.
 pub(super) fn approval(view: &ApprovalView) -> Value {
     json!({
         "grant_id": view.grant_id,
         "expires_at": rfc3339(view.expires_at),
         "device": view.device,
+        "platform": view.platform,
         "requester_ip": view.requester_ip.to_string(),
         "requester_location": view.requester_location,
         "approver_ip": view.approver_ip.to_string(),
@@ -132,13 +133,14 @@ pub(super) const APPROVAL: SchemaRef = SchemaRef {
         json!({
             "type": "object",
             "required": [
-                "grant_id", "expires_at", "device", "requester_ip", "requester_location",
+                "grant_id", "expires_at", "device", "platform", "requester_ip", "requester_location",
                 "approver_ip", "approver_location", "mismatch"
             ],
             "properties": {
                 "grant_id": {"type": "string", "format": "uuid"},
                 "expires_at": {"type": "string"},
                 "device": {"type": "string"},
+                "platform": {"type": "string", "enum": ["linux", "windows", "macos"]},
                 "requester_ip": {"type": "string"},
                 "requester_location": {"type": ["string", "null"]},
                 "approver_ip": {"type": "string"},

@@ -78,11 +78,11 @@ pub(crate) async fn invite(
     match command {
         InviteCommand::Create { note } => {
             let note = note.as_deref().unwrap_or_default();
-            let token = invites
+            let created = invites
                 .create_invite(admin, note)
                 .await
                 .map_err(invite_failure)?;
-            Ok(with_token(token.0.expose()))
+            Ok(with_token(created.token.0.expose()))
         }
         InviteCommand::List => {
             let rows = invites.list(admin).await.map_err(invite_failure)?;

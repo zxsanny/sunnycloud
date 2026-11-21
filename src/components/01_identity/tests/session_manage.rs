@@ -151,6 +151,25 @@ async fn an_account_lists_and_revokes_only_its_own_sessions() {
 }
 
 #[tokio::test]
+async fn a_session_created_before_the_address_was_recorded_lists_no_address() {
+    // Arrange
+    let accounts = accounts().await;
+    let service = sessions(&accounts.harness);
+
+    // Act
+    let listed = service.list(accounts.a).await.expect("list");
+
+    // Assert
+    let seen: Vec<(&str, Option<std::net::IpAddr>)> = listed
+        .iter()
+        .map(|info| (info.client_kind.as_str(), info.ip))
+        .collect();
+    assert_eq!(seen, [("web", None), ("web", None)]);
+    drop(service);
+    accounts.finish().await;
+}
+
+#[tokio::test]
 async fn revoke_all_ends_only_the_callers_sessions_with_the_given_reason() {
     // Arrange
     let mut accounts = accounts().await;

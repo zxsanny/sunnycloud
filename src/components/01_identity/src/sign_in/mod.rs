@@ -238,7 +238,9 @@ impl IdentitySignIn {
                 return_to: stored.return_to,
             });
         }
-        let (tokens, session) = self.start_session(&known, &stored.client_kind).await?;
+        let (tokens, session) = self
+            .start_session(&known, &stored.client_kind, client_ip)
+            .await?;
         self.audit_sign_in(&known, Some(session)).await;
         Ok(SignInOutcome::Session {
             tokens,
@@ -345,6 +347,7 @@ impl IdentitySignIn {
         &self,
         identity: &KnownIdentity,
         client_kind: &str,
+        client_ip: IpAddr,
     ) -> Result<(SessionTokens, Uuid), SignInError> {
         let access = new_token(TokenKind::Session).map_err(unexpected)?;
         let refresh = new_token(TokenKind::Refresh).map_err(unexpected)?;
@@ -362,6 +365,7 @@ impl IdentitySignIn {
                 refresh_hash: sha256_token(refresh.expose()),
                 refresh_expires_at: after(now, self.refresh_token_ttl)?,
                 created_at: now,
+                created_ip: client_ip.to_string(),
             },
         )
         .await

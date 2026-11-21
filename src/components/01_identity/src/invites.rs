@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use contracts::{
-    Fault, InviteError, InviteInfo, InviteService, InviteToken, OperatorIdentityError,
-    OperatorIdentityOps, async_trait,
+    CreatedInvite, Fault, InviteError, InviteInfo, InviteService, InviteToken,
+    OperatorIdentityError, OperatorIdentityOps, async_trait,
 };
 use sc_audit::AuditWriter;
 use sc_clock::{Clock, Timestamp};
@@ -92,7 +92,7 @@ impl IdentityInvites {
         role: &'static str,
         created_by: Option<Uuid>,
         note: Option<&str>,
-    ) -> Result<InviteToken, Fault> {
+    ) -> Result<CreatedInvite, Fault> {
         let issued = self.issue(
             Grant {
                 kind: InviteKind::Invite,
@@ -106,7 +106,10 @@ impl IdentityInvites {
         auth_repo::insert_invite(&self.db, &issued.row)
             .await
             .map_err(Fault::from)?;
-        Ok(InviteToken(issued.token))
+        Ok(CreatedInvite {
+            token: InviteToken(issued.token),
+            expires_at: issued.row.expires_at,
+        })
     }
 }
 
@@ -137,7 +140,7 @@ impl InviteService for IdentityInvites {
         &self,
         admin_account: Uuid,
         note: &str,
-    ) -> Result<InviteToken, InviteError> {
+    ) -> Result<CreatedInvite, InviteError> {
         self.create(USER, Some(admin_account), Some(note))
             .await
             .map_err(InviteError::Unexpected)
@@ -189,6 +192,7 @@ impl OperatorIdentityOps for IdentityInvites {
     async fn create_admin_invite(&self) -> Result<InviteToken, OperatorIdentityError> {
         self.create(ADMIN, None, None)
             .await
+            .map(|created| created.token)
             .map_err(OperatorIdentityError::Unexpected)
     }
 

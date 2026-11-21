@@ -4,9 +4,10 @@
 
 mod support;
 
-use contracts::{Authenticator, Credential, SignInError, SignInOutcome};
+use contracts::{Authenticator, Credential, SessionService, SignInError, SignInOutcome};
 use sc_error::ErrorCode;
 use support::auth::authenticator;
+use support::sessions::sessions;
 use support::sign_in::{GITHUB, OIDC, World, params, world};
 use uuid::Uuid;
 
@@ -215,5 +216,31 @@ async fn a_completed_sign_in_leaves_no_plaintext_token_state_or_code_in_the_data
         assert!(!dump.contains(secret), "{name} in sessions");
     }
     assert_eq!(world.counts().await.oauth_states, 0);
+    world.finish().await;
+}
+
+#[tokio::test]
+async fn a_web_sign_in_records_the_request_address_and_the_session_list_reports_it() {
+    // Arrange
+    let mut world = world().await;
+    let account = world.known_identity(OIDC, "sub-ip").await;
+    let outcome = sign_in(&world, OIDC, "sub-ip", "ip@x.test")
+        .await
+        .expect("sign-in");
+    let session = account_of(&world, outcome).await.0;
+
+    // Act
+    let listed = sessions(&world.harness).list(account).await.expect("list");
+
+    // Assert
+    assert_eq!(session, account);
+    let stored: Option<String> = sqlx::query_scalar("SELECT host(created_ip) FROM sessions")
+        .fetch_one(&mut world.conn)
+        .await
+        .expect("session row");
+    assert_eq!(stored.as_deref(), Some("192.0.2.10"));
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].client_kind, "web");
+    assert_eq!(listed[0].ip, Some(support::sign_in::CLIENT_IP));
     world.finish().await;
 }

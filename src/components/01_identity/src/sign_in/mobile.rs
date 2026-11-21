@@ -1,6 +1,8 @@
 //! The mobile branch of sign-in: `complete` stores a one-time login code instead of a session, and
 //! `exchange_mobile_code` turns that code and the app's PKCE verifier into a normal session.
 
+use std::net::IpAddr;
+
 use contracts::{SessionTokens, SignInError};
 use sc_db::Scope;
 use sc_ids::{RawToken, TokenKind, new_id, new_token, sha256_token};
@@ -47,6 +49,7 @@ impl IdentitySignIn {
         &self,
         code: &RawToken,
         code_verifier: &str,
+        client_ip: IpAddr,
     ) -> Result<SessionTokens, SignInError> {
         let access = new_token(TokenKind::Session).map_err(unexpected)?;
         let refresh = new_token(TokenKind::Refresh).map_err(unexpected)?;
@@ -60,6 +63,7 @@ impl IdentitySignIn {
             access_expires_at: after(now, self.access_token_ttl)?,
             refresh_hash: sha256_token(refresh.expose()),
             refresh_expires_at: after(now, self.refresh_token_ttl)?,
+            client_ip: client_ip.to_string(),
         };
         match auth_repo::exchange_login_code(&self.db, &sha256_token(code.expose()), &attempt)
             .await

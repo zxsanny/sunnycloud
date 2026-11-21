@@ -247,3 +247,31 @@ async fn the_view_shows_both_sides_and_flags_a_mismatch() {
     drop((service, nowhere));
     assert_eq!(harness.finish().await, 0, "leaked connections");
 }
+
+#[tokio::test]
+async fn the_view_carries_the_platform_the_device_asked_with() {
+    // Arrange
+    let mut harness = Harness::new().await;
+    let mut conn = harness.fixture_conn().await;
+    let approver = member(&mut conn).await;
+    let service = grants(&mut harness, geo(&[]));
+    let authorization = service
+        .request("mac-1", "macos", ip("203.0.113.7"))
+        .await
+        .expect("request");
+
+    // Act
+    let view = service
+        .lookup_for_approval(&approver, &authorization.user_code, ip("203.0.113.7"))
+        .await
+        .expect("lookup");
+
+    // Assert
+    assert_eq!(
+        (view.device.as_str(), view.platform.as_str()),
+        ("mac-1", "macos")
+    );
+    conn.close().await.expect("close fixture connection");
+    drop(service);
+    assert_eq!(harness.finish().await, 0, "leaked connections");
+}

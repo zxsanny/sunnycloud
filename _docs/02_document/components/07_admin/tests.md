@@ -24,7 +24,7 @@ Harness `H1`: Rust integration binary calling the 07 ports, real PostgreSQL 18 (
 **Summary**: `list_users(page)` returns accounts from `AccountAdmin::list_accounts` and usage from `QuotaAdmin::views`, paged by `admin_list_page_size`.
 **Traces to**: AC-1, AC-23
 **Input data**: 45 accounts (3 admins, 2 disabled, 1 with limit 1 GiB, used 300 MiB, reserved 100 MiB); pages requested until exhausted.
-**Expected result**: pages of 20, 20, 5; every account exactly once, no duplicate across pages; each `AdminUserView` has `role`, `state`, `last_login`, `used`, `limit` equal to the harness-seeded values; no password-like or token fields; page order is stable across two runs.
+**Expected result**: pages of 20, 20, 5; every account exactly once, no duplicate across pages; each `AdminUserView` has `display_name`, `role`, `state`, `last_login`, `used`, `limit` equal to the harness-seeded values; no password-like or token fields; page order is stable across two runs.
 **Max execution time**: 5 s
 **Dependencies**: PostgreSQL, 01, 07a
 

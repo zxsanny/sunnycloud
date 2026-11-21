@@ -4,10 +4,10 @@
 use std::sync::{Arc, Mutex};
 
 use contracts::{
-    AccountServiceError, AccountView, DeviceGrantError, DeviceToken, IdentityView, InviteError,
-    InviteToken, Role, SessionError, SignInError, SignInOutcome,
+    AccountServiceError, AccountView, CreatedInvite, DeviceGrantError, DeviceToken, IdentityView,
+    InviteError, InviteToken, Role, SessionError, SignInError, SignInOutcome,
 };
-use sc_clock::SystemClock;
+use sc_clock::{SystemClock, Timestamp};
 use sc_ids::TokenKind;
 use sc_observability::logging::Level;
 use sc_observability::{Component, LineSink, LogConfig, LogFormat, subscriber};
@@ -74,7 +74,10 @@ async fn no_secret_of_a_sign_in_a_device_grant_or_an_invite_reaches_a_log_line_o
     );
     stack.script.push(
         "InviteService::create_invite",
-        Ok::<_, InviteError>(InviteToken(token(TokenKind::Invite, INVITE_PLAIN))),
+        Ok::<_, InviteError>(CreatedInvite {
+            token: InviteToken(token(TokenKind::Invite, INVITE_PLAIN)),
+            expires_at: Timestamp::from_unix_micros(0),
+        }),
     );
     stack.script.push(
         "AccountService::view",

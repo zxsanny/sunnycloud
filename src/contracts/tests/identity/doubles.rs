@@ -6,8 +6,8 @@ use crate::common::{Calls, IP, NOW, id, principal};
 use contracts::{
     AccountAdmin, AccountAdminError, AccountFilter, AccountGuard, AccountGuardError, AccountInfo,
     AccountProfile, AccountState, ApprovalView, Authenticator, AuthenticatorError,
-    AuthorizationRedirect, BeginSignIn, BrowserBinding, CallbackParams, Credential, Decision,
-    DeviceAuthorization, DeviceGrantError, DeviceGrantService, DeviceInfo, DeviceToken,
+    AuthorizationRedirect, BeginSignIn, BrowserBinding, CallbackParams, CreatedInvite, Credential,
+    Decision, DeviceAuthorization, DeviceGrantError, DeviceGrantService, DeviceInfo, DeviceToken,
     InviteError, InviteInfo, InviteService, InviteToken, Linked, OperatorIdentityError,
     OperatorIdentityOps, Page, Principal, PrincipalRevalidator, ProviderList, RevalidatorError,
     RevokeReason, Role, Scope, SessionError, SessionInfo, SessionService, SessionTokens,
@@ -197,6 +197,7 @@ impl DeviceGrantService for Double {
             grant_id: id(),
             expires_at: NOW,
             device: "laptop".to_owned(),
+            platform: "linux".to_owned(),
             requester_ip: IP,
             requester_location: None,
             approver_ip,
@@ -241,9 +242,12 @@ impl InviteService for Double {
         &self,
         _admin_account: Uuid,
         _note: &str,
-    ) -> Result<InviteToken, InviteError> {
+    ) -> Result<CreatedInvite, InviteError> {
         self.0.record("create_invite");
-        Ok(InviteToken(token(TokenKind::Invite)))
+        Ok(CreatedInvite {
+            token: InviteToken(token(TokenKind::Invite)),
+            expires_at: NOW,
+        })
     }
 
     async fn list(&self, _admin_account: Uuid) -> Result<Vec<InviteInfo>, InviteError> {

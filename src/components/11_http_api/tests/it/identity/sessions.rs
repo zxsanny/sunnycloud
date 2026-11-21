@@ -15,6 +15,8 @@ async fn the_session_list_is_the_callers_own() {
         Ok::<_, SessionError>(vec![SessionInfo {
             id: OTHER,
             label: "Firefox".to_owned(),
+            client_kind: "web".to_owned(),
+            ip: Some("203.0.113.5".parse().expect("address")),
             created_at: WHEN,
             last_seen_at: WHEN,
         }]),
@@ -28,12 +30,62 @@ async fn the_session_list_is_the_callers_own() {
     assert_eq!(
         answer.json(),
         json!({"items": [{
-            "id": OTHER, "label": "Firefox", "created_at": WHEN_TEXT, "last_seen_at": WHEN_TEXT,
+            "id": OTHER, "label": "Firefox", "client_kind": "web", "ip": "203.0.113.5",
+            "current": false, "created_at": WHEN_TEXT, "last_seen_at": WHEN_TEXT,
         }]})
     );
     assert_eq!(
         stack.log("SessionService::list"),
         [format!("SessionService::list ({MEMBER_ACCOUNT})")]
+    );
+    stack.stop().await;
+}
+
+#[tokio::test]
+async fn the_session_list_marks_only_the_callers_own_session_as_current_and_shows_no_address_for_an_old_one()
+ {
+    // Arrange
+    let stack = Stack::start().await;
+    let session = |id, client_kind: &str, ip| SessionInfo {
+        id,
+        label: client_kind.to_owned(),
+        client_kind: client_kind.to_owned(),
+        ip,
+        created_at: WHEN,
+        last_seen_at: WHEN,
+    };
+    stack.script.push(
+        "SessionService::list",
+        Ok::<_, SessionError>(vec![
+            session(MEMBER_SESSION, "android", None),
+            session(OTHER, "ios", Some("2001:db8::7".parse().expect("address"))),
+        ]),
+    );
+
+    // Act
+    let answer = stack.as_member("GET", "/api/v1/sessions", "").await;
+
+    // Assert
+    assert_eq!(answer.status, 200);
+    let items = &answer.json()["items"];
+    let seen: Vec<(&str, &serde_json::Value, bool)> = items
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| {
+            (
+                item["client_kind"].as_str().expect("client_kind"),
+                &item["ip"],
+                item["current"].as_bool().expect("current"),
+            )
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("android", &json!(null), true),
+            ("ios", &json!("2001:db8::7"), false)
+        ]
     );
     stack.stop().await;
 }

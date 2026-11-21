@@ -3,7 +3,7 @@
 **Component**: 07_admin
 **Producer task**: E-17/c02 (construction), E-17/c03 (`list_users`, `update_user`, `set_quota`), E-17/c04 (last-admin rule), E-17/c07 (`health`) — `_docs/02_tasks/todo/B05-02_admin_crate_skeleton.md`, `B05-03_admin_user_management.md`, `B05-04_last_admin_guard.md`, `B05-07_admin_health_aggregation.md` (renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-21/c12 (admin handlers), E-22/c03 (composition root), E-22/c08 (`admin promote|demote`), E-22/c09 (`admin user list|set-quota`); in batch E-17/c08, E-17/c09, E-17/c10
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: draft (open points below)
 **Last Updated**: 2026-11-14
 
@@ -17,7 +17,7 @@ The admin operations behind the web admin page and the operator CLI: list users 
 
 | Name | Signature (behavioural) | Errors | Blocking? |
 |------|-------------------------|--------|-----------|
-| `list_users` | `(Actor, page) -> Vec<AdminUserView{account, role, state, last_login, used, limit}>` | `Forbidden` | async; one `AccountAdmin::list_accounts` and one `QuotaAdmin::views` call per page; page size `admin_list_page_size` |
+| `list_users` | `(Actor, page) -> Vec<AdminUserView{account, display_name, role, state, last_login, used, limit}>` | `Forbidden` | async; one `AccountAdmin::list_accounts` and one `QuotaAdmin::views` call per page; page size `admin_list_page_size` |
 | `update_user` | `(Actor, account, role?, state?) -> ()` | `Forbidden`, `NotFound`, `LastAdmin` | async; one short transaction: `lock_active_admins`, guard, `set_role` and/or `set_state` |
 | `set_quota` | `(Actor, account, limit: Option<i64>) -> ()` | `Forbidden`, `NotFound`, `InvalidLimit` (from 07a) | async; `QuotaAdmin::set_limit`; `None` = installation default |
 | `health` | `(Actor) -> Result<HealthReport{items: Vec<(name, HealthItem)>}, AdminError>` (a failing or timed-out contributor is an item, never an error) | `Forbidden` | async; each contributor check bounded by `health_check_timeout` |
@@ -103,3 +103,4 @@ The admin operations behind the web admin page and the operator CLI: list users 
 | 1.1.0 | 2026-11-14 | Last-admin guard implemented in `update_user` and both deletion requests; lock order stated; IT-07-3 to IT-07-5, ST-07-3 | AZ-3818 |
 | 1.3.0 | 2026-11-14 | `impl AdminService for AdminServiceImpl` (one path; authorization before every operation); `Forbidden` on all four operations and fallible `health` (CC-3); dev seed queues media jobs through the shared effect | AZ-4309, AZ-4311 |
 | 1.2.0 | 2026-11-14 | Dev seed construction and behaviour (`DevSeedImpl`, `DevSeedPorts`, `ProviderLogin`); IT-07-14 | AZ-3822 |
+| 1.4.0 | 2026-11-21 | `AdminUserView` gains `display_name` (additive); the email stays out until the owner decides | web admin page |

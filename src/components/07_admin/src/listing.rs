@@ -27,6 +27,7 @@ pub(crate) fn merge(
             let view = usage.get(&account.id);
             AdminUserView {
                 account: account.id,
+                display_name: account.display_name,
                 role: account.role,
                 state: account.state,
                 last_login: account.last_login,
@@ -82,6 +83,22 @@ mod tests {
             .map(|view| (view.account.as_u128(), view.used, view.limit))
             .collect();
         assert_eq!(rows, [(3, 30, Some(60)), (1, 10, Some(50)), (2, 20, None)]);
+    }
+
+    #[test]
+    fn the_display_name_of_the_account_is_carried_to_its_row() {
+        // Arrange
+        let accounts = vec![info(4), info(5)];
+
+        // Act
+        let merged = merge(accounts, &HashMap::new());
+
+        // Assert
+        let names: Vec<&str> = merged
+            .iter()
+            .map(|view| view.display_name.as_str())
+            .collect();
+        assert_eq!(names, ["name 4", "name 5"]);
     }
 
     #[test]

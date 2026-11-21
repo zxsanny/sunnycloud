@@ -50,7 +50,7 @@ async fn setup_token_makes_the_first_admin_an_invite_a_member_and_no_invite_noth
         &rig.world,
         OIDC,
         "identity-2",
-        Some(invite.0.expose()),
+        Some(invite.token.0.expose()),
         |_| {},
     )
     .await;

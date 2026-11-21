@@ -1079,6 +1079,7 @@ export interface components {
         };
         AdminUserList: {
             items: {
+                display_name: string;
                 /** Format: uuid */
                 id: string;
                 last_login?: string | null;
@@ -1200,6 +1201,8 @@ export interface components {
             parent_id: string;
         };
         CreatedInvite: {
+            /** @description When the invite stops being redeemable (RFC 3339). */
+            expires_at: string;
             /** @description Shown once; no other answer carries it. */
             token: string;
         };
@@ -1234,6 +1237,8 @@ export interface components {
             /** Format: uuid */
             grant_id: string;
             mismatch: boolean;
+            /** @enum {string} */
+            platform: "linux" | "windows" | "macos";
             requester_ip: string;
             requester_location: string | null;
         };
@@ -1443,9 +1448,13 @@ export interface components {
         };
         SessionList: {
             items: {
+                /** @enum {string} */
+                client_kind: "web" | "android" | "ios";
                 created_at: string;
+                current: boolean;
                 /** Format: uuid */
                 id: string;
+                ip: string | null;
                 label: string;
                 last_seen_at: string;
             }[];

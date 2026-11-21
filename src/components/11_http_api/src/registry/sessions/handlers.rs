@@ -16,7 +16,11 @@ pub(super) async fn list(State(services): State<Services>, user: User) -> Answer
         .list(user.account)
         .await
         .map_err(refused(user.request_id))?;
-    Ok(Json(wire::session_list(&sessions)).into_response())
+    Ok(Json(wire::session_list(
+        &sessions,
+        user.principal.session_or_device_id,
+    ))
+    .into_response())
 }
 
 pub(super) async fn revoke(

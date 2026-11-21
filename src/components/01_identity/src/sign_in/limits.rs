@@ -93,7 +93,7 @@ impl IdentitySignIn {
     ) -> Result<SessionTokens, SignInError> {
         let ip = client_ip.to_canonical();
         self.allow(&token(ip))?;
-        let result = self.exchange_step(code, code_verifier).await;
+        let result = self.exchange_step(code, code_verifier, ip).await;
         if let Err(SignInError::InvalidCode) = &result {
             self.limits.record(&token(ip), None, ip).await;
         }

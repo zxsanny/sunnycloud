@@ -22,6 +22,8 @@ pub struct ApprovalView {
     pub grant_id: Uuid,
     pub expires_at: Timestamp,
     pub device: String,
+    /// `linux`, `windows` or `macos`.
+    pub platform: String,
     pub requester_ip: IpAddr,
     pub requester_location: Option<String>,
     pub approver_ip: IpAddr,

@@ -30,6 +30,8 @@ pub(crate) struct Attempt<'a> {
     pub access_expires_at: Timestamp,
     pub refresh_hash: TokenHash,
     pub refresh_expires_at: Timestamp,
+    /// The address of the exchange request, as `inet` text.
+    pub client_ip: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +108,7 @@ pub(crate) async fn exchange(
         refresh_hash: attempt.refresh_hash,
         refresh_expires_at: attempt.refresh_expires_at,
         created_at: attempt.now,
+        created_ip: attempt.client_ip.clone(),
     };
     session_repo::insert(tx, account, &session).await?;
     Ok(Exchange::Minted)

@@ -2,8 +2,8 @@
 //! only (`InviteService` stores its hash).
 
 use contracts::{
-    AccountState, AccountStatus, AdminUserView, HealthReport, HealthStatus, InviteInfo,
-    InviteToken, Role,
+    AccountState, AccountStatus, AdminUserView, CreatedInvite, HealthReport, HealthStatus,
+    InviteInfo, Role,
 };
 use serde_json::{Value, json};
 
@@ -66,6 +66,7 @@ pub(super) fn user_list(users: &[AdminUserView]) -> Value {
         .map(|user| {
             json!({
                 "id": user.account,
+                "display_name": user.display_name,
                 "role": role(user.role),
                 "state": status(user.state),
                 "last_login": user.last_login.map(rfc3339),
@@ -93,9 +94,9 @@ pub(super) fn health(report: &HealthReport) -> Value {
     json!({"items": items})
 }
 
-/// The plaintext token, shown once.
-pub(super) fn created_invite(token: &InviteToken) -> Value {
-    json!({"token": token.0.expose()})
+/// The plaintext token, shown once, and its expiry.
+pub(super) fn created_invite(invite: &CreatedInvite) -> Value {
+    json!({"token": invite.token.0.expose(), "expires_at": rfc3339(invite.expires_at)})
 }
 
 pub(super) fn invite_list(invites: &[InviteInfo]) -> Value {
@@ -125,9 +126,10 @@ pub(super) const USER_LIST: SchemaRef = SchemaRef {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["id", "role", "state", "used"],
+                        "required": ["id", "display_name", "role", "state", "used"],
                         "properties": {
                             "id": {"type": "string", "format": "uuid"},
+                            "display_name": {"type": "string"},
                             "role": {"type": "string", "enum": ["user", "admin"]},
                             "state": {"type": "string", "enum": ["active", "disabled", "deleting"]},
                             "last_login": {"type": ["string", "null"]},
@@ -208,8 +210,11 @@ pub(super) const CREATED_INVITE: SchemaRef = SchemaRef {
     build: || {
         json!({
             "type": "object",
-            "required": ["token"],
-            "properties": {"token": {"type": "string", "description": "Shown once; no other answer carries it."}}
+            "required": ["token", "expires_at"],
+            "properties": {
+                "token": {"type": "string", "description": "Shown once; no other answer carries it."},
+                "expires_at": {"type": "string", "description": "When the invite stops being redeemable (RFC 3339)."}
+            }
         })
     },
 };

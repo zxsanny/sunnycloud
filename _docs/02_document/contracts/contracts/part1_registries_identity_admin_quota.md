@@ -67,12 +67,12 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | | `touch` | `&Principal` -> `()` (at most once a minute) | `Unexpected` |
 | `DeviceGrantService` | `request` | `device_name, platform, requester_ip` -> `DeviceAuthorization{device_code, user_code, interval, expires_in}` | none |
 | | `poll` | `device_code` -> `DeviceToken` (once) | `AuthorizationPending`, `SlowDown`, `AccessDenied`, `ExpiredToken` |
-| | `lookup_for_approval` | `&Principal, user_code, approver_ip` -> `ApprovalView{grant_id, expires_at, device, requester_ip, requester_location, approver_ip, approver_location, mismatch}` (`grant_id` is the id `decide` takes; `expires_at` is the code's expiry, owner decision 2026-11-05) | `UnknownCode`, `RateLimited{retry_after}` Binds the pending grant to the caller's account on first lookup; a grant bound to another account is `UnknownCode` (AZ-4267). |
+| | `lookup_for_approval` | `&Principal, user_code, approver_ip` -> `ApprovalView{grant_id, expires_at, device, platform, requester_ip, requester_location, approver_ip, approver_location, mismatch}` (`grant_id` is the id `decide` takes; `expires_at` is the code's expiry, owner decision 2026-11-05) | `UnknownCode`, `RateLimited{retry_after}` Binds the pending grant to the caller's account on first lookup; a grant bound to another account is `UnknownCode` (AZ-4267). |
 | | `decide` | `&Principal, grant_id, Decision{Approve \| Deny}` -> `()` | `UnknownCode` (also for a grant the caller's account did not look up: another account's, never looked up, or unknown; AZ-4267), `Expired`, `AlreadyDecided` (both only for the caller's own grants) |
 | | `list_devices` | `account` -> `Vec<DeviceInfo>` | none |
 | | `revoke_device` | `account, device_id` -> `()` | `NotFound` |
 | | `revoke_self` | `&Principal` (device) -> `()` | none |
-| `InviteService` | `create_invite` | `admin_account, note` -> `InviteToken` (plaintext, once) | `Unexpected` |
+| `InviteService` | `create_invite` | `admin_account, note` -> `CreatedInvite{token: InviteToken, expires_at}` (plaintext token, once) | `Unexpected` |
 | | `list` | `admin_account` -> `Vec<InviteInfo>` | `Unexpected` |
 | | `revoke` | `admin_account, invite_id` -> `()` | `NotFound` (unknown, revoked or redeemed alike), `Unexpected` |
 | `OperatorIdentityOps` (system scope) | `ensure_setup_token` | `()` -> `Option<RawToken>` (only while zero accounts) | `Unexpected` |
@@ -105,7 +105,7 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 
 | Port | Method | Input -> Output | Errors |
 |---|---|---|---|
-| `AdminService` | `list_users` | `Actor, page` -> `Vec<AdminUserView{account, role, state, last_login, used, limit}>` | `Forbidden`, `Unexpected` |
+| `AdminService` | `list_users` | `Actor, page` -> `Vec<AdminUserView{account, display_name, role, state, last_login, used, limit}>` | `Forbidden`, `Unexpected` |
 | | `update_user` | `Actor, account, role?, state?` -> `()` | `Forbidden`, `LastAdmin`, `NotFound` |
 | | `set_quota` | `Actor, account, limit: Option<i64>` -> `()` | `Forbidden`, `NotFound`, `InvalidLimit` |
 | | `health` | `Actor` -> `Result<HealthReport{items: Vec<(name, HealthItem)>}, AdminError>` (a failing contributor is an item) | `Forbidden` |

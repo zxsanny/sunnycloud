@@ -1,6 +1,7 @@
 //! Value types of 01 identity. A type that carries a token prints a placeholder in `Debug` (NFT-SEC-16).
 
 use std::fmt;
+use std::net::IpAddr;
 use std::time::Duration;
 
 use sc_clock::Timestamp;
@@ -118,6 +119,10 @@ pub struct ProviderInfo {
 pub struct SessionInfo {
     pub id: Uuid,
     pub label: String,
+    /// `web`, `android` or `ios`.
+    pub client_kind: String,
+    /// The address the session was signed in from; `None` for a session created before it was recorded.
+    pub ip: Option<IpAddr>,
     pub created_at: Timestamp,
     pub last_seen_at: Timestamp,
 }

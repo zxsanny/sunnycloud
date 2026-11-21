@@ -2,9 +2,10 @@
 //! one port method, with the account of the principal.
 
 use contracts::{
-    AccountServiceError, AccountView, AdminError, AdminUserView, DeletionAccepted, DeletionError,
-    DeviceGrantError, DeviceInfo, DeviceToken, HealthItem, HealthReport, IdentityView, InviteError,
-    InviteInfo, InviteToken, Role, SessionError, SessionInfo, SignInError, SignInOutcome,
+    AccountServiceError, AccountView, AdminError, AdminUserView, CreatedInvite, DeletionAccepted,
+    DeletionError, DeviceGrantError, DeviceInfo, DeviceToken, HealthItem, HealthReport,
+    IdentityView, InviteError, InviteInfo, InviteToken, Role, SessionError, SessionInfo,
+    SignInError, SignInOutcome,
 };
 use sc_ids::TokenKind;
 use serde_json::json;
@@ -395,7 +396,10 @@ fn operations() -> Vec<Operation> {
             |s| {
                 s.push(
                     "InviteService::create_invite",
-                    Ok::<_, InviteError>(InviteToken(token(TokenKind::Invite, "inv-T"))),
+                    Ok::<_, InviteError>(CreatedInvite {
+                        token: InviteToken(token(TokenKind::Invite, "inv-T")),
+                        expires_at: WHEN,
+                    }),
                 )
             },
         ),

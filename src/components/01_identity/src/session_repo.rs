@@ -54,26 +54,31 @@ pub(crate) struct NewSession<'a> {
     pub refresh_hash: TokenHash,
     pub refresh_expires_at: Timestamp,
     pub created_at: Timestamp,
+    /// The address of the sign-in request, as `inet` text.
+    pub created_ip: String,
 }
 
 /// A listed session; revocation and expiry are decided by the caller.
 pub(crate) struct ListedSession {
     pub id: Uuid,
     pub label: String,
+    pub client_kind: String,
+    /// `host(created_ip)` text; `None` for a session created before the address was recorded.
+    pub ip: Option<String>,
     pub created_at: Timestamp,
     pub last_seen_at: Timestamp,
     pub revoked: bool,
     pub refresh_expires_at_micros: i64,
 }
 
-type ListedTuple = (Uuid, String, i64, i64, bool, i64);
+type ListedTuple = (Uuid, String, String, Option<String>, i64, i64, bool, i64);
 
 const INSERT_SESSION: &str = "INSERT INTO sessions (id, account_id, client_kind, label, token_hash, \
-    access_expires_at, refresh_hash, refresh_expires_at, created_at) \
+    access_expires_at, refresh_hash, refresh_expires_at, created_at, created_ip) \
     VALUES ($1, $2, $3, $4, $5, \
     'epoch'::timestamptz + $6::bigint * interval '1 microsecond', $7, \
     'epoch'::timestamptz + $8::bigint * interval '1 microsecond', \
-    'epoch'::timestamptz + $9::bigint * interval '1 microsecond')";
+    'epoch'::timestamptz + $9::bigint * interval '1 microsecond', $10::text::inet)";
 
 const LOCK_SESSION: &str = "SELECT s.refresh_hash, s.prev_refresh_hash, \
     (extract(epoch FROM s.rotated_at) * 1000000)::bigint, \
@@ -96,7 +101,7 @@ const REVOKE_ALL: &str = "UPDATE sessions \
     successor_enc = NULL \
     WHERE account_id = $1 AND revoked_at IS NULL";
 
-const LIST: &str = "SELECT id, label, \
+const LIST: &str = "SELECT id, label, client_kind, host(created_ip), \
     (extract(epoch FROM created_at) * 1000000)::bigint, \
     (extract(epoch FROM COALESCE(last_seen_at, created_at)) * 1000000)::bigint, \
     revoked_at IS NOT NULL, (extract(epoch FROM refresh_expires_at) * 1000000)::bigint \
@@ -128,6 +133,7 @@ pub(crate) async fn insert(
         .bind(session.refresh_hash.as_bytes().as_slice())
         .bind(session.refresh_expires_at.as_unix_micros())
         .bind(session.created_at.as_unix_micros())
+        .bind(&session.created_ip)
         .execute(tx.conn())
         .await
         .map(drop)?;
@@ -223,13 +229,26 @@ pub(crate) async fn list(tx: &mut DbTx, account: Uuid) -> Result<Vec<ListedSessi
     Ok(rows
         .into_iter()
         .map(
-            |(id, label, created, last_seen, revoked, refresh_expires_at_micros)| ListedSession {
+            |(
                 id,
                 label,
-                created_at: Timestamp::from_unix_micros(created),
-                last_seen_at: Timestamp::from_unix_micros(last_seen),
+                client_kind,
+                ip,
+                created,
+                last_seen,
                 revoked,
                 refresh_expires_at_micros,
+            )| {
+                ListedSession {
+                    id,
+                    label,
+                    client_kind,
+                    ip,
+                    created_at: Timestamp::from_unix_micros(created),
+                    last_seen_at: Timestamp::from_unix_micros(last_seen),
+                    revoked,
+                    refresh_expires_at_micros,
+                }
             },
         )
         .collect())

@@ -22,6 +22,7 @@ pub enum Actor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdminUserView {
     pub account: Uuid,
+    pub display_name: String,
     pub role: Role,
     pub state: AccountStatus,
     pub last_login: Option<Timestamp>,

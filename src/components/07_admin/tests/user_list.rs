@@ -49,6 +49,7 @@ async fn seed_45(conn: &mut PgConnection) -> Vec<AdminUserView> {
         }
         expected.push(AdminUserView {
             account: id,
+            display_name: format!("Person {position}"),
             role: if role == "admin" {
                 Role::Admin
             } else {
@@ -182,6 +183,7 @@ fn a_listed_user_carries_no_token_or_password_field() {
     // Arrange
     let view = AdminUserView {
         account: Uuid::nil(),
+        display_name: "Name".to_owned(),
         role: Role::User,
         state: AccountStatus::Active,
         last_login: None,
@@ -192,6 +194,7 @@ fn a_listed_user_carries_no_token_or_password_field() {
     // Act
     let AdminUserView {
         account: _,
+        display_name: _,
         role: _,
         state: _,
         last_login: _,

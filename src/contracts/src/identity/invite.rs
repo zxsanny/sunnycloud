@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use sc_clock::Timestamp;
 use sc_ids::RawToken;
 use thiserror::Error;
 use uuid::Uuid;
@@ -15,6 +16,13 @@ pub enum InviteError {
     Unexpected(#[source] Fault),
 }
 
+/// A new member invite: the plaintext token, shown once, and when it stops being redeemable.
+#[derive(Debug)]
+pub struct CreatedInvite {
+    pub token: InviteToken,
+    pub expires_at: Timestamp,
+}
+
 #[async_trait]
 pub trait InviteService: Send + Sync {
     /// The plaintext token is returned once and never stored.
@@ -22,7 +30,7 @@ pub trait InviteService: Send + Sync {
         &self,
         admin_account: Uuid,
         note: &str,
-    ) -> Result<InviteToken, InviteError>;
+    ) -> Result<CreatedInvite, InviteError>;
 
     async fn list(&self, admin_account: Uuid) -> Result<Vec<InviteInfo>, InviteError>;
 

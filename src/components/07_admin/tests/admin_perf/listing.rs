@@ -73,6 +73,7 @@ async fn seed_500(conn: &mut PgConnection) -> Vec<AdminUserView> {
         seed::quota(conn, id, limit, used, 0).await;
         expected.push(AdminUserView {
             account: id,
+            display_name: format!("Person {position}"),
             role: if role == "admin" {
                 Role::Admin
             } else {

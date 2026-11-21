@@ -50,6 +50,7 @@ pub(crate) struct PendingGrant {
     pub id: Uuid,
     pub expires_at_micros: i64,
     pub device_name: String,
+    pub platform: String,
     pub requester_ip: String,
     pub requester_location: Option<String>,
 }
@@ -78,7 +79,7 @@ pub(crate) struct ListedDevice {
 }
 
 type DeviceTuple = (Uuid, String, String, i64, Option<i64>);
-type PendingTuple = (Uuid, i64, String, String, Option<String>);
+type PendingTuple = (Uuid, i64, String, String, String, Option<String>);
 
 const INSERT_GRANT: &str = "INSERT INTO device_grants (id, device_code_hash, user_code, requester_ip, \
     requester_location, device_name, platform, status, created_at, expires_at) \
@@ -114,7 +115,7 @@ const BIND_BY_USER_CODE: &str = "UPDATE device_grants SET looked_up_by_account_i
     AND expires_at > 'epoch'::timestamptz + $2::bigint * interval '1 microsecond' \
     AND (looked_up_by_account_id IS NULL OR looked_up_by_account_id = $3) \
     RETURNING id, (extract(epoch FROM expires_at) * 1000000)::bigint, \
-    device_name, host(requester_ip), requester_location";
+    device_name, platform, host(requester_ip), requester_location";
 
 // Every decide statement sees only the grants the deciding account looked up: any other grant, bound to
 // another account or to none, is answered as an unknown id.
@@ -230,12 +231,15 @@ pub(crate) async fn bind_by_user_code(
         .fetch_optional(tx.conn())
         .await?;
     Ok(row.map(
-        |(id, expires_at_micros, device_name, requester_ip, requester_location)| PendingGrant {
-            id,
-            expires_at_micros,
-            device_name,
-            requester_ip,
-            requester_location,
+        |(id, expires_at_micros, device_name, platform, requester_ip, requester_location)| {
+            PendingGrant {
+                id,
+                expires_at_micros,
+                device_name,
+                platform,
+                requester_ip,
+                requester_location,
+            }
         },
     ))
 }

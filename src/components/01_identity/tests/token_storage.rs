@@ -88,7 +88,7 @@ async fn mint(rig: &mut Rig, n: usize) -> Vec<Family> {
     for i in 0..n {
         let note = format!("note {i}");
         let created = operator.create_invite(admin.account_id, &note).await;
-        invite.tokens.push(created.expect("create invite").0);
+        invite.tokens.push(created.expect("create invite").token.0);
         let tokens = another_session(rig, SUBJECT).await;
         access.tokens.push(tokens.access);
         refresh.tokens.push(tokens.refresh);

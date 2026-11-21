@@ -359,3 +359,33 @@ async fn parallel_exchanges_of_one_code_mint_exactly_one_session() {
     drop(service);
     world.finish().await;
 }
+
+#[tokio::test]
+async fn the_exchange_records_the_address_of_the_app_and_the_list_reports_it() {
+    // Arrange
+    let mut world = world().await;
+    let account = world.known_identity(OIDC, SUBJECT).await;
+    let code = world
+        .mobile_code(ClientKind::Android, SUBJECT, CHALLENGE)
+        .await;
+    let app_ip: std::net::IpAddr = "198.51.100.7".parse().expect("an address");
+
+    // Act
+    world
+        .service
+        .exchange_mobile_code(&code, VERIFIER, app_ip)
+        .await
+        .expect("exchange");
+
+    // Assert
+    let listed = sessions(&world.harness).list(account).await.expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].client_kind, "android");
+    assert_eq!(listed[0].ip, Some(app_ip));
+    let stored: Option<String> = sqlx::query_scalar("SELECT host(created_ip) FROM sessions")
+        .fetch_one(&mut world.conn)
+        .await
+        .expect("session row");
+    assert_eq!(stored.as_deref(), Some("198.51.100.7"));
+    world.finish().await;
+}

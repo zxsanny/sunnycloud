@@ -68,6 +68,7 @@ impl AdminService for Recorder {
 fn user(n: u128, role: Role, used: i64, limit: Option<i64>) -> AdminUserView {
     AdminUserView {
         account: Uuid::from_u128(n),
+        display_name: format!("User {n}"),
         role,
         state: AccountStatus::Active,
         last_login: Some(Timestamp::from_unix_micros(1_794_052_800_000_000)),

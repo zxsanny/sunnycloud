@@ -3,7 +3,7 @@
 **Component**: 01_identity
 **Producer task**: AZ-3688 (E-15/c08)
 **Consumer tasks**: E-22/c08 (CLI `admin create|reset|setup-token|invite`), E-21/c12 (admin invite routes), AZ-3654 (first-run pipeline), E-15/c12 (AT-01-1)
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: frozen (first implementation: AZ-3688)
 **Last Updated**: 2026-11-13
 
@@ -18,7 +18,7 @@ What the setup token, invites and operator operations do, so the CLI (12) and th
 | `OperatorIdentityOps::ensure_setup_token` | `() -> Option<RawToken>` | `Unexpected` only; `None` when any account exists | async, system scope |
 | `OperatorIdentityOps::create_admin_invite` | `() -> InviteToken` | `Unexpected` only | async, system scope |
 | `OperatorIdentityOps::reset_admin` | `(AccountId) -> InviteToken` | `OperatorIdentityError::NotFound` (unknown or `deleting` account), `OperatorIdentityError::NotAnAdmin`; none for the only active admin (G-12-3) | async, system scope |
-| `InviteService::create_invite` | `(admin AccountId, note) -> InviteToken` | `Unexpected` only | async, system scope |
+| `InviteService::create_invite` | `(admin AccountId, note) -> CreatedInvite{token: InviteToken, expires_at}` | `Unexpected` only | async, system scope |
 | `InviteService::list` | `(admin AccountId) -> [InviteInfo]` (no token) | `Unexpected` only | async, system scope |
 | `InviteService::revoke` | `(admin AccountId, invite id) -> ()` | `InviteError::NotFound` for an unknown, already revoked or redeemed invite alike (11: 404 `not_found`) | async, system scope |
 
@@ -80,3 +80,4 @@ Redemption happens at sign-in (`SignInService::complete`) when an unknown identi
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B04) |
 | 1.1.0 | 2026-11-11 | G-12-3 recorded: reset of the only active admin is allowed, no new error | AZ-3681 |
 | 1.2.0 | 2026-11-13 | Frozen with the first implementation: `revoke` answers `InviteError::NotFound` for unknown, revoked or redeemed alike (owner); `reset_admin` also revokes device tokens (owner), denies uncollected grants, deletes login codes, removes identities at once and supersedes earlier re-bind invites; `OperatorIdentityError::{NotFound, NotAnAdmin}`; list scope; mandatory `admin_reset` and `identity_rebound` events | AZ-3688 |
+| 1.3.0 | 2026-11-21 | `InviteService::create_invite` returns `CreatedInvite{token, expires_at}` (additive on the wire); the operator calls keep `InviteToken` | web admin page |
