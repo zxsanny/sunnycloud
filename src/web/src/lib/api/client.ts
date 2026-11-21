@@ -22,6 +22,9 @@ export type BatchCommitResult = components['schemas']['BatchCommitResult'];
 export type ThumbnailStates = components['schemas']['ThumbnailStates'];
 export type RevisionView = components['schemas']['RevisionView'];
 export type ShareOpen = components['schemas']['ShareOpen'];
+export type DeviceList = components['schemas']['DeviceList'];
+export type IdentityLinkAttemptRequest = components['schemas']['IdentityLinkAttemptRequest'];
+export type AccountDeletionAccepted = components['schemas']['AccountDeletionAccepted'];
 
 /** A content route that answers Range: the node's current revision, or one named revision. */
 export type ContentRoute = { kind: 'node' | 'revision'; id: string };
@@ -111,6 +114,13 @@ export function createApi(options: ApiOptions = {}) {
     getAccountsMe: () => send(() => client.GET('/api/v1/accounts/me')),
     getAccountsMeQuota: () => send(() => client.GET('/api/v1/accounts/me/quota')),
     deleteSessionsCurrent: () => send(() => client.DELETE('/api/v1/sessions/current')),
+    deleteAccountsMe: (confirmation: string) =>
+      send(() => client.DELETE('/api/v1/accounts/me', { body: { confirmation } })),
+    getDevices: () => send(() => client.GET('/api/v1/devices')),
+    deleteDevice: (id: string) =>
+      send(() => client.DELETE('/api/v1/devices/{id}', { params: { path: { id } } })),
+    postIdentityLinkAttempt: (body: IdentityLinkAttemptRequest) =>
+      send(() => client.POST('/api/v1/identity-link-attempts', { body })),
     getServerLimits: async (): Promise<Result<ServerLimits>> => {
       const result = await send(() => client.GET('/api/v1/server-info'));
       return result.ok ? { ok: true, value: serverLimitsOf(result.value) } : result;

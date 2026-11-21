@@ -1,5 +1,6 @@
 <script lang="ts">
   import LogOut from '@lucide/svelte/icons/log-out';
+  import User from '@lucide/svelte/icons/user';
   import type { Snippet } from 'svelte';
   import { navigate } from '$lib/router';
   import { session } from '$lib/session';
@@ -25,9 +26,16 @@
     <div class="flex-1"></div>
     <ConnectionChip state={realtime.state} />
     <ThemeToggle />
-    {#if session.account}
-      <span class="hidden text-row text-ink-2 md:inline">{session.account.display_name}</span>
-    {/if}
+    <a
+      href="/account"
+      class="inline-flex h-8 items-center gap-1.5 rounded-control px-3 text-small font-[650] text-ink no-underline hover:bg-hover"
+      aria-label="Account"
+    >
+      <User class="size-4" aria-hidden="true" />
+      {#if session.account}
+        <span class="hidden md:inline">{session.account.display_name}</span>
+      {/if}
+    </a>
     <Button variant="ghost" size="sm" loading={signingOut} onclick={signOut}>
       <LogOut class="size-4" aria-hidden="true" />Sign out
     </Button>

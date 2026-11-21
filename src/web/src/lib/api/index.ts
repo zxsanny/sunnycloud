@@ -1,11 +1,14 @@
 export { api, createApi } from './client';
 export type {
   Account,
+  AccountDeletionAccepted,
   Api,
   BatchCommitResult,
   ContentAnswer,
   ContentRoute,
   Committed,
+  DeviceList,
+  IdentityLinkAttemptRequest,
   LoginAttemptRequest,
   NodeListing,
   NodeView,
