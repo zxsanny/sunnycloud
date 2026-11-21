@@ -23,21 +23,22 @@ async fn hold_reservation(
     db: Db,
     account: Uuid,
     commit: bool,
-    reserved: oneshot::Sender<()>,
+    reserved: oneshot::Sender<Instant>,
 ) -> Result<(), RunError<Abort>> {
     db.run(Scope::Account(account), async |tx| {
         ledger(10 * GIB)
             .reserve(tx, account, GIB)
             .await
             .expect("reserve in A");
-        reserved.send(()).expect("test is waiting");
+        // The hold starts here: the sleep below cannot end before this instant plus HOLD.
+        reserved.send(Instant::now()).expect("test is waiting");
         tokio::time::sleep(HOLD).await;
         if commit { Ok(()) } else { Err(Abort) }
     })
     .await
 }
 
-/// B's wait and B's reserved total after A ended by commit or rollback.
+/// How long after A took the row lock B got its answer, and B's reserved total, after A ended by commit or rollback.
 async fn second_reserve_after(commit: bool) -> (Duration, i64) {
     let harness = Harness::new().await;
     let mut conn = harness.fixture_conn().await;
@@ -46,10 +47,9 @@ async fn second_reserve_after(commit: bool) -> (Duration, i64) {
     let db = harness.api_with_pool(4).await;
     let (reserved_tx, reserved_rx) = oneshot::channel();
     let first = tokio::spawn(hold_reservation(db.clone(), account, commit, reserved_tx));
-    reserved_rx.await.expect("A reserved");
+    let held_since = reserved_rx.await.expect("A reserved");
     tokio::time::sleep(HEAD_START).await;
 
-    let started = Instant::now();
     let second = db
         .run(Scope::Account(account), async |tx| {
             Ok::<_, DbError>(ledger(10 * GIB).reserve(tx, account, GIB).await)
@@ -57,7 +57,7 @@ async fn second_reserve_after(commit: bool) -> (Duration, i64) {
         .await
         .expect("transaction B")
         .expect("reserve in B");
-    let waited = started.elapsed();
+    let waited = held_since.elapsed();
 
     let first = first.await.expect("task A");
     assert_eq!(first.is_ok(), commit);
@@ -74,7 +74,7 @@ async fn second_reserve_waits_for_a_rollback_and_only_it_is_counted() {
     let (waited, reserved) = second_reserve_after(false).await;
 
     // Assert
-    assert!(waited >= Duration::from_millis(400), "{waited:?}");
+    assert!(waited >= HOLD, "{waited:?}");
     assert_eq!(reserved, GIB);
 }
 
@@ -84,7 +84,7 @@ async fn second_reserve_waits_for_a_commit_and_both_are_counted() {
     let (waited, reserved) = second_reserve_after(true).await;
 
     // Assert
-    assert!(waited >= Duration::from_millis(400), "{waited:?}");
+    assert!(waited >= HOLD, "{waited:?}");
     assert_eq!(reserved, 2 * GIB);
 }
 
