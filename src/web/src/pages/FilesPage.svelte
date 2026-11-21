@@ -44,8 +44,12 @@
   });
 
   async function upload(files: File[]) {
+    if (files.length === 0) return;
     const parent = folderStore.folder;
-    if (!parent || files.length === 0) return;
+    if (!parent) {
+      uploadError = 'The folder is still loading. Choose the files again in a moment.';
+      return;
+    }
     uploadError = null;
     const result = await transfer.enqueueUpload(files, parent.node_id);
     if (!result.ok) uploadError = result.error.text;

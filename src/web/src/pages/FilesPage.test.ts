@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TreeServer, makeNode } from '../../tests/support/treeServer';
@@ -347,6 +347,19 @@ describe('the file browser: views and uploads', () => {
 
     // Assert
     expect(await screen.findByText('This selection has 100,001 files.')).toBeInTheDocument();
+  });
+
+  it('says so when files are chosen before the folder has finished loading', async () => {
+    // Arrange
+    open();
+    const input = screen.getByLabelText('Choose files to upload');
+
+    // Act
+    fireEvent.change(input, { target: { files: [new File(['a'], 'early.txt')] } });
+
+    // Assert
+    expect(await screen.findByText(/The folder is still loading/)).toBeInTheDocument();
+    expect(transfer.jobs).toHaveLength(0);
   });
 
   it('uploads dropped files and skips a dropped folder with a notice', async () => {
