@@ -54,6 +54,12 @@ const SESSION_ENDED: ApiError = {
   needBlocks: null,
 };
 
+/** The session check of a socket that cannot get past the handshake: a 401 has already taken the app's 401 path. */
+export async function checkSession(): Promise<'signed-out' | 'ok'> {
+  const me = await api.getAccountsMe();
+  return !me.ok && me.error.status === 401 ? 'signed-out' : 'ok';
+}
+
 /** The one client, wired to the folder store and the notices. Tests build their own with a socket of their own. */
 export function createRealtime(socket?: RealtimeOptions['socket']) {
   return new RealtimeClient({
@@ -68,6 +74,7 @@ export function createRealtime(socket?: RealtimeOptions['socket']) {
       refreshPendingThumbs: () => folderStore.refreshPendingThumbs(),
       onChange: applyChange,
       onThumbState: (hash, state) => folderStore.setThumbState(hash, state),
+      checkSession,
       onSignedOut: () => api.report(SESSION_ENDED),
       onProtocolError: () =>
         notices.show({

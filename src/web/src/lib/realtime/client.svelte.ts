@@ -32,6 +32,11 @@ export interface RealtimeHandlers {
   onProtocolError(): void;
   /** Hello announced a protocol version this client does not know. */
   onUpgradeRequired(): void;
+  /**
+   * One session check over REST, for a socket that keeps failing before Hello. `signed-out` when the session is gone
+   * (the 401 has already gone through the app's 401 handling), `ok` for anything else.
+   */
+  checkSession(): Promise<'signed-out' | 'ok'>;
 }
 
 /** The members of a WebSocket the client uses; tests give it a fake. */
@@ -62,6 +67,8 @@ const ANSWER_TIMEOUT_MS = 10_000;
 const SILENCE_TIMEOUT_MS = 90_000;
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_MAX_MS = 30_000;
+/** Connection attempts in a row that never reached Hello before the session is checked once. */
+const HANDSHAKES_BEFORE_SESSION_CHECK = 3;
 
 /** The delay before reconnect attempt `attempt` (0 for the first): 1 s doubling to 30 s, plus up to 25 % jitter. */
 export function backoffDelay(attempt: number, random: () => number): number {
@@ -78,6 +85,7 @@ interface Connection {
   /** Set when this side closes it, so the close event is not read as the server's. */
   closedByUs: boolean;
   subscribed: boolean;
+  helloSeen: boolean;
   nonce: number;
   helloTimer: ReturnType<typeof setTimeout> | null;
   silenceTimer: ReturnType<typeof setTimeout> | null;
@@ -102,6 +110,8 @@ export class RealtimeClient {
   private resume: ResumePoint | null = null;
   private everSubscribed = false;
   private backoffTimer: ReturnType<typeof setTimeout> | null = null;
+  private failedHandshakes = 0;
+  private sessionChecked = false;
   private resetting = false;
   private pendingReset: ResetFrame | null = null;
   private readonly random: () => number;
@@ -137,6 +147,7 @@ export class RealtimeClient {
       ws,
       closedByUs: false,
       subscribed: false,
+      helloSeen: false,
       nonce: 0,
       helloTimer: null,
       silenceTimer: null,
@@ -218,7 +229,10 @@ export class RealtimeClient {
       this.options.handlers.onUpgradeRequired();
       return;
     }
+    conn.helloSeen = true;
     this.attempt = 0;
+    this.failedHandshakes = 0;
+    this.sessionChecked = false;
     this.armPing(conn, pingIntervalS * 1000);
     void this.begin(conn);
   }
@@ -296,7 +310,10 @@ export class RealtimeClient {
     this.conn = null;
     conn.ws.onopen = conn.ws.onmessage = conn.ws.onclose = null;
     conn.ws.close(code, why.slice(0, 100));
-    if (this.running) this.scheduleReconnect();
+    if (this.running) {
+      this.noteHandshake(conn);
+      this.scheduleReconnect();
+    }
   }
 
   private closed(conn: Connection, code: number) {
@@ -312,8 +329,29 @@ export class RealtimeClient {
       this.state = 'failed';
       this.options.handlers.onProtocolError();
     } else {
+      this.noteHandshake(conn);
       this.scheduleReconnect();
     }
+  }
+
+  /**
+   * A browser reports a refused handshake (an expired session, a 403) only as close code 1006, which looks like any
+   * network drop. After three attempts in a row that never reached Hello, ask once over REST whether the session is
+   * still good, through the shared client so a 401 takes the app's normal way to sign-in. This is one request on a
+   * failure path, not a timer asking for changes: it is not repeated until a Hello has happened in between.
+   */
+  private noteHandshake(conn: Connection) {
+    if (conn.helloSeen) return;
+    this.failedHandshakes += 1;
+    if (this.failedHandshakes < HANDSHAKES_BEFORE_SESSION_CHECK || this.sessionChecked) return;
+    this.sessionChecked = true;
+    void this.options.handlers.checkSession().then((result) => {
+      if (result !== 'signed-out' || !this.running) return;
+      this.running = false;
+      this.clearBackoff();
+      this.dropConnection(1000, 'session ended');
+      this.state = 'signed-out';
+    });
   }
 
   private scheduleReconnect() {

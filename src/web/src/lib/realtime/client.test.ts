@@ -59,7 +59,13 @@ interface Rig {
   log: string[];
   changes: ChangeFrame[];
   thumbs: [string, ThumbCode][];
-  handlers: RealtimeHandlers & { signedOut: number; protocolErrors: number; upgrades: number };
+  handlers: RealtimeHandlers & {
+    signedOut: number;
+    protocolErrors: number;
+    upgrades: number;
+    checks: number;
+    sessionAnswer: 'signed-out' | 'ok';
+  };
   gates: { head: Promise<void> | null; listing: Promise<void> | null };
 }
 
@@ -72,6 +78,12 @@ function rig(options: { random?: () => number } = {}): Rig {
     signedOut: 0,
     protocolErrors: 0,
     upgrades: 0,
+    checks: 0,
+    sessionAnswer: 'ok' as 'signed-out' | 'ok',
+    checkSession: async () => {
+      handlers.checks += 1;
+      return handlers.sessionAnswer;
+    },
     loadHead: async () => {
       log.push('loadHead');
       await gates.head;
@@ -573,6 +585,137 @@ describe('the realtime client: keepalive and dead sockets', () => {
     expect(r.log.filter((l) => l.startsWith('load')).length).toBe(readsAfterFirstLoad);
     expect(r.log.filter((l) => l === 'refreshPendingThumbs')).toHaveLength(0);
     expect(socket.sentHex.every((h) => h.startsWith('02') || h.startsWith('01'))).toBe(true);
+  });
+});
+
+/** A connection attempt that ends before Hello, as a refused handshake does (close code 1006). */
+async function failHandshake() {
+  FakeSocket.last.serverClose(1006);
+  await vi.advanceTimersByTimeAsync(30_000);
+}
+
+describe('the session check after refused handshakes', () => {
+  it('checks the session once after three attempts in a row that never reached Hello, and not before', async () => {
+    // Arrange
+    const r = rig();
+    r.client.start();
+
+    // Act
+    await failHandshake();
+    await failHandshake();
+    const afterTwo = r.handlers.checks;
+    await failHandshake();
+
+    // Assert
+    expect(afterTwo).toBe(0);
+    expect(r.handlers.checks).toBe(1);
+  });
+
+  it('does not check again while the attempts keep failing', async () => {
+    // Arrange
+    const r = rig();
+    r.client.start();
+
+    // Act
+    for (let i = 0; i < 8; i += 1) await failHandshake();
+
+    // Assert
+    expect(r.handlers.checks).toBe(1);
+  });
+
+  it('goes to sign-in when the check finds the session gone, and stops reconnecting', async () => {
+    // Arrange
+    const r = rig();
+    r.handlers.sessionAnswer = 'signed-out';
+    r.client.start();
+    await failHandshake();
+    await failHandshake();
+
+    // Act
+    FakeSocket.last.serverClose(1006);
+    await vi.advanceTimersByTimeAsync(600_000);
+
+    // Assert
+    expect(r.client.state).toBe('signed-out');
+    expect(FakeSocket.all).toHaveLength(3);
+    expect(r.handlers.checks).toBe(1);
+  });
+
+  it('keeps reconnecting without a second check when the session is fine', async () => {
+    // Arrange
+    const r = rig();
+    r.client.start();
+    await failHandshake();
+    await failHandshake();
+    await failHandshake();
+
+    // Act
+    await failHandshake();
+    await failHandshake();
+
+    // Assert
+    expect(r.handlers.checks).toBe(1);
+    expect(FakeSocket.all.length).toBeGreaterThan(4);
+    expect(r.client.state).not.toBe('signed-out');
+  });
+
+  it('checks again only after a Hello has happened in between', async () => {
+    // Arrange
+    const r = rig();
+    r.client.start();
+    await failHandshake();
+    await failHandshake();
+    await failHandshake();
+    expect(r.handlers.checks).toBe(1);
+
+    // Act: a connection that gets its Hello resets the count
+    FakeSocket.last.open();
+    FakeSocket.last.deliver(hello());
+    await settle();
+    await failHandshake();
+    await failHandshake();
+    const beforeThird = r.handlers.checks;
+    await failHandshake();
+
+    // Assert: the drop after the Hello is not a failed handshake, so three more are needed
+    expect(beforeThird).toBe(1);
+    expect(r.handlers.checks).toBe(1);
+    await failHandshake();
+    expect(r.handlers.checks).toBe(2);
+  });
+
+  it('never checks while connections succeed, however often they drop after their Hello', async () => {
+    // Arrange
+    const r = rig();
+    r.client.start();
+
+    // Act
+    for (let i = 0; i < 6; i += 1) {
+      FakeSocket.last.open();
+      FakeSocket.last.deliver(hello());
+      await settle();
+      FakeSocket.last.serverClose(1006);
+      await vi.advanceTimersByTimeAsync(30_000);
+    }
+
+    // Assert
+    expect(r.handlers.checks).toBe(0);
+  });
+
+  it('counts a socket that opens but never says Hello as a failed handshake', async () => {
+    // Arrange
+    const r = rig();
+    r.client.start();
+
+    // Act
+    for (let i = 0; i < 3; i += 1) {
+      FakeSocket.last.open();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(30_000);
+    }
+
+    // Assert
+    expect(r.handlers.checks).toBe(1);
   });
 });
 

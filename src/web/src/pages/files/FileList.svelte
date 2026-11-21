@@ -39,7 +39,7 @@
             : ''}
         </td>
         <td class="hidden px-2 text-small text-ink-2 md:table-cell"
-          >{formatDate(node.updated_at)}</td
+          >{formatDate(node.updated_at) || '–'}</td
         >
         <td class="px-2 text-right"><RowActions {node} /></td>
       </tr>

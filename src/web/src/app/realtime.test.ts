@@ -9,6 +9,7 @@ import {
 } from '../../tests/support/realtimeFrames';
 import { TreeServer, type Node } from '../../tests/support/treeServer';
 import { App, handleApiError } from '.';
+import { checkSession } from './realtime';
 import { api } from '$lib/api';
 import { folderStore, viewPreference } from '$lib/files';
 import { notices } from '$lib/notices';
@@ -403,5 +404,69 @@ describe('the connection chip', () => {
     expect(
       await screen.findByRole('status', { name: 'Live updates: Offline' }),
     ).toBeInTheDocument();
+  });
+});
+
+describe('the session check of a socket that cannot connect', () => {
+  it('lets a 401 take the app path to sign-in and reports the session gone', async () => {
+    // Arrange
+    api.setErrorHandler(handleApiError);
+    navigate('/folders/x', { replace: true });
+    server.intercept = (_method, path) =>
+      path === '/api/v1/accounts/me'
+        ? Response.json(
+            { code: 'unauthenticated', status: 401, title: 'x', type: 'x', request_id: 'r' },
+            { status: 401 },
+          )
+        : undefined;
+
+    // Act
+    const result = await checkSession();
+
+    // Assert
+    expect(result).toBe('signed-out');
+    expect(route.path).toBe('/login');
+  });
+
+  it('reports ok for a live session and for any other failure, without sign-in', async () => {
+    // Arrange
+    api.setErrorHandler(handleApiError);
+    navigate('/folders/x', { replace: true });
+
+    // Act
+    const live = await checkSession();
+    server.intercept = () => Response.json({ code: 'internal', status: 500 }, { status: 500 });
+    const broken = await checkSession();
+
+    // Assert
+    expect([live, broken]).toEqual(['ok', 'ok']);
+    expect(route.path).toBe('/folders/x');
+  });
+});
+
+describe('the Modified column', () => {
+  it('shows an en dash for a row that arrived by push without a time, and the date for a listed row', async () => {
+    // Arrange
+    server.add(server.root, { name: 'listed.txt', kind: 'file' });
+    const view = await openPage();
+    await screen.findByText('listed.txt');
+    const socket = await goLive(view);
+
+    // Act
+    socket.deliver(
+      changeBytes({
+        seq: 130,
+        nodeId: '0190dddd-0000-7000-8000-000000000010',
+        parentId: server.root.node_id,
+        name: 'pushed.txt',
+      }),
+    );
+    const pushed = (await screen.findByText('pushed.txt')).closest('tr') as HTMLElement;
+
+    // Assert
+    const cells = (row: HTMLElement) => within(row).getAllByRole('cell');
+    expect(cells(pushed)[2]).toHaveTextContent('–');
+    const listed = screen.getByText('listed.txt').closest('tr') as HTMLElement;
+    expect(cells(listed)[2]).toHaveTextContent('30 Oct 2026');
   });
 });
