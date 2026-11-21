@@ -36,9 +36,18 @@ async fn health_reports_version_pending_and_pool_in_use() {
     let api = db.api().await;
 
     let idle = settled_idle_health(&api).await;
-    let busy = api
+    // The gauge is the pool size minus its idle connections, and the size also counts a connection that is still being
+    // opened, so one read can show an extra one; the lowest of several reads is the open transaction's own connection.
+    let (busy, busiest_floor) = api
         .run_system("test_health_busy", async |_tx| {
-            Ok::<_, DbError>(api.health().await)
+            let mut floor = u32::MAX;
+            let mut last = api.health().await;
+            for _ in 0..10 {
+                last = api.health().await;
+                floor = floor.min(last.pool_in_use);
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Ok::<_, DbError>((last, floor))
         })
         .await
         .expect("run");
@@ -53,10 +62,7 @@ async fn health_reports_version_pending_and_pool_in_use() {
     assert_eq!(idle.migrations_pending, Some(embedded().len()));
     assert_eq!(idle.pool_in_use, 0);
     assert!(busy.reachable);
-    assert_eq!(
-        busy.pool_in_use, 1,
-        "the connection of the open transaction"
-    );
+    assert_eq!(busiest_floor, 1, "the connection of the open transaction");
     let stats = settled_idle_stats(&api).await;
     assert_eq!(stats.migrations_pending, Some(embedded().len()));
     assert_eq!(stats.pool_max, 5);
