@@ -3,8 +3,8 @@
 **Component**: 11_http_api (adapter code in 05_sync_feed and 08_media_jobs for the hooks of the section "What the server builds")
 **Producer**: MVP roadmap `_docs/02_document/mvp_roadmap.md`, decision D5, package 5E
 **Consumers**: web app (AZ-3938 file browser, AZ-3945 previews), tests of both languages
-**Version**: 0.2.0 (protocol version in `Hello`: 1)
-**Status**: draft; implementation stage 1 done (handshake, session loop, `Hello`, `Subscribe`, `Ping`/`Pong`, `Change`, `Reset`, close codes, limits); stage 2 (`ThumbState`, `media_type`) pending
+**Version**: 0.3.0 (protocol version in `Hello`: 1)
+**Status**: implemented (stages 1 and 2): handshake, session loop, every frame of this document, close codes, limits, `media_type`, `ThumbState` pushes
 **Last Updated**: 2026-11-20
 
 ## Purpose
@@ -66,7 +66,7 @@ CSRF today covers only POST, PUT, PATCH and DELETE (`csrf/mod.rs`: GET routes ge
 | 1001 | going away | server shutdown |
 | 1002 | protocol error | unknown first byte, undecodable frame, bad value (`seq` above `i64::MAX`), a frame type that is server-to-client only |
 | 1003 | unsupported data | a text message (all frames are binary) |
-| 1009 | message too big | a message above 1,024 bytes (best effort: tungstenite reports the overflow as an error, so the close frame is verified in phase 2) |
+| 1009 | message too big | a message above 1,024 bytes (tungstenite reports the overflow as a read error without a Close frame, so the server sends the 1009 itself; tested) |
 | 1011 | internal error | unexpected server failure (details only in the log, correlation id) |
 | 1013 | try again later | the held read refused with `TooManyHolds` after the upgrade (the cap coupling above) |
 | 4401 | session ended | principal revoked or expired |
@@ -168,28 +168,28 @@ minimal folder, 39 bytes, present = 00:
 - **Order.** Frames of one connection follow the feed order of the account: `seq` never decreases, items of one `seq` are ordered by node id. `Change` frames and `ThumbState` frames come from one task in the order it handles them.
 - **Delivery.** `Change`: at least once, per node latest state (a node changed twice while the client was away arrives once). The client applies a `Change` only if its `seq` is not older than the one it holds for that node. `ThumbState`: pushed live to every open connection of the account; the server keeps no replay (see open question 1). A frame is never "changed, read again".
 - **Catch-up then live.** The server reads pages after the resume point until none is newer (page size `feed_page_limit_default`, 500), then waits for the next change and sends it. The client cannot tell the two apart and does not need to.
-- **Thumbnail state in `Change`.** One `ThumbnailStateSource::states` call per page fills `thumb` for the page's media files. `ThumbState` and `Change` for one hash come from one task, so a later frame is never staler than an earlier one.
+- **Thumbnail state in `Change`.** One `ThumbnailStateSource::states` call per page fills `thumb` for the page's media files. (`ready` there means the thumb row exists, so a `Change` can say ready a moment before the `ThumbState` that follows the stored preview.) `ThumbState` and `Change` for one hash come from one task, so a later frame is never staler than an earlier one.
 - **Client procedure** (first load): `GET /changes/head`, then the listing, then open the socket, wait for `Hello`, `Subscribe` at the head, and for the visible media `POST /thumbnail-states` once after `Hello`. After a reconnect: `Subscribe` at the stored resume point and one `POST /thumbnail-states` for the still pending hashes (ready flips during the gap are not replayed, section "Open questions", 1).
 - **Malformed input.** An unknown first byte, a frame that does not unpack, an empty message, a value that does not fit (`seq` above `i64::MAX`) or a server-only type from the client closes with 1002; a text message 1003; a message above `max_client_frame` 1009. The close reason is a fixed word, never the bytes received. No frame is answered with an error frame: an error means the client has a bug or a version mismatch.
 - **Slow consumer, backpressure.** There is no per-connection queue. One task per connection sends inline; a client that stops reading stops that task (TCP backpressure), so memory per connection is one page of frames. Each send has a 10 s timeout, then the connection is dropped (4429 when the close frame can still be sent); the socket's 60 s write-idle timer (`write_idle.rs`) is a second guard. Pushed `ThumbState` events wait in a bounded broadcast channel (1,024 events); a receiver that lags loses events and the connection gets `Reset` reason 4. A drop never blocks any other connection.
 - **Frame size.** All client frames are at most 17 bytes; the limit 1,024 leaves room for the reserved client frames. Server frames are at most about 700 bytes (name 255 bytes, media type from the fixed sniffed set).
 
-## What the server builds (phase 2; each item named because it is outside `src/components/11_http_api/src/realtime/`)
+## What the server builds (each item outside `src/components/11_http_api/src/realtime/` is named)
 
 1. **One source of truth.** The connection task calls `ChangeFeed::read(principal, revalidator, cursor, wait, limit)` in a loop with `wait = longpoll_wait_max` — the same call, the same SQL (`READ_PAGE_SQL`), the same cursor rules and notifier wake (`InProcessNotifier`, `FeedNotifier::notify` after COMMIT in 02), safety recheck and revocation check as `GET /changes`. The task never reads the database itself and the web needs no new feed query. An empty page after the wait is re-armed inside the server; no client is involved. Cost to name: each connection uses one hold (`max_holds_per_principal`, default 4 per session, 20 in the MVP environment), so a session keeps at most that many sockets; and one database read per `feed_safety_recheck` (10 s) per connection.
-2. **`ChangeItem.media_type`** (`contracts/src/feed.rs`, `READ_PAGE_SQL` selects `r.media_type`). The feed row has no media type today; `GET /changes` JSON would not emit it (no change to desktop and mobile contracts). Contracts are another owner's.
-3. **Thumbnail events.** Today nothing is notified when a preview lands: `DerivedStore::store_row` (08) inserts the `derived` row and closes the job, with no feed stamp and no notify; the feed (`nodes.seq`) is stamped by tree transactions only. The hook is after the commit of `store_row` when the job closed (`closed.is_some()`, kind whose outputs include `Thumb`; for a still job that means thumb and preview are both stored, so a ready preview is fetchable) and, for `failed`, in `JobQueue::fail` (`Failed::Dead`) and `reap` (their `Closed` row has no account or hash yet: the `RETURNING` list gains them). It calls a new non-blocking port `ThumbNotifier::notify(account, content_hash, state)` (named: one new primitive, alongside `FeedNotifier`), implemented by a process-wide `tokio::sync::broadcast` (1,024) that each connection subscribes to and filters by account. Rejected: stamping the nodes that share the hash into the feed (replayable, but 08 would write 02's table across a component border and find nodes by hash, and the stamp serialises on the account feed row).
-4. **Accept loop.** `accept.rs` serves connections with `serve_connection`; a WebSocket needs `serve_connection_with_upgrades` (hyper-util's rule for upgrades). The first test proves it. Whether an upgraded socket keeps its `max_connections` slot (`ConnectionGuard` lives in `serve_connection`) is to be measured in phase 2; until then the account cap above is the one limit that is certain.
-5. **Registry.** `registry::validate` allows success 200, 201, 202, 204 and 302 only; 101 must be added, and the tests that enumerate operations (`tests/it/matrices`, `tests/it/csrf/reads.rs`, `tests/it/registry/parity.rs`) are to be checked and, where they expect a success status, taught that a plain GET with valid credentials on this route answers 400 (the parity test accepts any status but 404 and 405).
-6. **Cargo.** `axum` feature `ws`; dev-dependency `tokio-tungstenite =0.29.0` for the tests; `realtime_max_connections_per_account` as one key in the config table (reusing `HoldCap`, no new counter type).
+2. **`ChangeItem.media_type`** (`contracts/src/feed.rs`; `READ_PAGE_SQL` selects `r.media_type`). Added; the `/changes` JSON does not emit it (`registry/feed/wire.rs` lists its members), proved by a test that compares the body byte for byte with and without media types.
+3. **Preview events: `ThumbNotifier`, the one new primitive of the package.** Nothing was notified when a preview landed: `DerivedStore::store_row` (08) inserts the `derived` row and closes the job, and the feed (`nodes.seq`) is stamped by tree transactions only. `contracts::ThumbNotifier` has `notify(ThumbEvent{account, content_hash, state})` (non-blocking, called after the commit) and `subscribe()` (a `ThumbSubscription` whose `next()` is an event or a lag notice). `sunnycloud_sync_feed::InProcessThumbNotifier` implements it with one process-wide `tokio::sync::broadcast` (1,024 events); each socket subscribes **before it sends `Hello`** and keeps the events of its own account. 08 announces `Ready` after the commit of `store_row` when the job closed and its kind produces a `thumb` (a still job closes when thumb and preview are both stored), and `Failed` when such a job dies in `JobQueue::fail`, in `reap` or in `claim` (the `Closed` row of those statements now carries the account and the content hash). `serve` builds one notifier, gives it to 08 (`with_thumb_notifier`) and to 11 (`HttpServer::with_thumb_events`). Rejected: stamping the nodes that share the hash into the feed (replayable, but 08 would write 02's table across a component border, find nodes by hash, and serialise on the account feed row); reusing `FeedNotifier` (it wakes a reader with a number, a preview event needs its payload); a per-account map of channels (a global channel filtered by account is 15 lines and needs no cleanup).
+4. **Accept loop.** `accept.rs` serves connections with `serve_connection_with_upgrades`. An upgraded socket leaves hyper's connection list (and, when the connection future ends at the upgrade, the `max_connections` gate: not measured), so the account cap is the limit that is certain; the task watches `feed_shutdown` itself.
+5. **Registry.** `registry::validate` allows success 101; the CSRF read matrix lists this route among the reads that do not run (a plain GET is 400); the OpenAPI document lists it with response 101 and class `Session`.
+6. **Cargo.** `axum` feature `ws`; `packbin =0.5.1`; dev-dependencies `tokio-tungstenite =0.29.0` and `futures-util`. The account cap is a field of `RealtimeLimits` (default 8), not a config key.
 
 **Coexistence with `GET /changes`.** Desktop and mobile clients keep the long-poll until they move (roadmap section 7); the web uses only the socket, plus `GET /changes/head` for first load. Both paths end in `ChangeFeed::read`, so a change reaches both by the same code and a divergence is not possible by construction; test RT-16 asserts it. When the last native client has moved, the long-poll route is deleted and one pipeline remains.
 
-## Test plan (phase 2)
+## Test plan
 
 Rust tests use the real `sunnycloud serve` on PostgreSQL 18 (`src/server/tests/pipeline_support`, as `pipeline_change_feed.rs`) with a WebSocket client; AAA style.
 
-Stage 1 status: RT-01 to RT-09, RT-14 (and RT-07b, the cap coupling) are `src/server/tests/pipeline_realtime.rs` on the real stack; the handshake, frame, close-code and timing cases (idle, silence, control ping, slow consumer, oversize, shutdown, scripted resets) are `src/components/11_http_api/tests/it/realtime/` over a scripted feed, and the frame bytes are unit tests of `realtime/frames`. RT-10 to RT-13, RT-15 to RT-17 and V-01 to V-03 belong to stage 2 or are covered as named above.
+Status: RT-01 to RT-09, RT-13 (with RT-13b failed and RT-13c isolation), RT-14 and RT-07b (the cap coupling) are `src/server/tests/pipeline_realtime.rs` on the real stack, the worker played over the internal listener; RT-10 (oversize), RT-11 (slow consumer), RT-12 (idle), RT-15 (lag: scripted `ThumbWake::Lagged`), RT-17 (document) and the handshake, close-code and thumb-frame cases are `src/components/11_http_api/tests/it/realtime/` over a scripted feed; RT-16 is RT-01 (the socket equals `/changes` and the node, `media_type` included) plus `datapath::feed` (the `/changes` body does not change). 08 has `thumb_announce` (ready, failed, retry, reaper, other kinds) and 05 reads the media type from the revision. V-01 and V-02 are `realtime/frames/tests.rs` reading `src/components/11_http_api/tests/fixtures/realtime_frames.txt`; the TypeScript side (V-01 to V-03) reads the same file.
 
 | ID | Test | Asserts |
 |----|------|---------|
@@ -210,7 +210,7 @@ Stage 1 status: RT-01 to RT-09, RT-14 (and RT-07b, the cap coupling) are `src/se
 | RT-15 | force a lagged broadcast receiver | `Reset` reason 4 |
 | RT-16 | the same commit read by `GET /changes` and by the socket | identical node fields |
 | RT-17 | OpenAPI document and registry parity | the operation exists, success 101, existing parity tests green |
-| V-01 | **shared vector file** `realtime_frames.txt` (`name hex` lines, the 9 frame vectors of this document plus the probe) | Rust and TypeScript both pack the rows to exactly those bytes and unpack the bytes to those rows |
+| V-01 | **shared vector file** `src/components/11_http_api/tests/fixtures/realtime_frames.txt` (`name hex` lines, the 9 frame vectors of this document plus the probe) | Rust and TypeScript both pack the rows to exactly those bytes and unpack the bytes to those rows |
 | V-02 | hostile lines of the same file (`bad_*`: empty, `7e`, truncated, trailing byte, `Change` name length that lies) | both languages refuse, naming the field; no panic or throw |
 | V-03 | V-01 and V-02 run in the web unit tests and against the Vite production bundle | minification does not change the bytes |
 
@@ -222,15 +222,15 @@ The vector lines are in the appendix; the phase 1 scratch programs (Rust, TypeSc
 2. `ThumbState` is pushed when the job closes (thumb and preview both stored).
 3. Per-account socket cap 8; `max_holds_per_principal` must not undercut it (section Connection lifecycle, point 6).
 4. Idle 90 s, `Subscribe` within 10 s, send timeout 10 s, broadcast 1,024 events, close codes 4401, 4408, 4429 as proposed.
-5. `ChangeItem.media_type` in `contracts` and in `READ_PAGE_SQL`; the `/changes` JSON stays unchanged. Stage 2.
-6. The new `ThumbNotifier` port in `contracts` and the hooks in 08 (`store_row` close, `fail`, `reap`). Stage 2.
+5. `ChangeItem.media_type` in `contracts` and in `READ_PAGE_SQL`; the `/changes` JSON stays unchanged (done, tested byte for byte).
+6. The new `ThumbNotifier` port in `contracts` and the hooks in 08 (`store_row` close, `fail`, `reap`, `claim`) (done).
 7. No inbound rate limit in v1.
 8. The server sends a control `Ping` every 30 s besides the application `Ping`/`Pong`.
 9. The bearer handshake is allowed by the class and untested.
 
-Still open: whether an upgraded socket keeps a `max_connections` slot (the connection future ends at the upgrade, so it probably does not; the account cap is the limit); the explicit wait for open sockets at shutdown (the 1001 close arrived before exit in every run, but nothing waits for it).
+Reconnect procedure (decision 1): after a reconnect the client subscribes at its stored resume point and, once `Hello` arrived (so the preview channel is registered), asks `POST /thumbnail-states` once for the hashes of its still pending nodes; ready or failed flips during the gap are not replayed. Still open: whether an upgraded socket keeps a `max_connections` slot (the connection future ends at the upgrade, so it probably does not; the account cap is the limit); the explicit wait for open sockets at shutdown (the 1001 close arrived before exit in every run, but nothing waits for it).
 
-## Appendix: byte vectors (produced by Rust and by TypeScript, identical)
+## Appendix: byte vectors (produced by Rust and by TypeScript, identical; the canonical copy is the fixture file named in the test plan)
 
 Rows: `subscribe` epoch 1 seq 42; `ping` and `pong` nonce 7; `hello` 1, 30, 1024; `thumb_state_ready` hash 20..3f; `reset_below_horizon` reason 2, epoch 1, seq 900; the three `change_*` rows as in the examples above (id bytes count up from the first byte shown); `probe_all` is the packbin check scheme 0x7f (not a frame), kept to prove `list`, flags and `times` in both languages.
 

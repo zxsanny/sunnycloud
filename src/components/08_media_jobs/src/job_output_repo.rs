@@ -4,7 +4,7 @@ use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx};
 use uuid::Uuid;
 
-use crate::job_repo::{Closed, at, closed, closed_columns, micros};
+use crate::job_repo::{Closed, ClosedRow, at, closed, closed_columns, micros};
 
 /// The holder check of `job_repo::HELD` (closed `derived` allowed) again, now with the row locked: concurrent posts for one job
 /// run their transactions one after the other. The column is true while the job is running.
@@ -46,7 +46,7 @@ pub(crate) async fn close_derived(
     job: Uuid,
     now: Timestamp,
 ) -> Result<Option<Closed>, DbError> {
-    let row: Option<(String, f64)> = sqlx::query_as(CLOSE_DERIVED)
+    let row: Option<ClosedRow> = sqlx::query_as(CLOSE_DERIVED)
         .bind(job)
         .bind(account)
         .bind(micros(now))

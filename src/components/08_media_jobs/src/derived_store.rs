@@ -11,8 +11,8 @@ use std::sync::Arc;
 use contracts::{
     AcceptOutcome, BlobCatalog, BlobError, BlobReader, BlobRegistry, BlobRegistryError, BlobWriter,
     ByteStream, DerivedKind, Due, Fault, GcQueue, GcQueueError, GcReason, OutputMeta,
-    RegisterState, TreeReader, TreeReaderError, WorkerInput, WorkerJobError, WrittenBlob,
-    WrittenOrPlanned,
+    RegisterState, ThumbNotifier, ThumbState, TreeReader, TreeReaderError, WorkerInput,
+    WorkerJobError, WrittenBlob, WrittenOrPlanned,
 };
 use media_shared::policy::{OutputSpec, Params};
 use sc_clock::Clock;
@@ -29,6 +29,7 @@ use crate::job_output_repo;
 use crate::job_repo::{self, HeldJob};
 use crate::output_rules::{self, Dimensions, OutputCaps};
 use crate::sniff::{self, HEAD_LEN};
+use crate::thumb_events;
 
 /// The 04 ports the store writes, reads and registers through.
 pub struct BlobPorts {
@@ -46,6 +47,7 @@ pub struct DerivedStore {
     blobs: BlobPorts,
     caps: OutputCaps,
     metrics: Arc<JobMetrics>,
+    thumbs: Option<Arc<dyn ThumbNotifier>>,
 }
 
 /// Why the row transaction rolled back.
@@ -93,7 +95,15 @@ impl DerivedStore {
             blobs,
             caps: OutputCaps::from_config(config),
             metrics,
+            thumbs: None,
         }
+    }
+
+    /// Announces a preview whose job closed with its outputs stored (`ThumbNotifier`); without it nothing is
+    /// announced.
+    pub fn with_thumb_notifier(mut self, thumbs: Arc<dyn ThumbNotifier>) -> Self {
+        self.thumbs = Some(thumbs);
+        self
     }
 
     /// `Accepted` stores the output; `AlreadyPresent` means the key already had its file (a retry or a race), and
@@ -347,6 +357,7 @@ impl DerivedStore {
                 }
                 if let Some(closed) = closed {
                     self.metrics.succeeded(closed);
+                    thumb_events::announce(self.thumbs.as_ref(), &closed, ThumbState::Ready);
                 }
                 Ok(outcome)
             }

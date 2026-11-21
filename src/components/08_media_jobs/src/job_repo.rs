@@ -34,22 +34,32 @@ pub(crate) use at;
 /// The `RETURNING` columns of a job that just became terminal, read by [`closed`].
 macro_rules! closed_columns {
     () => {
-        "jobs.kind, extract(epoch FROM jobs.finished_at - jobs.created_at)::float8"
+        "jobs.kind, extract(epoch FROM jobs.finished_at - jobs.created_at)::float8, jobs.account_id, \
+         jobs.content_hash"
     };
 }
 pub(crate) use closed_columns;
 
-/// A job that just became `succeeded` or `dead`: its kind and the seconds from its enqueue to its close.
+/// A job that just became `succeeded` or `dead`: its kind, the seconds from its enqueue to its close, and the
+/// account and content it was for (the realtime channel announces a failed preview by them).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Closed {
     pub kind: JobKind,
     pub seconds: f64,
+    pub account: Uuid,
+    pub content_hash: FileHash,
 }
 
-pub(crate) fn closed((kind, seconds): (String, f64)) -> Result<Closed, DbError> {
+/// The row `closed_columns!` returns: kind, seconds, account, content hash.
+pub(crate) type ClosedRow = (String, f64, Uuid, Vec<u8>);
+
+pub(crate) fn closed((kind, seconds, account, hash): ClosedRow) -> Result<Closed, DbError> {
+    let hash = <[u8; 32]>::try_from(hash).map_err(|_| overflow("content hash"))?;
     Ok(Closed {
         kind: parse_kind(&kind)?,
         seconds,
+        account,
+        content_hash: FileHash::from_bytes(hash),
     })
 }
 
@@ -74,7 +84,7 @@ const CLAIM: &str = concat!(
      last_error = CASE WHEN next.exhausted THEN COALESCE(jobs.last_error, 'lease_expired') ELSE jobs.last_error END \
      FROM next WHERE jobs.id = next.id \
      RETURNING jobs.id, jobs.kind, jobs.content_hash, jobs.params_version, jobs.attempts, next.exhausted, \
-     next.was = 'running', extract(epoch FROM jobs.finished_at - jobs.created_at)::float8"
+     next.was = 'running', extract(epoch FROM jobs.finished_at - jobs.created_at)::float8, jobs.account_id"
 );
 
 const EXTEND: &str = concat!(
@@ -153,7 +163,17 @@ pub(crate) fn overflow(what: &str) -> DbError {
 }
 
 /// id, kind, content hash, params_version, attempts, exhausted, was running, seconds since enqueue when closed.
-type ClaimRow = (Uuid, String, Vec<u8>, i16, i16, bool, bool, Option<f64>);
+type ClaimRow = (
+    Uuid,
+    String,
+    Vec<u8>,
+    i16,
+    i16,
+    bool,
+    bool,
+    Option<f64>,
+    Uuid,
+);
 
 pub(crate) enum Next {
     Empty,
@@ -190,7 +210,17 @@ pub(crate) async fn claim(
             .bind(micros(lease.until))
             .fetch_optional(tx.conn())
             .await?;
-        let Some((id, kind, hash, params_version, attempts, exhausted, was_running, seconds)) = row
+        let Some((
+            id,
+            kind,
+            hash,
+            params_version,
+            attempts,
+            exhausted,
+            was_running,
+            seconds,
+            account,
+        )) = row
         else {
             return Ok(Next::Empty);
         };
@@ -198,7 +228,7 @@ pub(crate) async fn claim(
             let seconds = seconds.ok_or_else(|| overflow("finished_at"))?;
             return Ok(Next::Exhausted {
                 was_running,
-                closed: closed((kind, seconds))?,
+                closed: closed((kind, seconds, account, hash))?,
             });
         }
         let hash = <[u8; 32]>::try_from(hash).map_err(|_| overflow("content hash"))?;
@@ -264,7 +294,7 @@ pub(crate) async fn complete_skipped(
     outcome: SkipOutcome,
 ) -> Result<Option<Closed>, RunError<DbError>> {
     db.run_system("job_complete_skipped", async |tx| {
-        let row: Option<(String, f64)> = sqlx::query_as(SKIP)
+        let row: Option<ClosedRow> = sqlx::query_as(SKIP)
             .bind(job)
             .bind(worker)
             .bind(micros(now))
@@ -338,7 +368,7 @@ pub(crate) async fn reap(
     max_attempts: i64,
 ) -> Result<Vec<Closed>, RunError<DbError>> {
     db.run_system("job_reap", async |tx| {
-        let rows: Vec<(String, f64)> = sqlx::query_as(REAP)
+        let rows: Vec<ClosedRow> = sqlx::query_as(REAP)
             .bind(micros(now))
             .bind(max_attempts)
             .fetch_all(tx.conn())

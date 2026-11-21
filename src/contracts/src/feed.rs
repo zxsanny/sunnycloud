@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::common::Fault;
 use crate::identity::{Principal, PrincipalRevalidator};
+use crate::media::ThumbState;
 use crate::tree::{NodeKind, NodeState};
 use sc_ids::FileHash;
 
@@ -43,6 +44,40 @@ pub trait FeedStamp: Send + Sync {
 /// Wakes held reads of an account. Non-blocking; a lost wake is healed by the reader's periodic recheck.
 pub trait FeedNotifier: Send + Sync {
     fn notify(&self, account: Uuid, seq: Seq);
+}
+
+/// A preview that reached a final state. Derived outputs are keyed by account and content hash, not by node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThumbEvent {
+    pub account: Uuid,
+    pub content_hash: FileHash,
+    /// `Ready` or `Failed`; the other states are never announced.
+    pub state: ThumbState,
+}
+
+/// What a [`ThumbSubscription`] hands out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThumbWake {
+    Event(ThumbEvent),
+    /// The subscriber was too slow and events were dropped; it must treat its picture of previews as stale.
+    Lagged,
+}
+
+/// The wake of the realtime channel for previews, beside `FeedNotifier` for the tree: 08 announces a preview that
+/// is ready (its job closed with the thumb stored) or failed (its job died), after the commit that made it so;
+/// 11's sockets subscribe and push `ThumbState` frames. `notify` never blocks; an event is lost only to a
+/// subscriber that lags, which is told so.
+pub trait ThumbNotifier: Send + Sync {
+    fn notify(&self, event: ThumbEvent);
+
+    /// Sees every event announced after this call returns.
+    fn subscribe(&self) -> Box<dyn ThumbSubscription>;
+}
+
+#[async_trait]
+pub trait ThumbSubscription: Send {
+    /// The next event or lag notice; never completes once the notifier is gone.
+    async fn next(&mut self) -> ThumbWake;
 }
 
 #[derive(Debug, Error)]
@@ -79,6 +114,9 @@ pub struct ChangeItem {
     pub revision_id: Option<Uuid>,
     pub size: Option<i64>,
     pub content_hash: Option<FileHash>,
+    /// The sniffed media type of the current revision (files only). Read by the realtime channel; `GET /changes`
+    /// does not carry it.
+    pub media_type: Option<String>,
     pub seq: Seq,
 }
 

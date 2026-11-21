@@ -25,6 +25,7 @@ fn page() -> ChangePage {
                 revision_id: Some(REVISION),
                 size: Some(2048),
                 content_hash: Some(file_hash(0xAB)),
+                media_type: Some("application/pdf".to_owned()),
                 seq: 18,
             },
             ChangeItem {
@@ -36,6 +37,7 @@ fn page() -> ChangePage {
                 revision_id: None,
                 size: None,
                 content_hash: None,
+                media_type: None,
                 seq: 19,
             },
         ],
@@ -272,4 +274,28 @@ async fn the_head_is_the_cursor_of_the_account_of_the_caller() {
     assert_eq!(head.header("cache-control"), Some("no-store"));
     assert_eq!(stack.log(HEAD), [format!("{HEAD} ({MEMBER_ACCOUNT})")]);
     stack.stop().await;
+}
+
+#[tokio::test]
+async fn the_changes_body_is_byte_identical_whether_or_not_the_feed_knows_media_types() {
+    // Arrange: the same page twice, once with the media types the realtime channel needs, once without.
+    let stack = Stack::start().await;
+    revalidated(2, &stack);
+    let mut bare = page();
+    for item in &mut bare.items {
+        item.media_type = None;
+    }
+    assert!(page().items[0].media_type.is_some());
+    stack.script.push(READ, Ok::<_, ChangeFeedError>(page()));
+    stack.script.push(READ, Ok::<_, ChangeFeedError>(bare));
+    let path = "/api/v1/changes?cursor=3.17";
+
+    // Act
+    let with_types = stack.as_member("GET", path, "").await;
+    let without = stack.as_member("GET", path, "").await;
+
+    // Assert
+    assert_eq!(with_types.status, 200);
+    assert_eq!(with_types.body, without.body);
+    assert!(!String::from_utf8_lossy(&with_types.body).contains("media_type"));
 }

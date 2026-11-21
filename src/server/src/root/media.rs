@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use contracts::MediaAdmin;
+use contracts::{MediaAdmin, ThumbNotifier};
 use media_api::{
     BlobPorts, DerivedFiles, DerivedStore, JobMetrics, JobPlanner, JobQueue, MediaAdminService,
     MediaConfig, MediaHealth, MediaLifecycle, ThumbnailStates, WorkerAuth, WorkerJobsFacade,
@@ -58,18 +58,17 @@ async fn planning(services: &ServiceContext) -> Result<MediaPlanning, CliError> 
     let db = Db::clone(&*services.get::<Db>().await?);
     let clock = services.get::<dyn Clock>().await?;
     let registry = services.get::<Metrics>().await?;
+    let thumbs = services.get::<dyn ThumbNotifier>().await?;
     let config = MediaConfig::from_settings(&settings);
     let planner = JobPlanner::from_config(&config);
     let metrics = Arc::new(
         JobMetrics::register(&registry).map_err(|error| failed("the media job metrics", error))?,
     );
     Ok(MediaPlanning {
-        queue: Arc::new(JobQueue::new(
-            db.clone(),
-            clock,
-            &config,
-            Arc::clone(&metrics),
-        )),
+        queue: Arc::new(
+            JobQueue::new(db.clone(), clock, &config, Arc::clone(&metrics))
+                .with_thumb_notifier(thumbs),
+        ),
         thumbnails: Arc::new(ThumbnailStates::new(db, planner)),
         planner,
         metrics,
@@ -103,14 +102,17 @@ async fn media(services: &ServiceContext) -> Result<Media, CliError> {
         registry: blobs.registry.clone(),
         gc: blobs.gc.clone(),
     };
-    let store = Arc::new(DerivedStore::new(
-        db.clone(),
-        Arc::clone(&clock),
-        tree.reader.clone(),
-        ports,
-        &planning.config,
-        Arc::clone(&planning.metrics),
-    ));
+    let store = Arc::new(
+        DerivedStore::new(
+            db.clone(),
+            Arc::clone(&clock),
+            tree.reader.clone(),
+            ports,
+            &planning.config,
+            Arc::clone(&planning.metrics),
+        )
+        .with_thumb_notifier(services.get::<dyn ThumbNotifier>().await?),
+    );
     let admin = services.get::<MediaAdminService>().await?;
     // The queue gauges are read from the table before each scrape (08's scrape probe).
     registry.register_probe(admin.clone());

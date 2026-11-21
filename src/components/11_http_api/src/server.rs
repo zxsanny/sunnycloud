@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
+use contracts::ThumbNotifier;
 use sc_observability::{Liveness, ReadinessRegistry, log_info, ops_router};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -53,6 +54,7 @@ pub struct HttpServer {
     openapi: OpenApiDocument,
     spa: Option<Arc<SpaBundle>>,
     realtime: RealtimeLimits,
+    thumb_events: Option<Arc<dyn ThumbNotifier>>,
 }
 
 /// A server whose listeners are bound, with their local addresses known.
@@ -111,6 +113,7 @@ impl HttpServer {
             openapi,
             spa: None,
             realtime: RealtimeLimits::default(),
+            thumb_events: None,
         })
     }
 
@@ -123,6 +126,12 @@ impl HttpServer {
     /// Other numbers for the realtime channel than the contract's defaults (tests shorten them).
     pub fn with_realtime_limits(mut self, limits: RealtimeLimits) -> Self {
         self.realtime = limits;
+        self
+    }
+
+    /// The process-wide preview events the realtime sockets push as `ThumbState` frames (08 announces them).
+    pub fn with_thumb_events(mut self, events: Arc<dyn ThumbNotifier>) -> Self {
+        self.thumb_events = Some(events);
         self
     }
 
@@ -160,6 +169,7 @@ impl HttpServer {
             csrf: Arc::clone(&self.csrf),
             body_limits: Arc::clone(&self.body_limits),
             realtime: self.realtime,
+            thumb_events: self.thumb_events.clone(),
         };
         let routers = mount(&self.routes, &context, self.spa.clone());
         Ok(BoundServer {

@@ -110,6 +110,7 @@ pub fn route_context_for(
         csrf,
         body_limits,
         realtime: sunnycloud_http_api::RealtimeLimits::default(),
+        thumb_events: None,
     }
 }
 

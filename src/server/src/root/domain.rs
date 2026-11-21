@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use contracts::{
     AccountDeletionService, AdminService, EpochAdmin, InviteService, OperatorIdentityOps,
-    TreeRestore,
+    ThumbNotifier, TreeRestore,
 };
 use sc_audit::AuditWriter;
 use sc_clock::Clock;
@@ -25,8 +25,8 @@ use sunnycloud_identity::{
 use sunnycloud_quota::{PgQuotaAdmin, PgQuotaLedger, QuotaConfig};
 use sunnycloud_sharing::{PgShareLifecycle, PgShareService, ShareConfig};
 use sunnycloud_sync_feed::{
-    FeedConfig, InProcessNotifier, PgChangeFeed, PgEpochAdmin, PgFeedHorizon, PgFeedLifecycle,
-    PgFeedReader, PgFeedStamp,
+    FeedConfig, InProcessNotifier, InProcessThumbNotifier, PgChangeFeed, PgEpochAdmin,
+    PgFeedHorizon, PgFeedLifecycle, PgFeedReader, PgFeedStamp,
 };
 use sunnycloud_transfer::{PgTransferLifecycle, PgUploadService, TransferConfig, UploadPorts};
 use sunnycloud_tree::{
@@ -125,6 +125,11 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
                 ledger: Arc::new(PgQuotaLedger::new(config)),
                 admin: Arc::new(PgQuotaAdmin::new(base.db, config)),
             }))
+        })
+        // The one wake of previews: 08 announces into it, 11's realtime sockets subscribe to it.
+        .register::<dyn ThumbNotifier, _, _>(|_services| async move {
+            let notifier: Arc<dyn ThumbNotifier> = InProcessThumbNotifier::new();
+            Ok(notifier)
         })
         .register::<PgEpochAdmin, _, _>(|services| async move {
             let db = Db::clone(&*services.get::<Db>().await?);

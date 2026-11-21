@@ -80,10 +80,20 @@ impl Accept {
         tree: impl FnOnce(Arc<dyn TreeReader>) -> Arc<dyn TreeReader>,
         registry: impl FnOnce(&Store) -> Arc<dyn contracts::BlobRegistry>,
     ) -> Accept {
+        Accept::with_thumbs(media, tree, registry, None).await
+    }
+
+    /// As `with`, the queue and the store announcing previews to `thumbs`.
+    pub async fn with_thumbs(
+        media: MediaConfig,
+        tree: impl FnOnce(Arc<dyn TreeReader>) -> Arc<dyn TreeReader>,
+        registry: impl FnOnce(&Store) -> Arc<dyn contracts::BlobRegistry>,
+        thumbs: Option<Arc<dyn contracts::ThumbNotifier>>,
+    ) -> Accept {
         // The keyring starts on an empty volume, before any `blobs` row exists.
         let fixture = Fixture::new().await;
         let blobs = Store::new(&fixture).await;
-        let q = Queue::with_fixture(fixture).await;
+        let q = Queue::with_thumbs(fixture, thumbs.clone()).await;
         let settings = load_settings(&[]).expect("settings");
         let real_tree = Arc::new(PgTreeReader::new(
             q.fixture.api.clone(),
@@ -99,14 +109,18 @@ impl Accept {
             registry: registry(&blobs),
             gc: gc.clone(),
         };
-        let store = Arc::new(DerivedStore::new(
+        let mut store = DerivedStore::new(
             q.fixture.api.clone(),
             q.clock.clone(),
             tree(real_tree.clone()),
             ports,
             &media,
             q.metrics.clone(),
-        ));
+        );
+        if let Some(thumbs) = thumbs {
+            store = store.with_thumb_notifier(thumbs);
+        }
+        let store = Arc::new(store);
         Accept {
             q,
             blobs,

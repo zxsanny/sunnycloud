@@ -19,6 +19,7 @@ use axum::extract::ws::WebSocketUpgrade;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::on;
+use contracts::ThumbNotifier;
 use sc_error::{BusinessError, BusinessParams, CorrelationId, DomainError, ErrorCode};
 
 use self::cap::ConnectionCap;
@@ -98,6 +99,7 @@ struct Realtime {
     csrf: Arc<CsrfGuard>,
     cap: Arc<ConnectionCap>,
     limits: RealtimeLimits,
+    thumbs: Option<Arc<dyn ThumbNotifier>>,
 }
 
 impl Realtime {
@@ -107,6 +109,7 @@ impl Realtime {
             csrf: Arc::clone(&context.csrf),
             cap: ConnectionCap::new(context.realtime.max_connections_per_account),
             limits: context.realtime,
+            thumbs: context.thumb_events.clone(),
         }
     }
 }
@@ -142,6 +145,7 @@ async fn connect(
         principal: caller.principal,
         request_id,
         limits: realtime.limits,
+        thumbs: realtime.thumbs.clone(),
         _permit: permit,
     };
     upgrade

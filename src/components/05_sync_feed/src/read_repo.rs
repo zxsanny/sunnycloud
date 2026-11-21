@@ -34,7 +34,7 @@ WITH feed AS (
 )
 SELECT feed.epoch AS feed_epoch, feed.seq AS feed_seq, feed.purge_horizon, newer.more,
        n.id, n.parent_id, n.kind, n.name, n.deleted_at IS NOT NULL AS tombstone,
-       n.current_revision_id, r.size, r.content_hash, n.seq
+       n.current_revision_id, r.size, r.content_hash, r.media_type, n.seq
 FROM feed CROSS JOIN cut CROSS JOIN newer
 LEFT JOIN nodes n ON n.account_id = $1 AND n.seq > $3 AND n.seq <= cut.seq
 LEFT JOIN revisions r ON r.id = n.current_revision_id AND r.account_id = n.account_id
@@ -176,6 +176,7 @@ fn item(account: Uuid, node_id: Uuid, row: &PgRow) -> Result<ChangeItem, ChangeF
         revision_id: column(row.try_get("current_revision_id"))?,
         size: column(row.try_get("size"))?,
         content_hash,
+        media_type: column(row.try_get("media_type"))?,
         seq: column(row.try_get("seq"))?,
     })
 }

@@ -6,3 +6,4 @@ mod handshake;
 mod limits;
 mod session;
 mod support;
+mod thumbs;

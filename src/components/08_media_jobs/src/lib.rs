@@ -30,6 +30,7 @@ mod output_rules;
 mod planner;
 mod retry;
 mod sniff;
+mod thumb_events;
 mod thumb_states;
 mod worker_auth;
 mod worker_health;

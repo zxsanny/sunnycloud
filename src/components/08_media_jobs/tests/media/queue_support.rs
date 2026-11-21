@@ -68,6 +68,14 @@ impl Queue {
     }
 
     pub async fn with_fixture(fixture: Fixture) -> Queue {
+        Queue::with_thumbs(fixture, None).await
+    }
+
+    /// As `with_fixture`, the queue announcing the previews of dead jobs to `thumbs`.
+    pub async fn with_thumbs(
+        fixture: Fixture,
+        thumbs: Option<Arc<dyn contracts::ThumbNotifier>>,
+    ) -> Queue {
         let clock = Arc::new(ManualClock::new(START));
         let registry = Metrics::new(BuildInfo {
             version: "test",
@@ -76,12 +84,16 @@ impl Queue {
         })
         .expect("metrics");
         let metrics = Arc::new(JobMetrics::register(&registry).expect("job metrics"));
-        let queue = Arc::new(JobQueue::new(
+        let mut queue = JobQueue::new(
             fixture.api.clone(),
             clock.clone(),
             &config(),
             metrics.clone(),
-        ));
+        );
+        if let Some(thumbs) = thumbs {
+            queue = queue.with_thumb_notifier(thumbs);
+        }
+        let queue = Arc::new(queue);
         let account = Uuid::new_v4();
         let mut conn = fixture.owner_conn().await;
         let revision = account_with_revision(&mut conn, account, &[1; 32]).await;

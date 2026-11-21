@@ -11,7 +11,8 @@ use std::time::Duration;
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use contracts::{
-    ChangeFeedError, ChangeItem, ChangePage, Cursor, NodeKind, NodeState, Principal, ThumbState,
+    ChangeFeedError, ChangeItem, ChangePage, Cursor, NodeKind, NodeState, Principal, ThumbEvent,
+    ThumbNotifier, ThumbState, ThumbSubscription, ThumbWake,
 };
 use sc_error::CorrelationId;
 use sc_ids::FileHash;
@@ -22,7 +23,7 @@ use super::RealtimeLimits;
 use super::cap::ConnectionPermit;
 use super::frames::{
     ChangeFrame, ClientFrame, FrameError, ResetReason, decode_client, encode_change, encode_hello,
-    encode_pong, encode_reset,
+    encode_pong, encode_reset, encode_thumb_state,
 };
 use crate::services::ApiServices;
 
@@ -38,6 +39,8 @@ pub(super) struct Connection {
     pub principal: Principal,
     pub request_id: CorrelationId,
     pub limits: RealtimeLimits,
+    /// The preview events of the process; `None` where nothing announces them (no `ThumbState` is pushed).
+    pub thumbs: Option<Arc<dyn ThumbNotifier>>,
     /// Held for as long as the socket is open.
     pub _permit: ConnectionPermit,
 }
@@ -99,6 +102,11 @@ async fn send_close(socket: &mut WebSocket, code: u16, reason: &'static str) {
 
 async fn drive(socket: &mut WebSocket, connection: &Connection) -> End {
     let limits = &connection.limits;
+    // Registered before `Hello`: a preview that lands after the client sees `Hello` is pushed, never missed.
+    let mut thumbs = connection
+        .thumbs
+        .as_ref()
+        .map(|notifier| notifier.subscribe());
     let hello = match encode_hello(limits.ping_interval_secs(), limits.max_client_frame_bytes()) {
         Ok(hello) => hello,
         Err(error) => return internal("hello did not pack", &error),
@@ -144,6 +152,13 @@ async fn drive(socket: &mut WebSocket, connection: &Connection) -> End {
                     return end;
                 }
             }
+            wake = next_thumb(&mut thumbs) => {
+                match thumb_wake(socket, connection, wake).await {
+                    Ok(true) => subscription.read = None,
+                    Ok(false) => {}
+                    Err(end) => return end,
+                }
+            }
             page = next_page(&mut subscription.read) => {
                 subscription.read = None;
                 match deliver(socket, connection, page).await {
@@ -152,6 +167,40 @@ async fn drive(socket: &mut WebSocket, connection: &Connection) -> End {
                     Err(end) => return end,
                 }
             }
+        }
+    }
+}
+
+/// Resolves with the next preview event; never when nothing announces them.
+async fn next_thumb(thumbs: &mut Option<Box<dyn ThumbSubscription>>) -> ThumbWake {
+    match thumbs {
+        Some(subscription) => subscription.next().await,
+        None => pending().await,
+    }
+}
+
+/// An event of this account becomes a `ThumbState` frame (other accounts' events are not this socket's). A lag
+/// is a `Reset` (`true`: the subscription is over until the client subscribes again).
+async fn thumb_wake(
+    socket: &mut WebSocket,
+    connection: &Connection,
+    wake: ThumbWake,
+) -> Result<bool, End> {
+    match wake {
+        ThumbWake::Event(ThumbEvent {
+            account,
+            content_hash,
+            state,
+        }) if account == connection.principal.account_id => {
+            let frame = encode_thumb_state(content_hash.into_bytes(), thumb_number(state))
+                .map_err(|error| internal("thumb state did not pack", &error))?;
+            send_binary(socket, frame, connection.limits.send_timeout).await?;
+            Ok(false)
+        }
+        ThumbWake::Event(_) => Ok(false),
+        ThumbWake::Lagged => {
+            reset(socket, connection, ResetReason::Lagged).await?;
+            Ok(true)
         }
     }
 }
@@ -267,7 +316,7 @@ async fn deliver(
     let page = match page {
         Ok(page) => page,
         Err(ChangeFeedError::ResyncRequired { reason }) => {
-            reset(socket, connection, reason).await?;
+            reset(socket, connection, reset_reason(reason)).await?;
             return Ok(None);
         }
         Err(ChangeFeedError::Unauthenticated) => return Err(End::Close(4401, "session ended")),
@@ -285,10 +334,19 @@ async fn deliver(
     Ok(Some(page.next_cursor))
 }
 
+const fn reset_reason(reason: contracts::ResyncReason) -> ResetReason {
+    match reason {
+        contracts::ResyncReason::EpochChanged => ResetReason::EpochChanged,
+        contracts::ResyncReason::BelowPurgeHorizon => ResetReason::BelowPurgeHorizon,
+        contracts::ResyncReason::CursorAhead => ResetReason::CursorAhead,
+    }
+}
+
+/// The head of the account, so the client can reload and subscribe from it.
 async fn reset(
     socket: &mut WebSocket,
     connection: &Connection,
-    reason: contracts::ResyncReason,
+    reason: ResetReason,
 ) -> Result<(), End> {
     let head = connection
         .services
@@ -296,11 +354,6 @@ async fn reset(
         .head(connection.principal.account_id)
         .await
         .map_err(|error| internal("feed head failed", &error))?;
-    let reason = match reason {
-        contracts::ResyncReason::EpochChanged => ResetReason::EpochChanged,
-        contracts::ResyncReason::BelowPurgeHorizon => ResetReason::BelowPurgeHorizon,
-        contracts::ResyncReason::CursorAhead => ResetReason::CursorAhead,
-    };
     let epoch = u64::try_from(head.epoch).map_err(|error| internal("epoch", &error))?;
     let seq = u64::try_from(head.seq).map_err(|error| internal("seq", &error))?;
     let frame =
@@ -337,7 +390,7 @@ async fn change_frames(
                 .transpose()
                 .map_err(|error| internal("size", &error))?,
             content_hash: item.content_hash.map(FileHash::into_bytes),
-            media_type: None,
+            media_type: item.media_type.clone(),
             deleted: item.state == NodeState::Tombstone,
             end,
         };
@@ -354,7 +407,7 @@ async fn thumb_states(
     let mut seen = HashSet::new();
     let hashes: Vec<FileHash> = items
         .iter()
-        .filter(|item| item.kind == NodeKind::File)
+        .filter(|item| item.kind == NodeKind::File && is_media(item))
         .filter_map(|item| item.content_hash)
         .filter(|hash| seen.insert(*hash))
         .collect();
@@ -401,4 +454,13 @@ async fn send_message(
             Err(End::Slow)
         }
     }
+}
+
+/// A file whose sniffed type is an image or a video is the only kind that has a preview; the same rule as the
+/// tree listing's. Without a type (a feed that does not know it) the file is asked about.
+fn is_media(item: &ChangeItem) -> bool {
+    item.media_type.as_deref().is_none_or(|media| {
+        let top = media.split('/').next().unwrap_or_default();
+        top.eq_ignore_ascii_case("image") || top.eq_ignore_ascii_case("video")
+    })
 }

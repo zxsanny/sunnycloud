@@ -8,7 +8,7 @@ use sc_clock::Timestamp;
 use sc_db::{DbError, DbTx};
 use uuid::Uuid;
 
-use crate::job_repo::{Closed, at, closed, closed_columns, micros, overflow};
+use crate::job_repo::{Closed, ClosedRow, at, closed, closed_columns, micros, overflow};
 use crate::retry;
 
 const LOCK_HOLDER: &str = concat!(
@@ -61,7 +61,7 @@ pub(crate) async fn fail_in(
     };
     let attempts = u32::try_from(attempts).map_err(|_| overflow("attempts"))?;
     if retry::is_dead(plan.disposition, i64::from(attempts), plan.max_attempts) {
-        let row: (String, f64) = sqlx::query_as(MARK_DEAD)
+        let row: ClosedRow = sqlx::query_as(MARK_DEAD)
             .bind(job)
             .bind(micros(plan.now))
             .bind(plan.error)

@@ -49,6 +49,7 @@ async fn each_node_appears_once_with_its_latest_state_and_every_field() {
             revision_id: None,
             size: None,
             content_hash: None,
+            media_type: None,
             seq: 5,
         }
     );
@@ -67,6 +68,7 @@ async fn each_node_appears_once_with_its_latest_state_and_every_field() {
             revision_id: Some(s.revision),
             size: Some(FILE_SIZE),
             content_hash: Some(FileHash::from_bytes([FILE_HASH_BYTE; 32])),
+            media_type: None,
             seq: 3,
         }
     );
@@ -385,5 +387,32 @@ async fn a_cursor_of_another_account_reads_nothing_of_it() {
     // Assert
     assert!(page.items.is_empty());
     assert_eq!(page.next_cursor, cursor(0));
+    s.stamped.fixture.finish().await;
+}
+
+#[tokio::test]
+async fn a_file_carries_the_media_type_of_its_current_revision_and_a_folder_none() {
+    // Arrange
+    let s = scenario(0).await;
+    let mut conn = s.stamped.fixture.owner_conn().await;
+    sqlx::query("UPDATE revisions SET media_type = 'image/heic' WHERE id = $1")
+        .bind(s.revision)
+        .execute(&mut conn)
+        .await
+        .expect("set the media type");
+    conn.close().await.expect("close owner connection");
+
+    // Act
+    let page = s.stamped.read_from(0).await.expect("page");
+
+    // Assert
+    let media = |id: Uuid| {
+        page.items
+            .iter()
+            .find(|item| item.node_id == id)
+            .and_then(|item| item.media_type.clone())
+    };
+    assert_eq!(media(s.file).as_deref(), Some("image/heic"));
+    assert_eq!(media(s.a), None);
     s.stamped.fixture.finish().await;
 }

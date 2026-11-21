@@ -84,6 +84,7 @@ impl ChangeFeed for Double {
                 revision_id: None,
                 size: None,
                 content_hash: None,
+                media_type: None,
                 seq: cursor.seq + 1,
             }],
             next_cursor: Cursor {

@@ -1,0 +1,32 @@
+# Byte vectors of the realtime frames (realtime.md): `name hex`, one per line, hex without spaces.
+# Rust (11_http_api, realtime/frames/tests.rs) and TypeScript (the web app) both pack the rows named below to
+# exactly these bytes and unpack these bytes to those rows. `#` starts a comment.
+#
+# Rows: subscribe epoch 1 seq 42; ping and pong nonce 7; hello version 1, ping 30 s, client frames 1024 bytes;
+# thumb_state_ready hash 20..3f state 2; reset_below_horizon reason 2, epoch 1, seq 900; the three change_* rows:
+# node ids count up from the first id byte (01, 02, 03), parent 30..3f, revision 50..5f, hash 20..3f.
+# probe_all is the packbin check scheme 0x7f (not a frame): u8 kind 9, u32 n 300, u64 big 2^64-1, utf8 name
+# "zxsanny", list of u16 [1, 2], flags{heading u16 90, on bool true}, u8 count 2, times(count){lat u32, lon u32}
+# = (10, 20), (30, 40), u8 tail 7.
+subscribe 0101000000000000002a00000000000000
+ping 0207000000
+pong 2407000000
+hello 2001001e0000040000
+thumb_state_ready 22202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f02
+reset_below_horizon 230201000000000000008403000000000000
+change_file 2101000000000000002a000000000000000102030405060708090a0b0c0d0e0f1000010d2bfffadf8fff7fa888a3f542ec5f303132333435363738393a3b3c3d3e3f505152535455565758595a5b5c5d5e5fceca230000000000202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f08696e9c0ffe950bb0
+change_folder_tombstone 2101000000000000002b0000000000000002030405060708090a0b0c0d0e0f101101000883e59cab21fc676021303132333435363738393a3b3c3d3e3f
+change_root_child_minimal 2101000000000000002c00000000000000030405060708090a0b0c0d0e0f101112010002106100
+probe_all 7f092c010000ffffffffffffffff062bfcfee119b2020001000200055a00020a000000140000001e0000002800000007
+#
+# Hostile lines: `bad_client_*` are client messages the server must refuse (an error, never a frame; `-` is the
+# empty message); `bad_server_*` are server messages the client must refuse (an error, never a throw).
+bad_client_empty -
+bad_client_unknown_type 7e00
+bad_client_server_only_type 200100
+bad_client_subscribe_truncated 0101000000000000002a000000
+bad_client_subscribe_trailing_byte 0101000000000000002a00000000000000ff
+bad_client_ping_trailing_byte 0207000000ff
+bad_server_hello_truncated 20010000
+bad_server_hello_trailing_byte 2001001e0000040000ff
+bad_server_change_name_length_lies 2101000000000000002a000000000000000102030405060708090a0b0c0d0e0f1000c801

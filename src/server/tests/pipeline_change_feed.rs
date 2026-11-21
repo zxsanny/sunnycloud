@@ -372,6 +372,24 @@ const CALLERS: &[Caller] = &[
         ],
     ),
     (
+        "one ThumbNotifier for previews: built once, handed to 08's queue and store and to 11's sockets",
+        "server/src/root/domain.rs",
+        &["InProcessThumbNotifier::new()"],
+    ),
+    (
+        "08's job queue and derived store announce previews to it",
+        "server/src/root/media.rs",
+        &[
+            ".with_thumb_notifier(thumbs)",
+            ".with_thumb_notifier(services.get::<dyn ThumbNotifier>().await?)",
+        ],
+    ),
+    (
+        "11's sockets subscribe to it",
+        "server/src/serve/start.rs",
+        &[".with_thumb_events(thumbs)"],
+    ),
+    (
         "the routes bound to the feed, the revalidator and the shutdown token",
         "server/src/root/api.rs",
         &[

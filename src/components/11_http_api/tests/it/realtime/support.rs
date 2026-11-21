@@ -7,7 +7,7 @@ use std::time::Duration;
 use axum::http::HeaderValue;
 use contracts::{
     ChangeFeed, ChangeFeedError, ChangeItem, ChangePage, Cursor, NodeKind, NodeState, Principal,
-    PrincipalRevalidator,
+    PrincipalRevalidator, ThumbEvent, ThumbNotifier, ThumbSubscription, ThumbWake,
 };
 use futures_util::{SinkExt, StreamExt};
 use sunnycloud_http_api::registry::{Routers, document, mount, production_routes};
@@ -117,6 +117,13 @@ pub struct Realtime {
 
 impl Realtime {
     pub async fn start(limits: RealtimeLimits) -> Realtime {
+        Self::start_with(limits, None).await
+    }
+
+    pub async fn start_with(
+        limits: RealtimeLimits,
+        thumbs: Option<Arc<dyn ThumbNotifier>>,
+    ) -> Realtime {
         let (sender, receiver) = mpsc::unbounded_channel();
         let feed = Arc::new(ScriptedFeed {
             answers: AsyncMutex::new(receiver),
@@ -135,6 +142,7 @@ impl Realtime {
         let context = sunnycloud_http_api::registry::RouteContext {
             services: Arc::new(services),
             realtime: limits,
+            thumb_events: thumbs,
             ..route_context_with(document(&defs), &script)
         };
         let Routers { public, .. } = mount(&defs, &context, None);
@@ -303,6 +311,7 @@ pub fn item(seq: i64, id: u128, name: &str) -> ChangeItem {
         revision_id: None,
         size: None,
         content_hash: None,
+        media_type: None,
         seq,
     }
 }
@@ -325,4 +334,58 @@ pub fn change_frame(epoch: u64, seq: u64, id: u128, present: &[u8]) -> Vec<u8> {
     frame.extend([1, 0, 0x02, 0x10, b'a']);
     frame.extend(present);
     frame
+}
+
+/// A preview-event source the test drives: events and lag notices go to every subscriber.
+#[derive(Default)]
+pub struct TestThumbs {
+    subscribers: Mutex<Vec<mpsc::UnboundedSender<ThumbWake>>>,
+}
+
+impl TestThumbs {
+    pub fn wake(&self, wake: ThumbWake) {
+        for subscriber in self
+            .subscribers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+        {
+            // A subscriber whose socket ended has dropped its receiver; there is nobody to wake.
+            let _delivered = subscriber.send(wake).is_ok();
+        }
+    }
+
+    pub fn subscribers(&self) -> usize {
+        self.subscribers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
+    }
+}
+
+impl ThumbNotifier for TestThumbs {
+    fn notify(&self, event: ThumbEvent) {
+        self.wake(ThumbWake::Event(event));
+    }
+
+    fn subscribe(&self) -> Box<dyn ThumbSubscription> {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        self.subscribers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(sender);
+        Box::new(TestSubscription(receiver))
+    }
+}
+
+struct TestSubscription(mpsc::UnboundedReceiver<ThumbWake>);
+
+#[contracts::async_trait]
+impl ThumbSubscription for TestSubscription {
+    async fn next(&mut self) -> ThumbWake {
+        match self.0.recv().await {
+            Some(wake) => wake,
+            None => std::future::pending().await,
+        }
+    }
 }

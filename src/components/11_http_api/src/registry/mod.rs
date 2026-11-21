@@ -50,6 +50,8 @@ pub struct RouteContext {
     pub csrf: Arc<CsrfGuard>,
     pub body_limits: Arc<BodyLimits>,
     pub realtime: crate::realtime::RealtimeLimits,
+    /// The preview events the realtime sockets push as `ThumbState`; `None` pushes none.
+    pub thumb_events: Option<Arc<dyn contracts::ThumbNotifier>>,
 }
 
 /// Every operation of a server without the vault slot (v1.0 and v1.1 builds). Each group of E-21 adds its own

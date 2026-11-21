@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use contracts::ThumbNotifier;
 use contracts::{EpochAdmin, KeyError, Marker, MarkerStatus};
 use sc_db::{Db, DbError, MigrationError, Migrator, SchemaState};
 use sc_error::ErrorCode;
@@ -55,8 +56,10 @@ pub(super) async fn start(services: &ServiceContext) -> Result<Started, CliError
     let api = root::api_services(services).await?;
     log_info!("serve start: services");
 
+    let thumbs = services.get::<dyn ThumbNotifier>().await?;
     let server = HttpServer::new(api, config)
         .map_err(http_refusal)?
+        .with_thumb_events(thumbs)
         .bind()
         .await
         .map_err(http_refusal)?;

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use contracts::{ThumbNotifier, ThumbState};
 use media_shared::policy::JobSpec;
 use media_shared::types::{
     ClaimedJob, Disposition, FailResult, JobKind, Lane, LeaseExtended, SkipOutcome,
@@ -16,8 +17,9 @@ use crate::enqueue_repo;
 use crate::error::JobQueueError;
 use crate::job_fail_repo::{FailPlan, Failed};
 use crate::job_metrics::JobMetrics;
-use crate::job_repo::{self, Lease, Next, PURGE_BATCH};
+use crate::job_repo::{self, Closed, Lease, Next, PURGE_BATCH};
 use crate::retry;
+use crate::thumb_events;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Priority {
@@ -47,6 +49,7 @@ pub struct JobQueue {
     max_attempts: i64,
     backoff: Duration,
     metrics: Arc<JobMetrics>,
+    thumbs: Option<Arc<dyn ThumbNotifier>>,
 }
 
 impl JobQueue {
@@ -63,7 +66,20 @@ impl JobQueue {
             max_attempts: i64::try_from(config.job_attempts).unwrap_or(i64::MAX),
             backoff: config.job_retry_backoff,
             metrics,
+            thumbs: None,
         }
+    }
+
+    /// Announces a preview whose job died (`ThumbNotifier`); without it nothing is announced.
+    pub fn with_thumb_notifier(mut self, thumbs: Arc<dyn ThumbNotifier>) -> Self {
+        self.thumbs = Some(thumbs);
+        self
+    }
+
+    /// A job closed `dead`: counted, and its preview announced as failed.
+    fn died(&self, closed: Closed) {
+        self.metrics.died(closed);
+        thumb_events::announce(self.thumbs.as_ref(), &closed, ThumbState::Failed);
     }
 
     fn lease_ms(&self) -> u64 {
@@ -119,7 +135,7 @@ impl JobQueue {
                     was_running,
                     closed,
                 } => {
-                    self.metrics.died(closed);
+                    self.died(closed);
                     if was_running {
                         self.metrics.leases_expired.inc(NoLabels);
                     }
@@ -191,7 +207,7 @@ impl JobQueue {
             Failed::LeaseLost => Err(JobQueueError::LeaseLost),
             Failed::Requeued => Ok(FailResult::Requeued),
             Failed::Dead(closed) => {
-                self.metrics.died(closed);
+                self.died(closed);
                 Ok(FailResult::Dead)
             }
         }
@@ -203,7 +219,7 @@ impl JobQueue {
         let closed = job_repo::reap(&self.db, now, self.max_attempts).await?;
         for job in &closed {
             self.metrics.leases_expired.inc(NoLabels);
-            self.metrics.died(*job);
+            self.died(*job);
         }
         Ok(ReapStats {
             dead: u64::try_from(closed.len()).unwrap_or(u64::MAX),

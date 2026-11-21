@@ -43,6 +43,7 @@ mod queue_support;
 mod rls;
 mod support;
 mod system_scope_repo;
+mod thumb_announce;
 mod thumb_states;
 mod worker_facade;
 mod worker_rotation;

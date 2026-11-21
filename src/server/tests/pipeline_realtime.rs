@@ -11,7 +11,8 @@ mod serve_support;
 use std::time::Duration;
 
 use pipeline_support::feed::{Page, split};
-use pipeline_support::{File, Pipeline, WITHIN, entries};
+use pipeline_support::media::{WORKER_TOKEN, jpeg_bytes};
+use pipeline_support::{File, Pipeline, WITHIN, entries, uuid_of};
 use realtime_support::{Frame, Socket, ping, subscribe};
 use serve_support::http::call;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -56,6 +57,7 @@ async fn rt01_a_commit_arrives_as_a_change_frame_equal_to_the_node_and_to_the_ch
     assert_eq!(change.parent_id, Some(folder));
     assert!(!change.folder && !change.deleted && change.end);
     assert_eq!(change.size, json["size"].as_u64());
+    assert_eq!(change.media_type.as_deref(), json["media_type"].as_str());
     assert_eq!(change.seq, item["seq"].as_u64().expect("seq"));
     assert_eq!(
         change.content_hash.as_deref(),
@@ -364,4 +366,150 @@ async fn rt14_sigterm_closes_the_sockets_with_1001_before_the_grace_ends() {
     assert!(signalled.elapsed() < Duration::from_secs(5));
     assert_eq!(exited.code, Some(0), "{}", exited.stderr_text());
     stack.finish().await;
+}
+
+/// A 1x1 lossless WebP, the one output the worker posts.
+const WEBP: [u8; 34] = [
+    0x52, 0x49, 0x46, 0x46, 0x1a, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c,
+    0x0d, 0x00, 0x00, 0x00, 0x2f, 0x00, 0x00, 0x00, 0x10, 0x07, 0x10, 0x11, 0x11, 0x88, 0x88, 0xfe,
+    0x07, 0x00,
+];
+
+/// The worker's `PUT outputs/{kind}` of a 1x1 WebP for `job`.
+fn post_output(pipeline: &Pipeline, job: Uuid, kind: &str) -> u16 {
+    let headers = [
+        ("X-Worker-Id", "w1".to_owned()),
+        ("Content-Type", "image/webp".to_owned()),
+        ("X-Width", "1".to_owned()),
+        ("X-Height", "1".to_owned()),
+    ];
+    call(
+        pipeline.stack.ports.internal,
+        "PUT",
+        &format!("/api/v1/worker-jobs/{job}/outputs/{kind}"),
+        WORKER_TOKEN,
+        &headers,
+        &WEBP,
+    )
+    .status
+}
+
+/// Commits a JPEG as the device and returns the first `Change` frame that carries it.
+async fn commit_jpeg(
+    pipeline: &Pipeline,
+    socket: &mut Socket,
+    folder: Uuid,
+    seed: u64,
+) -> realtime_support::Change {
+    let committed = pipeline.commit_as(
+        &pipeline.device,
+        folder,
+        &format!("p{seed}.jpg"),
+        &jpeg_bytes(40_000, seed),
+        None,
+    );
+    assert_eq!(committed["status"], "committed", "{committed}");
+    let node = uuid_of(&committed, "node_id");
+    loop {
+        let batch = socket.changes_until_end().await;
+        if let Some(change) = batch.into_iter().find(|change| change.node_id == node) {
+            return change;
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rt13_a_preview_is_pending_in_its_change_then_ready_when_the_worker_closes_the_job() {
+    // Arrange
+    let pipeline = Pipeline::start(&[]).await;
+    let folder = pipeline.folder("rt13");
+    let mut socket = live(&pipeline).await;
+    let change = commit_jpeg(&pipeline, &mut socket, folder, 1).await;
+    let job = uuid_of(&pipeline.claim_image("w1").json(), "job_id");
+
+    // Act
+    let thumb = post_output(&pipeline, job, "thumb");
+    let silence = tokio::time::timeout(Duration::from_millis(500), socket.next()).await;
+    let preview = post_output(&pipeline, job, "preview");
+    let announced = socket.frame().await;
+
+    // Assert
+    assert_eq!((thumb, preview), (204, 204));
+    assert_eq!(
+        (change.thumb, change.media_type.as_deref()),
+        (1, Some("image/jpeg"))
+    );
+    assert!(
+        silence.is_err(),
+        "nothing is pushed before the job closes: {silence:?}"
+    );
+    let hash = change.content_hash.expect("a content hash");
+    assert_eq!(
+        announced,
+        Frame::ThumbState {
+            content_hash: hash,
+            state: 2
+        }
+    );
+    pipeline.finish().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rt13b_a_job_the_worker_fails_for_good_is_pushed_as_failed() {
+    // Arrange
+    let pipeline = Pipeline::start(&[]).await;
+    let folder = pipeline.folder("rt13b");
+    let mut socket = live(&pipeline).await;
+    let change = commit_jpeg(&pipeline, &mut socket, folder, 2).await;
+    let job = uuid_of(&pipeline.claim_image("w1").json(), "job_id");
+
+    // Act
+    let failed = pipeline.worker_call(
+        WORKER_TOKEN,
+        "w1",
+        "POST",
+        &format!("/api/v1/worker-jobs/{job}/failure"),
+        r#"{"code":"decode_failed","disposition":"permanent"}"#,
+    );
+    assert_eq!(failed.status, 200, "{failed:?}");
+    let announced = socket.frame().await;
+
+    // Assert
+    let hash = change.content_hash.expect("a content hash");
+    assert_eq!(
+        announced,
+        Frame::ThumbState {
+            content_hash: hash,
+            state: 3
+        }
+    );
+    pipeline.finish().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rt13c_a_preview_event_reaches_only_the_account_that_owns_it() {
+    // Arrange
+    let pipeline = Pipeline::start(&[]).await;
+    let folder = pipeline.folder("rt15");
+    let stranger = pipeline.stack.account().await;
+    let (epoch, seq) = split(&pipeline.head_as(&stranger.token));
+    let mut other =
+        Socket::subscribed(pipeline.stack.ports.public, &stranger.token, epoch, seq).await;
+    let mut mine = live(&pipeline).await;
+    let change = commit_jpeg(&pipeline, &mut mine, folder, 3).await;
+    let job = uuid_of(&pipeline.claim_image("w1").json(), "job_id");
+
+    // Act
+    post_output(&pipeline, job, "thumb");
+    post_output(&pipeline, job, "preview");
+    let announced = mine.frame().await;
+    let silence = tokio::time::timeout(Duration::from_secs(1), other.next()).await;
+
+    // Assert
+    assert!(
+        matches!(announced, Frame::ThumbState { state: 2, .. }),
+        "{announced:?} for {change:?}"
+    );
+    assert!(silence.is_err(), "the other account received {silence:?}");
+    pipeline.finish().await;
 }

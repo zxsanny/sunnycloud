@@ -14,6 +14,7 @@ pub(super) const SUBSCRIBE: u8 = 0x01;
 pub(super) const PING: u8 = 0x02;
 pub(super) const HELLO: u8 = 0x20;
 pub(super) const CHANGE: u8 = 0x21;
+pub(super) const THUMB_STATE: u8 = 0x22;
 pub(super) const RESET: u8 = 0x23;
 pub(super) const PONG: u8 = 0x24;
 
@@ -56,6 +57,8 @@ pub(super) enum ResetReason {
     EpochChanged = 1,
     BelowPurgeHorizon = 2,
     CursorAhead = 3,
+    /// Pushed events were dropped for this connection.
+    Lagged = 4,
 }
 
 /// One node's latest state, as `Change` carries it.
@@ -81,6 +84,7 @@ struct Schemes {
     ping: MapScheme,
     hello: MapScheme,
     change: MapScheme,
+    thumb_state: MapScheme,
     reset: MapScheme,
     pong: MapScheme,
 }
@@ -121,6 +125,10 @@ fn schemes() -> Schemes {
                     ],
                 ),
             ],
+        ),
+        thumb_state: MapScheme::new(
+            i32::from(THUMB_STATE),
+            vec![bytes("content_hash", 32), u8("state")],
         ),
         reset: MapScheme::new(
             i32::from(RESET),
@@ -184,6 +192,19 @@ pub(super) fn encode_pong(nonce: u32) -> Result<Vec<u8>, PackError> {
         let mut values = Values::new();
         insert(&mut values, "nonce", Some(Value::U32(nonce)));
         pack(&schemes.pong, &values)
+    })
+}
+
+pub(super) fn encode_thumb_state(content_hash: [u8; 32], state: u8) -> Result<Vec<u8>, PackError> {
+    SCHEMES.with(|schemes| {
+        let mut values = Values::new();
+        insert(
+            &mut values,
+            "content_hash",
+            Some(Value::Bytes(content_hash.to_vec())),
+        );
+        insert(&mut values, "state", Some(Value::U8(state)));
+        pack(&schemes.thumb_state, &values)
     })
 }
 

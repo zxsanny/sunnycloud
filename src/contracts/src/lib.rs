@@ -59,7 +59,8 @@ pub use common::{Fault, Page};
 pub use feed::{
     ChangeFeed, ChangeFeedError, ChangeItem, ChangePage, Cursor, EpochAdmin, EpochAdminError,
     FeedHorizon, FeedHorizonError, FeedNotifier, FeedStamp, FeedStampError, HeadReport, Marker,
-    MarkerStatus, ResyncReason, Seq, TouchedNodes,
+    MarkerStatus, ResyncReason, Seq, ThumbEvent, ThumbNotifier, ThumbSubscription, ThumbWake,
+    TouchedNodes,
 };
 pub use identity::*;
 pub use media::{

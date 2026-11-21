@@ -156,3 +156,19 @@ async fn a_plain_get_that_is_no_upgrade_is_400() {
     assert_eq!(answer.status, 400);
     realtime.stop().await;
 }
+
+#[test]
+fn the_document_lists_the_realtime_operation_as_a_session_upgrade() {
+    // Arrange
+    let document: serde_json::Value =
+        serde_json::from_slice(sunnycloud_http_api::current_document().as_bytes())
+            .expect("document");
+
+    // Act
+    let operation = &document["paths"]["/api/v1/realtime"]["get"];
+
+    // Assert
+    assert_eq!(operation["x-auth-class"], "Session");
+    assert!(operation["responses"]["101"].is_object(), "{operation}");
+    assert!(operation["responses"]["200"].is_null());
+}
