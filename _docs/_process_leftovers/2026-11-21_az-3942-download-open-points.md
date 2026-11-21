@@ -14,3 +14,4 @@ Decisions for the owner:
 Low: a file replaced between ranged reads ends as HashMismatch (ETag not compared across ranges); OPFS copies are removed only when older than one hour, at the next OPFS download; a failed metadata fetch leaves a row named "Download"; downloads have no cancel button.
 
 Flaky, cause not found: in one of three full e2e runs on fresh stacks (same code), the sign-in helper failed twice ("Files" heading not visible after the mock IdP login) at the first sign-in of web-download and of web-resume; the other two runs passed 37 of 37. The API log of the failing run was lost. If it comes back, keep the logs (`$ACC_DATA/run/*.log`) before `acceptance-down.sh`.
+Possible cause (unconfirmed): another session was committing to `dev` in the same checkout during those runs (session renewal, batch 99) and may have used the acceptance stack's ports (18800 and up) at the same time.
