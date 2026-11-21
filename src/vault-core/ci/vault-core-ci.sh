@@ -57,7 +57,7 @@ fetch() {
   mkdir -p "$tools_dir"
   if [ ! -f "$file" ]; then
     echo "$tag downloading $url"
-    curl --fail --show-error --location --retry 3 --no-progress-meter --output "$file.part" "$url"
+    curl --fail --show-error --location --retry 6 --retry-delay 10 --no-progress-meter --output "$file.part" "$url"
     mv "$file.part" "$file"
   fi
   sha256_matches "$sha256" "$file" || { rm -f "$file"; fail "$file does not match the pinned SHA-256 $sha256"; }

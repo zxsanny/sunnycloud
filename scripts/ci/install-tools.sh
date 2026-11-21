@@ -52,7 +52,7 @@ download_install() {
   local name="$1" url="$2" sha256="$3" member="$4" work
   work="$(mktemp -d)"
   echo "$tag downloading $name from $url"
-  curl --fail --show-error --location --retry 3 --no-progress-meter --output "$work/archive" "$url"
+  curl --fail --show-error --location --retry 6 --retry-delay 10 --no-progress-meter --output "$work/archive" "$url"
   echo "$sha256  $work/archive" | sha256sum --check - || fail "$name archive does not match the pinned SHA-256 $sha256"
   mkdir "$work/x"
   case "$url" in
