@@ -169,7 +169,7 @@ install_tool() {
       fi
       as_root apt-get update
       as_root env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
-        libvips-tools ffmpeg
+        libvips-tools ffmpeg libheif-plugin-libde265 libheif-plugin-x265
       vipsthumbnail --version
       ffmpeg -version | head -1
       ;;

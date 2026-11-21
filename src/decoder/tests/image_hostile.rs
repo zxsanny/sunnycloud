@@ -1,5 +1,5 @@
 //! AZ-3857 and AZ-3854 against hostile tool behaviour: the real runner binary is given a
-//! `PATH` whose `vipsthumbnail` is a stub that hangs, crashes or writes a bad output. Only the
+//! `PATH` whose `vips` is a stub that hangs, crashes or writes a bad output. Only the
 //! hostile behaviour is stubbed; `vipsheader` is the real one and every outcome is the real
 //! runner's own.
 mod common;

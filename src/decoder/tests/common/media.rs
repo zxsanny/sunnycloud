@@ -119,13 +119,13 @@ impl Drop for MediaRunner {
 }
 
 /// A directory that is the runner's whole `PATH`: the real `vipsheader`, `ffmpeg`, `ffprobe`
-/// and a `vipsthumbnail` with the given script.
+/// and a `vips` (the thumbnail step) running the given script.
 pub fn path_with_stub(stub: &str) -> (TempDir, String) {
     let dir = TempDir::new().expect("bin dir");
     for tool in ["vipsheader", "ffmpeg", "ffprobe"] {
         symlink(real(tool), dir.path().join(tool)).expect("link real tool");
     }
-    let script = dir.path().join("vipsthumbnail");
+    let script = dir.path().join("vips");
     fs::write(&script, format!("#!/bin/sh\n{stub}\n")).expect("write stub");
     fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).expect("chmod stub");
     let path = dir.path().to_str().expect("utf8").to_owned();
@@ -212,22 +212,34 @@ pub fn run_tool(program: &str, args: &[&str]) {
     );
 }
 
-/// `width` x `height` of what `vipsheader` reads from `path`.
+/// `width` x `height` of what `vipsheader` reads from `path`, one field per call (libvips 8.15
+/// prints only the last of several `-f` options).
 pub fn header_of(path: &Path) -> (u32, u32) {
-    let output = Command::new("vipsheader")
-        .args(["-f", "width", "-f", "height"])
-        .arg(path)
-        .output()
-        .expect("vipsheader");
-    assert!(output.status.success(), "{}", path.display());
-    let text = String::from_utf8(output.stdout).expect("utf8");
-    let mut numbers = text
-        .lines()
-        .map(|line| line.trim().parse::<u32>().expect("number"));
-    (
-        numbers.next().expect("width"),
-        numbers.next().expect("height"),
-    )
+    let field = |name: &str| {
+        let output = Command::new("vipsheader")
+            .args(["-f", name])
+            .arg(path)
+            .output()
+            .expect("vipsheader");
+        assert!(output.status.success(), "{}", path.display());
+        String::from_utf8(output.stdout)
+            .expect("utf8")
+            .trim()
+            .parse::<u32>()
+            .expect("number")
+    };
+    (field("width"), field("height"))
+}
+
+/// A 96x64 HEIC with an `irot` transform (rotation by 270 degrees): 64x96 once decoded. Made once
+/// on libvips 8.18 and kept as hex text (no binary in git) because libvips 8.15 `heifsave` writes no
+/// `irot`, so the file cannot be generated the same way on every host.
+pub fn rotated_heic() -> Vec<u8> {
+    let hex = include_str!("../fixtures/rotated-96x64-irot270.heic.hex").trim();
+    (0..hex.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(&hex[at..at + 2], 16).expect("the fixture is hex"))
+        .collect()
 }
 
 /// A directory of generated media: noise images in each format, and the two clips.
@@ -276,22 +288,6 @@ impl Media {
         let at = set_orientation_at(&bytes);
         bytes[at] = orientation;
         bytes
-    }
-
-    /// A HEIC made by libheif from a JPEG with an orientation tag: the file carries an `irot`.
-    pub fn oriented_heic(&self, width: u32, height: u32, orientation: u8) -> Vec<u8> {
-        let jpeg = self.path("source-oriented.jpg");
-        std::fs::write(&jpeg, self.oriented_jpeg(width, height, orientation)).expect("write jpeg");
-        let heic = self.path("oriented.heic");
-        run_tool(
-            "vips",
-            &[
-                "heifsave",
-                jpeg.to_str().expect("utf8"),
-                heic.to_str().expect("utf8"),
-            ],
-        );
-        std::fs::read(heic).expect("read heic")
     }
 
     fn ffmpeg(&self, input: &[&str], output: &str, rest: &[&str]) -> Vec<u8> {

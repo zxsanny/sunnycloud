@@ -1,6 +1,6 @@
 //! AZ-3855 through the real runner binary: kill-all after every job, `work/` removed on every
 //! path, hostile-class outcomes end the runner after the typed reply, clean failures do not.
-//! `vipsthumbnail` is a stub that only creates hostile behaviour; everything else is real.
+//! `vips` is a stub that only creates hostile behaviour; everything else is real.
 mod common;
 
 use std::path::Path;

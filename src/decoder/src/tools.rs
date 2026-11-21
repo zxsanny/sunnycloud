@@ -8,7 +8,7 @@ use crate::error::RunnerError;
 
 #[derive(Debug, Clone)]
 pub struct Tools {
-    pub vipsthumbnail: PathBuf,
+    pub vips: PathBuf,
     pub vipsheader: PathBuf,
     pub ffmpeg: PathBuf,
     pub ffprobe: PathBuf,
@@ -19,7 +19,7 @@ impl Tools {
     /// refuses the start, because a runner without one would answer every job with an error.
     pub fn locate(path: &str) -> Result<Self, RunnerError> {
         Ok(Self {
-            vipsthumbnail: find(path, "vipsthumbnail")?,
+            vips: find(path, "vips")?,
             vipsheader: find(path, "vipsheader")?,
             ffmpeg: find(path, "ffmpeg")?,
             ffprobe: find(path, "ffprobe")?,
@@ -46,10 +46,10 @@ mod tests {
 
     #[test]
     fn a_tool_missing_from_every_directory_refuses_the_start() {
-        let result = find("/nonexistent:relative/dir", "vipsthumbnail");
+        let result = find("/nonexistent:relative/dir", "vips");
 
         assert!(
-            matches!(result, Err(RunnerError::ToolMissing("vipsthumbnail"))),
+            matches!(result, Err(RunnerError::ToolMissing("vips"))),
             "{result:?}"
         );
     }

@@ -79,11 +79,13 @@ fn stdout_of(finished: &Finished) -> String {
     String::from_utf8(finished.stdout.clone()).expect("utf8")
 }
 
+/// No live member: a killed process stays a zombie until its parent reaps it, and where the
+/// parent is a container's PID 1 that never reaps (no init) that is for ever.
 fn group_is_empty(pgid: u32) -> bool {
     !snapshot()
         .expect("snapshot")
         .iter()
-        .any(|process| process.pgrp == pgid)
+        .any(|process| process.pgrp == pgid && !process.zombie)
 }
 
 #[test]

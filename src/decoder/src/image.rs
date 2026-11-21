@@ -1,5 +1,5 @@
 //! The image executor (E-19/c08, 10 section 4): sniff, read the header, refuse an oversize
-//! image before any decode, render one WebP with `vipsthumbnail`, read the result back.
+//! image before any decode, render one WebP with `vips thumbnail`, read the result back.
 //!
 //! libvips is used as a CLI only. The input reaches a child as `/proc/self/fd/9`, so no job
 //! path is an argument, and the output name is relative to the child's working directory
@@ -103,50 +103,68 @@ fn vips_env(cpu: u32, profile: Profile) -> Vec<(&'static str, String)> {
     env
 }
 
-fn header_args() -> Vec<String> {
-    ["-f", "width", "-f", "height"]
+/// One field per call: libvips 8.15 prints only the last of several `-f` options, 8.18 prints all.
+fn header_args(field: &str) -> Vec<String> {
+    ["-f", field]
         .into_iter()
         .map(str::to_owned)
         .chain([input_path()])
         .collect()
 }
 
+/// `vips thumbnail` is the same operation `vipsthumbnail` runs, but its flags are the same on
+/// libvips 8.15 and 8.18: `vipsthumbnail` renamed `-e/-o` to `--output-profile/--path` and an
+/// 8.15 `-o` needs the output directory in the argument. The output name is relative to the
+/// child's working directory `out/`.
 fn thumbnail_args(max_edge: u32) -> Vec<String> {
-    vec![
-        input_path(),
-        "--size".to_owned(),
-        // The trailing `>` shrinks only: a small image is not enlarged to the edge.
-        format!("{max_edge}x{max_edge}>"),
-        "--output-profile".to_owned(),
-        "srgb".to_owned(),
-        "--path".to_owned(),
-        format!("{RESULT}[Q={WEBP_QUALITY},keep=none]"),
+    let edge = max_edge.to_string();
+    [
+        "thumbnail",
+        &input_path(),
+        &format!("{RESULT}[Q={WEBP_QUALITY},keep=none]"),
+        &edge,
+        "--height",
+        &edge,
+        // Only shrink: a small image is not enlarged to the edge.
+        "--size",
+        "down",
+        "--export-profile",
+        "srgb",
     ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
 }
 
 /// Width and height of the stored image, from the header alone.
 fn dimensions(exec: &Exec<'_>, profile: Profile, file: &File) -> Result<(u64, u64), Failure> {
+    Ok((
+        header_field(exec, profile, file, "width")?,
+        header_field(exec, profile, file, "height")?,
+    ))
+}
+
+fn header_field(
+    exec: &Exec<'_>,
+    profile: Profile,
+    file: &File,
+    field: &str,
+) -> Result<u64, Failure> {
     let out = exec.checked_out_dir()?;
     let finished = exec.run(
         "vipsheader",
         &exec.tools.vipsheader,
-        header_args(),
+        header_args(field),
         vips_env(exec.limits.cpu, profile),
         &out,
         file,
     )?;
-    parse_dimensions(&finished.stdout).ok_or_else(|| DecodeError::Corrupt.into())
+    parse_dimension(&finished.stdout).ok_or_else(|| DecodeError::Corrupt.into())
 }
 
-fn parse_dimensions(stdout: &[u8]) -> Option<(u64, u64)> {
-    let text = std::str::from_utf8(stdout).ok()?;
-    let mut lines = text.lines();
-    let width = lines.next()?.trim().parse().ok()?;
-    let height = lines.next()?.trim().parse().ok()?;
-    match lines.next() {
-        None if width > 0 && height > 0 => Some((width, height)),
-        _ => None,
-    }
+fn parse_dimension(stdout: &[u8]) -> Option<u64> {
+    let value: u64 = std::str::from_utf8(stdout).ok()?.trim().parse().ok()?;
+    (value > 0).then_some(value)
 }
 
 fn thumbnail(
@@ -164,8 +182,8 @@ fn thumbnail(
         _ => {}
     }
     exec.run(
-        "vipsthumbnail",
-        &exec.tools.vipsthumbnail,
+        "vips",
+        &exec.tools.vips,
         thumbnail_args(max_edge),
         vips_env(exec.limits.cpu, profile),
         &out,
@@ -219,23 +237,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn two_decimal_lines_are_the_dimensions() {
-        assert_eq!(parse_dimensions(b"400\n300\n"), Some((400, 300)));
+    fn one_decimal_line_is_a_dimension() {
+        assert_eq!(parse_dimension(b"400\n"), Some(400));
+        assert_eq!(parse_dimension(b"  7 "), Some(7));
     }
 
     #[test]
-    fn anything_else_is_not_dimensions() {
-        let cases: [&[u8]; 6] = [
-            b"",
-            b"400\n",
-            b"400\n300\n5\n",
-            b"0\n3\n",
-            b"a\nb\n",
-            b"\xff\n1\n",
-        ];
+    fn anything_else_is_not_a_dimension() {
+        let cases: [&[u8]; 6] = [b"", b"0\n", b"a\n", b"4 3\n", b"-1\n", b"\xff\n"];
 
         for case in cases {
-            assert_eq!(parse_dimensions(case), None, "{case:?}");
+            assert_eq!(parse_dimension(case), None, "{case:?}");
         }
     }
 
@@ -246,13 +258,16 @@ mod tests {
         assert_eq!(
             args,
             [
+                "thumbnail",
                 "/proc/self/fd/9",
+                "result.webp[Q=80,keep=none]",
+                "320",
+                "--height",
+                "320",
                 "--size",
-                "320x320>",
-                "--output-profile",
-                "srgb",
-                "--path",
-                "result.webp[Q=80,keep=none]"
+                "down",
+                "--export-profile",
+                "srgb"
             ]
         );
     }
@@ -273,10 +288,8 @@ mod tests {
     }
 
     #[test]
-    fn the_header_argv_reads_width_and_height_of_the_fixed_input_path() {
-        assert_eq!(
-            header_args(),
-            ["-f", "width", "-f", "height", "/proc/self/fd/9"]
-        );
+    fn the_header_argv_reads_one_field_of_the_fixed_input_path() {
+        assert_eq!(header_args("width"), ["-f", "width", "/proc/self/fd/9"]);
+        assert_eq!(header_args("height"), ["-f", "height", "/proc/self/fd/9"]);
     }
 }

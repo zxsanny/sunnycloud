@@ -6,6 +6,7 @@ use std::path::Path;
 
 use common::media::{
     Media, MediaRunner, header_of, image_result, limits, png_header_only, probe, render,
+    rotated_heic,
 };
 use media_shared::decoder_protocol::{DecodeError, ImageResult, LimitKind, Response};
 use media_shared::policy::MediaKind;
@@ -72,14 +73,14 @@ fn exif_orientation_six_swaps_the_dimensions_and_the_output_carries_no_exif() {
 
 #[test]
 fn a_heic_with_a_rotation_transform_comes_out_upright() {
-    let media = Media::new();
     let mut runner = MediaRunner::start();
     let mut client = runner.connect();
-    let job = runner.job(&media.oriented_heic(2000, 1500, 6));
+    let job = runner.job(&rotated_heic());
 
-    let result = image_result(render(&mut client, &job, 320, limits()));
+    let result = image_result(render(&mut client, &job, 48, limits()));
 
-    assert_eq!((result.width, result.height), (240, 320));
+    // Stored 96x64 with an `irot` of 270 degrees: upright it is 64x96, so 32x48 at edge 48.
+    assert_eq!((result.width, result.height), (32, 48));
     assert_reply_matches_file(&job, result);
 }
 
