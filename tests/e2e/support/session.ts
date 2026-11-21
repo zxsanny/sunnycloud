@@ -18,3 +18,17 @@ export async function signInAlice(context: BrowserContext): Promise<Page> {
 export async function apiUnit(action: "stop" | "start"): Promise<void> {
   await run(readAcceptanceEnv().ACC_API_CTL, [action], { timeout: 120_000 });
 }
+
+/** The mock IdP signs in this user from now on (`alice` or `bob`). */
+export async function mockIdpUser(user: "alice" | "bob"): Promise<void> {
+  const response = await fetch(`${readAcceptanceEnv().ACC_ISSUER}/__control/user`, { method: "POST", body: JSON.stringify({ user }) });
+  if (!response.ok) throw new Error(`the mock IdP refused to switch to ${user}: ${response.status}`);
+}
+
+/** A one-time invite token from the server's own CLI, for the admin account `adminId`. It is returned, never logged. */
+export async function inviteToken(adminId: string): Promise<string> {
+  const { stdout } = await run(readAcceptanceEnv().ACC_CLI, ["--json", "admin", "invite", "--admin", adminId, "create"], { timeout: 60_000 });
+  const token = (JSON.parse(stdout) as { data?: { token?: string } }).data?.token;
+  if (!token) throw new Error("`admin invite create --json` printed no token");
+  return token;
+}

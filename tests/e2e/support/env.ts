@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
-const ACC_DATA = process.env.ACC_DATA ?? "/develop/zxsanny/sunnycloud-acceptance";
+export const ACC_DATA = process.env.ACC_DATA ?? "/develop/zxsanny/sunnycloud-acceptance";
 
 /** The non-secret facts acceptance-up.sh wrote: origin, ports, the CLI wrapper. */
 export function readAcceptanceEnv(): Record<string, string> {

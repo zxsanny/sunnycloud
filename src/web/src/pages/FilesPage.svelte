@@ -27,6 +27,9 @@
   let uploadError = $state<string | null>(null);
   let dragging = $state(false);
   let picker: HTMLInputElement | undefined = $state();
+  /** Set when the picker opens for a stopped upload (one id) or for all of them (null id), not for new files. */
+  let resuming: { id: string | null } | null = null;
+  const stopped = $derived(transfer.jobs.filter((job) => job.state === 'stopped'));
 
   // Opening by folder id: every visit reads the folder again (no client-side path cache).
   $effect(() => {
@@ -38,7 +41,8 @@
 
   onMount(() => {
     viewPreference.init();
-    void session.load();
+    // The resume records belong to the signed-in account, so they are listed once the account is known.
+    void session.load().then(() => transfer.loadStopped());
     realtime.start();
     return () => realtime.stop();
   });
@@ -55,10 +59,45 @@
     if (!result.ok) uploadError = result.error.text;
   }
 
+  function openPicker(resume: { id: string | null } | null = null) {
+    resuming = resume;
+    picker?.click();
+  }
+
   function picked(event: Event & { currentTarget: HTMLInputElement }) {
     const input = event.currentTarget;
-    void upload(input.files ? [...input.files] : []);
+    const files = input.files ? [...input.files] : [];
     input.value = '';
+    const target = resuming;
+    resuming = null;
+    if (target === null) void upload(files);
+    else resumeStopped(files, target.id);
+  }
+
+  /** Each selected file goes to the stopped upload of the same name (or to the one the row named). */
+  function resumeStopped(files: File[], id: string | null) {
+    const open = id === null ? [...stopped] : stopped.filter((job) => job.id === id);
+    const unmatched: string[] = [];
+    for (const file of files) {
+      const at = open.findIndex((job) => id !== null || job.name === file.name);
+      const job = open[at];
+      if (!job) {
+        unmatched.push(file.name);
+        continue;
+      }
+      open.splice(at, 1);
+      // The row shows what came of it: a restart note, or the error that ended it.
+      void transfer.resumeUpload(file, job.id);
+    }
+    if (unmatched.length > 0) {
+      notices.show({
+        key: 'resume-unmatched',
+        variant: 'info',
+        title: 'No stopped upload has that name.',
+        text: unmatched.join(', '),
+        dismissible: true,
+      });
+    }
   }
 
   function dropped(event: DragEvent) {
@@ -146,7 +185,7 @@
         variant="primary"
         disabled={folderStore.folder === null}
         disabledReason="Open a folder first."
-        onclick={() => picker?.click()}
+        onclick={() => openPicker()}
       >
         <Upload class="size-4" aria-hidden="true" />Upload files
       </Button>
@@ -163,6 +202,21 @@
 
     {#if creating}
       <NewFolderForm ondone={() => (creating = false)} />
+    {/if}
+    {#if stopped.length > 0}
+      <Banner variant="info">
+        <strong class="font-bold"
+          >{stopped.length}
+          {stopped.length === 1 ? 'upload' : 'uploads'} stopped when the tab closed.</strong
+        >
+        Select the same {stopped.length === 1 ? 'file' : 'files'} again to continue; only the missing
+        parts are sent.
+        {#snippet action()}
+          <Button size="sm" onclick={() => openPicker({ id: null })}>
+            Select {stopped.length === 1 ? 'file' : 'files'}
+          </Button>
+        {/snippet}
+      </Banner>
     {/if}
     {#if uploadError}
       <Banner variant="danger">
@@ -193,7 +247,7 @@
           Drop files here or upload them. For large folders, the desktop app syncs faster and keeps
           them up to date.
           {#snippet action()}
-            <Button variant="primary" onclick={() => picker?.click()}>
+            <Button variant="primary" onclick={() => openPicker()}>
               <Upload class="size-4" aria-hidden="true" />Upload files
             </Button>
           {/snippet}
@@ -223,5 +277,5 @@
   {#if opened}
     <Lightbox node={opened} onclose={() => (opened = null)} />
   {/if}
-  <TransfersPanel />
+  <TransfersPanel onselect={(id) => openPicker({ id })} />
 </AppShell>

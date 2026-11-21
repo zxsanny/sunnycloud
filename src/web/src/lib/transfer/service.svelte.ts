@@ -1,438 +1,246 @@
-import { type Api, type ServerLimits, isTransientError } from '$lib/api';
 import {
-  type UploadError,
+  CHANGED_SINCE_LAST_TIME_TEXT,
+  STOPPED_TEXT,
   UPLOAD_ERROR_TEXT,
-  tooManyFilesText,
   uploadErrorOf,
-  uploadErrorOfCode,
 } from './errors';
-import type { BatchEntryResult, Failure, FromWorker, ToWorker } from './protocol';
-
-/** The few members of a Worker the service uses; Node tests give it an in-process engine instead. */
-export interface WorkerLike {
-  postMessage(message: ToWorker): void;
-  onmessage: ((event: { data: FromWorker }) => void) | null;
-  onerror: ((event: unknown) => void) | null;
-  terminate(): void;
-}
-
-export interface JobProgress {
-  id: string;
-  name: string;
-  parentId: string;
-  size: number;
-  state: 'queued' | 'running' | 'committing' | 'done' | 'failed' | 'cancelled';
-  /** `preparing` is the hash pass of a large file, before any byte is sent. */
-  phase: 'preparing' | 'sending' | null;
-  bytesDone: number;
-  lanes: number;
-  error?: UploadError;
-  errorText?: string;
-}
-
-export type EnqueueResult =
-  { ok: true; value: string[] } | { ok: false; error: { code: UploadError; text: string } };
-
-interface Job {
-  id: string;
-  file: File | null;
-  parentId: string;
-  name: string;
-  size: number;
-  lastModified: number;
-  small: boolean;
-  stagedKey?: string;
-  clientKey?: string;
-}
-
-interface BatchInFlight {
-  id: string;
-  jobs: Job[];
-  commitId?: string;
-  attempts: number;
-}
-
-/** `web.max_selection_files`: a selection above it is refused before anything is queued. */
-export const MAX_SELECTION_FILES = 100_000;
-/** Small files staged at once. */
-const STAGE_PARALLEL = 6;
-/** Large files in flight at once; each already uses all its lanes. */
-const LARGE_PARALLEL = 1;
-const BATCH_ATTEMPTS = 3;
-const BATCH_RETRY_MS = 1000;
-
-export interface TransferDeps {
-  api: Api;
-  connect: () => WorkerLike;
-  /** Delay unit between attempts to send a batch again; tests set 0. */
-  batchRetryMs?: number;
-}
+import { refuse, remove, type Job, type ResumeResult } from './jobs';
+import type { FromWorker } from './protocol';
+import { UploadQueue } from './queue.svelte';
+import { matchesRecord } from './resume';
 
 /**
- * The one facade pages use for uploads (contract transfer_service.md). Routing, queueing and the progress rows
- * live here; hashing and every upload request happen in the module Worker.
+ * The one facade pages use for uploads (contract transfer_service.md): the queue of `UploadQueue`, and the resume of
+ * a large upload that stopped because its tab closed or its file changed.
  */
-export class TransferService {
-  /** One row per job, in the order they were enqueued. */
-  jobs = $state<JobProgress[]>([]);
+export class TransferService extends UploadQueue {
+  // Plain map: no template reads it.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  private readonly resumeAnswers = new Map<string, (result: ResumeResult) => void>();
 
-  // Internal bookkeeping that no template reads, so plain collections (not SvelteMap) are right.
-  /* eslint-disable svelte/prefer-svelte-reactivity */
-  private readonly internal = new Map<string, Job>();
-  private readonly rows = new Map<string, JobProgress>();
-  private readonly queuedSmall: Job[] = [];
-  private readonly queuedLarge: Job[] = [];
-  private readonly pending: Job[] = [];
-  /* eslint-enable svelte/prefer-svelte-reactivity */
-  private staging = 0;
-  private largeActive = 0;
-  private batch: BatchInFlight | null = null;
-  private capHold = false;
-  private counter = 0;
-  private limits: ServerLimits | null = null;
-  private worker: WorkerLike | null = null;
-  private ready: Promise<void> | null = null;
-
-  constructor(private readonly deps: TransferDeps) {}
-
-  async enqueueUpload(files: File[], parentId: string): Promise<EnqueueResult> {
-    if (files.length > MAX_SELECTION_FILES) {
-      return refuse('TooManyFiles', tooManyFilesText(files.length, MAX_SELECTION_FILES));
+  /**
+   * Continues a stopped upload with the file the person selected. The same file (name, size and modified time of the
+   * record) sends only the blocks the server lacks; any difference ends the old session and uploads from the start.
+   * Resolves once the session was read, not when the upload ends.
+   */
+  async resumeUpload(file: File, id: string): Promise<ResumeResult> {
+    const job = this.internal.get(id);
+    const row = this.rows.get(id);
+    const record = job?.record;
+    if (!job || !row || row.state !== 'stopped' || !record) {
+      return refuse('Failed', UPLOAD_ERROR_TEXT.Failed);
     }
-    if (this.limits === null) {
-      const loaded = await this.deps.api.getServerLimits();
-      // The failure itself reached the app-level notices through the API client.
-      if (!loaded.ok) return refuse('Failed', UPLOAD_ERROR_TEXT.Failed);
-      this.limits = loaded.value;
-    }
-    if (!this.limits.uploadsEnabled) {
-      return refuse(
-        'Failed',
-        'Uploads are switched off: this server uses a block size the web app does not support.',
-      );
-    }
-    const ids: string[] = [];
-    for (const file of files) {
-      const job: Job = {
-        id: `up-${(this.counter += 1)}`,
+    const limits = await this.loadLimits();
+    if ('ok' in limits) return limits;
+    row.error = undefined;
+    row.errorText = undefined;
+    row.state = 'queued';
+    if (!matchesRecord(file, record)) {
+      await this.discard(job);
+      Object.assign(job, {
         file,
-        parentId,
         name: file.name,
         size: file.size,
         lastModified: file.lastModified,
-        small: file.size <= this.limits.smallFileMax,
-      };
-      this.internal.set(job.id, job);
-      this.jobs.push({
-        id: job.id,
-        name: job.name,
-        parentId,
-        size: job.size,
-        state: 'queued',
-        phase: null,
-        bytesDone: 0,
-        lanes: 0,
+        small: file.size <= limits.smallFileMax,
+        clientKey: undefined,
+        resuming: undefined,
       });
-      this.rows.set(job.id, this.jobs[this.jobs.length - 1] as JobProgress);
+      Object.assign(row, {
+        name: file.name,
+        size: file.size,
+        bytesDone: 0,
+        note: CHANGED_SINCE_LAST_TIME_TEXT,
+      });
       (job.small ? this.queuedSmall : this.queuedLarge).push(job);
-      ids.push(job.id);
+      this.pump();
+      return { ok: true, value: { kind: 'Restarted', reason: 'ChangedSinceLastTime' } };
     }
-    this.pump();
-    return { ok: true, value: ids };
-  }
-
-  /** Queued: nothing is sent. Running: the Worker aborts its requests (a large upload also aborts its session). */
-  cancelUpload(id: string) {
-    const job = this.internal.get(id);
-    const row = this.rows.get(id);
-    if (!job || !row) return;
-    if (row.state === 'queued') {
-      remove(this.queuedSmall, job);
-      remove(this.queuedLarge, job);
-      this.finish(job, row, 'cancelled');
-    } else if (row.state === 'committing' && this.pending.includes(job)) {
-      remove(this.pending, job);
-      this.finish(job, row, 'cancelled');
-    } else if (row.state === 'running') {
-      this.send({ type: 'cancel', job: id });
-    }
-    // A job inside a batch request that is already on the wire finishes with that request.
-  }
-
-  /** A failed job starts again from the beginning: same client key, so a session that is still alive is reused. */
-  retryUpload(id: string) {
-    const job = this.internal.get(id);
-    const row = this.rows.get(id);
-    if (!job || !row || row.state !== 'failed' || job.file === null) return;
-    row.state = 'queued';
-    row.error = undefined;
-    row.errorText = undefined;
-    row.bytesDone = 0;
-    row.phase = null;
-    (job.small ? this.queuedSmall : this.queuedLarge).push(job);
-    this.pump();
-  }
-
-  /** Removes a finished row from the panel. */
-  dismiss(id: string) {
-    const row = this.rows.get(id);
-    if (!row || row.state === 'queued' || row.state === 'running' || row.state === 'committing')
-      return;
-    this.jobs = this.jobs.filter((r) => r.id !== id);
-    this.rows.delete(id);
-    this.internal.delete(id);
-  }
-
-  private pump() {
-    const limits = this.limits;
-    if (limits === null || this.deps.api.upgradeRequired()) return;
-    while (
-      !this.capHold &&
-      this.staging < STAGE_PARALLEL &&
-      this.staging + this.pending.length < limits.maxStagedPerAccount
-    ) {
-      const job = this.queuedSmall.shift();
-      if (!job) break;
-      this.staging += 1;
-      this.setRunning(job);
-      this.send({ type: 'stage', job: job.id, file: job.file as File, stagedKey: job.stagedKey });
-    }
-    if (this.largeActive < LARGE_PARALLEL) {
-      const job = this.queuedLarge.shift();
-      if (job) {
-        this.largeActive += 1;
-        this.setRunning(job);
-        this.send({
-          type: 'upload',
-          job: job.id,
-          file: job.file as File,
-          parentId: job.parentId,
-          name: job.name,
-          lanes: limits.lanes,
-          clientKey: job.clientKey,
-          clientMtime: job.lastModified,
-        });
-      }
-    }
-    this.flush();
-  }
-
-  /** Commits what is staged once a batch is full, no more small files are coming, or the staging cap holds. */
-  private flush() {
-    const limits = this.limits;
-    if (limits === null || this.batch !== null || this.pending.length === 0) return;
-    const moreComing = this.queuedSmall.length > 0 || this.staging > 0;
-    if (this.pending.length < limits.batchMaxEntries && moreComing && !this.capHold) return;
-    const jobs = this.pending.splice(0, limits.batchMaxEntries);
-    this.batch = { id: `batch-${(this.counter += 1)}`, jobs, attempts: 1 };
-    this.sendBatch(this.batch);
-  }
-
-  private sendBatch(batch: BatchInFlight) {
-    this.send({
-      type: 'batch',
-      batch: batch.id,
-      commitId: batch.commitId,
-      entries: batch.jobs.map((job) => ({
-        stagedKey: job.stagedKey as string,
-        parentId: job.parentId,
-        name: job.name,
-        clientMtime: job.lastModified,
-      })),
+    job.file = file;
+    job.resuming = record;
+    row.note = undefined;
+    return new Promise((resolve) => {
+      this.resumeAnswers.set(id, resolve);
+      this.queuedLarge.push(job);
+      this.pump();
     });
   }
 
-  private send(message: ToWorker) {
-    if (this.worker === null) {
-      const worker = this.deps.connect();
-      this.worker = worker;
-      this.ready = new Promise((resolve, reject) => {
-        worker.onmessage = (event) => {
-          if (event.data.type === 'ready') resolve();
-          else if (event.data.type === 'fatal') reject(new Error(event.data.message));
-          else this.receive(event.data);
-        };
-        worker.onerror = () => reject(new Error('The transfer worker failed to start.'));
-      });
-      this.ready.catch((cause: unknown) => {
-        console.error('The transfer worker is not available.', cause);
-        this.failAllActive();
-      });
+  /** Lists this account's resume records as stopped rows; the Files page calls it once the account is known. */
+  async loadStopped(): Promise<void> {
+    const accountId = this.deps.accountId?.() ?? null;
+    if (this.deps.resume === undefined || accountId === null) return;
+    const records = await this.deps.resume.list(accountId);
+    // Rows of another account that signed in earlier in this tab are not this account's to see.
+    this.jobs = this.jobs.filter((row) => {
+      const foreign = row.state === 'stopped' && this.internal.get(row.id)?.accountId !== accountId;
+      if (foreign) {
+        this.rows.delete(row.id);
+        this.internal.delete(row.id);
+      }
+      return !foreign;
+    });
+    const held = [...this.internal.values()].map((job) => job.clientKey);
+    for (const record of records) {
+      if (held.includes(record.clientKey)) continue;
+      const job: Job = {
+        id: `up-${(this.counter += 1)}`,
+        file: null,
+        parentId: record.parentId,
+        name: record.fileName,
+        size: record.size,
+        lastModified: record.lastModified,
+        small: false,
+        clientKey: record.clientKey,
+        accountId,
+        record,
+      };
+      this.addRow(job, 'stopped');
+      this.stop(job, STOPPED_TEXT.PageHidden);
     }
-    const worker = this.worker;
-    void this.ready?.then(() => worker.postMessage(message)).catch(() => undefined);
   }
 
-  private receive(m: FromWorker) {
-    switch (m.type) {
-      case 'staged': {
-        const job = this.internal.get(m.job);
-        if (!job) break;
-        job.stagedKey = m.stagedKey;
-        this.staging -= 1;
-        this.pending.push(job);
-        const row = this.rows.get(m.job);
-        if (row) row.state = 'committing';
-        break;
-      }
-      case 'stageFailed': {
-        const job = this.internal.get(m.job);
-        if (!job) break;
-        this.staging -= 1;
-        if (m.stagedKey) job.stagedKey = m.stagedKey;
-        const capped = uploadErrorOf(m.failure) === 'StagedCapReached';
-        if (capped && (this.pending.length > 0 || this.batch !== null)) {
-          // Commit what is staged first, then stage the rest.
-          this.capHold = true;
-          const row = this.rows.get(m.job);
-          if (row) row.state = 'queued';
-          this.queuedSmall.unshift(job);
-        } else {
-          this.fail(job, m.failure);
-        }
-        break;
-      }
-      case 'batchDone':
-        this.batchDone(m.entries);
-        break;
-      case 'batchFailed':
-        this.batchFailed(m.commitId, m.failure);
-        break;
-      case 'progress': {
-        const row = this.rows.get(m.job);
-        if (!row) break;
-        row.phase = m.phase;
-        row.bytesDone = m.bytesDone;
-        row.lanes = m.lanes;
-        break;
-      }
-      case 'done': {
-        const job = this.internal.get(m.job);
-        const row = this.rows.get(m.job);
-        if (!job || !row) break;
-        this.largeActive -= 1;
-        row.bytesDone = row.size;
-        row.lanes = 0;
-        this.finish(job, row, 'done');
-        break;
-      }
-      case 'failed': {
-        const job = this.internal.get(m.job);
-        if (!job) break;
-        this.largeActive -= 1;
-        if (m.clientKey) job.clientKey = m.clientKey;
-        this.fail(job, m.failure);
-        break;
-      }
-      case 'cancelled': {
-        const job = this.internal.get(m.job);
-        const row = this.rows.get(m.job);
-        if (!job || !row) break;
-        if (job.small) this.staging -= 1;
-        else this.largeActive -= 1;
-        this.finish(job, row, 'cancelled');
-        break;
-      }
-      case 'ready':
-      case 'fatal':
-        break;
-    }
-    this.pump();
-  }
-
-  private batchDone(entries: BatchEntryResult[]) {
-    const batch = this.batch;
-    if (!batch) return;
+  /**
+   * The page is going away or is frozen and its Worker will not survive: every unfinished job ends. A large upload
+   * with a session stops and keeps its resume record; the rest fail and can be retried.
+   */
+  suspend() {
+    this.dispose();
+    this.staging = 0;
+    this.largeActive = 0;
     this.batch = null;
     this.capHold = false;
-    batch.jobs.forEach((job, index) => {
-      const row = this.rows.get(job.id);
-      const entry = entries[index];
-      if (!row) return;
-      if (entry?.status === 'committed') {
-        row.bytesDone = row.size;
-        this.finish(job, row, 'done');
-      } else {
-        // A staged key is single-use once committed or refused; a retry stages the file again.
-        job.stagedKey = undefined;
-        this.failWith(job, uploadErrorOfCode(entry?.status === 'error' ? entry.code : 'internal'));
-      }
-    });
+    this.pending.length = 0;
+    this.queuedSmall.length = 0;
+    this.queuedLarge.length = 0;
+    for (const row of this.jobs) {
+      const job = this.internal.get(row.id);
+      if (!job || !['queued', 'running', 'committing'].includes(row.state)) continue;
+      if (job.record) this.stop(job, STOPPED_TEXT.PageHidden);
+      else this.failWith(job, 'Network');
+      this.resumeAnswer(job.id, refuse('Network', UPLOAD_ERROR_TEXT.Network));
+    }
   }
 
-  private batchFailed(commitId: string, failure: Failure) {
-    const batch = this.batch;
-    if (!batch) return;
-    batch.commitId = commitId;
-    if (failure.kind === 'api') this.deps.api.report(failure.error);
-    if (
-      failure.kind === 'api' &&
-      isTransientError(failure.error) &&
-      batch.attempts < BATCH_ATTEMPTS
-    ) {
-      batch.attempts += 1;
-      // The same commit ID, so a batch that did commit answers with its stored result and nothing is duplicated.
-      setTimeout(
-        () => this.sendBatch(batch),
-        (this.deps.batchRetryMs ?? BATCH_RETRY_MS) * (batch.attempts - 1),
-      );
+  /**
+   * An upload with a resume record that will not continue (stopped, or re-selected and still queued) ends its server
+   * session too, and a pending `resumeUpload` call is answered.
+   */
+  override cancelUpload(id: string) {
+    const job = this.internal.get(id);
+    const row = this.rows.get(id);
+    if (job?.record && row && (row.state === 'stopped' || row.state === 'queued')) {
+      remove(this.queuedLarge, job);
+      void this.discard(job);
+      this.resumeAnswer(id, refuse('Failed', UPLOAD_ERROR_TEXT.Failed));
+      this.finish(job, row, 'cancelled');
       return;
     }
-    this.batch = null;
-    for (const job of batch.jobs) this.fail(job, failure, false);
+    super.cancelUpload(id);
   }
 
-  private fail(job: Job, failure: Failure, report = true) {
-    if (report && failure.kind === 'api') this.deps.api.report(failure.error);
-    this.failWith(job, uploadErrorOf(failure));
+  /** A failed large upload that is dismissed will not be retried: its record and session go. */
+  override dismiss(id: string) {
+    const job = this.internal.get(id);
+    if (job?.record && this.rows.get(id)?.state === 'failed') void this.discard(job);
+    super.dismiss(id);
   }
 
-  private failWith(job: Job, error: UploadError) {
-    const row = this.rows.get(job.id);
-    if (!row) return;
-    row.state = 'failed';
-    row.phase = null;
-    row.lanes = 0;
-    row.error = error;
-    row.errorText = UPLOAD_ERROR_TEXT[error];
+  protected override receive(m: FromWorker) {
+    const job = 'job' in m ? this.internal.get(m.job) : undefined;
+    switch (m.type) {
+      case 'session':
+        if (!job) return;
+        job.clientKey = m.clientKey;
+        job.record = {
+          fileName: job.name,
+          size: job.size,
+          lastModified: job.lastModified,
+          sessionId: m.sessionId,
+          clientKey: m.clientKey,
+          blocklist: m.blocklist,
+          parentId: job.parentId,
+        };
+        if (job.accountId !== null) void this.deps.resume?.put(job.accountId, job.record);
+        return;
+      case 'resumed':
+        this.resumeAnswer(m.job, {
+          ok: true,
+          value: { kind: 'Resumed', resentBytes: m.resentBytes },
+        });
+        return;
+      case 'done':
+        if (job) {
+          this.forget(job);
+          this.resumeAnswer(m.job, { ok: true, value: { kind: 'Resumed', resentBytes: 0 } });
+        }
+        break;
+      case 'cancelled':
+        if (job && !job.small) {
+          this.forget(job);
+          this.resumeAnswer(m.job, refuse('Failed', UPLOAD_ERROR_TEXT.Failed));
+        }
+        break;
+      case 'failed':
+        super.receive(m);
+        if (job) this.largeFailed(job, m);
+        return;
+    }
+    super.receive(m);
   }
 
-  private failAllActive() {
-    for (const row of this.jobs) {
-      if (row.state === 'running' || row.state === 'committing' || row.state === 'queued') {
-        row.state = 'failed';
-        row.error = 'Failed';
-        row.errorText = UPLOAD_ERROR_TEXT.Failed;
-      }
+  /**
+   * After the queue marked a large upload failed: a file that cannot be read or has changed keeps its record and the
+   * row stops; a session the server no longer has loses its record, so Retry uploads the file again from the start.
+   */
+  private largeFailed(job: Job, m: Extract<FromWorker, { type: 'failed' }>) {
+    const error = uploadErrorOf(m.failure);
+    this.resumeAnswer(job.id, refuse(error, UPLOAD_ERROR_TEXT[error]));
+    if ((error === 'FileUnreadable' || error === 'FileChanged') && job.record) {
+      this.stop(job, STOPPED_TEXT[error]);
+    } else if (error === 'UploadSessionGone') {
+      this.forget(job);
+      job.clientKey = undefined;
     }
   }
 
-  private finish(job: Job, row: JobProgress, state: 'done' | 'cancelled') {
-    row.state = state;
+  /** The row waits for the person to select the file again; the record stays. */
+  private stop(job: Job, text: string) {
+    const row = this.rows.get(job.id);
+    if (!row) return;
+    row.state = 'stopped';
     row.phase = null;
     row.lanes = 0;
-    // The page holds no File after hand-off of a finished job.
+    row.error = undefined;
+    row.errorText = text;
+    job.resuming = undefined;
     job.file = null;
   }
 
-  private setRunning(job: Job) {
-    const row = this.rows.get(job.id);
-    if (row) row.state = 'running';
+  private resumeAnswer(id: string, result: ResumeResult) {
+    this.resumeAnswers.get(id)?.(result);
+    this.resumeAnswers.delete(id);
   }
 
-  /** Stops the Worker; tests and hot reload use it. */
-  dispose() {
-    this.worker?.terminate();
-    this.worker = null;
-    this.ready = null;
+  /** Removes the resume record: the upload committed, was cancelled, or its session is gone. */
+  private forget(job: Job) {
+    const record = job.record;
+    job.record = undefined;
+    if (record && job.accountId !== null)
+      void this.deps.resume?.remove(job.accountId, record.clientKey);
   }
-}
 
-function remove<T>(list: T[], item: T) {
-  const at = list.indexOf(item);
-  if (at !== -1) list.splice(at, 1);
-}
-
-function refuse(code: UploadError, text: string): EnqueueResult {
-  return { ok: false, error: { code, text } };
+  /** Ends the server session of a stopped upload that will not continue (best effort: the server expires it). */
+  private async discard(job: Job) {
+    const record = job.record;
+    if (!record) return;
+    this.forget(job);
+    const result = await this.deps.api.deleteUpload(record.sessionId);
+    if (!result.ok) {
+      console.warn(
+        'The upload session could not be aborted; the server will expire it.',
+        result.error.code,
+      );
+    }
+  }
 }

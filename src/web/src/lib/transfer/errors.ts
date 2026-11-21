@@ -1,4 +1,4 @@
-import type { Failure } from './protocol';
+import type { Failure, LocalReason } from './protocol';
 
 export type UploadError =
   | 'InvalidName'
@@ -11,6 +11,8 @@ export type UploadError =
   | 'TooManyFiles'
   | 'StagedCapReached'
   | 'FileUnreadable'
+  | 'FileChanged'
+  | 'UploadSessionGone'
   | 'Network'
   | 'Failed';
 
@@ -32,10 +34,17 @@ export function uploadErrorOfCode(code: string): UploadError {
   return BY_CODE[code] ?? 'Failed';
 }
 
+const LOCAL: Record<LocalReason, UploadError> = {
+  FileUnreadable: 'FileUnreadable',
+  FileChanged: 'FileChanged',
+  SessionGone: 'UploadSessionGone',
+  BlockRetriesExhausted: 'Failed',
+  RestartLimit: 'Failed',
+  Internal: 'Failed',
+};
+
 export function uploadErrorOf(failure: Failure): UploadError {
-  if (failure.kind === 'local') {
-    return failure.reason === 'FileUnreadable' ? 'FileUnreadable' : 'Failed';
-  }
+  if (failure.kind === 'local') return LOCAL[failure.reason];
   return failure.error.kind === 'network' ? 'Network' : uploadErrorOfCode(failure.error.code);
 }
 
@@ -50,6 +59,9 @@ export const UPLOAD_ERROR_TEXT: Record<UploadError, string> = {
   TooManyFiles: 'Too many files in one selection.',
   StagedCapReached: 'The server holds too many uploads waiting to be committed.',
   FileUnreadable: 'The file could not be read. It may have been moved or deleted.',
+  FileChanged: 'The file changed while it was uploading.',
+  UploadSessionGone:
+    'This upload expired on the server. Choose Retry to upload the file again from the start.',
   Network: 'The connection was lost.',
   Failed: 'The upload failed.',
 };
@@ -59,3 +71,15 @@ export function tooManyFilesText(count: number, limit: number): string {
   const n = new Intl.NumberFormat('en-US');
   return `This selection has ${n.format(count)} files. The web client takes at most ${n.format(limit)} files at once. For larger folders use the desktop client.`;
 }
+
+/** A large upload that stopped but keeps its resume record: what the row says, and what to do next. */
+export const STOPPED_TEXT = {
+  PageHidden: 'Stopped when the tab closed. Select the same file to continue.',
+  FileUnreadable:
+    'Stopped: the file could not be read. It may have been changed, moved or deleted. Select the same file to continue.',
+  FileChanged:
+    'Stopped: the file changed while it was uploading. Select it again to upload it from the start.',
+} as const;
+
+export const CHANGED_SINCE_LAST_TIME_TEXT =
+  'This file changed since last time, so it is uploading again from the start.';

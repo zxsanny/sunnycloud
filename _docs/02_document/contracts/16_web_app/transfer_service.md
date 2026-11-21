@@ -3,7 +3,7 @@
 **Component**: 16_web_app
 **Producer task**: E-26/c09 — `_docs/02_tasks/todo/B12-10_transfer_service_small_path.md` (facade, `enqueueUpload`, `cancelUpload`, `progress`); contributors E-26/c10 `B12-11_worker_large_upload.md` (Worker protocol, large path), E-26/c11 `B12-12_resume_edit_detection.md` (`resumeUpload`, resume record), E-26/c12 `B12-13_download_strategies.md` (`download`); keys assigned at Step 4
 **Consumer tasks**: E-26/c08 (file browser row actions), E-26/c13 (public share page download), E-26/c17 (open action download offer), E-26/c19b (50 GiB runs), E-26/n01 (vault page, v1.2, needs the minor version below), pipeline `AZ-3671_pipeline_web_transfer`; resolved at Step 4
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Status**: draft
 **Last Updated**: 2026-11-04
 
@@ -89,8 +89,11 @@ A file of at most `ServerLimits.smallFileMax` bytes (2 MiB) takes the small path
 | `sessionId` | string | upload session id |
 | `clientKey` | string | random UUIDv7 created with the session, reused on every resume |
 | `blocklist` | block hashes | avoids re-hashing on resume; the server re-verifies every block |
+| `parentId` | string | the folder the file goes to; the session read (`GET /uploads/{id}`) returns only the received-block list and expiry, so the commit's parent must come from here (added by AZ-3941) |
 
-Written when the session is created; removed on commit, on cancel and when the server reports the session gone. Never holds a token, password or cookie.
+Stored per account: the key is `(accountId, clientKey)`, and a listing reads one account's records only. Written when the session is created; removed on commit, on cancel and when the server reports the session gone. Never holds a token, password or cookie. If IndexedDB is unavailable, uploads still complete, no record is kept and one notice says resume is not offered.
+
+`resumeUpload(file, job)` applies to a job in state `stopped`: a file with the record's `fileName`, `size` and `lastModified` continues the session (the Worker `resume` message: read the session, send only missing blocks, no hash pass); any difference ends the old session (`DELETE /uploads/{id}`), drops the record and uploads the file from the start (`Restarted{ChangedSinceLastTime}`). `Resumed.resentBytes` is an upper bound for what the stopped run may have sent: the missing blocks before the last block the server holds, plus the first `lanes` missing blocks after it. A browser `File` is a snapshot: before commit the Worker re-reads `size` and `lastModified` and reads one byte; a change, or a refused read (the browser's answer to a file edited on disk), stops the job as `stopped` with the record kept, and selecting the file again restarts it. A page that is hidden or put away (`pagehide`) stops its large uploads the same way.
 
 ## Invariants
 
@@ -128,3 +131,4 @@ Written when the session is created; removed on commit, on cancel and when the s
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B12) |
+| 1.0.1 | 2026-11-21 | Resume record gains `parentId`; per-account keying, `resentBytes` meaning, edit-before-commit and `pagehide` behaviour written down | AZ-3941 |

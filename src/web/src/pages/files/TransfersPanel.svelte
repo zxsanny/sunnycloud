@@ -1,12 +1,16 @@
 <script lang="ts">
   import CircleAlert from '@lucide/svelte/icons/circle-alert';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
+  import Pause from '@lucide/svelte/icons/pause';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Upload from '@lucide/svelte/icons/upload';
   import X from '@lucide/svelte/icons/x';
   import { formatBytes } from '$lib/format';
   import { transfer, type JobProgress } from '$lib/transfer';
   import { Button } from '$lib/ui';
+
+  /** Opens the file picker of the page for the stopped upload with this id. */
+  let { onselect }: { onselect: (id: string) => void } = $props();
 
   const active = $derived(
     transfer.jobs.filter(
@@ -19,7 +23,8 @@
         ? 100
         : 0
       : Math.min(100, Math.round((job.bytesDone / job.size) * 100));
-  const cancellable = (job: JobProgress) => job.state === 'queued' || job.state === 'running';
+  const cancellable = (job: JobProgress) =>
+    job.state === 'queued' || job.state === 'running' || job.state === 'stopped';
   const finished = (job: JobProgress) =>
     job.state === 'done' || job.state === 'failed' || job.state === 'cancelled';
 </script>
@@ -51,10 +56,22 @@
               <CircleAlert class="size-4 flex-none text-danger" aria-hidden="true" />
             {:else if job.state === 'done'}
               <CircleCheck class="size-4 flex-none text-success" aria-hidden="true" />
+            {:else if job.state === 'stopped'}
+              <Pause class="size-4 flex-none text-warning" aria-hidden="true" />
             {:else}
               <Upload class="size-4 flex-none text-ink-2" aria-hidden="true" />
             {/if}
             <span class="min-w-0 flex-1 truncate text-row" title={job.name}>{job.name}</span>
+            {#if job.state === 'stopped'}
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-label="Select file for {job.name}"
+                onclick={() => onselect(job.id)}
+              >
+                Select file
+              </Button>
+            {/if}
             {#if cancellable(job)}
               <Button
                 variant="ghost"
@@ -109,6 +126,11 @@
                 {formatBytes(job.bytesDone)} of {formatBytes(job.size)}
               {/if}
             </p>
+            {#if job.note}
+              <p class="text-small text-ink-2">{job.note}</p>
+            {/if}
+          {:else if job.state === 'stopped'}
+            <p class="text-small text-ink-2">{job.errorText}</p>
           {:else if job.state === 'queued'}
             <p class="text-small text-ink-2">Waiting</p>
           {:else if job.state === 'failed'}

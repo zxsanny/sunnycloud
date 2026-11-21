@@ -89,6 +89,16 @@ all come from that one Rust implementation; there is no JavaScript copy of them.
   and a lost session follow the planner's actions. A file is read, hashed, sent and dropped, so memory does not grow with the file.
 - **Cancel** aborts the requests through an `AbortController`; a large upload also aborts its session. **Retry** starts the job
   again from the beginning with the same client key, so a session that is still alive is reused (`need_blocks` says what is missing).
+- **Resume** (`resume.ts`, `service.svelte.ts`): when a large upload gets its session, the page stores a resume record in
+  IndexedDB (`sunnycloud-transfer`, key `(accountId, clientKey)`: name, size, modified time, session id, client key,
+  block hashes, folder; never a token or cookie). It is removed at commit, cancel and when the server says the session is
+  gone. After the tab closed (or on `pagehide`) the job is `stopped`; the Files page lists the account's records
+  (`loadStopped`) in a banner and as rows with "Select file". `resumeUpload(file, id)`: the same name, size and modified
+  time continues the session (`resume` Worker message: `GET /uploads/{id}`, no hash pass, only the missing blocks; a hash
+  the server refuses from the record restarts with a fresh hash pass); anything else ends the old session and uploads from the
+  start. Before commit the Worker looks at the file again (size, modified time, one byte read): a changed file stops the job.
+  IndexedDB unavailable: uploads work, no record is kept, one notice says so. Stale records of sessions that expired are
+  removed when the file is selected (`UploadSessionGone`) or the row is cancelled.
 - Typed errors per job: `InvalidName`, `QuotaExceeded`, `SizeTooLarge`, `SessionCapReached`, `FreeSpaceFloor`,
   `ParentNotFound`, `AccountNotActive`, `TooManyFiles`, plus `StagedCapReached`, `FileUnreadable`, `Network`, `Failed`.
   Faults the app reports itself (507, 429, 5xx, network) also reach the notice area.
