@@ -1,0 +1,17 @@
+{
+  "name": "sunnycloud-mock-idp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mock OpenID Connect provider for sunnycloud acceptance runs (loopback only)",
+  "scripts": {
+    "start": "bun src/main.ts",
+    "test": "bun test --timeout 20000",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.5",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "bun@1.4.5"
+}
