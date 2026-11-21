@@ -13,6 +13,7 @@ const CONTRACT_PATHS: &[&str] = &[
     "/api/v1/auth/providers/{provider}/callback",
     "/api/v1/auth/mobile-code-exchanges",
     "/api/v1/auth/refresh-tokens",
+    "/api/v1/auth/session-renewals",
     "/api/v1/sessions",
     "/api/v1/sessions/{id}",
     "/api/v1/sessions/current",

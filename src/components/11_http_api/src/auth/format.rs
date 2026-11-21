@@ -16,6 +16,8 @@ pub struct CredentialFormat {
     pub session_cookie: String,
     /// The full name of the browser-binding cookie of a sign-in attempt, `__Host-` prefix included.
     pub binding_cookie: String,
+    /// How long the browser keeps the refresh cookie: the refresh token's own lifetime, which 01 owns.
+    pub refresh_cookie_max_age: std::time::Duration,
 }
 
 /// The transport a request's credential arrived in. Cookie-authenticated mutations are the ones CSRF checks.
@@ -36,6 +38,9 @@ impl CredentialFormat {
         }
         if self.binding_cookie == self.session_cookie {
             return invalid("binding_cookie and session_cookie must differ");
+        }
+        if self.refresh_cookie_max_age.is_zero() {
+            return invalid("refresh_cookie_max_age must be above zero");
         }
         Ok(())
     }

@@ -70,7 +70,7 @@ impl CsrfGuard {
 
     /// True for `Sec-Fetch-Site: same-origin` or an `Origin` equal to the public origin. A repeated header
     /// proves nothing.
-    fn proves_same_origin(&self, headers: &HeaderMap) -> bool {
+    pub(crate) fn proves_same_origin(&self, headers: &HeaderMap) -> bool {
         single(headers, &SEC_FETCH_SITE).is_some_and(|site| site.as_bytes() == SAME_ORIGIN)
             || single(headers, &ORIGIN)
                 .and_then(|value| value.to_str().ok())

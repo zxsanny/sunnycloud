@@ -10,6 +10,7 @@ mod limits;
 mod operations;
 mod redaction;
 mod registry;
+mod renewal;
 mod session_tokens_e2e;
 mod sessions;
 mod signin;

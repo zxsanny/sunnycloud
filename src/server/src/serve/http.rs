@@ -52,6 +52,7 @@ pub(super) fn http_config(settings: &Settings) -> HttpConfig {
         credentials: CredentialFormat {
             session_cookie: settings.session_cookie.clone(),
             binding_cookie: settings.binding_cookie.clone(),
+            refresh_cookie_max_age: settings.refresh_token_ttl.get(),
         },
     }
 }

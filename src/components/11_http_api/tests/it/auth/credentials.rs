@@ -1,3 +1,4 @@
+use std::time::Duration;
 use sunnycloud_http_api::registry::AuthClass;
 use sunnycloud_http_api::{CredentialFormat, HttpServer, HttpServerError};
 
@@ -142,6 +143,7 @@ fn a_credential_format_the_documents_rule_out_is_refused_at_start() {
             config.credentials = CredentialFormat {
                 session_cookie: cookie.to_owned(),
                 binding_cookie: binding.to_owned(),
+                refresh_cookie_max_age: Duration::from_secs(3_600),
             };
             HttpServer::new(stub_services(&Script::default(), new_metrics()), config).err()
         })

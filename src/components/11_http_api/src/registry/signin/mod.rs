@@ -1,11 +1,14 @@
 //! The Auth and Identity operations of `api_v1_surface.md` (01 section 3): the provider list, sign-in begin and
-//! callback, the mobile code exchange, the refresh and the identity-link attempt.
+//! callback, the mobile code exchange, the refresh, the browser's session renewal and the identity-link attempt.
 //!
 //! `complete_link` has no route: 01's route table lists none (open point 34 of the surface contract).
 
 mod cookie;
 mod handlers;
 mod wire;
+
+use std::convert::Infallible;
+use std::sync::Arc;
 
 use axum::Extension;
 use axum::routing::on;
@@ -21,6 +24,7 @@ const LOGIN: &str = "/api/v1/auth/login-attempts";
 const CALLBACK: &str = "/api/v1/auth/providers/{provider}/callback";
 const EXCHANGE: &str = "/api/v1/auth/mobile-code-exchanges";
 const REFRESH: &str = "/api/v1/auth/refresh-tokens";
+const RENEWAL: &str = "/api/v1/auth/session-renewals";
 const LINK: &str = "/api/v1/identity-link-attempts";
 
 const PROVIDER: &[Param] = &[Param::path("provider", ParamType::String)];
@@ -92,6 +96,19 @@ const REFRESH_SPEC: RouteSpec = RouteSpec::new(
 .request(wire::REFRESH_REQUEST)
 .response(wire::SESSION_TOKENS);
 
+const RENEWAL_ERRORS: &[ErrorCode] = &[ErrorCode::Unauthenticated, ErrorCode::CsrfRejected];
+
+const RENEWAL_SPEC: RouteSpec = RouteSpec::new(
+    HttpMethod::Post,
+    RENEWAL,
+    "SessionService::refresh",
+    AuthClass::Public,
+    BodyClass::Small,
+)
+.summary("Trade the browser's refresh cookie for a new session cookie and refresh cookie")
+.errors(RENEWAL_ERRORS)
+.success(204);
+
 const LINK_SPEC: RouteSpec = RouteSpec::new(
     HttpMethod::Post,
     LINK,
@@ -124,6 +141,12 @@ pub(super) fn routes() -> Vec<RouteDef> {
         }),
         RouteDef::new(REFRESH_SPEC, |context, filter| {
             on(filter, handlers::refresh).with_state(services(context))
+        }),
+        RouteDef::new(RENEWAL_SPEC, |context, filter| {
+            on(filter, handlers::renew)
+                .layer::<_, Infallible>(Extension(CookieNames::new(&context.credentials)))
+                .layer(Extension(Arc::clone(&context.csrf)))
+                .with_state(services(context))
         }),
         RouteDef::new(LINK_SPEC, |context, filter| {
             on(filter, handlers::begin_link)

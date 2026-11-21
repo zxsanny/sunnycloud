@@ -4,6 +4,10 @@
 //! ones `api_v1_surface.md` fixes for a browser credential and none other: the configured `__Host-` name,
 //! `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`. The session cookie lives as long as the token the
 //! port reports; the binding cookie has no lifetime in its value, so it ends with the browser session.
+//!
+//! The refresh cookie is the one exception to `Path=/`: the `__Host-` prefix requires it, so the refresh cookie
+//! takes `__Secure-` and is sent only to the renewal route, with `SameSite=Strict` (the share-grant cookie does
+//! the same). The browser's script never reads it, and the renewal route is the only place it is presented.
 
 use axum::http::HeaderValue;
 use contracts::{BrowserBinding, SessionTokens};
@@ -11,7 +15,15 @@ use contracts::{BrowserBinding, SessionTokens};
 use crate::auth::CredentialFormat;
 use crate::registry::request::{is_cookie_octet, seconds};
 
+use std::time::Duration;
+
 const ATTRIBUTES: &str = "Secure; HttpOnly; SameSite=Lax; Path=/";
+
+/// The name of the refresh cookie; no configuration, because the `__Secure-` prefix and the path are fixed.
+pub(super) const REFRESH_COOKIE: &str = "__Secure-refresh";
+/// The one path the browser sends the refresh cookie to.
+pub(super) const RENEWAL_PATH: &str = "/api/v1/auth/session-renewals";
+const REFRESH_ATTRIBUTES: &str = "Secure; HttpOnly; SameSite=Strict";
 
 /// A value 01 produced that cannot be written into a header: 01 broke its contract.
 #[derive(Debug, thiserror::Error)]
@@ -23,6 +35,7 @@ pub(super) struct NotHeaderSafe(pub(super) &'static str);
 pub(super) struct CookieNames {
     session: String,
     binding: String,
+    refresh_max_age: Duration,
 }
 
 impl CookieNames {
@@ -30,6 +43,7 @@ impl CookieNames {
         CookieNames {
             session: credentials.session_cookie.clone(),
             binding: credentials.binding_cookie.clone(),
+            refresh_max_age: credentials.refresh_cookie_max_age,
         }
     }
 
@@ -47,6 +61,29 @@ impl CookieNames {
             tokens.access.expose(),
             Some(seconds(tokens.expires_in)),
             "access token",
+        )
+    }
+
+    /// The refresh cookie carries the refresh token for the token's own lifetime; each rotation sets it again.
+    pub(super) fn refresh_cookie(
+        &self,
+        tokens: &SessionTokens,
+    ) -> Result<HeaderValue, NotHeaderSafe> {
+        let value = tokens.refresh.expose();
+        if value.is_empty() || !value.bytes().all(is_cookie_octet) {
+            return Err(NotHeaderSafe("refresh token"));
+        }
+        let cookie = format!(
+            "{REFRESH_COOKIE}={value}; {REFRESH_ATTRIBUTES}; Path={RENEWAL_PATH}; Max-Age={}",
+            seconds(self.refresh_max_age)
+        );
+        HeaderValue::try_from(cookie).map_err(|_| NotHeaderSafe("refresh token"))
+    }
+
+    /// Tells the browser to forget a refresh cookie the server no longer accepts.
+    pub(super) fn cleared_refresh_cookie() -> HeaderValue {
+        HeaderValue::from_static(
+            "__Secure-refresh=; Secure; HttpOnly; SameSite=Strict; Path=/api/v1/auth/session-renewals; Max-Age=0",
         )
     }
 
@@ -104,6 +141,7 @@ mod tests {
         CookieNames::new(&CredentialFormat {
             session_cookie: "__Host-sid".to_owned(),
             binding_cookie: "__Host-bind".to_owned(),
+            refresh_cookie_max_age: Duration::from_secs(2_592_000),
         })
     }
 
@@ -128,6 +166,41 @@ mod tests {
             cookie.to_str().expect("text"),
             "__Host-sid=acc-Ess_1; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=900"
         );
+    }
+
+    #[test]
+    fn the_refresh_cookie_is_strict_secure_limited_to_the_renewal_path_and_lives_as_long_as_the_token()
+     {
+        // Arrange
+        let tokens = tokens("acc", Duration::from_secs(900));
+
+        // Act
+        let cookie = names().refresh_cookie(&tokens).expect("a cookie");
+
+        // Assert
+        assert_eq!(
+            cookie.to_str().expect("text"),
+            "__Secure-refresh=refresh; Secure; HttpOnly; SameSite=Strict; \
+             Path=/api/v1/auth/session-renewals; Max-Age=2592000"
+        );
+    }
+
+    #[test]
+    fn the_clearing_cookie_names_the_same_cookie_and_path_with_a_zero_life() {
+        // Arrange
+        let live = names().refresh_cookie(&tokens("acc", Duration::from_secs(1)));
+
+        // Act
+        let cleared = CookieNames::cleared_refresh_cookie();
+
+        // Assert
+        let live = live.expect("a cookie");
+        let live = live.to_str().expect("text");
+        let cleared = cleared.to_str().expect("text");
+        assert!(live.starts_with(&format!("{REFRESH_COOKIE}=")));
+        assert!(cleared.starts_with(&format!("{REFRESH_COOKIE}=;")));
+        assert!(cleared.contains(&format!("Path={RENEWAL_PATH};")));
+        assert!(cleared.ends_with("Max-Age=0"));
     }
 
     #[test]

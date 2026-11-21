@@ -169,9 +169,17 @@ async fn the_session_cookie_is_exactly_what_the_port_result_states_and_adds_no_a
         .collect();
     assert_eq!(
         cookies,
-        ["__Host-test-session=acc-ESS_token; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=900"]
+        [
+            "__Host-test-session=acc-ESS_token; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=900",
+            "__Secure-refresh=ref-RESH_token; Secure; HttpOnly; SameSite=Strict; \
+             Path=/api/v1/auth/session-renewals; Max-Age=2592000",
+        ]
     );
-    assert!(!cookies[0].to_ascii_lowercase().contains("domain"));
+    assert!(
+        cookies
+            .iter()
+            .all(|line| !line.to_ascii_lowercase().contains("domain"))
+    );
     stack.stop().await;
 }
 

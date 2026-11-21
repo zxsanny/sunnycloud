@@ -87,11 +87,13 @@ pub fn test_credentials() -> CredentialFormat {
     CredentialFormat {
         session_cookie: SESSION_COOKIE.to_owned(),
         binding_cookie: BINDING_COOKIE.to_owned(),
+        refresh_cookie_max_age: Duration::from_secs(REFRESH_COOKIE_SECONDS),
     }
 }
 
 pub const SESSION_COOKIE: &str = "__Host-test-session";
 pub const BINDING_COOKIE: &str = "__Host-test-binding";
+pub const REFRESH_COOKIE_SECONDS: u64 = 2_592_000;
 pub const DEVICE_PREFIX: &str = sc_ids::TokenKind::DeviceToken.prefix();
 
 pub fn new_metrics() -> Arc<Metrics> {

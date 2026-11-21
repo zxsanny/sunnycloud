@@ -23,7 +23,7 @@ type Row = (
 
 const NONE: BodyClass = BodyClass::None;
 
-const ROWS: [Row; 25] = [
+const ROWS: [Row; 26] = [
     (
         Get,
         "/api/v1/auth/providers",
@@ -68,6 +68,15 @@ const ROWS: [Row; 25] = [
         true,
         "SessionService::refresh",
         200,
+    ),
+    (
+        Post,
+        "/api/v1/auth/session-renewals",
+        Public,
+        Small,
+        true,
+        "SessionService::refresh",
+        204,
     ),
     (
         Get,

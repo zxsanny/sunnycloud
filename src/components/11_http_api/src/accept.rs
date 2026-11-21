@@ -268,6 +268,7 @@ mod tests {
             credentials: crate::CredentialFormat {
                 session_cookie: "__Host-test".to_owned(),
                 binding_cookie: "__Host-test-binding".to_owned(),
+                refresh_cookie_max_age: Duration::from_secs(3_600),
             },
         }
     }
