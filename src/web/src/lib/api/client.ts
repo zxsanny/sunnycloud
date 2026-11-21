@@ -25,6 +25,8 @@ export type ShareOpen = components['schemas']['ShareOpen'];
 export type DeviceList = components['schemas']['DeviceList'];
 export type IdentityLinkAttemptRequest = components['schemas']['IdentityLinkAttemptRequest'];
 export type AccountDeletionAccepted = components['schemas']['AccountDeletionAccepted'];
+export type DeviceGrantApproval = components['schemas']['DeviceGrantApproval'];
+export type DeviceGrantDecision = components['schemas']['DeviceGrantDecision']['decision'];
 
 /** A content route that answers Range: the node's current revision, or one named revision. */
 export type ContentRoute = { kind: 'node' | 'revision'; id: string };
@@ -121,6 +123,17 @@ export function createApi(options: ApiOptions = {}) {
       send(() => client.DELETE('/api/v1/devices/{id}', { params: { path: { id } } })),
     postIdentityLinkAttempt: (body: IdentityLinkAttemptRequest) =>
       send(() => client.POST('/api/v1/identity-link-attempts', { body })),
+    getDeviceGrant: (userCode: string) =>
+      send(() =>
+        client.GET('/api/v1/device-grants', { params: { query: { user_code: userCode } } }),
+      ),
+    patchDeviceGrant: (id: string, decision: DeviceGrantDecision) =>
+      send(() =>
+        client.PATCH('/api/v1/device-grants/{id}', {
+          params: { path: { id } },
+          body: { decision },
+        }),
+      ),
     getServerLimits: async (): Promise<Result<ServerLimits>> => {
       const result = await send(() => client.GET('/api/v1/server-info'));
       return result.ok ? { ok: true, value: serverLimitsOf(result.value) } : result;

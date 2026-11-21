@@ -7,6 +7,8 @@ export type {
   ContentAnswer,
   ContentRoute,
   Committed,
+  DeviceGrantApproval,
+  DeviceGrantDecision,
   DeviceList,
   IdentityLinkAttemptRequest,
   LoginAttemptRequest,
