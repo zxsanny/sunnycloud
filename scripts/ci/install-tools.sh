@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs pinned CI tools into $TOOLS_BIN (default: ${CARGO_HOME:-~/.cargo}/bin, which the cargo cache restores).
-# usage: install-tools.sh TOOL...      TOOL: cargo-deny cargo-audit cargo-llvm-cov cargo-nextest sqlx-cli gitleaks bun wasm-pack pg-client-18 keyring-test-deps
+# usage: install-tools.sh TOOL...      TOOL: cargo-deny cargo-audit cargo-llvm-cov cargo-nextest sqlx-cli gitleaks bun wasm-pack pg-client-18 keyring-test-deps media-tools
 # Downloaded archives are verified against a pinned SHA-256 (also published by the upstream release); cargo
 # installs use --locked and an exact version. Linux x86_64 only. To bump a tool, change its version and checksum here.
 # bun is the JavaScript runtime and package manager of the web app (src/web), from the release zip. wasm-pack builds
@@ -10,6 +10,8 @@
 # accepted only with the pinned fingerprint, and apt verifies the packages against the signed index. Ubuntu only.
 # keyring-test-deps is gnome-keyring, secret-tool and dbus-run-session from the Ubuntu archive: the desktop daemon's
 # token_keyring tests start a real keyring on a private session bus. Ubuntu only.
+# media-tools is vipsthumbnail, vipsheader (libvips-tools) and ffmpeg, ffprobe from the Ubuntu archive: the decoder
+# runner starts only when these four are on PATH, and its tests render real images and clips with them. Ubuntu only.
 set -euo pipefail
 
 tag="[install-tools]"
@@ -160,7 +162,18 @@ install_tool() {
       as_root env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
         gnome-keyring libsecret-tools dbus
       ;;
-    *) fail "unknown tool '$tool' (cargo-deny cargo-audit cargo-llvm-cov cargo-nextest sqlx-cli gitleaks bun wasm-pack pg-client-18 keyring-test-deps)" ;;
+    media-tools)
+      if command -v vipsthumbnail >/dev/null && command -v vipsheader >/dev/null && command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null; then
+        echo "$tag $tool already installed"
+        return
+      fi
+      as_root apt-get update
+      as_root env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+        libvips-tools ffmpeg
+      vipsthumbnail --version
+      ffmpeg -version | head -1
+      ;;
+    *) fail "unknown tool '$tool' (cargo-deny cargo-audit cargo-llvm-cov cargo-nextest sqlx-cli gitleaks bun wasm-pack pg-client-18 keyring-test-deps media-tools)" ;;
   esac
   echo "$tag $tool installed"
 }
