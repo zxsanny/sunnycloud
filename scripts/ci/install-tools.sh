@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Installs pinned CI tools into $TOOLS_BIN (default: ${CARGO_HOME:-~/.cargo}/bin, which the cargo cache restores).
-# usage: install-tools.sh TOOL...      TOOL: cargo-deny cargo-audit cargo-llvm-cov cargo-nextest sqlx-cli gitleaks pg-client-18 keyring-test-deps
+# usage: install-tools.sh TOOL...      TOOL: cargo-deny cargo-audit cargo-llvm-cov cargo-nextest sqlx-cli gitleaks bun wasm-pack pg-client-18 keyring-test-deps
 # Downloaded archives are verified against a pinned SHA-256 (also published by the upstream release); cargo
 # installs use --locked and an exact version. Linux x86_64 only. To bump a tool, change its version and checksum here.
+# bun is the JavaScript runtime and package manager of the web app (src/web), from the release zip. wasm-pack builds
+# sync-core-wasm for the browser (src/web/scripts/build-wasm.sh); the prebuilt musl release replaces a cargo install.
 # pg-client-18 is the PostgreSQL 18 client (pg_dump, pg_restore, psql) from the PGDG apt repository at an exact
 # package version, installed with apt (sudo when not root) into /usr/lib/postgresql/18/bin; the repository key is
 # accepted only with the pinned fingerprint, and apt verifies the packages against the signed index. Ubuntu only.
@@ -23,6 +25,12 @@ CARGO_NEXTEST_VERSION=0.9.152
 CARGO_NEXTEST_SHA256=d039b43c3e0958441b6ad0a39c8884d018b3d2e8fb9928f209074b1100b5e17a
 GITLEAKS_VERSION=8.30.1
 GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+# bun: SHA-256 of bun-linux-x64.zip, equal to the entry in SHASUMS256.txt of the release.
+BUN_VERSION=1.4.5
+BUN_SHA256=94559b3b528995a49452f9f2404cec74f2efd7d06e0a000a8cd214b02c3666eb
+# wasm-pack: the release publishes the digest in its asset list; it was also recomputed from the downloaded archive.
+WASM_PACK_VERSION=0.15.1
+WASM_PACK_SHA256=410101009739b9d01c7d5affaaad6e9c9a24b4cba6791a4805db8e89b9bf7af2
 CARGO_AUDIT_VERSION=0.22.2
 SQLX_CLI_VERSION=0.9.0
 # The exact package version is a supply-chain pin. PGDG's apt.postgresql.org index keeps only the newest few
@@ -37,15 +45,18 @@ PG_CLIENT_BIN=/usr/lib/postgresql/18/bin
 
 fail() { echo "$tag FAILED: $*" >&2; exit 1; }
 
-# download_install NAME URL SHA256 MEMBER_IN_ARCHIVE
+# download_install NAME URL SHA256 MEMBER_IN_ARCHIVE   (a .zip URL is unzipped, anything else is a .tar.gz)
 download_install() {
   local name="$1" url="$2" sha256="$3" member="$4" work
   work="$(mktemp -d)"
   echo "$tag downloading $name from $url"
-  curl --fail --show-error --location --retry 3 --no-progress-meter --output "$work/archive.tar.gz" "$url"
-  echo "$sha256  $work/archive.tar.gz" | sha256sum --check - || fail "$name archive does not match the pinned SHA-256 $sha256"
+  curl --fail --show-error --location --retry 3 --no-progress-meter --output "$work/archive" "$url"
+  echo "$sha256  $work/archive" | sha256sum --check - || fail "$name archive does not match the pinned SHA-256 $sha256"
   mkdir "$work/x"
-  tar -xzf "$work/archive.tar.gz" -C "$work/x"
+  case "$url" in
+    *.zip) unzip -o -d "$work/x" "$work/archive" ;;
+    *) tar -xzf "$work/archive" -C "$work/x" ;;
+  esac
   mkdir -p "$bin_dir"
   install -m 0755 "$work/x/$member" "$bin_dir/$name"
   rm -rf "$work"
@@ -111,6 +122,17 @@ install_tool() {
       if [ "$have" = "$GITLEAKS_VERSION" ]; then echo "$tag $tool $GITLEAKS_VERSION already installed"; return; fi
       download_install gitleaks "https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" "$GITLEAKS_SHA256" gitleaks
       ;;
+    bun)
+      have="$(installed_version bun --version)"
+      if [ "$have" = "$BUN_VERSION" ]; then echo "$tag $tool $BUN_VERSION already installed"; return; fi
+      download_install bun "https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/bun-linux-x64.zip" "$BUN_SHA256" bun-linux-x64/bun
+      ;;
+    wasm-pack)
+      have="$(installed_version wasm-pack --version)"
+      if [ "$have" = "wasm-pack $WASM_PACK_VERSION" ]; then echo "$tag $tool $WASM_PACK_VERSION already installed"; return; fi
+      local wp_dir="wasm-pack-v$WASM_PACK_VERSION-x86_64-unknown-linux-musl"
+      download_install wasm-pack "https://github.com/wasm-bindgen/wasm-pack/releases/download/v$WASM_PACK_VERSION/$wp_dir.tar.gz" "$WASM_PACK_SHA256" "$wp_dir/wasm-pack"
+      ;;
     cargo-audit)
       have="$(installed_version cargo-audit audit --version)"
       if [ "$have" = "cargo-audit-audit $CARGO_AUDIT_VERSION" ]; then echo "$tag $tool $CARGO_AUDIT_VERSION already installed"; return; fi
@@ -138,7 +160,7 @@ install_tool() {
       as_root env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
         gnome-keyring libsecret-tools dbus
       ;;
-    *) fail "unknown tool '$tool' (cargo-deny cargo-audit cargo-llvm-cov cargo-nextest sqlx-cli gitleaks pg-client-18 keyring-test-deps)" ;;
+    *) fail "unknown tool '$tool' (cargo-deny cargo-audit cargo-llvm-cov cargo-nextest sqlx-cli gitleaks bun wasm-pack pg-client-18 keyring-test-deps)" ;;
   esac
   echo "$tag $tool installed"
 }

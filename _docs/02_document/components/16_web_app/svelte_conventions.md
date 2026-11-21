@@ -65,7 +65,7 @@ disagrees with the component description, the description wins; flag the differe
 ## Tests
 
 - Vitest with jsdom and Testing Library. Arrange, Act, Assert with comments, one behaviour per test, a name that states
-  the behaviour. No quiet flags: `npm test` prints every test.
+  the behaviour. No quiet flags: `bun run test` prints every test.
 - Unit tests stub the network with `stubServer` (`tests/support/http.ts`), which answers by `"METHOD /path"` and fails the
   test on a request nobody planned. That proves the client and the pages against the documented answers, not against
   the server.

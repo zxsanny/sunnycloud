@@ -417,9 +417,10 @@ jobs:
       - name: Seeded failures (4 KB library, changed BackupCore method, vault-core dependency)
         run: scripts/ci/watchdog.sh --name mobile-check-seeds -- scripts/ci/tests/test-mobile-checks.sh
 
-  # AZ-3935: the web app (src/web). Lint, svelte-check, unit tests (they include a scan of a real production build for
+  # AZ-3935: the web app (src/web). Bun 1.4.5 installs and runs the scripts; the runner's Node (22 or newer) runs vite,
+  # vitest, eslint and svelte-check. Lint, typecheck, unit tests (they include a scan of a real production build for
   # inline scripts and foreign URLs, the CSP of the deployment), the production build, client drift against the OpenAPI
-  # snapshot, npm audit. The Worker's sync-core-wasm is built first (wasm-pack). Steps live in src/web/ci/web-ci.sh.
+  # snapshot, bun audit. The Worker's sync-core-wasm is built first (wasm-pack). Steps live in src/web/ci/web-ci.sh.
   web:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -427,11 +428,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: src/web/package-lock.json
       - name: Install the pinned toolchain
         run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -439,5 +435,16 @@ jobs:
           workspaces: src
           key: web-${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
-      - name: wasm, lint, svelte-check, tests, build, client drift, audit
+      # Bun installs packages and runs the scripts, but hands the tools' node-shebang bins (vite, vitest, eslint) to Node,
+      # so Node 22 is pinned here instead of relying on what the runner image ships.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install bun and wasm-pack
+        run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh bun wasm-pack
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: web-bun-${{ hashFiles('src/web/bun.lock') }}
+      - name: wasm, lint, typecheck, tests, build, client drift, audit
         run: scripts/ci/watchdog.sh --name web -- src/web/ci/web-ci.sh

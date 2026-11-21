@@ -11,11 +11,12 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "lint": "eslint . && prettier --check .",
-    "format": "prettier --write .",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
     "test": "vitest run --reporter verbose",
-    "gen:api": "node scripts/gen-api.mjs",
+    "gen:api": "bun scripts/gen-api.mjs",
     "build:wasm": "bash scripts/build-wasm.sh",
     "check:large": "vitest run --config vitest.manual.config.ts --reporter verbose"
   },
@@ -47,5 +48,6 @@
     "typescript-eslint": "8.73.0",
     "vite": "8.3.8",
     "vitest": "5.1.1"
-  }
+  },
+  "packageManager": "bun@1.4.5"
 }

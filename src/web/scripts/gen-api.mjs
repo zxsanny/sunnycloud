@@ -1,7 +1,7 @@
 // Regenerates the typed API client sources from the OpenAPI snapshot in openapi/openapi.json.
 //
-//   npm run gen:api                          types from the committed snapshot (no Rust toolchain needed)
-//   npm run gen:api -- --refresh <binary>    first replace the snapshot with `<binary> openapi`
+//   bun run gen:api                          types from the committed snapshot (no Rust toolchain needed)
+//   bun run gen:api --refresh <binary>       first replace the snapshot with `<binary> openapi`
 //
 // The snapshot is the server's own document, byte for byte (`sunnycloud openapi` equals
 // `GET /api/v1/openapi.json`). CI runs this script and fails when the generated files differ from the commit.

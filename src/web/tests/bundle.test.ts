@@ -13,7 +13,7 @@ describe('the production bundle under the CSP (script-src and style-src self)', 
 
   beforeAll(() => {
     out = mkdtempSync(join(tmpdir(), 'sunnycloud-web-dist-'));
-    // The real build in its own process, as `npm run build` runs it.
+    // The real build in its own process, as `bun run build` runs it.
     const env = Object.fromEntries(
       Object.entries(process.env).filter(([name]) => !name.startsWith('VITEST')),
     );

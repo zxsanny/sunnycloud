@@ -1,7 +1,7 @@
 dist
 node_modules
 openapi
-package-lock.json
+bun.lock
 src/lib/api/generated
 src/styles/tokens.css
 wasm

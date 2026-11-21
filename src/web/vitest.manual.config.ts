@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import base from './vite.config';
 
-// The manual checks (npm run check:large) are not part of `npm test`: they move gigabytes.
+// The manual checks (bun run check:large) are not part of `bun run test`: they move gigabytes.
 export default defineConfig({
   ...base,
   test: {

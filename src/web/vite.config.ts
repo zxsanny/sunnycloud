@@ -2,8 +2,15 @@ import { fileURLToPath } from 'node:url';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { svelteTesting } from '@testing-library/svelte/vite';
 import tailwindcss from '@tailwindcss/vite';
+import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 import pkg from './package.json' with { type: 'json' };
+
+// Where the dev server proxies /api: VITE_PROXY_TARGET from the environment or a .env file (Bun and Vite both read it).
+const proxyTarget =
+  process.env.VITE_PROXY_TARGET ??
+  loadEnv('development', process.cwd(), 'VITE_').VITE_PROXY_TARGET ??
+  'http://127.0.0.1:8080';
 
 export default defineConfig({
   plugins: [tailwindcss(), svelte(), svelteTesting()],
@@ -25,7 +32,7 @@ export default defineConfig({
   worker: { format: 'es' },
   server: {
     // No changeOrigin: the browser's own Origin and Host must stay equal for the server's CSRF check.
-    proxy: { '/api': 'http://127.0.0.1:8080' },
+    proxy: { '/api': proxyTarget },
   },
   test: {
     environment: 'jsdom',

@@ -6,21 +6,28 @@ next to the `/api` proxy. Conventions: `_docs/02_document/components/16_web_app/
 
 ## Commands
 
-Node 22 or newer and npm (`engines` and `.npmrc` enforce it).
+Bun 1.4.5 is the package manager and script runner (`packageManager`, `bunfig.toml` with `exact = true`; the lockfile is
+`bun.lock`). Node 22 or newer must also be on PATH: the bins of vite, vitest, eslint and svelte-check start with
+`#!/usr/bin/env node`, so `bun run <script>` runs them under Node. Forcing them under Bun (`bun --bun run test`) breaks
+vitest's forks pool (`child.channel.unref is not a function`), and under the threads pool Bun's `Request` reports
+`credentials: "include"`, which fails one client test; so the scripts do not use `--bun`. Bun itself runs
+`bun scripts/gen-api.mjs`. Bun loads `.env` (no dotenv); see `.env.example`.
 
-| Command                                             | What it does                                                                                                                           |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm ci`                                            | Installs the exact versions of `package-lock.json`.                                                                                    |
-| `npm run dev`                                       | Vite dev server on http://localhost:5173. `/api` is proxied to `http://127.0.0.1:8080` (the server).                                   |
-| `npm run build`                                     | Production build into `dist/` (gitignored).                                                                                            |
-| `npm run lint`                                      | ESLint and `prettier --check`.                                                                                                         |
-| `npm run check`                                     | `svelte-check` (types for `.svelte` and `.ts`).                                                                                        |
-| `npm test`                                          | Vitest, verbose. Includes a real production build and its CSP scan.                                                                    |
-| `npm run build:wasm`                                | Builds `sync-core-wasm` (wasm-pack) into `wasm/pkg` (gitignored). Needed before `build`, `check` and `test`.                           |
-| `npm run check:large`                               | Manual: pushes a generated file (1 GiB; `LARGE_CHECK_MIB`) through the Worker code path against a fake server and prints the peak RSS. |
-| `npm run gen:api`                                   | Regenerates the typed client sources from `openapi/openapi.json`.                                                                      |
-| `npm run gen:api -- --refresh <path/to/sunnycloud>` | First replaces the snapshot with the output of `<binary> openapi`.                                                                     |
-| `src/web/ci/web-ci.sh`                              | All of the above in CI order, plus client drift and `npm audit`. The `web` job in `ci.yml` runs it.                                    |
+| Command                                 | What it does                                                                                                                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun install --frozen-lockfile`         | Installs the exact versions of `bun.lock` (plain `bun install` updates it).                                                                                                           |
+| `bun run dev`                           | Vite dev server on http://localhost:5173. `/api` is proxied to `VITE_PROXY_TARGET` (default `http://127.0.0.1:8080`, the server).                                                     |
+| `bun run build`                         | Production build into `dist/` (gitignored).                                                                                                                                           |
+| `bun run preview`                       | Serves the built `dist/` locally.                                                                                                                                                     |
+| `bun run lint`                          | ESLint and `prettier --check`.                                                                                                                                                        |
+| `bun run format` / `bun run format:fix` | `prettier --check` / `prettier --write`.                                                                                                                                              |
+| `bun run typecheck`                     | `svelte-check`, failing on warnings (types for `.svelte` and `.ts`).                                                                                                                  |
+| `bun run test`                          | Vitest, verbose. Includes a real production build and its CSP scan.                                                                                                                   |
+| `bun run build:wasm`                    | Builds `sync-core-wasm` (wasm-pack) into `wasm/pkg` (gitignored). Needed before `build`, `typecheck` and `test`.                                                                      |
+| `bun run check:large`                   | Manual: pushes a generated file (1 GiB; `LARGE_CHECK_MIB`) through the Worker code path against a fake server and prints the peak RSS. Runs under Node (it uses `fs.openAsBlob`).     |
+| `bun run gen:api`                       | Regenerates the typed client sources from `openapi/openapi.json`; `bun run gen:api --refresh <path/to/sunnycloud>` first replaces the snapshot with the output of `<binary> openapi`. |
+| `bun audit --audit-level=high`          | Known advisories of the lockfile.                                                                                                                                                     |
+| `src/web/ci/web-ci.sh`                  | All of the above in CI order, plus client drift. The `web` job in `ci.yml` runs it.                                                                                                   |
 
 The dev proxy does not rewrite `Origin` or `Host`: the server's CSRF check accepts a cookie request whose
 `Sec-Fetch-Site` is `same-origin`, and the browser sends that for the dev server's own origin.
@@ -30,7 +37,7 @@ The dev proxy does not rewrite `Origin` or `Host`: the server's CSRF check accep
 `openapi/openapi.json` is the server's document, byte for byte (`sunnycloud openapi`). `scripts/gen-api.mjs` turns it into
 `src/lib/api/generated/schema.d.ts` (types) and `problem-codes.ts` (the known error codes). Both are committed; CI
 regenerates them and fails on any difference. After a server API change: build the server, run
-`npm run gen:api -- --refresh <binary>`, commit the three files.
+`bun run gen:api --refresh <binary>`, commit the three files.
 
 `src/lib/api` is the facade. `createApi()` returns one method per operation the app uses; each returns
 `Result<T, ApiError>` and never throws for a server or network failure. It adds `X-Request-Id` (UUIDv7) and
@@ -41,7 +48,7 @@ notices (`isAppLevelError` says which failures are the app's; the rest go to the
 
 ## Dependencies
 
-Every dependency is pinned exactly in `package.json`; `package-lock.json` is committed; the registry is
+Every dependency is pinned exactly in `package.json`; `bun.lock` is committed; the registry is
 registry.npmjs.org.
 
 | Package                                                                                                        | Job                                                                                             |
@@ -100,7 +107,7 @@ there is no `<video>` element. A click on an image opens a lightbox with `size=p
 allowlisted image type (`renderMode`) falls back to the original. HTML, SVG, PDF and everything else get a download link. The
 server's media type decides, never the file name. Download is a plain link to `/api/v1/nodes/{id}/content`.
 
-## Memory check (`npm run check:large`)
+## Memory check (`bun run check:large`)
 
 Generated file of the shared-vector pattern, on disk, read slice by slice, uploaded through the same engine code the
 Worker runs, against the fake upload server (which also hashes every block). Node 22.23.5, this host (zxstation).
