@@ -65,7 +65,7 @@ First-run setup page with the setup token, sign-in through the mock IdP, a folde
 - Real Google (consent screen, `accounts.google.com` discovery, key rotation, the client's redirect URI registration).
 - Cloudflare, Let's Encrypt and Caddy (TLS, the h2c upstream, HTTP-01, the real WebSocket path through the proxy); this stack uses a Bun proxy over http.
 - Safari and iOS (and Firefox): Chromium only.
-- Realtime in the browser (the web client for it does not exist yet; the curl check proves only the upgrade and the first frame).
+- Realtime behind Caddy and Cloudflare (the proxy here is Bun); the live tests prove the browser client against the API.
 - Production-mode validation (`environment=production`, https `public_url`), the container decoder stage, a 1 GB video, the transcode path (its jobs end `dead` with `Unsupported`), more than two sessions at once.
 
 ## Edge cases and concurrency (also in the smoke test)
@@ -74,3 +74,14 @@ First-run setup page with the setup token, sign-in through the mock IdP, a folde
 - Two files with the same name in one folder are both kept: the second is listed as `same-name (conflict copy <date time> web).txt`.
 - Two browser contexts of the same user upload a fresh 40 MiB file at once; both transfers finish, both files are listed and a download matches the source hash.
 - The page ignores a file pick made before the folder has loaded (no message). The test waits for the loaded folder first.
+
+## Live behaviour (`tests/e2e/tests/web-live.spec.ts`, runs after `smoke.spec.ts`)
+
+Context A and context B are two browser contexts of alice (B carries A's session). B opens the same folder and only watches.
+1. A uploads a JPEG, a HEIC and an MP4: the rows appear in B and each thumbnail turns into a loaded image, with no reload (a marker survives) and no request from B other than loading the ready thumbnail images (no listing, `thumbnail-states` or `changes`); no console error.
+2. A deletes a file in the UI and moves another out of the folder with `PATCH /nodes/{id}` (the web UI has no move yet): both rows leave B.
+3. `acceptance-api-ctl.sh stop`: B's chip says Reconnecting; `start`: it returns to Live by itself, and a file uploaded in A after the restart appears in B once, with no duplicate rows.
+4. B idle for 70 s: no REST request at all, the chip never leaves Live, two Pings and two Pongs cross the socket.
+5. A third context signs in as alice; A deletes that session with `DELETE /sessions/{id}`; that page goes to `/login` (close 4401).
+
+Run the whole suite on a fresh stack each time (`acceptance-down.sh && acceptance-up.sh`); the setup test needs an empty database.
