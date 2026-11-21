@@ -139,7 +139,7 @@ async fn at_07_1_a_deleted_account_leaves_nothing_behind_after_a_purger_restart_
         let cycle = stuck.run_cycle(world.clock.now_utc());
         tokio::pin!(cycle);
         tokio::select! {
-            _ = &mut cycle => panic!("the cycle ended before the hang"),
+            ended = &mut cycle => panic!("the cycle ended before the hang: {ended:?}"),
             () = entered.notified() => {}
         }
     }
