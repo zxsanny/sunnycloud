@@ -32,6 +32,7 @@ afterEach(() => {
 
 const stopped = (id: string, name: string): JobProgress => ({
   id,
+  direction: 'upload',
   name,
   parentId: 'p',
   size: 5_000_000,

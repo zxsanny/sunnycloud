@@ -103,6 +103,18 @@ all come from that one Rust implementation; there is no JavaScript copy of them.
   `ParentNotFound`, `AccountNotActive`, `TooManyFiles`, plus `StagedCapReached`, `FileUnreadable`, `Network`, `Failed`.
   Faults the app reports itself (507, 429, 5xx, network) also reach the notice area.
 
+## Downloads: strategies and labels (`downloads.svelte.ts`, `download.ts`, `sinks.ts`, `browserEnv.ts`)
+
+`transfer.download({ nodeId, revisionId? } | { shareToken })` resolves with `VerifiedSaved`, `SavedUnverified` or `Failed` and leaves a
+row in the transfers panel with the label (contract `transfer_service.md`). It reads the metadata first (the server's file hash is
+the `content_hash`), then picks a strategy from what the browser offers (`downloadPlan.ts`): the save dialog (Chromium: streamed
+into the chosen file, verified at any size); the OPFS ranged pull in Firefox up to 2 GiB (`HASH_VERIFY_MAX_FF_SAFARI`, a build
+constant; `hashVerifyMax` overrides it in tests), after which the page hands the verified file to the browser; otherwise the
+browser's own download, labelled "Not verified" with the server's hash and a copy button. Safari counts as "no verified
+mechanism" until the Mac run of spike S12 is recorded (`browserEnv.ts` is the one place to change). The Worker reads four 2 MiB blocks
+per `Range` request, hashes each with `sync-core-wasm` and writes it; the roll-up must equal the server's hash before the
+file is committed; a mismatch aborts the write and removes the file where the browser allows it.
+
 ## The file browser (`src/pages/FilesPage.svelte`, `src/lib/files`)
 
 Routes `/` (the account's root) and `/folders/:id`. Every visit reads the folder, its first page (200 rows) and its
@@ -116,7 +128,7 @@ Thumbnails: after each page one `POST /thumbnail-states` for the previewable fil
 pending"; `failed`, no job, and kinds with no preview an icon with "No preview". A video is its poster with a "Video" badge;
 there is no `<video>` element. A click on an image opens a lightbox with `size=preview`; without a ready thumbnail only an
 allowlisted image type (`renderMode`) falls back to the original. HTML, SVG, PDF and everything else get a download link. The
-server's media type decides, never the file name. Download is a plain link to `/api/v1/nodes/{id}/content`.
+server's media type decides, never the file name. Download is a plain link to `/api/v1/nodes/{id}/content` (the browser's own download), next to a "Download and check" button that calls `transfer.download` (see below).
 
 ## Realtime (`src/lib/realtime`, `src/app/realtime.ts`)
 

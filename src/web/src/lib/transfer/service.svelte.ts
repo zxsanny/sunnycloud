@@ -6,14 +6,14 @@ import {
 } from './errors';
 import { refuse, remove, type Job, type ResumeResult } from './jobs';
 import type { FromWorker } from './protocol';
-import { UploadQueue } from './queue.svelte';
+import { DownloadQueue } from './downloads.svelte';
 import { matchesRecord } from './resume';
 
 /**
- * The one facade pages use for uploads (contract transfer_service.md): the queue of `UploadQueue`, and the resume of
- * a large upload that stopped because its tab closed or its file changed.
+ * The one facade pages use (contract transfer_service.md): the upload queue, downloads, and the resume of a large
+ * upload that stopped because its tab closed or its file changed.
  */
-export class TransferService extends UploadQueue {
+export class TransferService extends DownloadQueue {
   // Plain map: no template reads it.
   // eslint-disable-next-line svelte/prefer-svelte-reactivity
   private readonly resumeAnswers = new Map<string, (result: ResumeResult) => void>();
@@ -105,6 +105,7 @@ export class TransferService extends UploadQueue {
    * with a session stops and keeps its resume record; the rest fail and can be retried.
    */
   suspend() {
+    this.failDownloads();
     this.dispose();
     this.staging = 0;
     this.largeActive = 0;

@@ -1,6 +1,7 @@
 import { api } from '$lib/api';
 import { notices } from '$lib/notices';
 import { session } from '$lib/session';
+import { browserDownloadEnv } from './browserEnv';
 import { ResumeStore } from './resume';
 import type { WorkerLike } from './jobs';
 import { TransferService } from './service.svelte';
@@ -9,6 +10,9 @@ export { UPLOAD_ERROR_TEXT, tooManyFilesText } from './errors';
 export type { UploadError } from './errors';
 export { MAX_SELECTION_FILES } from './jobs';
 export type { EnqueueResult, JobProgress, ResumeOutcome, ResumeResult, WorkerLike } from './jobs';
+export { DOWNLOAD_FAILURE_TEXT, VERIFIED_TEXT, unverifiedText } from './errors';
+export { HASH_VERIFY_MAX_FF_SAFARI } from './downloadPlan';
+export type { DownloadEnv, DownloadOutcome, DownloadTarget } from './downloadPlan';
 export { matchesRecord } from './resume';
 export type { ResumeRecord } from './resume';
 export { TransferService } from './service.svelte';
@@ -30,6 +34,7 @@ export const transfer = new TransferService({
     }),
   ),
   accountId: () => session.account?.id ?? null,
+  download: browserDownloadEnv(),
 });
 
 // A page that is closed, frozen or sent to the back-forward cache takes its Worker with it: the uploads stop and

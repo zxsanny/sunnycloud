@@ -100,6 +100,7 @@ export class UploadQueue {
     this.internal.set(job.id, job);
     this.jobs.push({
       id: job.id,
+      direction: 'upload',
       name: job.name,
       parentId: job.parentId,
       size: job.size,
@@ -216,7 +217,7 @@ export class UploadQueue {
     });
   }
 
-  private send(message: ToWorker) {
+  protected send(message: ToWorker) {
     if (this.worker === null) {
       const worker = this.deps.connect();
       this.worker = worker;
@@ -311,6 +312,9 @@ export class UploadQueue {
       case 'fatal':
       case 'session':
       case 'resumed':
+      case 'downloadProgress':
+      case 'downloadDone':
+      case 'downloadFailed':
         break;
     }
     this.pump();
@@ -373,9 +377,12 @@ export class UploadQueue {
     row.errorText = UPLOAD_ERROR_TEXT[error];
   }
 
-  private failAllActive() {
+  protected failAllActive() {
     for (const row of this.jobs) {
-      if (row.state === 'running' || row.state === 'committing' || row.state === 'queued') {
+      if (
+        row.direction === 'upload' &&
+        (row.state === 'running' || row.state === 'committing' || row.state === 'queued')
+      ) {
         row.state = 'failed';
         row.error = 'Failed';
         row.errorText = UPLOAD_ERROR_TEXT.Failed;

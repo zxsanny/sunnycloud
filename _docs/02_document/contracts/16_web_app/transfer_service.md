@@ -3,7 +3,7 @@
 **Component**: 16_web_app
 **Producer task**: E-26/c09 — `_docs/02_tasks/todo/B12-10_transfer_service_small_path.md` (facade, `enqueueUpload`, `cancelUpload`, `progress`); contributors E-26/c10 `B12-11_worker_large_upload.md` (Worker protocol, large path), E-26/c11 `B12-12_resume_edit_detection.md` (`resumeUpload`, resume record), E-26/c12 `B12-13_download_strategies.md` (`download`); keys assigned at Step 4
 **Consumer tasks**: E-26/c08 (file browser row actions), E-26/c13 (public share page download), E-26/c17 (open action download offer), E-26/c19b (50 GiB runs), E-26/n01 (vault page, v1.2, needs the minor version below), pipeline `AZ-3671_pipeline_web_transfer`; resolved at Step 4
-**Version**: 1.0.1
+**Version**: 1.0.2
 **Status**: draft
 **Last Updated**: 2026-11-04
 
@@ -27,11 +27,19 @@ type UploadError =
   | 'InvalidName' | 'QuotaExceeded' | 'SizeTooLarge' | 'SessionCapReached'
   | 'FreeSpaceFloor' | 'ParentNotFound' | 'AccountNotActive' | 'TooManyFiles';
 type ResumeError = 'FileUnreadable' | 'UploadSessionGone';
-type DownloadFailure = 'HashMismatch' | 'Forbidden' | 'NotFound' | 'Network';
+type DownloadFailure = 'HashMismatch' | 'Forbidden' | 'NotFound' | 'Network' | 'SaveFailed' | 'Cancelled';
+// SaveFailed: the chosen place could not be written, or the browser has no capabilities set up. Cancelled: the person
+// closed the save dialog; the row is `cancelled`, not `failed`.
 
 type ResumeOutcome =
   | { kind: 'Resumed'; resentBytes: number }
   | { kind: 'Restarted'; reason: 'ChangedSinceLastTime' };
+
+type UnverifiedReason =
+  | 'OverBrowserVerifyLimit'      // Firefox/Safari, file above web.hash_verify_max_ff_safari
+  | 'NoVerifiedPathInBrowser'     // no mechanism recorded as passing for this engine (Safari until the Mac run)
+  | 'NotEnoughBrowserStorage'     // the private copy of the OPFS pull does not fit the browser's free space
+  | 'NoServerHash';               // public link: the link answer carries no file hash (server gap)
 
 type DownloadTarget =
   | { nodeId: NodeId; revisionId?: string }
@@ -39,7 +47,7 @@ type DownloadTarget =
 
 type DownloadOutcome =
   | { kind: 'VerifiedSaved' }
-  | { kind: 'SavedUnverified'; reason: 'OverBrowserVerifyLimit' | string; serverHash: string }
+  | { kind: 'SavedUnverified'; reason: UnverifiedReason; serverHash: string | null }
   | { kind: 'Failed'; reason: DownloadFailure };
 
 interface JobProgress {
@@ -64,6 +72,18 @@ interface TransferService {
 
 `state: 'stopped'` is a large upload that ended with the tab or a suspended page and has a resume record. The state names are proposed here and confirmed by E-26/c09.
 
+### Download strategies and labels (AZ-3942)
+
+`download(target)` never rejects: it resolves with the outcome and leaves a `direction: 'download'` row in `progress` that carries the label. It first reads the metadata (`GET /nodes/{id}`, `GET /revisions/{id}` for a named revision, `GET /public-shares/{token}`): a folder, a tombstone or a 404 is `Failed{NotFound}`, a 403 or 401 is `Failed{Forbidden}`. The server's file hash is the `content_hash` of that answer.
+
+| Browser capability | Strategy | Outcome |
+|--------------------|----------|---------|
+| Save dialog (`showSaveFilePicker`, Chromium), any size | the Worker reads ranged pulls of four 2 MiB blocks (`Range: bytes=a-b`), hashes each block with `sync-core-wasm`, writes it into the chosen file; the file is closed only when the roll-up equals the server hash | `VerifiedSaved`; on a mismatch the write is aborted, the file removed where the browser allows, `Failed{HashMismatch}` |
+| No dialog, OPFS, and the engine where the OPFS pull was recorded as passing (Firefox, spike AZ-3931 candidate A2), size at most `web.hash_verify_max_ff_safari` (2 GiB build constant, `TransferDeps.hashVerifyMax` in tests) | same pull into a private OPFS file with the Worker's synchronous handle; after the roll-up matched the page hands the file to the browser's download manager (`blob:` link). Private files older than one hour are removed at the next such download | `VerifiedSaved`; mismatch: the OPFS file is deleted and nothing is handed over |
+| Anything else (Firefox above the limit, Safari at any size until its Mac run is recorded, not enough OPFS room, a public link) | the browser's own download of the API URL (a plain link) | `SavedUnverified{reason, serverHash}`; the row says "Saved by the browser without a check (...)" and, when `serverHash` is set, "Compare its hash:" with the hash and a copy action |
+
+Rules: no whole-file `Blob` or buffer on any path (one 2 MiB block at a time); a status or `Content-Length` is never verification; a body that ends early, a status other than 206 for a range (200 only when the range is the whole file) and a failed write end as `Network` or `SaveFailed`, never as a good file; `VerifiedSaved` is returned only after the roll-up of the block hashes equals the server's hash. `Cancelled` and `SaveFailed` apply to the dialog strategy. A page that is hidden or put away ends a running download as `Failed{Network}`. A public link has no server hash, so it is always `SavedUnverified{NoServerHash, null}`. The displayed and copied hash is the 64 hex digits of `content_hash`, without a prefix.
+
 ### Routing rule
 
 A file of at most `ServerLimits.smallFileMax` bytes (2 MiB) takes the small path: `PUT /api/v1/staged-uploads/{client_key}`, then `POST /api/v1/commits:batch` (at most `batchMaxEntries` entries, one random UUIDv7 commit ID per batch, kept in memory and reused on every retry). A larger file goes to the module Worker. `uploadsEnabled: false` refuses every upload.
@@ -78,6 +98,8 @@ A file of at most `ServerLimits.smallFileMax` bytes (2 MiB) takes the small path
 | Worker → page | `progress` | job id, `bytesDone`, `lanes` |
 | Worker → page | `done` | job id, `revision` |
 | Worker → page | `failed` | job id, typed error |
+| page → Worker | `download` | job id, content route (`node` or `revision` id), `size`, server `hash`, sink (`picker` handle or `opfs` file name) |
+| Worker → page | `downloadProgress` / `downloadDone` (`file` for an OPFS sink) / `downloadFailed` | job id, bytes done / the finished file / `DownloadFailure` |
 
 ### Resume record (IndexedDB, per signed-in account)
 
@@ -132,3 +154,4 @@ Stored per account: the key is `(accountId, clientKey)`, and a listing reads one
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B12) |
 | 1.0.1 | 2026-11-21 | Resume record gains `parentId`; per-account keying, `resentBytes` meaning, edit-before-commit and `pagehide` behaviour written down | AZ-3941 |
+| 1.0.2 | 2026-11-21 | `download` as built: strategy table, `UnverifiedReason`, `serverHash: string \| null`, `DownloadFailure` gains `SaveFailed` and `Cancelled`, Worker `download` messages | AZ-3942 |

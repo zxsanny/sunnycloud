@@ -1,13 +1,16 @@
 <script lang="ts">
   import CircleAlert from '@lucide/svelte/icons/circle-alert';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
+  import Download from '@lucide/svelte/icons/download';
   import Pause from '@lucide/svelte/icons/pause';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Upload from '@lucide/svelte/icons/upload';
+  import ShieldCheck from '@lucide/svelte/icons/shield-check';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import X from '@lucide/svelte/icons/x';
   import { formatBytes } from '$lib/format';
   import { transfer, type JobProgress } from '$lib/transfer';
-  import { Button } from '$lib/ui';
+  import { Button, CopyButton } from '$lib/ui';
 
   /** Opens the file picker of the page for the stopped upload with this id. */
   let { onselect }: { onselect: (id: string) => void } = $props();
@@ -54,6 +57,8 @@
           <div class="flex items-center gap-2">
             {#if job.state === 'failed'}
               <CircleAlert class="size-4 flex-none text-danger" aria-hidden="true" />
+            {:else if job.direction === 'download' && job.state !== 'done'}
+              <Download class="size-4 flex-none text-ink-2" aria-hidden="true" />
             {:else if job.state === 'done'}
               <CircleCheck class="size-4 flex-none text-success" aria-hidden="true" />
             {:else if job.state === 'stopped'}
@@ -62,6 +67,15 @@
               <Upload class="size-4 flex-none text-ink-2" aria-hidden="true" />
             {/if}
             <span class="min-w-0 flex-1 truncate text-row" title={job.name}>{job.name}</span>
+            {#if job.outcome?.kind === 'VerifiedSaved'}
+              <span class="inline-flex items-center gap-1 text-small font-semibold text-success">
+                <ShieldCheck class="size-4" aria-hidden="true" />Verified
+              </span>
+            {:else if job.outcome?.kind === 'SavedUnverified'}
+              <span class="inline-flex items-center gap-1 text-small font-semibold text-warning">
+                <TriangleAlert class="size-4" aria-hidden="true" />Not verified
+              </span>
+            {/if}
             {#if job.state === 'stopped'}
               <Button
                 variant="secondary"
@@ -72,7 +86,7 @@
                 Select file
               </Button>
             {/if}
-            {#if cancellable(job)}
+            {#if job.direction === 'upload' && cancellable(job)}
               <Button
                 variant="ghost"
                 size="sm"
@@ -82,7 +96,7 @@
                 <X class="size-4" aria-hidden="true" />
               </Button>
             {/if}
-            {#if job.state === 'failed'}
+            {#if job.state === 'failed' && job.direction === 'upload'}
               <Button
                 variant="ghost"
                 size="sm"
@@ -103,7 +117,45 @@
               </Button>
             {/if}
           </div>
-          {#if job.state === 'running' || job.state === 'committing'}
+          {#if job.direction === 'download'}
+            {#if job.state === 'running'}
+              <div
+                class="h-1.5 overflow-hidden rounded-full bg-sunken"
+                role="progressbar"
+                aria-valuenow={percent(job)}
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-label="{job.name} downloaded"
+              >
+                <div class="h-full rounded-full bg-action" style:width="{percent(job)}%"></div>
+              </div>
+              <p class="text-small text-ink-2">
+                {formatBytes(job.bytesDone)} of {formatBytes(job.size)}
+              </p>
+            {:else if job.outcome?.kind === 'VerifiedSaved'}
+              <p class="text-small text-ink-2">{job.note}</p>
+            {:else if job.outcome?.kind === 'SavedUnverified'}
+              <p class="text-small text-ink-2">
+                {job.note}
+                {#if job.outcome.serverHash}Compare its hash:{/if}
+              </p>
+              {#if job.outcome.serverHash}
+                <p class="flex items-center gap-2">
+                  <span
+                    class="min-w-0 flex-1 truncate font-code text-small"
+                    title={job.outcome.serverHash}
+                  >
+                    {job.outcome.serverHash}
+                  </span>
+                  <CopyButton text={job.outcome.serverHash} label="Copy file hash" />
+                </p>
+              {/if}
+            {:else if job.state === 'failed'}
+              <p class="text-small font-semibold text-danger">{job.errorText}</p>
+            {:else if job.state === 'cancelled'}
+              <p class="text-small text-ink-2">Cancelled</p>
+            {/if}
+          {:else if job.state === 'running' || job.state === 'committing'}
             <div
               class="h-1.5 overflow-hidden rounded-full bg-sunken"
               role="progressbar"

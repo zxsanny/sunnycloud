@@ -1,4 +1,5 @@
-import type { Failure, LocalReason } from './protocol';
+import type { UnverifiedReason } from './downloadPlan';
+import type { DownloadFailure, Failure, LocalReason } from './protocol';
 
 export type UploadError =
   | 'InvalidName'
@@ -83,3 +84,29 @@ export const STOPPED_TEXT = {
 
 export const CHANGED_SINCE_LAST_TIME_TEXT =
   'This file changed since last time, so it is uploading again from the start.';
+
+export const DOWNLOAD_FAILURE_TEXT: Record<DownloadFailure, string> = {
+  HashMismatch:
+    'Not saved: the downloaded bytes did not match the file on the server, so no file was kept as good.',
+  Forbidden: 'You cannot download this item.',
+  NotFound: 'This item no longer exists.',
+  Network: 'The download did not finish. Nothing was kept as good.',
+  SaveFailed: 'The file could not be written to the place you chose.',
+  Cancelled: 'Cancelled',
+};
+
+/** The line under a download that finished without a check (wording of the mockup `web-files.html`). */
+export function unverifiedText(reason: UnverifiedReason, max: number): string {
+  switch (reason) {
+    case 'OverBrowserVerifyLimit':
+      return `Saved by the browser without a check (over ${Math.round(max / 1024 ** 3)} GB in this browser).`;
+    case 'NoVerifiedPathInBrowser':
+      return 'Saved by the browser without a check (this browser cannot check downloads).';
+    case 'NotEnoughBrowserStorage':
+      return 'Saved by the browser without a check (this browser has no room to check it).';
+    case 'NoServerHash':
+      return 'Saved by the browser without a check (the server gives no file hash for this link).';
+  }
+}
+
+export const VERIFIED_TEXT = 'Downloaded and checked in the browser.';

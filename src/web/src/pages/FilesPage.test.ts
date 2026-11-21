@@ -395,6 +395,7 @@ describe('the transfers panel', () => {
   function addJob(extra: Partial<(typeof transfer.jobs)[number]> = {}) {
     transfer.jobs.push({
       id: 'up-1',
+      direction: 'upload',
       name: 'movie.mov',
       parentId: 'p',
       size: 1000,

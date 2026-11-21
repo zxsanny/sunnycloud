@@ -12,7 +12,30 @@ export interface BatchEntry {
 export type BatchEntryResult =
   { status: 'committed'; nodeId: string; revisionId: string } | { status: 'error'; code: string };
 
+/** Why a download ended without a good file; the page maps it to the contract's `Failed` outcome. */
+export type DownloadFailure =
+  'HashMismatch' | 'Forbidden' | 'NotFound' | 'Network' | 'SaveFailed' | 'Cancelled';
+
+/** Which content route a download reads (each answers Range). A share link has no server hash, so it is never read here. */
+export type ContentSource = { kind: 'node' | 'revision'; id: string };
+
+/** Where verified bytes go: a file the person chose in the save dialog, or a private browser file (OPFS) for later. */
+export type DownloadSink =
+  { kind: 'picker'; handle: FileSystemFileHandle } | { kind: 'opfs'; name: string };
+
 export type ToWorker =
+  /**
+   * Download and verify: read `size` bytes in ranged pulls, hash each 2 MiB block as it arrives, and keep the bytes
+   * only if the roll-up equals `hash`. Nothing is kept in memory but the block being read.
+   */
+  | {
+      type: 'download';
+      job: string;
+      source: ContentSource;
+      size: number;
+      hash: string;
+      sink: DownloadSink;
+    }
   /** Small file (at most one block): hash, then `PUT /staged-uploads/{key}`. */
   | { type: 'stage'; job: string; file: Blob; stagedKey?: string }
   /** `POST /commits:batch`. The commit ID is made here (sync-core-wasm) and handed back so a retry reuses it. */
@@ -84,4 +107,8 @@ export type FromWorker =
       revisionId: string;
     }
   | { type: 'failed'; job: string; clientKey: string | null; failure: Failure }
-  | { type: 'cancelled'; job: string };
+  | { type: 'cancelled'; job: string }
+  | { type: 'downloadProgress'; job: string; bytesDone: number }
+  /** The roll-up matched and the bytes are saved. `file` is set for an `opfs` sink: the page hands it to the browser. */
+  | { type: 'downloadDone'; job: string; file?: File }
+  | { type: 'downloadFailed'; job: string; reason: DownloadFailure };

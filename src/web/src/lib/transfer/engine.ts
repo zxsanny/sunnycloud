@@ -62,7 +62,7 @@ export class UploadEngine {
   }
 
   /** Never rejects: an unexpected error is reported to the page as an internal failure of that job. */
-  async handle(message: ToWorker): Promise<void> {
+  async handle(message: Exclude<ToWorker, { type: 'download' }>): Promise<void> {
     try {
       switch (message.type) {
         case 'stage':

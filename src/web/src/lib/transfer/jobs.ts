@@ -1,4 +1,5 @@
 import type { Api } from '$lib/api';
+import type { DownloadEnv, DownloadOutcome } from './downloadPlan';
 import type { UploadError } from './errors';
 import type { FromWorker, ToWorker } from './protocol';
 import type { ResumePort, ResumeRecord } from './resume';
@@ -13,6 +14,7 @@ export interface WorkerLike {
 
 export interface JobProgress {
   id: string;
+  direction: 'upload' | 'download';
   name: string;
   parentId: string;
   size: number;
@@ -26,6 +28,8 @@ export interface JobProgress {
   errorText?: string;
   /** Something the person should know about a running job, such as a restart after the file changed. */
   note?: string;
+  /** Downloads only: how it ended, with the label the panel shows. */
+  outcome?: DownloadOutcome;
 }
 
 export type Refusal = { ok: false; error: { code: UploadError; text: string } };
@@ -77,6 +81,10 @@ export interface TransferDeps {
   resume?: ResumePort;
   /** The signed-in account, once known: the owner of every resume record. */
   accountId?: () => string | null;
+  /** What this browser offers for downloads. Without it `download` cannot run. */
+  download?: DownloadEnv;
+  /** `web.hash_verify_max_ff_safari`; the default is 2 GiB. */
+  hashVerifyMax?: number;
 }
 
 export function refuse(code: UploadError, text: string): Refusal {

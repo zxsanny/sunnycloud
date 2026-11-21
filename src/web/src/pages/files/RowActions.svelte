@@ -1,8 +1,10 @@
 <script lang="ts">
   import Download from '@lucide/svelte/icons/download';
+  import ShieldCheck from '@lucide/svelte/icons/shield-check';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import type { NodeView } from '$lib/api';
   import { contentUrl, folderStore } from '$lib/files';
+  import { transfer } from '$lib/transfer';
   import { Button } from '$lib/ui';
 
   let { node }: { node: NodeView } = $props();
@@ -50,6 +52,17 @@
         >
           <Download class="size-4" aria-hidden="true" />
         </a>
+        <!-- Until the row menu of the file browser (E-26/c08) calls `download` itself, this is the way to it; the
+             plain link above stays as the browser's own download. -->
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Download {node.name} with check"
+          title="Download and check"
+          onclick={() => void transfer.download({ nodeId: node.node_id })}
+        >
+          <ShieldCheck class="size-4" aria-hidden="true" />
+        </Button>
       {/if}
       <Button
         variant="danger-ghost"

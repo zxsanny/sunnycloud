@@ -20,6 +20,17 @@ export type Committed = components['schemas']['Committed'];
 export type BatchCommitRequest = components['schemas']['BatchCommitRequest'];
 export type BatchCommitResult = components['schemas']['BatchCommitResult'];
 export type ThumbnailStates = components['schemas']['ThumbnailStates'];
+export type RevisionView = components['schemas']['RevisionView'];
+export type ShareOpen = components['schemas']['ShareOpen'];
+
+/** A content route that answers Range: the node's current revision, or one named revision. */
+export type ContentRoute = { kind: 'node' | 'revision'; id: string };
+
+/** The answer of one ranged content request: the status (206 for a range) and the body as a stream. */
+export interface ContentAnswer {
+  status: number;
+  body: ReadableStream<Uint8Array> | null;
+}
 
 type Raw<T> = { data?: T; error?: unknown; response: Response };
 
@@ -108,6 +119,34 @@ export function createApi(options: ApiOptions = {}) {
     getNodesRoot: () => send(() => client.GET('/api/v1/nodes/root')),
     getNode: (id: string) =>
       send(() => client.GET('/api/v1/nodes/{id}', { params: { path: { id } } })),
+    getRevision: (id: string) =>
+      send(() => client.GET('/api/v1/revisions/{id}', { params: { path: { id } } })),
+    getPublicShare: (token: string) =>
+      send(() => client.GET('/api/v1/public-shares/{token}', { params: { path: { token } } })),
+    /** Bytes `start..=end` of a file's content, as a stream: the body is never read into one buffer. */
+    getContentRange: (route: ContentRoute, start: number, end: number, signal?: AbortSignal) =>
+      send<ContentAnswer>(async () => {
+        const init = {
+          headers: { Range: `bytes=${start}-${end}` },
+          parseAs: 'stream' as const,
+          signal,
+        };
+        const raw =
+          route.kind === 'node'
+            ? await client.GET('/api/v1/nodes/{node_id}/content', {
+                params: { path: { node_id: route.id } },
+                ...init,
+              })
+            : await client.GET('/api/v1/revisions/{revision_id}/content', {
+                params: { path: { revision_id: route.id } },
+                ...init,
+              });
+        return {
+          error: raw.error,
+          response: raw.response,
+          data: { status: raw.response.status, body: raw.response.body },
+        };
+      }),
     getNodeChildren: (id: string, after?: string | null, limit?: number) =>
       send(() =>
         client.GET('/api/v1/nodes/{id}/children', {
