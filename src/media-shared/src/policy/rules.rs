@@ -2,8 +2,8 @@
 //! Changing any number here bumps `params_version`.
 
 use super::{
-    AudioPlan, AudioStream, Decision, DecoderCapabilities, Encoder, EncoderPref, MediaKind,
-    PARAMS_V1, Plan, Probe, VideoStream,
+    AudioPlan, AudioStream, CURRENT_PARAMS_VERSION, Decision, DecoderCapabilities, Encoder,
+    EncoderPref, MediaKind, PARAMS_V1, Plan, Probe, VideoStream,
 };
 use crate::types::JobKind;
 
@@ -135,6 +135,8 @@ fn is_hdr(video: Option<&VideoStream>) -> bool {
 fn transcode_plan(probe: &Probe, encoder: Encoder) -> Plan {
     let video = &PARAMS_V1.video;
     Plan::Transcode {
+        // The numbers below are those of `PARAMS_V1`, which is the current version.
+        params_version: CURRENT_PARAMS_VERSION,
         encoder,
         scale_to_short_edge: u16::try_from(video.max_short_side).unwrap_or(u16::MAX),
         tone_map: video.tone_map_to_sdr && is_hdr(probe.video.as_ref()),

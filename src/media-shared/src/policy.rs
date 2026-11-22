@@ -83,6 +83,8 @@ pub enum AudioPlan {
 pub enum Plan {
     Remux,
     Transcode {
+        /// The decoder's `Params` table that gives the quality values of this transcode.
+        params_version: u32,
         encoder: Encoder,
         scale_to_short_edge: u16,
         tone_map: bool,

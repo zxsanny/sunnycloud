@@ -134,8 +134,8 @@ pub(super) fn rerunnable(error: &CallError) -> bool {
     )
 }
 
-/// The end of a decoder call that gets no rerun, or whose rerun failed too. The second `Stalled` is permanent
-/// by the documents; a second `EncoderFailed` is not named there and is treated the same way.
+/// The end of a decoder call that gets no rerun, or whose rerun failed too. The second `Stalled` and the second
+/// `EncoderFailed` are permanent (09 section 3, step 5; decided 2026-11-22).
 pub(super) fn decoder_stop(error: &CallError) -> Stop {
     match error {
         CallError::Decode(decode) => decode_stop(*decode),

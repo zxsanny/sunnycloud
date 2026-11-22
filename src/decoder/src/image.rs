@@ -16,27 +16,25 @@ use media_shared::policy::{MediaKind, Probe, VideoStream};
 use crate::exec::{Exec, internal};
 use crate::failure::Failure;
 use crate::ffprobe;
+use crate::params::Params;
 use crate::poster;
 use crate::process::input_path;
 use crate::sniff::{Profile, Sniffed, read_head, sniff};
 use crate::sys::{O_NOFOLLOW, O_NONBLOCK};
 
-/// The quality of every WebP. The protocol carries no `params_version` for `render_still`, so
-/// the value is fixed here until the contract names where it comes from (AZ-3857 flagged
-/// concern, decoder protocol open point 7).
-const WEBP_QUALITY: u32 = 80;
 const RESULT: &str = "result.webp";
 const MAX_WEBP_EDGE: u64 = 16_383;
 
 pub(crate) fn render_still(
     exec: &Exec<'_>,
+    params: &Params,
     max_edge: u32,
     poster_at_ms: u64,
 ) -> Result<Response, Failure> {
     let input = exec.context.input();
     match sniffed(input)? {
-        Sniffed::Still { profile, .. } => render_from(exec, input, profile, max_edge),
-        Sniffed::Video => poster::render(exec, max_edge, poster_at_ms),
+        Sniffed::Still { profile, .. } => render_from(exec, params, input, profile, max_edge),
+        Sniffed::Video => poster::render(exec, params, max_edge, poster_at_ms),
         Sniffed::Unknown => Err(DecodeError::Unsupported.into()),
     }
 }
@@ -45,6 +43,7 @@ pub(crate) fn render_still(
 /// result back. `input` is the job's own file or a PNG the runner itself made.
 pub(crate) fn render_from(
     exec: &Exec<'_>,
+    params: &Params,
     input: &File,
     profile: Profile,
     max_edge: u32,
@@ -53,7 +52,7 @@ pub(crate) fn render_from(
     if width.saturating_mul(height) > exec.config.photo_max_pixels {
         return Err(Failure::limit(LimitKind::Pixels));
     }
-    thumbnail(exec, profile, input, max_edge)?;
+    thumbnail(exec, params, profile, input, max_edge)?;
     read_back(exec).map(Response::ImageResult)
 }
 
@@ -89,7 +88,7 @@ pub(crate) fn probe(exec: &Exec<'_>) -> Result<Response, Failure> {
     }))
 }
 
-fn sniffed(input: &File) -> Result<Sniffed, Failure> {
+pub(crate) fn sniffed(input: &File) -> Result<Sniffed, Failure> {
     let head = read_head(input).map_err(|error| internal("cannot read the input", &error))?;
     Ok(sniff(&head))
 }
@@ -116,12 +115,12 @@ fn header_args(field: &str) -> Vec<String> {
 /// libvips 8.15 and 8.18: `vipsthumbnail` renamed `-e/-o` to `--output-profile/--path` and an
 /// 8.15 `-o` needs the output directory in the argument. The output name is relative to the
 /// child's working directory `out/`.
-fn thumbnail_args(max_edge: u32) -> Vec<String> {
+fn thumbnail_args(max_edge: u32, webp_quality: u32) -> Vec<String> {
     let edge = max_edge.to_string();
     [
         "thumbnail",
         &input_path(),
-        &format!("{RESULT}[Q={WEBP_QUALITY},keep=none]"),
+        &format!("{RESULT}[Q={webp_quality},keep=none]"),
         &edge,
         "--height",
         &edge,
@@ -169,6 +168,7 @@ fn parse_dimension(stdout: &[u8]) -> Option<u64> {
 
 fn thumbnail(
     exec: &Exec<'_>,
+    params: &Params,
     profile: Profile,
     input: &File,
     max_edge: u32,
@@ -184,7 +184,7 @@ fn thumbnail(
     exec.run(
         "vips",
         &exec.tools.vips,
-        thumbnail_args(max_edge),
+        thumbnail_args(max_edge, params.webp_quality),
         vips_env(exec.limits.cpu, profile),
         &out,
         input,
@@ -221,7 +221,7 @@ fn read_back(exec: &Exec<'_>) -> Result<ImageResult, Failure> {
     }
 }
 
-fn open_result(path: &Path) -> Result<File, Failure> {
+pub(crate) fn open_result(path: &Path) -> Result<File, Failure> {
     File::options()
         .read(true)
         .custom_flags(O_NOFOLLOW | O_NONBLOCK)
@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn the_thumbnail_argv_is_fixed_and_carries_no_job_path() {
-        let args = thumbnail_args(320);
+        let args = thumbnail_args(320, 80);
 
         assert_eq!(
             args,
@@ -270,6 +270,19 @@ mod tests {
                 "srgb"
             ]
         );
+    }
+
+    #[test]
+    fn the_webp_quality_is_the_one_the_caller_passes_from_the_params_table() {
+        let quality = crate::params::for_version(1)
+            .expect("version 1")
+            .webp_quality;
+
+        let args = thumbnail_args(320, quality);
+        let other = thumbnail_args(320, 55);
+
+        assert_eq!(args[2], "result.webp[Q=80,keep=none]");
+        assert_eq!(other[2], "result.webp[Q=55,keep=none]");
     }
 
     #[test]

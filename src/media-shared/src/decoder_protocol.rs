@@ -22,6 +22,7 @@
 //!    | `forbidden_targets` | 0..=64 entries of 1..=255 printable ASCII bytes without spaces |
 //!    | `job_dir` | 1..=4096 bytes, no NUL |
 //!    | `render_still.max_edge`, `plan.scale_to_short_edge` | 1..=16383 |
+//!    | `render_still.params_version`, `plan.params_version` | 1..=`u32::MAX` (a version the decoder has no table for is `ProtocolMismatch`, not a violation) |
 //!    | `poster_at_ms`, `duration_ms`, `out_time_ms` | 0..=604,800,000 (7 days) |
 //!    | `limits.*` (all five) | 1..=type maximum; above the runner's ceiling is accepted and clamped |
 //!    | `Capabilities` texts | 1..=128 printable ASCII bytes without spaces; `build_timestamp` 1..=4,102,444,800; `nvenc_sessions` 0..=64 |
@@ -43,6 +44,11 @@
 //!    required before the first request.
 //! 6. **Second connection**: queued, not refused. The runner does not `accept` the next
 //!    connection until the current one is closed, so the parser has no rule for it.
+//! 7. **Quality parameters** (version 1.1.0): `render_still` and `Plan::Transcode` carry
+//!    `params_version`; the decoder holds the table of WebP quality, CRF, preset and bitrate
+//!    caps for each version (never from env) and answers `ProtocolMismatch`, a clean error that
+//!    leaves the runner up, for a version it has no table for. `Plan::Remux` copies streams and
+//!    reads no quality value, so it carries no version.
 
 use serde::{Deserialize, Serialize};
 
@@ -91,6 +97,9 @@ pub enum Request {
         job_dir: String,
         max_edge: u32,
         poster_at_ms: Option<u64>,
+        /// The `Params` table the decoder renders with (open point 7, decided 2026-11-22). A
+        /// version the decoder does not know is answered `ProtocolMismatch`.
+        params_version: u32,
         limits: Limits,
     },
     Transcode {

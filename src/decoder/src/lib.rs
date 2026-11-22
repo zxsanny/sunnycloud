@@ -38,6 +38,7 @@ pub mod health;
 mod image;
 pub mod job;
 pub mod limits;
+mod params;
 mod poster;
 pub mod proc_table;
 mod process;
@@ -51,6 +52,8 @@ mod sys;
 #[cfg(feature = "test-freeze")]
 pub mod test_freeze;
 pub mod tools;
+mod video;
+mod video_args;
 pub mod watchdog;
 
 pub use config::RunnerConfig;
@@ -65,4 +68,4 @@ pub use tools::Tools;
 pub use watchdog::{Heartbeat, Watchdog, disable_dumps};
 
 /// The only protocol version this runner speaks.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;

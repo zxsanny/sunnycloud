@@ -13,7 +13,9 @@ use crate::exec::{Exec, ExecutorConfig, Work, internal};
 use crate::failure::Failure;
 use crate::image;
 use crate::job::{Job, JobContext, JobHandler, JobSpec};
+use crate::params;
 use crate::tools::Tools;
+use crate::video;
 
 pub struct MediaHandler {
     tools: Tools,
@@ -51,9 +53,13 @@ impl MediaHandler {
             JobSpec::RenderStill {
                 max_edge,
                 poster_at_ms,
+                params_version,
                 ..
-            } => image::render_still(&exec, *max_edge, poster_at_ms.unwrap_or(0)),
-            JobSpec::Transcode { .. } => Err(DecodeError::Unsupported.into()),
+            } => {
+                let params = params::for_version(*params_version)?;
+                image::render_still(&exec, params, *max_edge, poster_at_ms.unwrap_or(0))
+            }
+            JobSpec::Transcode { plan, .. } => video::transcode(&exec, *plan),
         }
     }
 }

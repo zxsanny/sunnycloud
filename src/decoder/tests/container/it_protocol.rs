@@ -33,7 +33,7 @@ fn it_10_1_hello_returns_capabilities_and_a_wrong_version_is_refused() {
             answers.iter().all(|answer| answer == capabilities),
             "{answers:?}"
         );
-        assert_eq!(capabilities.protocol, 1);
+        assert_eq!(capabilities.protocol, 2);
         for text in [
             &capabilities.vips,
             &capabilities.ffmpeg,
@@ -151,7 +151,7 @@ fn it_10_3_an_oversize_frame_is_a_violation_and_the_runner_exits() {
 #[ignore = "needs DECODER_IMAGE and docker"]
 fn it_10_3_a_frame_with_an_unknown_field_is_a_violation_and_the_runner_exits() {
     ends_the_runner("unknown field", |peer| {
-        peer.send_payload(br#"{"request":{"hello":{"protocol":1,"extra":true}}}"#);
+        peer.send_payload(br#"{"request":{"hello":{"protocol":2,"extra":true}}}"#);
     });
 }
 

@@ -213,7 +213,7 @@ fn ac6_frame_of_65537_bytes_ends_the_runner() {
 #[test]
 fn ac6_unknown_field_ends_the_runner() {
     assert_violation_ends_the_runner(|client| {
-        client.send_payload(br#"{"request":{"hello":{"protocol":1,"extra":true}}}"#);
+        client.send_payload(br#"{"request":{"hello":{"protocol":2,"extra":true}}}"#);
     });
 }
 

@@ -14,6 +14,7 @@ use thiserror::Error;
 pub struct StillRender {
     pub max_edge: u32,
     pub poster_at_ms: Option<u64>,
+    pub params_version: u32,
     pub output: DerivedKind,
 }
 
@@ -60,14 +61,20 @@ pub fn choose_step(
         .ok_or(StepError::UnknownParamsVersion(params_version))?;
     match kind {
         JobKind::Stills => Ok(Step::Stills([
-            still(params.preview_edge, None, DerivedKind::Preview),
-            still(params.thumb_edge, None, DerivedKind::Thumb),
+            still(
+                params.preview_edge,
+                None,
+                params_version,
+                DerivedKind::Preview,
+            ),
+            still(params.thumb_edge, None, params_version, DerivedKind::Thumb),
         ])),
         JobKind::Poster => {
             let duration = probe.duration_ms.ok_or(StepError::MissingDuration)?;
             Ok(Step::Poster(still(
                 params.thumb_edge,
                 Some(poster_offset_ms(duration)),
+                params_version,
                 DerivedKind::Thumb,
             )))
         }
@@ -81,10 +88,16 @@ pub fn choose_step(
     }
 }
 
-fn still(max_edge: u32, poster_at_ms: Option<u64>, output: DerivedKind) -> StillRender {
+fn still(
+    max_edge: u32,
+    poster_at_ms: Option<u64>,
+    params_version: u32,
+    output: DerivedKind,
+) -> StillRender {
     StillRender {
         max_edge,
         poster_at_ms,
+        params_version,
         output,
     }
 }

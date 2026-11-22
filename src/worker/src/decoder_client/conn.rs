@@ -16,7 +16,7 @@ use super::error::CallError;
 pub type EventSink<'a> = &'a mut (dyn FnMut(Event) + Send);
 
 /// The only protocol version this client speaks.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// One connection to a decoder runner. Every reply is hostile input: the shared codec caps a frame at 64 KiB
 /// before it allocates and parses strictly, and this type adds the sequence rules (one response per request,
@@ -117,6 +117,14 @@ impl Live {
     }
 }
 
+/// What a `render_still` call asks for besides the job directory and the limits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Still {
+    pub max_edge: u32,
+    pub poster_at_ms: Option<u64>,
+    pub params_version: u32,
+}
+
 impl DecoderConn {
     /// Connects to the runner's socket. A refusal or a missing socket is an `io::Error` the caller backs off on.
     pub async fn connect(socket: &Path) -> io::Result<Self> {
@@ -175,7 +183,7 @@ impl DecoderConn {
         self.exchange(request, pick, None, future::pending()).await
     }
 
-    /// `hello`; the capabilities must say protocol 1, anything else is `Decode(ProtocolMismatch)`.
+    /// `hello`; the capabilities must say protocol 2, anything else is `Decode(ProtocolMismatch)`.
     pub async fn hello(&mut self) -> Result<Capabilities, CallError> {
         let request = Request::Hello {
             protocol: PROTOCOL_VERSION,
@@ -235,16 +243,16 @@ impl DecoderConn {
     pub async fn render_still(
         &mut self,
         job_dir: &str,
-        max_edge: u32,
-        poster_at_ms: Option<u64>,
+        still: Still,
         limits: Limits,
         events: EventSink<'_>,
         cancel: impl Future<Output = ()>,
     ) -> Result<ImageResult, CallError> {
         let request = Request::RenderStill {
             job_dir: job_dir.to_owned(),
-            max_edge,
-            poster_at_ms,
+            max_edge: still.max_edge,
+            poster_at_ms: still.poster_at_ms,
+            params_version: still.params_version,
             limits,
         };
         self.exchange(

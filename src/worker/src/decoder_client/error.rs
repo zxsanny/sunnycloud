@@ -33,7 +33,7 @@ pub enum CallError {
 /// Why a slot's gate did not pass. The detail is a fixed text: nothing the decoder said reaches `/readyz`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum GateFailure {
-    #[error("hello was not answered with protocol 1 capabilities")]
+    #[error("hello was not answered with protocol 2 capabilities")]
     Hello,
     #[error("self_check was not answered")]
     SelfCheck,

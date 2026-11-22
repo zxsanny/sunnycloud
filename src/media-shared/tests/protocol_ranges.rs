@@ -193,12 +193,12 @@ fn the_request_text_and_count_fields_are_range_checked() {
 fn the_request_numbers_are_range_checked() {
     let still = |poster: &str| {
         format!(
-            r#"{{"request":{{"render_still":{{"job_dir":"/s/j","max_edge":320,"poster_at_ms":{poster},"limits":{LIMITS_JSON}}}}}}}"#
+            r#"{{"request":{{"render_still":{{"job_dir":"/s/j","max_edge":320,"poster_at_ms":{poster},"params_version":1,"limits":{LIMITS_JSON}}}}}}}"#
         )
     };
     let plan = |edge: &str| {
         transcode(&format!(
-            r#"{{"transcode":{{"encoder":"cpu","scale_to_short_edge":{edge},"tone_map":false,"audio":"none","faststart":true}}}}"#
+            r#"{{"transcode":{{"params_version":1,"encoder":"cpu","scale_to_short_edge":{edge},"tone_map":false,"audio":"none","faststart":true}}}}"#
         ))
     };
 
@@ -218,6 +218,37 @@ fn the_request_numbers_are_range_checked() {
     assert_eq!(refused(plan("65536").as_bytes()), ViolationKind::Schema);
     accepted(&still("0"));
     accepted(&plan("720"));
+}
+
+#[test]
+fn a_zero_params_version_is_a_violation_in_a_still_and_in_a_plan_and_the_maximum_is_not() {
+    let still = |version: &str| {
+        format!(
+            r#"{{"request":{{"render_still":{{"job_dir":"/s/j","max_edge":320,"poster_at_ms":null,"params_version":{version},"limits":{LIMITS_JSON}}}}}}}"#
+        )
+    };
+    let plan = |version: &str| {
+        transcode(&format!(
+            r#"{{"transcode":{{"params_version":{version},"encoder":"cpu","scale_to_short_edge":720,"tone_map":false,"audio":"none","faststart":true}}}}"#
+        ))
+    };
+
+    assert_eq!(
+        refused(still("0").as_bytes()),
+        out_of_range("params_version")
+    );
+    assert_eq!(
+        refused(plan("0").as_bytes()),
+        out_of_range("plan.params_version")
+    );
+    assert_eq!(refused(still("-1").as_bytes()), ViolationKind::Schema);
+    assert_eq!(
+        refused(plan("4294967296").as_bytes()),
+        ViolationKind::Schema
+    );
+    accepted(&still("1"));
+    accepted(&still("4294967295"));
+    accepted(&plan("4294967295"));
 }
 
 #[test]
@@ -243,7 +274,7 @@ fn a_zero_limit_is_a_violation() {
 fn the_reply_text_fields_are_range_checked() {
     let caps = |vips: &str, ts: &str, sessions: &str| {
         format!(
-            r#"{{"response":{{"capabilities":{{"protocol":1,"vips":{vips},"ffmpeg":"8.0","libheif":"1.20","build_timestamp":{ts},"nvenc_probe_ok":false,"nvenc_sessions":{sessions}}}}}}}"#
+            r#"{{"response":{{"capabilities":{{"protocol":2,"vips":{vips},"ffmpeg":"8.0","libheif":"1.20","build_timestamp":{ts},"nvenc_probe_ok":false,"nvenc_sessions":{sessions}}}}}}}"#
         )
     };
 

@@ -5,7 +5,7 @@ use super::*;
 
 fn caps_with_probe(nvenc_probe_ok: bool) -> Capabilities {
     Capabilities {
-        protocol: 1,
+        protocol: 2,
         vips: "8.15".to_owned(),
         ffmpeg: "7.0".to_owned(),
         libheif: "1.17".to_owned(),

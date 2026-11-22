@@ -22,8 +22,8 @@ Harness `H3`: the real `decoder-general` and `decoder-interactive` images starte
 ### IT-10-1: Handshake
 **Summary**: `hello` returns capabilities; a wrong protocol version is refused.
 **Traces to**: AC-25, AC-45
-**Input data**: `hello` with protocol 1; with protocol 99; `hello` repeated 3 times on the same connection.
-**Expected result**: `Capabilities{protocol: 1, vips, ffmpeg, libheif versions non-empty, build_timestamp (RFC 3339 or epoch, not in the future), nvenc_probe_ok: false, nvenc_sessions: 0}`; protocol 99 gives `ProtocolMismatch` and the runner stays up (clean error, not hostile-class); repeated `hello` is answered each time.
+**Input data**: `hello` with protocol 2; with protocol 99; `hello` repeated 3 times on the same connection.
+**Expected result**: `Capabilities{protocol: 2, vips, ffmpeg, libheif versions non-empty, build_timestamp (RFC 3339 or epoch, not in the future), nvenc_probe_ok: false, nvenc_sessions: 0}`; protocol 99 gives `ProtocolMismatch` and the runner stays up (clean error, not hostile-class); repeated `hello` is answered each time.
 **Max execution time**: 5 s
 **Dependencies**: decoder container
 

@@ -36,11 +36,11 @@ Sources: `components/08_media_jobs/description.md` §4, §5, §7; `components/09
 | Type | Fields / variants |
 |---|---|
 | `Probe` | `kind: Photo \| Video, container, moov_first: bool, video?: VideoStream{codec, profile, width, height, rotation, bitrate, pix_fmt, primaries, transfer, matrix}, audio?: AudioStream{codec}, duration_ms?` (photos fill `width`/`height` only) |
-| `Plan` | `Remux` (no parameters) or `Transcode{encoder: Cpu \| Nvenc, scale_to_short_edge, tone_map, audio, faststart}` (enum-only record, never free-form arguments) |
+| `Plan` | `Remux` (no parameters) or `Transcode{params_version, encoder: Cpu \| Nvenc, scale_to_short_edge, tone_map, audio, faststart}` (enum-only record, never free-form arguments) |
 | `Decision` | `SkipCompliant`, `Remux`, `Transcode(Plan)` |
 | `DecoderCapabilities` | the `Capabilities` reply of `hello` (below) as the policy reads it, incl. `nvenc_probe_ok` |
 | `EncoderPref` | the worker-local encoder choice (`Cpu`, `Nvenc`; `Nvenc` only from v1.1) |
-| `Params` | the output settings of one `params_version` (edges 320/1440, WebP quality, CRF, preset); values are E-18's |
+| `Params` | the output settings of one `params_version` (edges 320/1440, WebP quality, CRF, preset); the sizes are E-18's (`media-shared::policy`), the WebP quality and the x264/AAC values are the decoder's own table keyed by the version the request carries (`decoder_protocol.md` open point 7) |
 | `OutputSpec` | what a job must produce per `DerivedKind` (media type, bounds) |
 
 ### Module `decoder_protocol` (types only; framing is E-19)
@@ -50,7 +50,7 @@ Sources: `components/08_media_jobs/description.md` §4, §5, §7; `components/09
 | `Hello` | `protocol: u32` | `Capabilities{protocol, vips, ffmpeg, libheif, build_timestamp, nvenc_probe_ok, nvenc_sessions}` | `ProtocolMismatch` |
 | `SelfCheck` | `forbidden_targets: Vec<String>` (host:port) | `SelfCheckReport(Vec<{name, ok}>)` | none |
 | `Probe` | `job_dir` | `Probe` | `Unsupported`, `Corrupt`, `LimitExceeded` |
-| `RenderStill` | `job_dir, max_edge, poster_at_ms?, limits: Limits` | `ImageResult{width, height, bytes}` | `Unsupported`, `Corrupt`, `LimitExceeded{wall, memory, pixels, output}`, `Busy` |
+| `RenderStill` | `job_dir, max_edge, poster_at_ms?, params_version: u32, limits: Limits` | `ImageResult{width, height, bytes}` | `Unsupported`, `Corrupt`, `LimitExceeded{wall, memory, pixels, output}`, `Busy` |
 | `Transcode` | `job_dir, plan: Plan, limits: Limits` | `TranscodeResult{probe_of_output: Probe, bytes}` | as `RenderStill` plus `Stalled`, `EncoderFailed{exit_code}`, `OutputInvalid` |
 | `Cancel` | none | `Cancelled` | none |
 

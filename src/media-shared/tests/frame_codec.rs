@@ -282,7 +282,7 @@ fn a_read_error_is_an_io_error_not_a_violation() {
 #[test]
 fn the_reader_stops_at_the_end_of_its_frame() {
     let mut stream = frame(br#"{"request":"cancel"}"#);
-    let second = frame(br#"{"request":{"hello":{"protocol":1}}}"#);
+    let second = frame(br#"{"request":{"hello":{"protocol":2}}}"#);
     stream.extend_from_slice(&second);
     let mut source = stream.as_slice();
     let mut reader = FrameReader::new();
@@ -296,7 +296,7 @@ fn the_reader_stops_at_the_end_of_its_frame() {
     let next = reader.poll_request(&mut source).expect("poll");
 
     assert_eq!(ready_request(first), Request::Cancel);
-    assert_eq!(ready_request(next), Request::Hello { protocol: 1 });
+    assert_eq!(ready_request(next), Request::Hello { protocol: 2 });
 }
 
 #[test]
@@ -324,6 +324,7 @@ fn a_message_the_parser_would_refuse_is_not_written() {
         job_dir: "/s/j".to_owned(),
         max_edge: 0,
         poster_at_ms: None,
+        params_version: 1,
         limits: limits(),
     };
 

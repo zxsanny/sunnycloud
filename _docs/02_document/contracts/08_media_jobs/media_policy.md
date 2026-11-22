@@ -49,7 +49,7 @@ How the axes read the `Probe` (all comparisons ASCII case-insensitive):
 | every axis holds except the index is at the end | `Remux` (lossless copy of the first video and audio stream, index moved to the front) |
 | otherwise | `Transcode(Plan)`: H.264 High, size bound, AAC, faststart, HDR tone-mapped to SDR, encoder from `EncoderPref` |
 
-`Plan::Transcode` fields: `encoder` = `EncoderPref`; `scale_to_short_edge` = 1080 (`Params` v1 `max_short_side`); `tone_map` = HDR probe; `audio` = `Aac` when the probe has an audio stream, `None` when it has none; `faststart` = true. The `DecoderCapabilities` argument is not read by any v1 rule.
+`Plan::Transcode` fields: `params_version` = `CURRENT_PARAMS_VERSION` (the version whose `PARAMS_V1` numbers the other fields come from); `encoder` = `EncoderPref`; `scale_to_short_edge` = 1080 (`Params` v1 `max_short_side`); `tone_map` = HDR probe; `audio` = `Aac` when the probe has an audio stream, `None` when it has none; `faststart` = true. The `DecoderCapabilities` argument is not read by any v1 rule.
 
 ### Poster offset
 

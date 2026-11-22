@@ -248,6 +248,7 @@ fn ac7_limits_below_the_ceiling_are_kept() {
         job_dir: fixture.job_dir().to_str().expect("utf8").into(),
         max_edge: 320,
         poster_at_ms: None,
+        params_version: 1,
         limits,
     });
     client.expect_response(SECOND);
@@ -285,7 +286,7 @@ fn a_violation_is_answered_and_ends_the_runner() {
     );
     let mut client = fixture.connect();
 
-    client.send_payload(br#"{"request":{"hello":{"protocol":1,"extra":1}}}"#);
+    client.send_payload(br#"{"request":{"hello":{"protocol":2,"extra":1}}}"#);
     let reply = client.expect_response(SECOND);
 
     assert_eq!(reply, Response::Error(DecodeError::ProtocolViolation));

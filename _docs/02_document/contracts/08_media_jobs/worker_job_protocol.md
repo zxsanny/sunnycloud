@@ -32,7 +32,7 @@ The interactive decoder claims `image` only; the general decoder claims `video` 
 | poster `thumb` | frame at `poster_offset_ms` (see `media_policy.md`), WebP 320 px |
 | `transcode` | H.264 High, short side at most 1080 and long side at most 1920 (orientation independent), AAC (native encoder), MP4 with the index first (faststart), HDR tone-mapped to SDR; CRF and preset: open point 4 |
 
-Changing any value bumps `params_version`. GPU (v1.1) uses the same values.
+Changing any value bumps `params_version`. GPU (v1.1) uses the same values. The WebP quality and the x264/AAC values of each version live in the decoder's own `Params` table; the supervisor sends the version in `render_still` and in `Plan::Transcode` (`decoder_protocol.md` open point 7). Version 1: WebP quality 80, `libx264 -preset veryfast -crf 23 -profile:v high -pix_fmt yuv420p -maxrate 8M -bufsize 4M`, `-c:a aac -b:a 128k -ac 2` (the AZ-3860 numbers, untuned; maxrate 8M and bufsize 4M so that the output bit rate stays within the 10 Mbit/s compliance rule).
 
 ### Accepted output types (sniffed by the API, never trusted from the worker)
 
@@ -101,7 +101,7 @@ Every request carries `Authorization: Bearer <worker_api_token>` and `X-Worker-I
 1. Closed 2026-11-07: `ClaimedJob.content_hash` is lowercase hex, 64 characters.
 2. Closed 2026-11-07 (G-08-4): `Range` on the input route is ignored; the answer is always 200 with the full body.
 3. Closed 2026-11-07: a superseded or deleted revision still retained is served; `revision_obsolete` only for a collected or foreign revision.
-4. CRF and preset values (tuned to derived storage at most 20% of originals, NFT-PERF-20).
+4. CRF and preset values (tuned to derived storage at most 20% of originals, NFT-PERF-20). Version 1 carries the untuned AZ-3860 values (CRF 23, preset veryfast); tuning them is a new `params_version`.
 5. Code names for 413 and 422.
 
 ## Change Log
@@ -111,3 +111,4 @@ Every request carries `Authorization: Bearer <worker_api_token>` and `X-Worker-I
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B05) |
 | 1.0.1 | 2026-11-07 | Closed open points 1 to 3: hash hex; `Range` on input ignored; obsolete only when collected or foreign | AZ-3826 |
 | 1.0.2 | 2026-11-14 | Recorded the API side of the 403 (digests, counter `worker_auth_failures_total`, WARN without secret) and the `status` upsert on the API clock; no wire change | AZ-3843 |
+| 1.0.3 | 2026-11-22 | Named where the version-1 quality values live (the decoder's `Params` table) and that open point 4 is untuned; no wire change | AZ-3860 |

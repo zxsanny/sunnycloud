@@ -145,7 +145,7 @@ fn it_10_18_control_the_release_runner_idles_past_the_watchdog_without_aborting(
     let mut peer = decoder.connect();
     assert!(matches!(
         peer.call(
-            media_shared::decoder_protocol::Request::Hello { protocol: 1 },
+            media_shared::decoder_protocol::Request::Hello { protocol: 2 },
             WAIT
         ),
         Response::Capabilities(_)

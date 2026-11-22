@@ -115,7 +115,7 @@ async fn capabilities_for_another_protocol_are_a_mismatch_and_drop_the_connectio
     // Arrange
     let (_dir, path) = socket();
     let capabilities = json!({"response": {"capabilities": {
-        "protocol": 2, "vips": "v", "ffmpeg": "f", "libheif": "h",
+        "protocol": 3, "vips": "v", "ffmpeg": "f", "libheif": "h",
         "build_timestamp": 1, "nvenc_probe_ok": false, "nvenc_sessions": 0}}});
     let _peer = HostilePeer::start(&path, frame(capabilities.to_string().as_bytes()));
     let mut conn = DecoderConn::connect(&path).await.expect("connect");

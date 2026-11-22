@@ -30,7 +30,8 @@ pub use clock_poll::{OffsetError, apply_offset, follow_api_offset};
 pub use compose::worker_id;
 pub use decoder_client::{
     Backoff, BackoffError, CallError, DecoderConn, DecoderMetrics, EventSink, GateFailure,
-    GatedConn, PROTOCOL_VERSION, Slot, SlotConfig, SlotName, SlotReadiness, SlotState, Unhealthy,
+    GatedConn, PROTOCOL_VERSION, Slot, SlotConfig, SlotName, SlotReadiness, SlotState, Still,
+    Unhealthy,
 };
 pub use error::WorkerError;
 pub use policy_step::{OutputInvalid, Step, StepError, StillRender, check_output, choose_step};

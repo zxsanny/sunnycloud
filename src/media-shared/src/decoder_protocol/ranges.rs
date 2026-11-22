@@ -79,14 +79,18 @@ fn plan(value: &Plan) -> Check {
     match value {
         Plan::Remux => Ok(()),
         Plan::Transcode {
+            params_version,
             scale_to_short_edge,
             ..
-        } => within(
-            "plan.scale_to_short_edge",
-            u32::from(*scale_to_short_edge),
-            1,
-            MAX_EDGE,
-        ),
+        } => {
+            within("plan.params_version", *params_version, 1, u32::MAX)?;
+            within(
+                "plan.scale_to_short_edge",
+                u32::from(*scale_to_short_edge),
+                1,
+                MAX_EDGE,
+            )
+        }
     }
 }
 
@@ -109,10 +113,12 @@ pub(crate) fn check_request(request: &Request) -> Check {
             job_dir: dir,
             max_edge,
             poster_at_ms,
+            params_version,
             limits: l,
         } => {
             job_dir(dir)?;
             within("max_edge", *max_edge, 1, MAX_EDGE)?;
+            within("params_version", *params_version, 1, u32::MAX)?;
             if let Some(at) = poster_at_ms {
                 within("poster_at_ms", *at, 0, MAX_DURATION_MS)?;
             }

@@ -246,7 +246,7 @@ impl Decoder {
 
     fn try_hello(&self) -> Option<Peer> {
         let mut peer = Peer::new(UnixStream::connect(&self.sock).ok()?);
-        peer.send(Request::Hello { protocol: 1 });
+        peer.send(Request::Hello { protocol: 2 });
         match peer.try_response(Duration::from_secs(2)) {
             Some(Response::Capabilities(_)) => Some(peer),
             _ => None,

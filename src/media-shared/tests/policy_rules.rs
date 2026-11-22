@@ -43,7 +43,7 @@ fn compliant() -> Probe {
 
 fn capabilities() -> Capabilities {
     Capabilities {
-        protocol: 1,
+        protocol: 2,
         vips: "8.16.0".to_owned(),
         ffmpeg: "8.0.1".to_owned(),
         libheif: "1.22.0".to_owned(),
@@ -301,6 +301,7 @@ fn decide_transcodes_every_failed_axis_with_the_fixed_plan() {
         assert_eq!(
             plan,
             Plan::Transcode {
+                params_version: 1,
                 encoder: Encoder::Cpu,
                 scale_to_short_edge: 1080,
                 tone_map: expected_tone_map,
@@ -370,6 +371,7 @@ fn encoder_preference_changes_only_the_encoder() {
         // Assert
         let (
             Plan::Transcode {
+                params_version: cv,
                 encoder: ce,
                 scale_to_short_edge: cs,
                 tone_map: ct,
@@ -377,6 +379,7 @@ fn encoder_preference_changes_only_the_encoder() {
                 faststart: cf,
             },
             Plan::Transcode {
+                params_version: nv,
                 encoder: ne,
                 scale_to_short_edge: ns,
                 tone_map: nt,
@@ -388,7 +391,7 @@ fn encoder_preference_changes_only_the_encoder() {
             panic!("{name}: expected two transcode plans");
         };
         assert_eq!((ce, ne), (Encoder::Cpu, Encoder::Nvenc), "{name}");
-        assert_eq!((cs, ct, ca, cf), (ns, nt, na, nf), "{name}");
+        assert_eq!((cv, cs, ct, ca, cf), (nv, ns, nt, na, nf), "{name}");
     }
 }
 

@@ -10,10 +10,11 @@ use std::process::{Child, Command};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use media_shared::decoder_protocol::{ImageResult, Limits, Request, Response};
+use media_shared::decoder_protocol::{Event, ImageResult, Limits, Reply, Request, Response};
+use media_shared::policy::{AudioPlan, Encoder, Plan};
 use tempfile::TempDir;
 
-use super::{Client, MIB};
+use super::{Client, MIB, Received};
 
 pub const WAIT: Duration = Duration::from_secs(20);
 
@@ -186,6 +187,29 @@ pub fn path_with_scripts(scripts: &[(&str, &str)]) -> (TempDir, String) {
     (dir, path)
 }
 
+/// A script that logs what a tool was given (where its input descriptor points, then one `arg`
+/// line per argument, then `---`) and then runs the real tool.
+pub fn recording_script(tool: &str, log: &Path) -> String {
+    format!(
+        "printf 'input %s\\n' \"$(readlink /proc/self/fd/9)\" >> {log}\n\
+         for a in \"$@\"; do printf 'arg %s\\n' \"$a\" >> {log}; done\n\
+         echo '---' >> {log}\n\
+         exec {real} \"$@\"",
+        log = log.display(),
+        real = real_tool(tool).display()
+    )
+}
+
+/// Every call recorded by [`recording_script`] as the list of its lines.
+pub fn recorded_calls(log: &Path) -> Vec<Vec<String>> {
+    fs::read_to_string(log)
+        .expect("the tool was run")
+        .split("---\n")
+        .filter(|call| !call.is_empty())
+        .map(|call| call.lines().map(str::to_owned).collect())
+        .collect()
+}
+
 pub fn real_tool(tool: &str) -> std::path::PathBuf {
     std::env::var("PATH")
         .expect("PATH")
@@ -310,6 +334,7 @@ pub fn render(client: &mut Client, job: &Path, max_edge: u32, limits: Limits) ->
         job_dir: job.to_str().expect("utf8").into(),
         max_edge,
         poster_at_ms: None,
+        params_version: 1,
         limits,
     });
     client.expect_response(WAIT)
@@ -320,9 +345,61 @@ pub fn render_at(client: &mut Client, job: &Path, max_edge: u32, poster_at_ms: u
         job_dir: job.to_str().expect("utf8").into(),
         max_edge,
         poster_at_ms: Some(poster_at_ms),
+        params_version: 1,
         limits: limits(),
     });
     client.expect_response(WAIT)
+}
+
+/// What a supervisor sends for a video job under the documented ceilings (the runner clamps).
+pub fn video_limits() -> Limits {
+    Limits {
+        cpu: 4,
+        memory_bytes: 3072 * MIB,
+        wall: 600_000,
+        stall_timeout: 60_000,
+        max_output_bytes: 1024 * MIB,
+    }
+}
+
+pub fn cpu_plan(tone_map: bool, audio: AudioPlan) -> Plan {
+    Plan::Transcode {
+        params_version: 1,
+        encoder: Encoder::Cpu,
+        scale_to_short_edge: 1080,
+        tone_map,
+        audio,
+        faststart: true,
+    }
+}
+
+/// Sends a `transcode` and returns its response with the events that came before it.
+pub fn transcode(
+    client: &mut Client,
+    job: &Path,
+    plan: Plan,
+    limits: Limits,
+) -> (Response, Vec<Event>) {
+    client.send(Request::Transcode {
+        job_dir: job.to_str().expect("utf8").into(),
+        plan,
+        limits,
+    });
+    events_until_response(client, Duration::from_secs(300))
+}
+
+/// Reads replies until the response, collecting the events in between.
+pub fn events_until_response(client: &mut Client, within: Duration) -> (Response, Vec<Event>) {
+    let deadline = Instant::now() + within;
+    let mut events = Vec::new();
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        match client.recv(left) {
+            Received::Reply(Reply::Event(event)) => events.push(event),
+            Received::Reply(Reply::Response(response)) => return (response, events),
+            other => panic!("expected a response within {within:?}, got {other:?}"),
+        }
+    }
 }
 
 pub fn probe(client: &mut Client, job: &Path) -> Response {

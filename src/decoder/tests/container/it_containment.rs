@@ -271,8 +271,8 @@ fn it_10_16_clean_failures_keep_the_same_container_serving() {
     decoder.finish();
 }
 
-/// IT-10-19 on a hung stub: the transcode path (AZ-3860) does not exist yet, so a hung tool stands for
-/// the running job; cancel, socket loss and the new connection are the runner's own behaviour.
+/// IT-10-19 on a hung stub, for the photo path and the hostile tools; the same three steps with a real
+/// transcode are `it_10_19_cancel_and_socket_loss_stop_a_real_transcode_and_the_runner_keeps_serving`.
 #[test]
 #[ignore = "needs DECODER_IMAGE and docker"]
 fn it_10_19_cancel_and_socket_loss_stop_the_job_and_the_runner_keeps_serving() {

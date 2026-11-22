@@ -72,6 +72,23 @@ struct ChildFailed {
 /// (`Corrupt`); the limit kills and the signals the limits raise are `LimitExceeded`; any other
 /// signal is a crash on hostile input and `Corrupt` too.
 pub(crate) fn check(tool: &'static str, finished: &Finished) -> Result<(), Failure> {
+    check_with(tool, finished, |_| DecodeError::Corrupt)
+}
+
+/// [`check`] for the encoder (10 section 4, decided 2026-11-22): the input already probed, so a
+/// clean non-zero exit is the encoder failing, `EncoderFailed{exit_code}`. It is not
+/// hostile-class: the runner keeps serving, and the supervisor reruns once (09 section 3).
+pub(crate) fn check_encoder(tool: &'static str, finished: &Finished) -> Result<(), Failure> {
+    check_with(tool, finished, |exit_code| DecodeError::EncoderFailed {
+        exit_code,
+    })
+}
+
+fn check_with(
+    tool: &'static str,
+    finished: &Finished,
+    clean_failure: fn(i32) -> DecodeError,
+) -> Result<(), Failure> {
     let failure = match finished.outcome {
         Outcome::Killed(Kill::Cancelled) => return Err(Failure::Cancelled),
         Outcome::Exited(_) | Outcome::Signaled(_) if finished.stragglers => Failure::LeftProcesses,
@@ -82,7 +99,7 @@ pub(crate) fn check(tool: &'static str, finished: &Finished) -> Result<(), Failu
             Failure::limit(LimitKind::Memory)
         }
         Outcome::Signaled(SIGXFSZ) => Failure::limit(LimitKind::Output),
-        Outcome::Exited(_) => DecodeError::Corrupt.into(),
+        Outcome::Exited(code) => clean_failure(code).into(),
         Outcome::Signaled(_) => Failure::Crashed,
     };
     log_warn!(
@@ -154,6 +171,44 @@ mod tests {
             let result = check("tool", &finished(outcome));
 
             assert_eq!(result, Err(expected), "{outcome:?}");
+        }
+    }
+
+    #[test]
+    fn a_clean_non_zero_exit_of_the_encoder_is_encoder_failed_with_its_code_and_not_hostile() {
+        for code in [1, 69, 255] {
+            let result = check_encoder("ffmpeg", &finished(Outcome::Exited(code)));
+
+            let expected = Failure::Decode(DecodeError::EncoderFailed { exit_code: code });
+            assert_eq!(result, Err(expected));
+            assert!(!expected.is_hostile());
+            assert_eq!(
+                expected.response(),
+                Response::Error(DecodeError::EncoderFailed { exit_code: code })
+            );
+        }
+    }
+
+    #[test]
+    fn the_encoder_check_maps_kills_signals_and_success_like_every_other_tool() {
+        let cases = [
+            (Outcome::Exited(0), Ok(())),
+            (
+                Outcome::Killed(Kill::Stall),
+                Err(DecodeError::Stalled.into()),
+            ),
+            (
+                Outcome::Killed(Kill::Wall),
+                Err(Failure::limit(LimitKind::Wall)),
+            ),
+            (Outcome::Killed(Kill::Cancelled), Err(Failure::Cancelled)),
+            (Outcome::Signaled(11), Err(Failure::Crashed)),
+        ];
+
+        for (outcome, expected) in cases {
+            let result = check_encoder("ffmpeg", &finished(outcome));
+
+            assert_eq!(result, expected, "{outcome:?}");
         }
     }
 

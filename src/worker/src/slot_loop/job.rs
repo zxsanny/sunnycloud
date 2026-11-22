@@ -10,6 +10,7 @@ use super::lease::Lease;
 use super::metrics::JobMetrics;
 use super::watchdog::{Tap, Watchdog};
 use crate::api::{ApiError, WorkerApiClient};
+use crate::decoder_client::Still;
 use crate::decoder_client::{CallError, DecoderConn};
 use crate::policy_step::{Step, StillRender, check_output, choose_step};
 use crate::scratch::{ScratchDir, ScratchRoot};
@@ -141,8 +142,11 @@ impl JobRun<'_> {
             let mut sink = tap.sink();
             let call = self.conn.render_still(
                 job_dir,
-                render.max_edge,
-                render.poster_at_ms,
+                Still {
+                    max_edge: render.max_edge,
+                    poster_at_ms: render.poster_at_ms,
+                    params_version: render.params_version,
+                },
                 limits,
                 &mut sink,
                 tap.cancel(),

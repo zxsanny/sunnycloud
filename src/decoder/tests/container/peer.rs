@@ -13,6 +13,8 @@ pub struct Peer {
     client: Client,
     /// `Alive` events seen on this connection.
     pub alive: u32,
+    /// `Progress` events seen on this connection.
+    pub progress: u32,
 }
 
 impl Peer {
@@ -20,6 +22,7 @@ impl Peer {
         Self {
             client: Client::new(stream),
             alive: 0,
+            progress: 0,
         }
     }
 
@@ -52,8 +55,22 @@ impl Peer {
             let left = deadline.saturating_duration_since(Instant::now());
             match self.client.recv(left) {
                 Received::Reply(Reply::Event(Event::Alive)) => self.alive += 1,
-                Received::Reply(Reply::Event(Event::Progress { .. })) => {}
+                Received::Reply(Reply::Event(Event::Progress { .. })) => self.progress += 1,
                 other => return other,
+            }
+        }
+    }
+
+    /// Waits for a `Progress` event of the running job, so that the job is known to be mid-run.
+    pub fn wait_for_progress(&mut self, within: Duration) {
+        let deadline = Instant::now() + within;
+        let seen = self.progress;
+        while self.progress == seen {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match self.client.recv(left) {
+                Received::Reply(Reply::Event(Event::Alive)) => self.alive += 1,
+                Received::Reply(Reply::Event(Event::Progress { .. })) => self.progress += 1,
+                other => panic!("expected a Progress event within {within:?}, got {other:?}"),
             }
         }
     }
@@ -71,7 +88,7 @@ impl Peer {
     }
 
     pub fn hello(&mut self) -> Capabilities {
-        match self.call(Request::Hello { protocol: 1 }, Duration::from_secs(5)) {
+        match self.call(Request::Hello { protocol: 2 }, Duration::from_secs(5)) {
             Response::Capabilities(capabilities) => capabilities,
             other => panic!("hello answered {other:?}"),
         }
@@ -86,6 +103,17 @@ pub fn photo_limits() -> Limits {
         wall: 120_000,
         stall_timeout: 90_000,
         max_output_bytes: 32 << 20,
+    }
+}
+
+/// The limits a supervisor sends for a video job; the runner clamps the stall timeout to its own.
+pub fn video_limits() -> Limits {
+    Limits {
+        cpu: 4,
+        memory_bytes: 3 << 30,
+        wall: 600_000,
+        stall_timeout: 90_000,
+        max_output_bytes: 1 << 30,
     }
 }
 
@@ -105,6 +133,7 @@ pub fn render(job: &Job, max_edge: u32, limits: Limits) -> Request {
         job_dir: job.dir(),
         max_edge,
         poster_at_ms: None,
+        params_version: 1,
         limits,
     }
 }
@@ -114,6 +143,7 @@ pub fn render_at(job: &Job, max_edge: u32, poster_at_ms: u64) -> Request {
         job_dir: job.dir(),
         max_edge,
         poster_at_ms: Some(poster_at_ms),
+        params_version: 1,
         limits: photo_limits(),
     }
 }

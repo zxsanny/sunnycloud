@@ -17,7 +17,7 @@ pub const BUILD_TIMESTAMP: u64 = 1_700_000_000;
 
 pub fn capabilities() -> Capabilities {
     Capabilities {
-        protocol: 1,
+        protocol: 2,
         vips: "8.15".into(),
         ffmpeg: "7.1".into(),
         libheif: "1.19".into(),

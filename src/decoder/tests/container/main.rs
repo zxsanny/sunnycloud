@@ -22,5 +22,6 @@ mod it_limits;
 mod it_media_image;
 mod it_media_video;
 mod it_protocol;
+mod it_transcode;
 mod it_watchdog;
 mod variants;

@@ -14,15 +14,18 @@ use crate::exec::{Exec, internal};
 use crate::failure::Failure;
 use crate::ffprobe::{self, input_options};
 use crate::image;
+use crate::params::Params;
 use crate::process::input_path;
 use crate::sniff::{Profile, Sniffed, read_head, sniff};
 use crate::sys::{O_NOFOLLOW, O_NONBLOCK};
+use crate::video_args::HDR_TO_SDR;
 
 const FRAME: &str = "poster.png";
 const HDR_TRANSFERS: [&str; 2] = ["smpte2084", "arib-std-b67"];
 
 pub(crate) fn render(
     exec: &Exec<'_>,
+    params: &Params,
     max_edge: u32,
     poster_at_ms: u64,
 ) -> Result<Response, Failure> {
@@ -37,7 +40,7 @@ pub(crate) fn render(
         exec.context.input(),
     )?;
     let frame = open_frame(exec)?;
-    image::render_from(exec, &frame, Profile::A, max_edge)
+    image::render_from(exec, params, &frame, Profile::A, max_edge)
 }
 
 fn is_hdr(video: &VideoStream) -> bool {
@@ -82,15 +85,12 @@ fn frame_args(max_edge: u32, at_ms: u64, hdr: bool, cpu: u32) -> Vec<String> {
 }
 
 /// The downscale comes first: tone mapping at full size costs two to three times more (S5).
-/// The HDR chain is the one fixed by gate S5 (10 section 13.2).
 fn filter(max_edge: u32, hdr: bool) -> String {
     let scale = format!(
         "scale=w='min(iw,{max_edge})':h='min(ih,{max_edge})':force_original_aspect_ratio=decrease:flags=bicubic"
     );
     if hdr {
-        format!(
-            "{scale},zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p,format=rgb24"
-        )
+        format!("{scale},{HDR_TO_SDR},format=rgb24")
     } else {
         scale
     }

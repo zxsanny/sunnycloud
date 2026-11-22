@@ -12,10 +12,11 @@ use media_shared::decoder_protocol::{
     DecodeError, Event, ImageResult, LimitKind, Limits, Response, TranscodeResult,
 };
 use media_shared::policy::{AudioPlan, Encoder, MediaKind, Plan, Probe};
-use sunnycloud_worker::{CallError, DecoderConn};
+use sunnycloud_worker::{CallError, DecoderConn, Still};
 use tempfile::TempDir;
 
 const ALIVE: Duration = Duration::from_millis(20);
+const VERSION: u32 = 1;
 const WAIT: Duration = Duration::from_secs(10);
 
 fn limits() -> Limits {
@@ -66,8 +67,11 @@ async fn every_typed_decoder_failure_reaches_the_caller_as_its_own_variant() {
         let result = conn
             .render_still(
                 &runner.job_dir(),
-                320,
-                None,
+                Still {
+                    max_edge: 320,
+                    poster_at_ms: None,
+                    params_version: VERSION,
+                },
                 limits(),
                 &mut |_| {},
                 pending(),
@@ -95,8 +99,11 @@ async fn a_finished_job_returns_its_typed_result() {
     let result = conn
         .render_still(
             &runner.job_dir(),
-            320,
-            Some(1500),
+            Still {
+                max_edge: 320,
+                poster_at_ms: Some(1500),
+                params_version: VERSION,
+            },
             limits(),
             &mut |_| {},
             pending(),
@@ -120,8 +127,11 @@ async fn alive_and_progress_events_reach_the_caller_while_the_job_runs() {
     let result = conn
         .render_still(
             &runner.job_dir(),
-            320,
-            None,
+            Still {
+                max_edge: 320,
+                poster_at_ms: None,
+                params_version: VERSION,
+            },
             limits(),
             &mut |event| events.push(event),
             pending(),
@@ -152,8 +162,11 @@ async fn the_cancel_future_cancels_the_job_and_leaves_the_connection_usable() {
         WAIT,
         conn.render_still(
             &runner.job_dir(),
-            320,
-            None,
+            Still {
+                max_edge: 320,
+                poster_at_ms: None,
+                params_version: VERSION,
+            },
             limits(),
             &mut |_| {},
             tokio::time::sleep(Duration::from_millis(60)),
@@ -179,8 +192,11 @@ async fn dropping_a_running_call_closes_the_connection_and_cancels_the_job() {
         Duration::from_millis(80),
         conn.render_still(
             &runner.job_dir(),
-            320,
-            None,
+            Still {
+                max_edge: 320,
+                poster_at_ms: None,
+                params_version: VERSION,
+            },
             limits(),
             &mut |_| {},
             pending(),
@@ -227,6 +243,7 @@ async fn probe_and_transcode_return_their_typed_results() {
     // Arrange
     let (_dir, handler, runner, mut conn) = start(Response::Probe(video_probe())).await;
     let plan = Plan::Transcode {
+        params_version: 1,
         encoder: Encoder::Cpu,
         scale_to_short_edge: 720,
         tone_map: false,

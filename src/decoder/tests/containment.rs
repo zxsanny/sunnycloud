@@ -206,6 +206,7 @@ fn work_is_removed_after_a_cancel_and_after_the_connection_is_lost() {
         job_dir: cancelled.to_str().expect("utf8").into(),
         max_edge: 320,
         poster_at_ms: None,
+        params_version: 1,
         limits: limits(),
     });
     wait_for("the child to start", || work_of(&cancelled).exists());
@@ -224,6 +225,7 @@ fn work_is_removed_after_a_cancel_and_after_the_connection_is_lost() {
         job_dir: lost.to_str().expect("utf8").into(),
         max_edge: 320,
         poster_at_ms: None,
+        params_version: 1,
         limits: limits(),
     });
     wait_for("the child to start", || work_of(&lost).exists());

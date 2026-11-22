@@ -12,7 +12,7 @@ use media_shared::policy::Plan;
 
 #[test]
 fn a_known_good_payload_of_each_role_is_accepted() {
-    accepted(r#"{"request":{"hello":{"protocol":1}}}"#);
+    accepted(r#"{"request":{"hello":{"protocol":2}}}"#);
     accepted(&image_result("320", "240", "1"));
     accepted(r#"{"event":{"progress":{"out_time_ms":10,"speed":1.5}}}"#);
     accepted(&render_still("1440"));
@@ -22,7 +22,7 @@ fn a_known_good_payload_of_each_role_is_accepted() {
 fn an_unknown_field_is_a_violation() {
     let cases = [
         r#"{"request":{"probe":{"job_dir":"/s/j","extra":1}}}"#,
-        r#"{"request":{"hello":{"protocol":1,"extra":1}}}"#,
+        r#"{"request":{"hello":{"protocol":2,"extra":1}}}"#,
         r#"{"response":{"image_result":{"width":1,"height":1,"bytes":1,"path":"/etc/passwd"}}}"#,
         r#"{"event":{"progress":{"out_time_ms":1,"speed":1.0,"extra":1}}}"#,
     ];
@@ -41,7 +41,7 @@ fn an_unknown_enumeration_value_is_a_violation() {
         .replace("video\",\"container", "audio\",\"container");
     let cases = [
         unknown_kind.as_str(),
-        r#"{"request":{"launch":{"protocol":1}}}"#,
+        r#"{"request":{"launch":{"protocol":2}}}"#,
         r#"{"response":"finished"}"#,
         r#"{"response":{"error":{"exploded":null}}}"#,
         r#"{"response":{"error":{"limit_exceeded":{"limit":"cpu"}}}}"#,
@@ -120,16 +120,16 @@ fn free_text_in_a_plan_is_a_violation() {
     let cases = [
         transcode(r#""remux -vf movie=/etc/passwd""#),
         transcode(
-            r#"{"transcode":{"encoder":"libx264 -vf x","scale_to_short_edge":1080,"tone_map":true,"audio":"aac","faststart":true}}"#,
+            r#"{"transcode":{"params_version":1,"encoder":"libx264 -vf x","scale_to_short_edge":1080,"tone_map":true,"audio":"aac","faststart":true}}"#,
         ),
         transcode(
-            r#"{"transcode":{"encoder":"cpu","scale_to_short_edge":"1080","tone_map":true,"audio":"aac","faststart":true}}"#,
+            r#"{"transcode":{"params_version":1,"encoder":"cpu","scale_to_short_edge":"1080","tone_map":true,"audio":"aac","faststart":true}}"#,
         ),
         transcode(
-            r#"{"transcode":{"encoder":"cpu","scale_to_short_edge":1080,"tone_map":true,"audio":"aac","faststart":true,"extra_args":"-f lavfi"}}"#,
+            r#"{"transcode":{"params_version":1,"encoder":"cpu","scale_to_short_edge":1080,"tone_map":true,"audio":"aac","faststart":true,"extra_args":"-f lavfi"}}"#,
         ),
         transcode(
-            r#"{"transcode":{"encoder":"cpu","scale_to_short_edge":1080,"tone_map":"yes","audio":"aac","faststart":true}}"#,
+            r#"{"transcode":{"params_version":1,"encoder":"cpu","scale_to_short_edge":1080,"tone_map":"yes","audio":"aac","faststart":true}}"#,
         ),
         transcode(r#"{"remux":{"args":"-i x"}}"#),
     ];
@@ -140,7 +140,7 @@ fn free_text_in_a_plan_is_a_violation() {
 
 #[test]
 fn a_valid_plan_is_accepted() {
-    let plan = r#"{"transcode":{"encoder":"nvenc","scale_to_short_edge":1080,"tone_map":true,"audio":"aac","faststart":true}}"#;
+    let plan = r#"{"transcode":{"params_version":1,"encoder":"nvenc","scale_to_short_edge":1080,"tone_map":true,"audio":"aac","faststart":true}}"#;
 
     let message = accepted(&transcode(plan));
 

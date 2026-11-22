@@ -3,6 +3,9 @@
 mod generated;
 pub mod media;
 pub mod reference;
+pub mod video_assert;
+pub mod video_measure;
+pub mod video_ref;
 
 use std::io::Read;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -83,7 +86,7 @@ impl Scripted {
 impl JobHandler for Scripted {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
-            protocol: 1,
+            protocol: 2,
             vips: "v".into(),
             ffmpeg: "f".into(),
             libheif: "h".into(),
@@ -198,12 +201,13 @@ pub fn render_still_in(job_dir: &Path) -> Request {
         job_dir: job_dir.to_str().expect("utf8 path").into(),
         max_edge: 320,
         poster_at_ms: None,
+        params_version: 1,
         limits: greedy_limits(),
     }
 }
 
 pub fn hello() -> Request {
-    Request::Hello { protocol: 1 }
+    Request::Hello { protocol: 2 }
 }
 
 pub struct Fixture {

@@ -134,14 +134,14 @@ fn an_extra_field_in_a_request_limits_fails_to_parse() {
 
 #[test]
 fn a_string_where_a_plan_field_is_an_enumeration_fails_to_parse() {
-    let plan = r#"{"transcode":{"encoder":"libx264 -vf movie=/etc/passwd","scale_to_short_edge":1080,"tone_map":true,"audio":"aac","faststart":true}}"#;
+    let plan = r#"{"transcode":{"params_version":1,"encoder":"libx264 -vf movie=/etc/passwd","scale_to_short_edge":1080,"tone_map":true,"audio":"aac","faststart":true}}"#;
 
     assert!(serde_json::from_str::<Plan>(plan).is_err());
 }
 
 #[test]
 fn an_unknown_enumeration_value_fails_to_parse() {
-    assert!(serde_json::from_str::<Request>(r#"{"launch":{"protocol":1}}"#).is_err());
+    assert!(serde_json::from_str::<Request>(r#"{"launch":{"protocol":2}}"#).is_err());
     assert!(serde_json::from_str::<Response>(r#""finished""#).is_err());
     assert!(
         serde_json::from_str::<Probe>(&json_of(&json!({

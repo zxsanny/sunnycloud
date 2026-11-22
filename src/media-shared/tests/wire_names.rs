@@ -134,7 +134,7 @@ fn policy_enums_use_snake_case_names() {
     assert_eq!(json_of(&Plan::Remux), r#""remux""#);
     assert_eq!(
         json_of(&transcode_plan()),
-        r#"{"transcode":{"encoder":"nvenc","scale_to_short_edge":1080,"tone_map":true,"audio":"aac","faststart":true}}"#
+        r#"{"transcode":{"params_version":1,"encoder":"nvenc","scale_to_short_edge":1080,"tone_map":true,"audio":"aac","faststart":true}}"#
     );
     assert_eq!(json_of(&Decision::SkipCompliant), r#""skip_compliant""#);
     assert_eq!(json_of(&Decision::Remux), r#""remux""#);
@@ -203,7 +203,7 @@ fn render_still_carries_the_documented_fields() {
     assert_eq!(
         json,
         concat!(
-            r#"{"render_still":{"job_dir":"/scratch/job-1","max_edge":1440,"poster_at_ms":1000,"#,
+            r#"{"render_still":{"job_dir":"/scratch/job-1","max_edge":1440,"poster_at_ms":1000,"params_version":1,"#,
             r#""limits":{"cpu":4,"memory_bytes":4294967296,"wall":2400000,"stall_timeout":90000,"#,
             r#""max_output_bytes":10737418240}}}"#
         )

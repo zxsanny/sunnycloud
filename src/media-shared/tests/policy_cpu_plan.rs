@@ -18,6 +18,7 @@ fn cpu_transcode_plan_of_a_remux_probe_is_the_cpu_transcode_of_its_axes() {
     assert_eq!(
         plan,
         Plan::Transcode {
+            params_version: 1,
             encoder: Encoder::Cpu,
             scale_to_short_edge: 1080,
             tone_map: false,

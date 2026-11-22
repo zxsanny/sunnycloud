@@ -20,6 +20,7 @@ pub enum JobSpec {
         job_dir: String,
         max_edge: u32,
         poster_at_ms: Option<u64>,
+        params_version: u32,
     },
     Transcode {
         job_dir: String,
@@ -110,7 +111,7 @@ impl JobContext {
 /// The executors behind the socket. Called from the connection thread (`capabilities`,
 /// `self_check`) and from one job thread at a time (`run`).
 pub trait JobHandler: Send + Sync + 'static {
-    /// The reply to a `hello` with protocol 1. The loop sets `protocol` itself.
+    /// The reply to a `hello` with protocol 2. The loop sets `protocol` itself.
     fn capabilities(&self) -> Capabilities;
 
     fn self_check(&self, forbidden_targets: &[String]) -> SelfCheckReport;

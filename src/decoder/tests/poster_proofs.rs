@@ -9,8 +9,8 @@ use std::path::Path;
 use std::process::Command;
 
 use common::media::{
-    Media, MediaRunner, image_result, limits, path_with_scripts, real_tool, render, render_at,
-    run_tool,
+    Media, MediaRunner, image_result, limits, path_with_scripts, recorded_calls, recording_script,
+    render, render_at, run_tool,
 };
 use common::reference::{record, reference_thumbnail, ssim, text};
 use tempfile::TempDir;
@@ -35,29 +35,6 @@ fn a_poster_offset_has_no_effect_on_an_image_the_output_bytes_equal_a_render_wit
     assert_eq!(with_offset.bytes, without_offset.len() as u64);
 }
 
-/// A script that logs what a vips tool was given (its `argv` and where its input descriptor
-/// points) and then runs the real tool.
-fn recording(tool: &str, log: &Path) -> String {
-    format!(
-        "printf 'input %s\\n' \"$(readlink /proc/self/fd/9)\" >> {log}\n\
-         for a in \"$@\"; do printf 'arg %s\\n' \"$a\" >> {log}; done\n\
-         echo '---' >> {log}\n\
-         exec {real} \"$@\"",
-        log = log.display(),
-        real = real_tool(tool).display()
-    )
-}
-
-/// Every call as the list of its recorded lines.
-fn calls(log: &Path) -> Vec<Vec<String>> {
-    fs::read_to_string(log)
-        .expect("vips was run")
-        .split("---\n")
-        .filter(|call| !call.is_empty())
-        .map(|call| call.lines().map(str::to_owned).collect())
-        .collect()
-}
-
 #[test]
 fn vips_reads_only_the_png_the_runner_made_for_a_video_poster_and_never_the_job_input() {
     let media = Media::new();
@@ -67,8 +44,8 @@ fn vips_reads_only_the_png_the_runner_made_for_a_video_poster_and_never_the_job_
         logs.path().join("image.log"),
     );
     let run = |log: &Path, bytes: &[u8]| {
-        let vips = recording("vips", log);
-        let vipsheader = recording("vipsheader", log);
+        let vips = recording_script("vips", log);
+        let vipsheader = recording_script("vipsheader", log);
         let (_bin, path) = path_with_scripts(&[("vips", &vips), ("vipsheader", &vipsheader)]);
         let mut runner = MediaRunner::start_with(&[], &path);
         let mut client = runner.connect();
@@ -80,7 +57,7 @@ fn vips_reads_only_the_png_the_runner_made_for_a_video_poster_and_never_the_job_
     let (_poster, video_job) = run(&poster_log, &media.mp4(3));
     let (_still, image_job) = run(&image_log, &media.image("photo.jpg", 800, 600));
 
-    let video_calls = calls(&poster_log);
+    let video_calls = recorded_calls(&poster_log);
     assert!(!video_calls.is_empty());
     let source = video_job.join("in/source");
     for call in &video_calls {
@@ -99,7 +76,7 @@ fn vips_reads_only_the_png_the_runner_made_for_a_video_poster_and_never_the_job_
         assert!(!input.contains(text(&source)));
     }
     // The control: for an image the same recording shows the job's own input, so it can tell.
-    let image_calls = calls(&image_log);
+    let image_calls = recorded_calls(&image_log);
     assert!(!image_calls.is_empty());
     assert!(
         image_calls

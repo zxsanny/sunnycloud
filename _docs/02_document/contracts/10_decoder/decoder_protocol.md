@@ -3,9 +3,9 @@
 **Component**: 10_decoder (module `decoder_protocol` of `media-shared`; server side in 10, client side in 09)
 **Producer task**: E-19/c04 — `_docs/02_tasks/todo/B06-04_decoder_protocol_module.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-19/c05 (runner socket loop, server side), E-20/c05 (`DecoderClient`, client side), E-19/c15 and E-20/c11 (protocol clients and the fake decoder of the test suites)
-**Version**: 1.0.0
-**Status**: draft (open points 1-6 below are fixed by the producer task before it is frozen)
-**Last Updated**: 2026-11-04
+**Version**: 1.1.0
+**Status**: draft (open points 1-6 below are fixed by the producer task before it is frozen; point 7 was decided by the owner on 2026-11-22)
+**Last Updated**: 2026-11-22
 
 ## Purpose
 
@@ -52,14 +52,16 @@ Sources: `components/10_decoder/description.md` §3, §7, §12; `components/09_w
 | Every number is range-checked against the table of open point 4; out of range is a violation | all messages |
 | `Plan` is an enumeration-only record; a string where the schema has none is a violation | `transcode` |
 | `job_dir` is the only path a request carries; resolving it under `decoder_scratch_root` without symlinks is the runner's job (E-19/c07b), not the parser's | `probe`, `render_still`, `transcode` |
+| `params_version` (`render_still`, `Plan::Transcode`) is an integer in 1..=`u32::MAX`; 0 is out of range. A version in range that the decoder has no `Params` table for is **not** a violation: the runner answers `ProtocolMismatch` (clean, it stays up) | `render_still`, `transcode` |
 | `limits` values that are valid for their type but above the runner's ceilings are **not** violations: the runner clamps them (IT-10-3, IT-10-12) | `render_still`, `transcode` |
 
 ### Session rules
 
 | Situation | Result |
 |---|---|
-| `hello` with `protocol = 1` | `Capabilities`; `hello` may be repeated on one connection and is answered each time (IT-10-1) |
+| `hello` with `protocol = 2` | `Capabilities`; `hello` may be repeated on one connection and is answered each time (IT-10-1) |
 | `hello` with any other protocol | `ProtocolMismatch`; clean error, the runner stays up |
+| `render_still` or `transcode` whose `params_version` the decoder has no table for | `ProtocolMismatch`; clean error, no child is started, the runner stays up. The supervisor treats it like a `hello` mismatch (slot unhealthy: the images disagree on the version tables) |
 | A second job request while one runs | `Busy`; the running job continues and completes normally (IT-10-3) |
 | `cancel` while a job runs | `Cancelled` after the job's process group is killed and `work/` is removed |
 | Connection closed while a job runs | Treated as `cancel` with no reply; the runner then accepts a new connection without restarting (IT-10-19) |
@@ -82,7 +84,7 @@ Sources: `components/10_decoder/description.md` §3, §7, §12; `components/09_w
 
 ## Versioning Rules
 
-- `protocol` in `hello` is 1. Any breaking change to framing, a message, a field or a range (rename, removal, type change, tighter range) bumps it, and both images ship together (same release, same host).
+- `protocol` in `hello` is 2 (it was 1 until version 1.1.0, which added the required `params_version` field). Any breaking change to framing, a message, a field or a range (rename, removal, type change, tighter range) bumps it, and both images ship together (same release, same host).
 - Adding an optional field or a new `DecodeError` variant is still breaking here, because both sides reject unknown fields; it also bumps `protocol`.
 - Fixing the open points below before the first implementation is merged is part of 1.0.0 (status moves from draft to frozen).
 
@@ -90,7 +92,7 @@ Sources: `components/10_decoder/description.md` §3, §7, §12; `components/09_w
 
 | Case | Input | Expected | Notes |
 |---|---|---|---|
-| hello-ok | `hello{protocol: 1}` | `Capabilities` reply; repeated 3 times, 3 replies | IT-10-1 |
+| hello-ok | `hello{protocol: 2}` | `Capabilities` reply; repeated 3 times, 3 replies | IT-10-1 |
 | hello-mismatch | `hello{protocol: 99}` | `ProtocolMismatch`; connection and runner stay up | IT-10-1 |
 | frame-oversize | payload of 65,537 bytes | violation; runner exits within 5 s | IT-10-3, IT-09-13 (64 KiB + 1) |
 | prefix-absurd | length prefix of 4 GiB | violation before any payload read; no large allocation | IT-10-3 |
@@ -112,10 +114,11 @@ Sources: `components/10_decoder/description.md` §3, §7, §12; `components/09_w
 4. Numeric ranges are required ("every number range-checked") but no spec gives the bounds. Known must-reject values: `max_edge` -1, 0, 100000; `width` 0 and 4294967295; negative `duration_ms`. The table of bounds per field is written here by the producer task.
 5. "Request out of sequence" is a violation, but the sequence is not defined beyond `Busy` for a second job request; whether `hello`, `self_check` or `probe` while a job runs answer `Busy` or are violations is not stated.
 6. Whether the runner refuses or queues a second connection while one is open is not stated.
-7. Cross-contract (owners E-18 and E-00/c06): 10 §4 says WebP quality, CRF and preset come from `Params[params_version]`, "never from env", but neither `render_still` nor `Plan` carries a `params_version` or those values. The values themselves live in `_docs/02_document/contracts/08_media_jobs/worker_job_protocol.md` ("Output parameters, `params_version` 1"; CRF and preset are its open point 4). Either a field is added to the skeleton types or the decoder holds the `Params` table; this contract cannot be frozen until one is chosen.
+7. Closed 2026-11-22 (owner decision, AZ-3860): the request names the table, the decoder holds it. `render_still` and `Plan::Transcode` carry `params_version: u32`; the decoder ships a `Params` table keyed by that version (never from env). `Plan::Remux` copies streams and reads no quality value, so it carries no version. Version 1: WebP quality 80 (the value in use since AZ-3857; `worker_job_protocol.md` "Output parameters" names no quality number), and for a CPU transcode `libx264 -preset veryfast -crf 23 -profile:v high -pix_fmt yuv420p -maxrate 8M -bufsize 4M`, `-c:a aac -b:a 128k -ac 2`, `-movflags +faststart`, BT.709 tags, long edge at most 1920. These are the numbers of the AZ-3860 spec, not tuned: tuning CRF and preset to derived storage at most 20 % of originals stays `worker_job_protocol.md` open point 4. An unknown version is `ProtocolMismatch` (see the ranges table and session rules). The field is required, so the wire `hello.protocol` goes from 1 to 2 (owner decision 2026-11-22); both images ship together, so a peer that still says 1 gets `ProtocolMismatch`. The version-1 `-maxrate 8M -bufsize 4M` (owner decision 2026-11-22, replacing 10M/20M) keeps a short or saturating clip at an average of at most 10 Mbit/s as ffprobe reports it, so the compliance rule (10 Mbit/s inclusive) stays strict.
 
 ## Change Log
 
 | Version | Date | Change | Author |
 |---|---|---|---|
 | 1.0.0 | 2026-11-04 | Initial draft contract | decompose Step 2 (B06) |
+| 1.1.0 | 2026-11-22 | Open point 7 closed: `params_version` on `render_still` and on `Plan::Transcode`, `Params` table held by the decoder, unknown version answers `ProtocolMismatch`; range 1..=`u32::MAX`; `hello.protocol` 1 to 2; version-1 `-maxrate 8M -bufsize 4M` | AZ-3860 (owner decision 2026-11-22) |

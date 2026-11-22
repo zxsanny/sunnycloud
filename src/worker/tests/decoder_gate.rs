@@ -190,7 +190,7 @@ async fn hello_answered_with_another_protocol_fails_the_gate() {
     // Arrange
     let harness = Harness::new();
     let capabilities = json!({"response": {"capabilities": {
-        "protocol": 2, "vips": "v", "ffmpeg": "f", "libheif": "h",
+        "protocol": 3, "vips": "v", "ffmpeg": "f", "libheif": "h",
         "build_timestamp": 1, "nvenc_probe_ok": false, "nvenc_sessions": 0}}});
     let _peer = HostilePeer::start(&harness.socket, frame(capabilities.to_string().as_bytes()));
     let mut slot = harness.slot(fast_backoff());

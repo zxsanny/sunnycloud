@@ -162,12 +162,14 @@ impl<H: JobHandler> Connection<'_, H> {
                 job_dir,
                 max_edge,
                 poster_at_ms,
+                params_version,
                 limits,
             } => Dispatch::Start(Job {
                 spec: JobSpec::RenderStill {
                     job_dir,
                     max_edge,
                     poster_at_ms,
+                    params_version,
                 },
                 class: LimitClass::Photo,
                 limits: ceilings.photo.clamp(&limits),

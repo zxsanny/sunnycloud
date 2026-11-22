@@ -142,6 +142,7 @@ pub fn photo_probe() -> Probe {
 
 pub fn transcode_plan() -> Plan {
     Plan::Transcode {
+        params_version: 1,
         encoder: Encoder::Nvenc,
         scale_to_short_edge: 1080,
         tone_map: true,
@@ -155,6 +156,7 @@ pub fn plans() -> Vec<Plan> {
         Plan::Remux,
         transcode_plan(),
         Plan::Transcode {
+            params_version: 1,
             encoder: Encoder::Cpu,
             scale_to_short_edge: 720,
             tone_map: false,
@@ -182,7 +184,7 @@ pub fn output_spec() -> OutputSpec {
 
 pub fn capabilities() -> Capabilities {
     Capabilities {
-        protocol: 1,
+        protocol: 2,
         vips: "8.18.0".to_owned(),
         ffmpeg: "8.0".to_owned(),
         libheif: "1.20.2".to_owned(),
@@ -204,7 +206,7 @@ pub fn limits() -> Limits {
 
 pub fn requests() -> Vec<Request> {
     vec![
-        Request::Hello { protocol: 1 },
+        Request::Hello { protocol: 2 },
         Request::SelfCheck {
             forbidden_targets: vec!["api:8080".to_owned(), "db:5432".to_owned()],
         },
@@ -215,12 +217,14 @@ pub fn requests() -> Vec<Request> {
             job_dir: "/scratch/job-1".to_owned(),
             max_edge: 1440,
             poster_at_ms: Some(1_000),
+            params_version: 1,
             limits: limits(),
         },
         Request::RenderStill {
             job_dir: "/scratch/job-1".to_owned(),
             max_edge: 320,
             poster_at_ms: None,
+            params_version: 1,
             limits: limits(),
         },
         Request::Transcode {
@@ -339,7 +343,7 @@ pub fn out_of_range(field: &'static str) -> ViolationKind {
 
 pub fn render_still(max_edge: &str) -> String {
     format!(
-        r#"{{"request":{{"render_still":{{"job_dir":"/s/j","max_edge":{max_edge},"poster_at_ms":null,"limits":{LIMITS_JSON}}}}}}}"#
+        r#"{{"request":{{"render_still":{{"job_dir":"/s/j","max_edge":{max_edge},"poster_at_ms":null,"params_version":1,"limits":{LIMITS_JSON}}}}}}}"#
     )
 }
 

@@ -91,7 +91,7 @@ fn self_check_is_accepted_on_an_idle_session() {
 
 #[test]
 fn hello_or_self_check_while_a_job_runs_is_out_of_sequence() {
-    for request in [Request::Hello { protocol: 1 }, self_check()] {
+    for request in [Request::Hello { protocol: 2 }, self_check()] {
         let mut session = running(&transcode());
 
         let verdict = session.admit(&request);
@@ -128,7 +128,7 @@ fn a_busy_answer_does_not_start_a_job() {
 
     assert!(!session.job_in_flight());
     assert_eq!(
-        session.admit(&Request::Hello { protocol: 1 }),
+        session.admit(&Request::Hello { protocol: 2 }),
         Ok(Admission::Accepted)
     );
 }

@@ -2,6 +2,7 @@
 //! position of `moov` from a bounded scan of top-level MP4 box headers. The decoder reports
 //! facts and never judges compliance.
 
+use std::fs::File;
 use std::io;
 use std::os::unix::fs::FileExt;
 
@@ -55,7 +56,11 @@ fn probe_args() -> Vec<String> {
 }
 
 pub(crate) fn probe(exec: &Exec<'_>) -> Result<Probe, Failure> {
-    let input = exec.context.input();
+    probe_file(exec, exec.context.input())
+}
+
+/// Probes `input`: the job's own file or a file the runner's child made (an output to validate).
+pub(crate) fn probe_file(exec: &Exec<'_>, input: &File) -> Result<Probe, Failure> {
     let finished = exec.run(
         "ffprobe",
         &exec.tools.ffprobe,
