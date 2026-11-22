@@ -407,7 +407,7 @@ pub fn ffprobe_fields(path: &Path, entries: &str) -> String {
 }
 
 /// Where the EXIF orientation value is in a JPEG written by libvips (little-endian TIFF).
-fn set_orientation_at(jpeg: &[u8]) -> usize {
+pub fn set_orientation_at(jpeg: &[u8]) -> usize {
     let tag = [0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00];
     jpeg.windows(tag.len())
         .position(|window| window == tag)

@@ -10,12 +10,20 @@ publish.workspace = true
 name = "decoder-runner"
 path = "src/main.rs"
 
+# The stub of the `test-stubs` image variant (10 description 13.4). Built only with `test-freeze`,
+# so `cargo build -p decoder-runner` of the release image never produces it.
+[[bin]]
+name = "decoder-test-stub"
+path = "stub/main.rs"
+required-features = ["test-freeze"]
+
 [lints]
 workspace = true
 
 [features]
 # Test images only (10_decoder description section 3): SIGUSR1 freezes the main loop so the
-# watchdog can be shown to abort. Nothing depends on this crate, so no other build can enable it.
+# watchdog can be shown to abort, and the stub binary of the `test-stubs` image is built.
+# Nothing depends on this crate, so no other build can enable it.
 test-freeze = []
 
 [dependencies]

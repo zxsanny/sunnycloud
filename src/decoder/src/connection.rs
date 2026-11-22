@@ -27,6 +27,10 @@ pub const TICK: Duration = Duration::from_millis(50);
 
 const JOB_STOP_POLL: Duration = Duration::from_millis(5);
 
+/// How long the loop waits for a frame while a job runs: the finished job's response is sent on the
+/// next pass, so this is the most that a reply (a probe takes about 2 ms) is held back.
+const JOB_TICK: Duration = Duration::from_millis(5);
+
 #[derive(Debug)]
 pub enum ConnectionEnd {
     /// The peer closed the connection or it failed; the runner accepts the next one.
@@ -219,13 +223,22 @@ impl<H: JobHandler> Connection<'_, H> {
                     started: Instant::now(),
                 });
                 self.next_alive = Instant::now() + self.config.alive_interval;
-                Ok(())
+                self.set_read_wait(JOB_TICK)
             }
             Err(source) => Err(ConnectionEnd::Fatal(RunnerError::Io {
                 what: "spawn job thread",
                 source,
             })),
         }
+    }
+
+    fn set_read_wait(&self, wait: Duration) -> Result<(), ConnectionEnd> {
+        self.stream.set_read_timeout(Some(wait)).map_err(|source| {
+            ConnectionEnd::Fatal(RunnerError::Io {
+                what: "set the socket read timeout",
+                source,
+            })
+        })
     }
 
     fn forward_job_messages(&mut self) -> Result<(), ConnectionEnd> {
@@ -256,6 +269,7 @@ impl<H: JobHandler> Connection<'_, H> {
             return Err(ConnectionEnd::Fatal(RunnerError::JobPanicked));
         }
         self.session.job_finished();
+        self.set_read_wait(TICK)?;
         let duration_ms = u64::try_from(job.started.elapsed().as_millis()).unwrap_or(u64::MAX);
         log_info!("job finished", duration_ms = duration_ms);
         let response = if job.cancel_requested {

@@ -5,7 +5,8 @@ usage: check_pinning.py ROOT
   `docker://` uses and workflow `image:` lines need @sha256:<64 hex>; local `./` uses are allowed
 - the workflow default `permissions:` is present and is exactly `contents: read` (no write, no other scope)
 - a workflow triggered by pull_request_target must not check out the pull request head (fork code)
-- Dockerfiles (Dockerfile, *.Dockerfile, Dockerfile.*): every FROM image has @sha256:<64 hex>, except `scratch` and earlier stage names
+- Dockerfiles (Dockerfile, *.Dockerfile, Dockerfile.*): every FROM image has @sha256:<64 hex>, except `scratch` and earlier stage names;
+  `FROM ${NAME}` is checked as the default of `ARG NAME=...` (a build may pass another image for it, e.g. the CI image of the decoder suite)
 - compose files (compose*.yml, docker-compose*.yml): every `image:` has @sha256:<64 hex>, except a service that also has `build:`
 """
 
@@ -86,13 +87,24 @@ def check_default_permissions(path, lines, report):
         report(path, start + 1, f"top-level permissions must be exactly `contents: read`, found {scopes or 'empty'}")
 
 
+ARG_DEFAULT = re.compile(r"^\s*ARG\s+(?P<name>\w+)=(?P<value>\S+)\s*$", re.IGNORECASE)
+ARG_REF = re.compile(r"^\$\{(?P<name>\w+)\}$")
+
+
 def check_dockerfile(path, report):
     stages = set()
+    defaults = {}
     for number, line in enumerate(path.read_text().splitlines(), 1):
+        arg = ARG_DEFAULT.match(line)
+        if arg:
+            defaults[arg.group("name")] = arg.group("value")
         match = FROM.match(line)
         if not match:
             continue
         image = match.group("image")
+        reference = ARG_REF.match(image)
+        if reference:
+            image = defaults.get(reference.group("name"), image)
         if image != "scratch" and image not in stages and not DIGEST.search(image):
             report(path, number, f"base image not pinned by digest: {image}")
         if match.group("name"):

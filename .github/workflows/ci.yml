@@ -349,6 +349,39 @@ jobs:
           scripts/ci/watchdog.sh --name test-check-decoder-image-real --
           scripts/ci/tests/test-check-decoder-image-real.sh sunnycloud-decoder:ci
 
+  # AZ-3865 (H3): the decoder test cases on the container as shipped, with the production flags of the dev Compose file.
+  # The `test-stubs` variant is built on this run's decoder image (a Rust build and one layer, no second media build).
+  decoder-suite:
+    needs: image-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-decoder
+          path: ${{ runner.temp }}/images
+      - name: Load the decoder image
+        run: docker load --input "${RUNNER_TEMP}/images/decoder.tar"
+      - name: Install the pinned toolchain
+        run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
+          cache-on-failure: true
+      - name: Install cargo-nextest
+        run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-nextest
+      - name: Install the host reference tools (vips, ffmpeg, ffprobe, libheif plugins)
+        run: scripts/ci/watchdog.sh --name install-media-tools -- scripts/ci/install-tools.sh media-tools
+      - name: Decoder container suite IT-10-1 to IT-10-19 (the cases in scope), each failure names its IT id
+        # The first run compiles the test binary and the variant's runner; both print nothing for minutes.
+        env:
+          WATCHDOG_STALL: 600
+        run: scripts/ci/watchdog.sh --name decoder-suite -- scripts/ci/decoder-suite.sh sunnycloud-decoder:ci
+
   # v1.2 only (E-29, AZ-4007): the vault-core matrix (native, WASM, UniFFI). No v1.0 or v1.1 release build runs
   # or links vault-core (ADR-016, FT-P-73); this PR gate job builds nothing that ships.
   vault-core:

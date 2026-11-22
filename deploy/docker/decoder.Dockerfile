@@ -4,6 +4,10 @@
 # The first build takes about 25 minutes (ffmpeg); the media layers are keyed on versions.env and ffmpeg.configure.
 # Pass --build-arg BUILD_TIMESTAMP=<unix seconds> and BUILD_DATE=<yyyymmdd of it> for a real build (build-images.sh does);
 # the defaults mark a local build with the 1970 placeholders.
+# Targets: `release` (the last stage, the default: the image that ships) and `test-stubs` (the container suite's variant, below).
+# The base of the test-stubs target below: the stage of this file, or any decoder image (the CI suite passes the release image it
+# built, so the test variant adds a Rust build and one thin layer, never a second media build).
+ARG TEST_STUBS_BASE=runtime
 FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS debian
 
 FROM debian AS fetch
@@ -133,3 +137,21 @@ ENV PATH=/opt/media/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:
 ENTRYPOINT ["decoder-runner"]
 HEALTHCHECK CMD ["decoder-runner", "health"]
 STOPSIGNAL SIGTERM
+
+# Test variant for the container suite (10 description 13.4; never promoted, never released). Build it with
+#   docker build --target test-stubs --build-arg FEATURES=test-freeze [--build-arg TEST_STUBS_BASE=<release image>] .
+# The `builder` stage then also builds decoder-test-stub (feature test-freeze); this layer installs that runner and puts
+# the stub where ffmpeg, ffprobe, vips, vipsheader and vipsthumbnail are, keeping each real tool as <name>.real.
+FROM ${TEST_STUBS_BASE} AS test-stubs
+USER root
+COPY --from=builder /build/src/target/release/decoder-runner /usr/local/bin/decoder-runner
+COPY --from=builder /build/src/target/release/decoder-test-stub /usr/local/bin/decoder-test-stub
+RUN set -eu; for tool in ffmpeg ffprobe vips vipsheader vipsthumbnail; do \
+      mv "/opt/media/bin/$tool" "/opt/media/bin/$tool.real"; \
+      cp /usr/local/bin/decoder-test-stub "/opt/media/bin/$tool"; \
+    done
+LABEL org.sunnycloud.variant="test-stubs"
+USER 10003:10003
+
+# The release image is the last stage, so a build without --target (build-images.sh, Compose) gives it and never the test variant.
+FROM runtime AS release

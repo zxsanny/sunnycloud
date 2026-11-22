@@ -17,3 +17,11 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = "test(it_07_11_cycles_stop_at_the_budget) | test(a_token_that_is_not_a_live_password_link) | test(it_07_13_cycles_with_no_deleting_account_write_nothing_and_return_quickly) | test(a_move_racing_an_edit_inside_always_leaves_the_edit_in_the_moved_folder) | test(an_uncontended_write_is_acknowledged_within_twenty_milliseconds) | test(at_07_1_a_deleted_account_leaves_nothing_behind_after_a_purger_restart_mid_cycle)"
 threads-required = "num-test-threads"
+
+# The container suite (AZ-3865) asserts kill, abort and exit timings (the clamped wall and memory kills, the watchdog abort,
+# cancel, socket loss, and the runner leaving within 5 s of a protocol violation or a hostile outcome) on containers it
+# starts itself, so no other case may load the host meanwhile: the whole binary runs one case at a time. A 5 s exit failed
+# once beside parallel cases on a host with a load average of 10.
+[[profile.default.overrides]]
+filter = "binary(container)"
+threads-required = "num-test-threads"

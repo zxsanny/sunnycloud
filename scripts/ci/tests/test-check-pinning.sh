@@ -80,6 +80,15 @@ expect docker-tag fail "rust:1.97.1-trixie"
 printf 'FROM rust:1.97.1-trixie@%s AS build\nFROM build AS again\nFROM scratch\nFROM --platform=linux/amd64 debian:trixie-slim@%s\n' "$digest" "$digest" >"$work/docker-tag/deploy/a.Dockerfile"
 expect docker-tag pass
 
+# FROM ${ARG} is checked as the default of the ARG: a stage name passes, an image without a digest fails
+printf 'ARG BASE=base\nFROM rust:1.97.1-trixie@%s AS base\nFROM ${BASE} AS variant\n' "$digest" >"$work/docker-tag/deploy/a.Dockerfile"
+expect docker-tag pass
+printf 'ARG BASE=debian:trixie-slim\nFROM rust:1.97.1-trixie@%s AS base\nFROM ${BASE} AS variant\n' "$digest" >"$work/docker-tag/deploy/a.Dockerfile"
+expect docker-tag fail "debian:trixie-slim"
+printf 'FROM rust:1.97.1-trixie@%s AS base\nFROM ${UNDECLARED} AS variant\n' "$digest" >"$work/docker-tag/deploy/a.Dockerfile"
+expect docker-tag fail 'UNDECLARED'
+printf 'FROM rust:1.97.1-trixie@%s AS build\nFROM build AS again\nFROM scratch\nFROM --platform=linux/amd64 debian:trixie-slim@%s\n' "$digest" "$digest" >"$work/docker-tag/deploy/a.Dockerfile"
+
 printf 'services:\n  db:\n    image: postgres:18\n  api:\n    build: .\n    image: local-api:dev\n' >"$work/docker-tag/compose.yml"
 expect docker-tag fail "postgres:18"
 printf 'services:\n  db:\n    image: postgres:18@%s\n  api:\n    build: .\n    image: local-api:dev\n' "$digest" >"$work/docker-tag/compose.yml"
