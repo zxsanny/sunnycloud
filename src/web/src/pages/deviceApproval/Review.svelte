@@ -9,7 +9,7 @@
   import { Banner, Button } from '$lib/ui';
   import { errorText } from '../account/view';
   import LocationTable from './LocationTable.svelte';
-  import { actionState, countdownText, remainingSeconds } from './view';
+  import { actionState, countdownText, platformText, remainingSeconds } from './view';
 
   interface Props {
     approval: DeviceGrantApproval;
@@ -82,9 +82,14 @@
     <span class="grid size-12 flex-none place-items-center rounded-control bg-raised text-ink-2">
       <Laptop class="size-6" aria-hidden="true" />
     </span>
-    <p class="min-w-0 flex-1 truncate text-h3" title={approval.device} data-testid="device-name">
-      {approval.device}
-    </p>
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-h3" title={approval.device} data-testid="device-name">
+        {approval.device}
+      </p>
+      <p class="text-small text-ink-2" data-testid="device-platform">
+        Desktop app · {platformText(approval.platform)}
+      </p>
+    </div>
     <span
       class="hidden flex-none rounded-full border border-line-strong px-2.5 py-0.5 font-code text-small uppercase sm:inline-flex"
       title="Code you entered">{code}</span

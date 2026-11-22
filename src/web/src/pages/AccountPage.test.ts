@@ -59,6 +59,7 @@ function serve(over: Record<string, Reply> = {}) {
     'GET /api/v1/accounts/me': json(accountView()),
     'GET /api/v1/accounts/me/quota': json(quotaView()),
     'GET /api/v1/devices': json({ items: [] }),
+    'GET /api/v1/sessions': json({ items: [] }),
     'GET /api/v1/auth/providers': json(PROVIDERS),
     ...over,
   });

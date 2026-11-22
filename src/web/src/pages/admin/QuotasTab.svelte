@@ -2,11 +2,12 @@
   import { onMount } from 'svelte';
   import { api, type ApiError } from '$lib/api';
   import { formatBytes } from '$lib/format';
+  import { session } from '$lib/session';
   import { Button, EmptyState, Field, Skeleton } from '$lib/ui';
   import SectionError from '../account/SectionError.svelte';
   import { errorText } from '../account/view';
   import { UserList } from './UserList.svelte';
-  import { limitBytes, type QuotaUnit } from './view';
+  import { limitBytes, userChoiceLabel, userName, type QuotaUnit } from './view';
 
   const users = new UserList();
   let userId = $state('');
@@ -77,10 +78,14 @@
 >
   <aside class="flex flex-col gap-3" aria-labelledby="default-q-h">
     <h2 id="default-q-h" class="text-h3">Default quota</h2>
+    {#if users.defaultQuota !== null}
+      <p class="text-h2 tabular-nums" data-testid="default-quota">
+        {formatBytes(users.defaultQuota)}
+      </p>
+    {/if}
     <p class="text-small text-ink-2">
       Applies to every user without their own quota. The operator sets it in the server
-      configuration (<code class="font-code text-ink">default_quota_bytes</code>); it cannot be
-      changed here.
+      configuration; it cannot be changed here.
     </p>
   </aside>
   <div class="flex flex-col gap-4">
@@ -114,7 +119,9 @@
           >
             <option value="">Choose a user</option>
             {#each choices as user (user.id)}
-              <option value={user.id}>{user.id}</option>
+              <option value={user.id}
+                >{userChoiceLabel(user, user.id === session.account?.id)}</option
+              >
             {/each}
           </select>
         </div>
@@ -171,7 +178,15 @@
             <tbody>
               {#each withOwn as user (user.id)}
                 <tr class="border-t border-line">
-                  <td class="px-4 py-3 font-code text-small break-all">{user.id}</td>
+                  <td class="px-4 py-3">
+                    {#if userName(user) !== user.id}
+                      <span class="block text-row">{userName(user)}</span>
+                    {/if}
+                    <span class="block font-code text-small break-all text-ink-2">{user.id}</span>
+                    {#if user.id === session.account?.id}
+                      <span class="text-small text-ink-2">(you)</span>
+                    {/if}
+                  </td>
                   <td class="px-4 py-3 font-semibold tabular-nums"
                     >{formatBytes(user.limit ?? 0)}</td
                   >
@@ -182,13 +197,13 @@
                     <Button
                       size="sm"
                       variant="ghost"
-                      aria-label="Edit quota of {user.id}"
+                      aria-label="Edit quota of {userName(user)}"
                       onclick={() => edit(user.id, user.limit ?? 0)}>Edit</Button
                     >
                     <Button
                       size="sm"
                       variant="ghost"
-                      aria-label="Use default quota for {user.id}"
+                      aria-label="Use default quota for {userName(user)}"
                       onclick={() => useDefault(user.id)}>Use default</Button
                     >
                   </td>

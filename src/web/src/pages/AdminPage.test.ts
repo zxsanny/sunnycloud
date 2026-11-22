@@ -23,6 +23,7 @@ const accountView = (role: 'admin' | 'user') => ({
 
 const user = (id: string, over: Record<string, unknown> = {}) => ({
   id,
+  display_name: id === ME ? 'Marta Hryn' : id === OTHER ? 'Daria Koval' : `Person ${id.slice(-2)}`,
   role: 'user',
   state: 'active',
   last_login: '2026-11-02T10:00:00Z',
@@ -31,7 +32,10 @@ const user = (id: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const DEFAULT_QUOTA = 100_000_000_000;
+
 const USERS = {
+  default_quota_bytes: DEFAULT_QUOTA,
   items: [
     user(ME, { role: 'admin' }),
     user(OTHER),
@@ -52,6 +56,7 @@ function serve(over: Record<string, Reply> = {}) {
       reserved: 0,
     }),
     'GET /api/v1/devices': json({ items: [] }),
+    'GET /api/v1/sessions': json({ items: [] }),
     'GET /api/v1/auth/providers': json({ providers: [], setup_required: false }),
     [USERS_URL]: json(USERS),
     ...over,
@@ -257,14 +262,20 @@ describe('invites (AC-4)', () => {
     expect(calls.filter((call) => call.method === 'DELETE')).toHaveLength(1);
   });
 
-  it('shows the token once with a copy of exactly it and not again after closing', async () => {
+  const URL_ = 'https://drive.example.org/invite#sc_inv_SECRET';
+
+  it('shows the invite link once with a copy of exactly it, the expiry from the answer, and not again after closing', async () => {
     // Arrange
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     let listed = 0;
     const { calls } = serve({
       'GET /api/v1/admin/invites': () => invites(listed++ === 0 ? [] : [invite('i9', 'Lesia')]),
-      'POST /api/v1/admin/invites': json({ token: 'sc_inv_SECRET' }),
+      'POST /api/v1/admin/invites': json({
+        token: 'sc_inv_SECRET',
+        url: URL_,
+        expires_at: '2026-12-05T10:00:00Z',
+      }),
     });
     render(AdminPage);
     await screen.findByText('No invites yet');
@@ -272,13 +283,13 @@ describe('invites (AC-4)', () => {
     // Act
     await userEvent.type(screen.getByLabelText('Note (optional)'), 'Lesia');
     await userEvent.click(screen.getByRole('button', { name: 'Create invite' }));
-    await screen.findByTestId('invite-token');
-    await userEvent.click(screen.getByRole('button', { name: 'Copy invite token' }));
+    await screen.findByTestId('invite-url');
+    await userEvent.click(screen.getByRole('button', { name: 'Copy invite link' }));
 
     // Assert
-    expect(screen.getByTestId('invite-token')).toHaveTextContent('sc_inv_SECRET');
-    expect(writeText).toHaveBeenCalledWith('sc_inv_SECRET');
-    expect(screen.getByText(/Single use · expires/)).toBeInTheDocument();
+    expect(screen.getByTestId('invite-url')).toHaveTextContent(URL_);
+    expect(writeText).toHaveBeenCalledWith(URL_);
+    expect(screen.getByText('Single use · expires 5 Dec 2026')).toBeInTheDocument();
     expect(calls.find((call) => call.method === 'POST')?.body).toEqual({ note: 'Lesia' });
     expect(screen.getByRole('table')).toHaveTextContent('Pending');
 
@@ -289,18 +300,43 @@ describe('invites (AC-4)', () => {
     expect(screen.queryByText(/sc_inv_SECRET/)).not.toBeInTheDocument();
   });
 
-  it('writes the token nowhere in browser storage', async () => {
+  it('shows the expiry of the answer even when the refreshed list is not read', async () => {
     // Arrange
+    let listed = 0;
     serve({
-      'GET /api/v1/admin/invites': invites([]),
-      'POST /api/v1/admin/invites': json({ token: 'sc_inv_SECRET' }),
+      'GET /api/v1/admin/invites': () => (listed++ === 0 ? invites([]) : problem(500, 'internal')),
+      'POST /api/v1/admin/invites': json({
+        token: 'sc_inv_SECRET',
+        url: URL_,
+        expires_at: '2026-12-05T10:00:00Z',
+      }),
     });
     render(AdminPage);
     await screen.findByText('No invites yet');
 
     // Act
     await userEvent.click(screen.getByRole('button', { name: 'Create invite' }));
-    await screen.findByTestId('invite-token');
+
+    // Assert
+    expect(await screen.findByText('Single use · expires 5 Dec 2026')).toBeInTheDocument();
+  });
+
+  it('writes the token and the link nowhere in browser storage', async () => {
+    // Arrange
+    serve({
+      'GET /api/v1/admin/invites': invites([]),
+      'POST /api/v1/admin/invites': json({
+        token: 'sc_inv_SECRET',
+        url: URL_,
+        expires_at: '2026-12-05T10:00:00Z',
+      }),
+    });
+    render(AdminPage);
+    await screen.findByText('No invites yet');
+
+    // Act
+    await userEvent.click(screen.getByRole('button', { name: 'Create invite' }));
+    await screen.findByTestId('invite-url');
 
     // Assert
     expect(JSON.stringify({ ...localStorage })).not.toContain('sc_inv_SECRET');
@@ -373,7 +409,7 @@ describe('quotas (AC-5)', () => {
     expect(screen.getByText('Everyone uses the default quota')).toBeInTheDocument();
   });
 
-  it('shows the default quota as read-only with its configuration note', async () => {
+  it('shows the default quota value of the server as read-only with its configuration note', async () => {
     // Arrange
     serve();
 
@@ -381,7 +417,7 @@ describe('quotas (AC-5)', () => {
     render(AdminPage);
 
     // Assert
-    expect(await screen.findByText('default_quota_bytes')).toBeInTheDocument();
+    expect(await screen.findByTestId('default-quota')).toHaveTextContent('100.0 GB');
     expect(screen.getByText(/cannot be\s+changed here/)).toBeInTheDocument();
   });
 });

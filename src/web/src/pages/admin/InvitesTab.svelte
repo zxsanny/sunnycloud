@@ -15,20 +15,16 @@
   let note = $state('');
   let creating = $state(false);
   let createError = $state<ApiError | null>(null);
-  /** The plaintext token exists only in the create answer: it lives here, in memory, until the panel is closed. */
-  let created = $state<{ token: string; note: string; expires: string | null } | null>(null);
+  /** The invite URL carries the plaintext token and exists only in the create answer: it lives here, in memory, until the panel is closed. */
+  let created = $state<{ url: string; note: string; expires: string } | null>(null);
   let revokingId = $state<string | null>(null);
   let revokeError = $state<ApiError | null>(null);
 
-  async function load(): Promise<Invite[] | null> {
+  async function load() {
     loadError = null;
     const result = await api.getAdminInvites();
-    if (result.ok) {
-      invites = result.value.items;
-      return invites;
-    }
-    loadError = result.error;
-    return null;
+    if (result.ok) invites = result.value.items;
+    else loadError = result.error;
   }
 
   async function create(event: SubmitEvent) {
@@ -36,23 +32,16 @@
     creating = true;
     createError = null;
     created = null;
-    const before = new Set((invites ?? []).map((invite) => invite.id));
-    const result = await api.postAdminInvite(note.trim());
+    const forNote = note.trim();
+    const result = await api.postAdminInvite(forNote);
     if (!result.ok) {
       creating = false;
       createError = result.error;
       return;
     }
-    const token = result.value.token;
-    const forNote = note.trim();
     note = '';
-    // The create answer carries no expiry: it is read from the one invite the list gained.
-    const fresh = ((await load()) ?? []).filter((invite) => !before.has(invite.id));
-    created = {
-      token,
-      note: forNote,
-      expires: fresh.length === 1 ? (fresh[0]?.expires_at ?? null) : null,
-    };
+    created = { url: result.value.url, note: forNote, expires: result.value.expires_at };
+    await load();
     creating = false;
   }
 
@@ -100,19 +89,19 @@
       </h2>
       <p
         class="rounded-control border border-line bg-raised p-3 font-code text-small break-all text-ink"
-        data-testid="invite-token"
+        data-testid="invite-url"
       >
-        {created.token}
+        {created.url}
       </p>
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <CopyButton text={created.token} label="Copy invite token" />
+        <CopyButton text={created.url} label="Copy invite link" />
         <p class="text-small font-semibold">
           This is the only time it is shown. Send it to the person directly.
         </p>
         <Button size="sm" variant="ghost" onclick={() => (created = null)}>Close</Button>
       </div>
       <p class="text-small tabular-nums">
-        Single use{created.expires ? ` · expires ${formatDate(created.expires)}` : ''}
+        Single use · expires {formatDate(created.expires)}
       </p>
     </section>
   {/if}

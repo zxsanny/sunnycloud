@@ -19,6 +19,7 @@ const approval = (over: Record<string, unknown> = {}) => ({
   grant_id: GRANT_ID,
   expires_at: EXPIRES,
   device: 'zx-thinkpad',
+  platform: 'linux',
   requester_ip: '93.175.12.4',
   requester_location: 'Kyiv, Ukraine',
   approver_ip: '93.175.12.9',
@@ -77,6 +78,7 @@ describe('the approval page: both places side by side (AC-1)', () => {
     // Assert
     expect(await screen.findByText('Approve this sign-in?')).toBeInTheDocument();
     expect(screen.getByTestId('device-name')).toHaveTextContent('zx-thinkpad');
+    expect(screen.getByTestId('device-platform')).toHaveTextContent('Linux');
     expect(screen.getByTestId('requester-place')).toHaveTextContent('Amsterdam, Netherlands');
     expect(screen.getByTestId('requester-place')).toHaveTextContent('185.107.56.3');
     expect(screen.getByTestId('approver-place')).toHaveTextContent('Kyiv, Ukraine');
@@ -116,6 +118,25 @@ describe('the approval page: both places side by side (AC-1)', () => {
       '<img src=x onerror=alert(1)>',
     );
     expect(document.querySelector('img')).toBeNull();
+  });
+});
+
+describe('the approval page: the platform next to the device name (AC-1)', () => {
+  it.each([
+    ['linux', 'Linux'],
+    ['windows', 'Windows'],
+    ['macos', 'macOS'],
+  ])('shows %s as %s beside the device name', async (platform, text) => {
+    // Arrange
+    serve({ [GRANT_URL]: json(approval({ platform })) });
+    const user = userEvent.setup();
+    render(DeviceApprovalPage);
+
+    // Act
+    await enterCode(user);
+
+    // Assert
+    expect(await screen.findByTestId('device-platform')).toHaveTextContent(`Desktop app · ${text}`);
   });
 });
 

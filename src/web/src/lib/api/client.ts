@@ -23,6 +23,7 @@ export type ThumbnailStates = components['schemas']['ThumbnailStates'];
 export type RevisionView = components['schemas']['RevisionView'];
 export type ShareOpen = components['schemas']['ShareOpen'];
 export type DeviceList = components['schemas']['DeviceList'];
+export type SessionList = components['schemas']['SessionList'];
 export type IdentityLinkAttemptRequest = components['schemas']['IdentityLinkAttemptRequest'];
 export type AccountDeletionAccepted = components['schemas']['AccountDeletionAccepted'];
 export type DeviceGrantApproval = components['schemas']['DeviceGrantApproval'];
@@ -123,7 +124,11 @@ export function createApi(options: ApiOptions = {}) {
       send(() => client.POST('/api/v1/auth/login-attempts', { body })),
     getAccountsMe: () => send(() => client.GET('/api/v1/accounts/me')),
     getAccountsMeQuota: () => send(() => client.GET('/api/v1/accounts/me/quota')),
+    getSessions: () => send(() => client.GET('/api/v1/sessions')),
     deleteSessionsCurrent: () => send(() => client.DELETE('/api/v1/sessions/current')),
+    /** Signs out one session of the caller; never the current one (that is `deleteSessionsCurrent`). */
+    deleteSession: (id: string) =>
+      send(() => client.DELETE('/api/v1/sessions/{id}', { params: { path: { id } } })),
     deleteAccountsMe: (confirmation: string) =>
       send(() => client.DELETE('/api/v1/accounts/me', { body: { confirmation } })),
     getDevices: () => send(() => client.GET('/api/v1/devices')),

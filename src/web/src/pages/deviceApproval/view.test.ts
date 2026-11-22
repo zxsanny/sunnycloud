@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { actionState, countdownText, placeText, remainingSeconds, secondsUntil } from './view';
+import {
+  actionState,
+  countdownText,
+  placeText,
+  platformText,
+  remainingSeconds,
+  secondsUntil,
+} from './view';
 
 describe('the action state of the approval page (AC-2)', () => {
   it('enables Approve and makes it primary when the places match', () => {
@@ -83,5 +90,20 @@ describe('the place text (AC-6)', () => {
 
     // Assert
     expect(texts).toEqual(['Location unknown', 'Location unknown']);
+  });
+});
+
+describe('platformText', () => {
+  it.each([
+    ['linux', 'Linux'],
+    ['windows', 'Windows'],
+    ['macos', 'macOS'],
+    ['freebsd', 'freebsd'],
+  ])('writes %s as %s', (platform, expected) => {
+    // Act
+    const text = platformText(platform);
+
+    // Assert
+    expect(text).toBe(expected);
   });
 });

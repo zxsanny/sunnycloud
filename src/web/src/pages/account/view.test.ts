@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceRows, lastSeenText, quotaView } from './view';
+import { browserRows, deviceRows, lastSeenText, linkOutcome, quotaView } from './view';
 
 const NOW = Date.parse('2026-11-21T12:00:00Z');
 
@@ -70,14 +70,120 @@ describe('deviceRows', () => {
     };
 
     // Act
-    const rows = deviceRows(list, NOW);
+    const rows = deviceRows(list, null, NOW);
 
     // Assert
     expect(rows.map((row) => row.id)).toEqual(['a', 'b']);
     expect(rows[1]).toMatchObject({
-      platform: 'macOS',
-      added: '19 Jun 2026',
+      detail: 'Desktop app · macOS · added 19 Jun 2026',
       lastSeen: 'Last seen 2 min ago',
     });
+  });
+
+  const session = (id: string, kind: 'web' | 'android' | 'ios', over: object = {}) => ({
+    id,
+    label: `label ${id}`,
+    client_kind: kind,
+    ip: null,
+    current: false,
+    created_at: '2026-04-02T10:00:00Z',
+    last_seen_at: '2026-11-21T11:00:00Z',
+    ...over,
+  });
+  const devices = {
+    items: [{ id: 'x', name: 'tower', platform: 'Linux', created_at: '2026-03-04T10:00:00Z' }],
+  };
+
+  it('puts phone sessions after the desktop devices in one list, marked by their app, with no web session', () => {
+    // Arrange
+    const sessions = {
+      items: [session('w', 'web'), session('a', 'android'), session('i', 'ios')],
+    };
+
+    // Act
+    const rows = deviceRows(devices, sessions, NOW);
+
+    // Assert
+    expect(rows.map((row) => [row.kind, row.id])).toEqual([
+      ['desktop', 'x'],
+      ['android', 'a'],
+      ['ios', 'i'],
+    ]);
+    expect(rows[1]?.detail).toBe('Android app · signed in 2 Apr 2026');
+    expect(rows[2]?.detail).toBe('iOS app · signed in 2 Apr 2026');
+  });
+
+  it('keeps a device and a session with the same id as two rows with two keys', () => {
+    // Arrange
+    const sessions = { items: [session('x', 'android')] };
+
+    // Act
+    const rows = deviceRows(devices, sessions, NOW);
+
+    // Assert
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((row) => row.key)).size).toBe(2);
+  });
+});
+
+describe('browserRows', () => {
+  const session = (id: string, over: object = {}) => ({
+    id,
+    label: `browser ${id}`,
+    client_kind: 'web' as const,
+    ip: null,
+    current: false,
+    created_at: '2026-11-01T10:00:00Z',
+    last_seen_at: '2026-11-21T11:00:00Z',
+    ...over,
+  });
+
+  it('lists web sessions only, marks the current one and adds an address only when there is one', () => {
+    // Arrange
+    const list = {
+      items: [
+        session('a', { current: true, ip: '203.0.113.24' }),
+        session('b'),
+        { ...session('c'), client_kind: 'ios' as const },
+      ],
+    };
+
+    // Act
+    const rows = browserRows(list, NOW);
+
+    // Assert
+    expect(rows.map((row) => row.id)).toEqual(['a', 'b']);
+    expect(rows[0]).toMatchObject({
+      current: true,
+      detail: 'Signed in 1 Nov 2026 · 203.0.113.24',
+      lastSeen: 'Active now',
+    });
+    expect(rows[1]).toMatchObject({ current: false, detail: 'Signed in 1 Nov 2026' });
+  });
+});
+
+describe('linkOutcome', () => {
+  it('reads nothing from a query without a link outcome', () => {
+    // Act
+    const outcome = linkOutcome(new URLSearchParams('tab=x'));
+
+    // Assert
+    expect(outcome).toBeNull();
+  });
+
+  it('lets an error win over a linked flag', () => {
+    // Act
+    const outcome = linkOutcome(new URLSearchParams('linked=1&error=identity_taken'));
+
+    // Assert
+    expect(outcome?.variant).toBe('danger');
+  });
+
+  it('treats a linked value other than 1 as no outcome', () => {
+    // Act
+    const outcome = linkOutcome(new URLSearchParams('linked=0'));
+
+    // Assert
+    expect(outcome).toBeNull();
   });
 });

@@ -7,6 +7,8 @@ const PAGE = 100;
 /** The admin's user list, read a page at a time; the Users and Quotas tabs each own one. */
 export class UserList {
   items = $state<AdminUser[] | null>(null);
+  /** Bytes the installation default stands for; null until the first page has come. */
+  defaultQuota = $state<number | null>(null);
   error = $state<ApiError | null>(null);
   hasMore = $state(false);
   moreError = $state<ApiError | null>(null);
@@ -17,6 +19,7 @@ export class UserList {
     const result = await api.getAdminUsers(0, PAGE);
     if (result.ok) {
       this.items = result.value.items;
+      this.defaultQuota = result.value.default_quota_bytes;
       this.hasMore = result.value.items.length === PAGE;
     } else {
       this.error = result.error;

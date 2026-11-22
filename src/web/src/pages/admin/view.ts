@@ -83,3 +83,18 @@ export function inviteStatus(
   const expires = Date.parse(invite.expires_at);
   return !Number.isNaN(expires) && expires <= now ? 'expired' : 'pending';
 }
+
+/** The name an admin knows a person by; an account with no name is shown by its id alone. */
+export function userName(user: { id: string; display_name: string }): string {
+  return user.display_name.trim() === '' ? user.id : user.display_name;
+}
+
+/** One line for a picker option: the name, the "(you)" marker and the id as the secondary detail. */
+export function userChoiceLabel(
+  user: { id: string; display_name: string },
+  isSelf: boolean,
+): string {
+  const name = userName(user);
+  const marked = isSelf ? `${name} (you)` : name;
+  return name === user.id ? marked : `${marked} · ${user.id}`;
+}

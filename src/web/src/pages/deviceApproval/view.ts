@@ -32,3 +32,10 @@ export function actionState(mismatch: boolean, confirmed: boolean): ActionState 
 export function placeText(location: string | null): string {
   return location === null || location === '' ? 'Location unknown' : location;
 }
+
+const PLATFORM_NAMES = { linux: 'Linux', windows: 'Windows', macos: 'macOS' } as const;
+
+/** The platform the device named, as people write it; a value this client does not know is shown as sent. */
+export function platformText(platform: string): string {
+  return PLATFORM_NAMES[platform as keyof typeof PLATFORM_NAMES] ?? platform;
+}

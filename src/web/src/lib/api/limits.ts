@@ -14,6 +14,10 @@ export interface ServerLimits {
   maxStagedPerAccount: number;
   /** False when the server's block size is not the 2 MiB this client implements. */
   uploadsEnabled: boolean;
+  /** Whole seconds a new share link lives when the owner names none; null when the server did not say. */
+  shareDefaultTtl: number | null;
+  /** Whole seconds, the longest a share link may live; null when the server did not say. */
+  shareMaxTtl: number | null;
 }
 
 export function serverLimitsOf(info: components['schemas']['ServerInfo']): ServerLimits {
@@ -24,5 +28,7 @@ export function serverLimitsOf(info: components['schemas']['ServerInfo']): Serve
     batchMaxEntries: info.batch_max_entries,
     maxStagedPerAccount: info.max_staged_per_account,
     uploadsEnabled: info.block_size === PROTOCOL_BLOCK_SIZE,
+    shareDefaultTtl: info.share_default_ttl ?? null,
+    shareMaxTtl: info.share_max_ttl ?? null,
   };
 }

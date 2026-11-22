@@ -23,6 +23,7 @@ export type {
   ProviderList,
   Quota,
   RevisionView,
+  SessionList,
   ShareList,
   ShareOpen,
   StartUploadOutcome,

@@ -3,6 +3,7 @@
   import { formatBytes, formatDate } from '$lib/format';
   import { Button } from '$lib/ui';
   import type { AdminUser } from './UserList.svelte';
+  import { userName } from './view';
 
   interface Props {
     user: AdminUser;
@@ -24,7 +25,14 @@
 
 <tr class="border-t border-line align-top">
   <td class="px-4 py-3">
-    <span class="block font-code text-small break-all" data-testid="user-id">{user.id}</span>
+    {#if userName(user) !== user.id}
+      <span class="block text-row" data-testid="user-name">{userName(user)}</span>
+      <span class="block font-code text-small break-all text-ink-2" data-testid="user-id"
+        >{user.id}</span
+      >
+    {:else}
+      <span class="block font-code text-small break-all" data-testid="user-id">{user.id}</span>
+    {/if}
     {#if isSelf}<span class="text-small text-ink-2">(you)</span>{/if}
     {#if deleting}
       <span class="block text-small text-ink-2">Removing data…</span>

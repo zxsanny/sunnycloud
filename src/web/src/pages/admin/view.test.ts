@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { inviteStatus, isAdmin, limitBytes, readiness, tabOf } from './view';
+import {
+  inviteStatus,
+  isAdmin,
+  limitBytes,
+  readiness,
+  tabOf,
+  userChoiceLabel,
+  userName,
+} from './view';
 
 const account = (role: 'user' | 'admin') =>
   ({ id: 'a', display_name: 'A', role, identities: [], quota: {}, root_node_id: 'r' }) as never;
@@ -89,5 +97,30 @@ describe('invite status', () => {
       'expired',
     );
     expect(inviteStatus({ expires_at: '2026-11-11T00:00:00Z' }, now)).toBe('pending');
+  });
+});
+
+describe('user names', () => {
+  const named = { id: 'u1', display_name: 'Daria Koval' };
+  const unnamed = { id: 'u2', display_name: '  ' };
+
+  it('uses the display name, and the id when the account has none', () => {
+    // Act
+    const names = [userName(named), userName(unnamed)];
+
+    // Assert
+    expect(names).toEqual(['Daria Koval', 'u2']);
+  });
+
+  it('writes a picker label with the name, the (you) marker and the id as the detail', () => {
+    // Act
+    const labels = [
+      userChoiceLabel(named, false),
+      userChoiceLabel(named, true),
+      userChoiceLabel(unnamed, true),
+    ];
+
+    // Assert
+    expect(labels).toEqual(['Daria Koval · u1', 'Daria Koval (you) · u1', 'u2 (you)']);
   });
 });

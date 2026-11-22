@@ -1,37 +1,70 @@
 <script lang="ts">
+  import CircleAlert from '@lucide/svelte/icons/circle-alert';
   import Eye from '@lucide/svelte/icons/eye';
   import EyeOff from '@lucide/svelte/icons/eye-off';
   import Link from '@lucide/svelte/icons/link';
-  import type { OwnerShares } from '$lib/shares';
+  import { expiryOptions, type ExpiryOption, type OwnerShares } from '$lib/shares';
   import { Button, Field } from '$lib/ui';
 
   let { shares, oncancel }: { shares: OwnerShares; oncancel: () => void } = $props();
 
-  let days = $state('');
+  /** The key of the option the owner picked; null until they pick, so the server's default stays selected. */
+  let picked = $state<string | null>(null);
   let requirePassword = $state(false);
   let password = $state('');
   let reveal = $state(false);
 
+  const expiry = $derived(expiryOptions(shares.ttl ?? { defaultTtl: null, maxTtl: null }));
+  const chosen = $derived(
+    expiry.options.find((option) => keyOf(option) === picked) ?? expiry.preselected,
+  );
+  const expiryError = $derived(
+    shares.failure?.place === 'expiry' ? shares.failure.text : undefined,
+  );
   const missingPassword = $derived(requirePassword && password === '');
+
+  const keyOf = (option: ExpiryOption) => String(option.seconds ?? 'default');
 
   function submit(event: SubmitEvent) {
     event.preventDefault();
     if (missingPassword) return;
-    void shares.create({ days, password: requirePassword ? password : null });
+    void shares.create({
+      expiresIn: chosen.seconds,
+      password: requirePassword ? password : null,
+    });
   }
 </script>
 
 <form class="flex flex-col gap-4" aria-labelledby="new-h" onsubmit={submit}>
   <h3 id="new-h" class="text-h3">New link</h3>
-  <Field
-    label="Expires after (days)"
-    bind:value={days}
-    inputmode="numeric"
-    autocomplete="off"
-    placeholder="Server default"
-    helper="Leave empty to use the server's default lifetime."
-    error={shares.failure?.place === 'expiry' ? shares.failure.text : undefined}
-  />
+  <div class="flex flex-col gap-1.5">
+    <label class="text-small font-[650] text-ink" for="share-expires">Expires</label>
+    <select
+      id="share-expires"
+      class="h-10 w-full rounded-control border bg-raised px-3 text-ink {expiryError
+        ? 'border-danger'
+        : 'border-line-strong'}"
+      aria-invalid={expiryError ? 'true' : undefined}
+      aria-describedby="share-expires-error share-expires-help"
+      value={keyOf(chosen)}
+      onchange={(event) => (picked = event.currentTarget.value)}
+    >
+      {#each expiry.options as option (keyOf(option))}
+        <option value={keyOf(option)}>{option.label}</option>
+      {/each}
+    </select>
+    {#if expiryError}
+      <p
+        id="share-expires-error"
+        class="flex items-start gap-1.5 text-[0.8125rem] font-semibold text-danger"
+      >
+        <CircleAlert class="mt-px size-4 flex-none" aria-hidden="true" />{expiryError}
+      </p>
+    {/if}
+    {#if expiry.helper}
+      <p id="share-expires-help" class="text-[0.8125rem] text-ink-2">{expiry.helper}</p>
+    {/if}
+  </div>
   <div class="flex items-center justify-between gap-4">
     <label class="text-small font-[650]" for="pw-switch">Require a password</label>
     <input

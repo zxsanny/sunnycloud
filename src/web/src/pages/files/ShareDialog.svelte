@@ -21,6 +21,7 @@
     opener = document.activeElement;
     closeButton?.focus();
     void shares.load();
+    void shares.loadLimits();
     return () => {
       if (opener instanceof HTMLElement) opener.focus();
     };

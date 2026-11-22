@@ -11,6 +11,22 @@ const FILE = makeNode({ name: 'beach-sunset.jpg', kind: 'file', media_type: 'ima
 const FOLDER = makeNode({ name: 'Trips', kind: 'folder' });
 const TOKEN = 'sc_shr_Q7mVb4LpT8wZr1NcY6dHs3EjA5uG0oRkWiPqXe9fK2x';
 const SHARES = 'GET /api/v1/shares';
+const SERVER_INFO = 'GET /api/v1/server-info';
+const DAY = 86_400;
+
+const serverInfo = (over: Record<string, unknown> = {}) => ({
+  api_versions: ['v1'],
+  batch_max_entries: 100,
+  block_size: 2_097_152,
+  longpoll_max_wait: 30,
+  max_lanes: 4,
+  max_staged_per_account: 8,
+  min_client_version: '0.1.0',
+  small_file_max: 2_097_152,
+  share_default_ttl: 7 * DAY,
+  share_max_ttl: 30 * DAY,
+  ...over,
+});
 
 const info = (id: string, over: Record<string, unknown> = {}) => ({
   id,
@@ -30,14 +46,27 @@ const created = (over: Record<string, unknown> = {}) => ({
 });
 
 function serve(extra: Record<string, Reply> = {}) {
-  return stubServer({ [SHARES]: json({ items: [] }), ...extra });
+  return stubServer({ [SHARES]: json({ items: [] }), [SERVER_INFO]: json(serverInfo()), ...extra });
 }
 
+/** Opens the dialog and waits for the server's limits to have reached the expiry field. */
 async function openDialog(node = FILE) {
   const user = userEvent.setup();
   render(RowActions, { node });
   await user.click(screen.getByRole('button', { name: `Share link for ${node.name}` }));
-  return { user, dialog: await screen.findByRole('dialog', { name: `Share ${node.name}` }) };
+  const dialog = await screen.findByRole('dialog', { name: `Share ${node.name}` });
+  await within(dialog).findByRole('option', { name: /^7 days/ });
+  return { user, dialog };
+}
+
+/** Opens the dialog when the server states no usable limits: nothing to wait for but the list. */
+async function openDialogWithoutLimits(node = FILE) {
+  const user = userEvent.setup();
+  render(RowActions, { node });
+  await user.click(screen.getByRole('button', { name: `Share link for ${node.name}` }));
+  const dialog = await screen.findByRole('dialog', { name: `Share ${node.name}` });
+  await within(dialog).findByText('This file has no links yet.');
+  return { user, dialog };
 }
 
 beforeEach(() => {
@@ -81,7 +110,7 @@ describe('the share dialog: a link shown once (AC-1)', () => {
     expect(within(panel).getByText('This is the only time the full link is shown.')).toBeVisible();
     expect(panel).toHaveTextContent('Expires 28 Nov 2026');
     const post = server.calls.find((call) => call.method === 'POST');
-    expect(post?.body).toEqual({ node_id: FILE.node_id });
+    expect(post?.body).toEqual({ node_id: FILE.node_id, expires_in: 7 * DAY });
 
     // Act (close and open again)
     await user.click(screen.getByRole('button', { name: 'Done' }));
@@ -97,11 +126,11 @@ describe('the share dialog: a link shown once (AC-1)', () => {
     expect(within(again).queryByRole('region', { name: 'Link created' })).not.toBeInTheDocument();
   });
 
-  it('sends the chosen days as seconds and the password only in the create request', async () => {
+  it('sends the chosen expiry as seconds and the password only in the create request', async () => {
     // Arrange
     const server = serve({ 'POST /api/v1/shares': json(created({ has_password: true }), 201) });
     const { user, dialog } = await openDialog();
-    await user.type(within(dialog).getByLabelText('Expires after (days)'), '7');
+    await user.selectOptions(within(dialog).getByLabelText('Expires'), '1 day, until 22 Nov 2026');
     await user.click(within(dialog).getByRole('switch', { name: 'Require a password' }));
     const password = within(dialog).getByLabelText('Password');
 
@@ -117,7 +146,7 @@ describe('the share dialog: a link shown once (AC-1)', () => {
     expect(within(dialog).queryByText('sunset-at-lake')).not.toBeInTheDocument();
     expect(server.calls.find((call) => call.method === 'POST')?.body).toEqual({
       node_id: FILE.node_id,
-      expires_in: 7 * 86_400,
+      expires_in: DAY,
       password: 'sunset-at-lake',
     });
     expect(panel).toHaveTextContent('Password required');
@@ -142,7 +171,7 @@ describe('the share dialog: a link shown once (AC-1)', () => {
 });
 
 describe('the share dialog: the expiry (AC-2)', () => {
-  it('starts with the server default selected: an empty field that sends no expires_in', async () => {
+  it('preselects the server default and offers no choice above the longest lifetime', async () => {
     // Arrange
     serve();
 
@@ -150,35 +179,79 @@ describe('the share dialog: the expiry (AC-2)', () => {
     const { dialog } = await openDialog();
 
     // Assert
-    const field = within(dialog).getByLabelText('Expires after (days)');
-    expect(field).toHaveValue('');
-    expect(field).toHaveAttribute('placeholder', 'Server default');
+    const field = within(dialog).getByLabelText('Expires');
+    expect(field).toHaveDisplayValue('7 days, until 28 Nov 2026');
+    expect(
+      within(field)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual([
+      '1 day, until 22 Nov 2026',
+      '7 days, until 28 Nov 2026',
+      '30 days, until 21 Dec 2026',
+    ]);
+    expect(within(dialog).getByText('This server allows links for up to 30 days.')).toBeVisible();
   });
 
-  it('refuses text that is not a whole number of days next to the field and sends nothing', async () => {
+  it('offers only what fits under a short longest lifetime', async () => {
     // Arrange
-    const server = serve();
-    const { user, dialog } = await openDialog();
+    serve({ [SERVER_INFO]: json(serverInfo({ share_default_ttl: DAY, share_max_ttl: 3 * DAY })) });
+    const user = userEvent.setup();
+    render(RowActions, { node: FILE });
 
     // Act
-    await user.type(within(dialog).getByLabelText('Expires after (days)'), 'soon');
-    await user.click(within(dialog).getByRole('button', { name: 'Create link' }));
+    await user.click(screen.getByRole('button', { name: `Share link for ${FILE.name}` }));
+    const dialog = await screen.findByRole('dialog', { name: `Share ${FILE.name}` });
+    await within(dialog).findByText('This server allows links for up to 3 days.');
 
     // Assert
-    expect(
-      await within(dialog).findByText('Enter a whole number of days, or leave the field empty.'),
-    ).toBeVisible();
-    expect(server.calls.filter((call) => call.method === 'POST')).toEqual([]);
+    const field = within(dialog).getByLabelText('Expires');
+    expect(field).toHaveDisplayValue('1 day, until 22 Nov 2026');
+    expect(within(field).getAllByRole('option')).toHaveLength(2);
+    expect(within(field).queryByRole('option', { name: /^7 days/ })).not.toBeInTheDocument();
+  });
+
+  it('offers only "Server default" and sends no expires_in when the server states no limits', async () => {
+    // Arrange
+    const server = serve({
+      [SERVER_INFO]: json(serverInfo({ share_default_ttl: undefined, share_max_ttl: undefined })),
+      'POST /api/v1/shares': json(created(), 201),
+    });
+    const { user, dialog } = await openDialogWithoutLimits();
+    const field = within(dialog).getByLabelText('Expires');
+
+    // Act
+    await user.click(within(dialog).getByRole('button', { name: 'Create link' }));
+    await screen.findByRole('region', { name: 'Link created' });
+
+    // Assert
+    expect(field).toHaveDisplayValue('Server default');
+    expect(server.calls.find((call) => call.method === 'POST')?.body).toEqual({
+      node_id: FILE.node_id,
+    });
+  });
+
+  it('falls back to "Server default" when the limits cannot be read and still lets the owner create a link', async () => {
+    // Arrange
+    serve({ [SERVER_INFO]: problem(500, 'internal') });
+    const { dialog } = await openDialogWithoutLimits();
+
+    // Act
+    const field = within(dialog).getByLabelText('Expires');
+
+    // Assert
+    expect(field).toHaveDisplayValue('Server default');
+    expect(within(dialog).getByRole('button', { name: 'Create link' })).toBeEnabled();
   });
 
   it('shows the server refusal of an expiry next to the field and creates nothing', async () => {
     // Arrange
     serve({ 'POST /api/v1/shares': problem(400, 'invalid_request') });
     const { user, dialog } = await openDialog();
-    const field = within(dialog).getByLabelText('Expires after (days)');
+    const field = within(dialog).getByLabelText('Expires');
 
     // Act
-    await user.type(field, '99999');
+    await user.selectOptions(field, '30 days, until 21 Dec 2026');
     await user.click(within(dialog).getByRole('button', { name: 'Create link' }));
 
     // Assert

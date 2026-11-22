@@ -1,13 +1,13 @@
 import type { Api, ApiError, CreatedShare, ShareList } from '$lib/api';
-import { parseExpiryDays } from './expiry';
+import type { ShareTtl } from './expiry';
 
 export type ShareInfo = ShareList['items'][number];
 
-type OwnerApi = Pick<Api, 'getShares' | 'postShare' | 'deleteShare'>;
+type OwnerApi = Pick<Api, 'getShares' | 'postShare' | 'deleteShare' | 'getServerLimits'>;
 
 export interface NewLink {
-  /** The expiry field in days; empty is the server's default. */
-  days: string;
+  /** Seconds for `expires_in`; undefined leaves it out and the server applies its default. */
+  expiresIn: number | undefined;
   /** Null for a link without a password. */
   password: string | null;
 }
@@ -37,6 +37,8 @@ function createFailureOf(error: ApiError, sentExpiry: boolean): CreateFailure {
 /** The links of one file for the owner's dialog. The token exists here only in `created`, from the create answer. */
 export class OwnerShares {
   items = $state<ShareInfo[]>([]);
+  /** The server's default and longest link lifetime; null until `loadLimits` has an answer. */
+  ttl = $state<ShareTtl | null>(null);
   status = $state<'loading' | 'ready' | 'failed'>('loading');
   /** The one-time answer of the last create: the full URL is shown from this and nowhere else. */
   created = $state<{ share: CreatedShare; url: string } | null>(null);
@@ -62,25 +64,28 @@ export class OwnerShares {
     }
   }
 
+  /** A failed read leaves `ttl` null: the form then offers "Server default" only, and the server still decides. */
+  async loadLimits() {
+    const result = await this.api.getServerLimits();
+    if (result.ok) {
+      this.ttl = { defaultTtl: result.value.shareDefaultTtl, maxTtl: result.value.shareMaxTtl };
+    }
+  }
+
   async create(link: NewLink) {
     if (this.creating) return;
-    const expiry = parseExpiryDays(link.days);
-    if (!expiry.ok) {
-      this.failure = { place: 'expiry', text: expiry.text };
-      return;
-    }
     this.creating = true;
     this.failure = null;
     const result = await this.api.postShare({
       node_id: this.nodeId,
-      ...(expiry.expiresIn === undefined ? {} : { expires_in: expiry.expiresIn }),
+      ...(link.expiresIn === undefined ? {} : { expires_in: link.expiresIn }),
       ...(link.password === null ? {} : { password: link.password }),
     });
     if (result.ok) {
       this.created = { share: result.value, url: `${this.origin}${result.value.url_path}` };
       await this.load();
     } else {
-      this.failure = createFailureOf(result.error, expiry.expiresIn !== undefined);
+      this.failure = createFailureOf(result.error, link.expiresIn !== undefined);
     }
     this.creating = false;
   }
