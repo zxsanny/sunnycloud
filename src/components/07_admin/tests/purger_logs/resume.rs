@@ -136,14 +136,24 @@ async fn it_07_10_a_cycle_dropped_mid_step_is_finished_by_a_fresh_purger() {
     let stuck = world.purger(wiring.accounts.clone(), hooks, world.api.clone());
 
     // Act
-    {
+    // A cycle may end before it reaches the armed hook without any fault: its time budget is spent on a loaded
+    // runner, or a step is skipped for a row another transaction holds. The next cycle continues the purge with a
+    // fresh budget, so the arrangement runs cycles until one enters the hang.
+    let mut hung = false;
+    for _ in 0..MAX_CYCLES {
         let cycle = stuck.run_cycle(world.clock.now_utc());
         tokio::pin!(cycle);
         tokio::select! {
-            _ = &mut cycle => panic!("the cycle ended before the hang"),
-            () = entered.notified() => {}
+            _ = &mut cycle => {}
+            () = entered.notified() => {
+                hung = true;
+            }
+        }
+        if hung {
+            break;
         }
     }
+    assert!(hung, "no cycle reached the hang in {MAX_CYCLES} cycles");
     drop(stuck);
     let mut conn = world.fixture().await;
     let state_after_drop = state(&mut conn, target.account).await;
