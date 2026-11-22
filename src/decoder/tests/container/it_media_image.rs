@@ -146,7 +146,6 @@ fn expected(orientation: u8, edge: u32) -> (u32, u32) {
 }
 
 fn check_result(
-    decoder: &Decoder,
     job: &crate::decoder::Job,
     answer: Response,
     want: (u32, u32),
@@ -172,7 +171,6 @@ fn check_result(
             .all(|chunk| chunk == "VP8 " || chunk == "VP8L"),
         "{label}: metadata chunks {chunks:?}"
     );
-    let _ = decoder;
     let score = ssim(&file, reference);
     assert!(
         score >= 0.95,
@@ -203,7 +201,6 @@ fn it_10_5_thumbnails_and_previews_apply_every_orientation() {
             let answer = peer.call(render(&job, edge, photo_limits()), WAIT);
             let label = format!("orientation {orientation} at {edge}");
             lowest = lowest.min(check_result(
-                &decoder,
                 &job,
                 answer,
                 expected(orientation, edge),
@@ -234,7 +231,6 @@ fn it_10_5_heic_renders_through_the_image_decode_and_applies_irot() {
         let job = decoder.job(&heic);
         let answer = peer.call(render(&job, edge, photo_limits()), WAIT);
         let score = check_result(
-            &decoder,
             &job,
             answer,
             (edge, edge * 3 / 4),
