@@ -113,6 +113,8 @@ impl fmt::Debug for DeviceAuthorization {
 pub struct ProviderInfo {
     pub key: String,
     pub display_name: String,
+    /// `github`, `oidc` or `apple`: a client tells Sign in with Apple by the kind, not by the key.
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,8 +1,11 @@
-//! Provider clients: one per provider kind behind [`ProviderClient`], so a further kind (Sign in with Apple)
-//! is a new implementation and does not change the trait.
+//! Provider clients: one per provider kind behind [`ProviderClient`], so a further kind is a new implementation
+//! and does not change the trait (Sign in with Apple is the third).
 
+mod apple;
+mod apple_secret;
 mod github;
 mod oidc;
+mod openid;
 
 use std::error::Error;
 use std::sync::Arc;
@@ -93,6 +96,9 @@ pub(crate) fn build(
             index, config, http, read_email,
         )?)),
         "oidc" => Ok(Arc::new(oidc::OidcClient::new(
+            index, config, http, clock, read_email,
+        )?)),
+        "apple" => Ok(Arc::new(apple::AppleClient::new(
             index, config, http, clock, read_email,
         )?)),
         _ => Err(invalid(index, "kind", Reason::WrongType)),

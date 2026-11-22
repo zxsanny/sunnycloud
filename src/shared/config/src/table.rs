@@ -118,10 +118,15 @@ settings_table! {
     github_client_id: Opt<Text> = unset(A);
     oidc_issuer: Opt<Text> = unset(A);
     oidc_client_id: Opt<Text> = unset(A);
+    // Sign in with Apple (v1.1): the Services ID, the 10-character Team ID and the key id; `apple_p8` is the key file.
+    apple_client_id: Opt<Text> = unset(A);
+    apple_team_id: Opt<Text> = unset(A);
+    apple_key_id: Opt<Text> = unset(A);
     geoip_db_path: Opt<Text> = unset(A);
     allow_plain_http_dev: Flag = dflt("off", A);
     provider_github_client_secret: Opt<Sec> = unset(A);
     provider_oidc_client_secret: Opt<Sec> = unset(A);
+    apple_p8: Opt<Sec> = unset(A);
     setup_token: Opt<Sec> = unset(A);
     // How often 12 runs 01's `IdentityMaintenance` (owner decision 2026-11-14).
     identity_janitor_interval: Dur = dflt("5m", A);

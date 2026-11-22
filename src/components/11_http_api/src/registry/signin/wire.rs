@@ -73,7 +73,7 @@ pub(super) fn providers(list: &ProviderList) -> Value {
     let providers: Vec<Value> = list
         .providers
         .iter()
-        .map(|provider| json!({"key": provider.key, "display_name": provider.display_name}))
+        .map(|provider| json!({"key": provider.key, "display_name": provider.display_name, "kind": provider.kind}))
         .collect();
     json!({"providers": providers, "setup_required": list.setup_required})
 }
@@ -144,8 +144,15 @@ pub(super) const PROVIDER_LIST: SchemaRef = SchemaRef {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["key", "display_name"],
-                        "properties": {"key": {"type": "string"}, "display_name": {"type": "string"}}
+                        "required": ["key", "display_name", "kind"],
+                        "properties": {
+                            "key": {"type": "string"},
+                            "display_name": {"type": "string"},
+                            "kind": {
+                                "type": "string",
+                                "description": "github, oidc or apple: a client tells Sign in with Apple by the kind, not by the key"
+                            }
+                        }
                     }
                 },
                 "setup_required": {"type": "boolean"}

@@ -9,6 +9,7 @@
 #![allow(dead_code, unused_imports)]
 
 pub mod accounts;
+pub mod apple;
 pub mod audit;
 pub mod auth;
 pub mod device;

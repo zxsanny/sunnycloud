@@ -107,9 +107,15 @@ fn check_sign_in_provider(settings: &Settings, problems: &mut Vec<KeyProblem>) {
             settings.provider_oidc_client_secret.is_some(),
         ),
     ];
+    let apple = [
+        ("apple_client_id", settings.apple_client_id.is_some()),
+        ("apple_team_id", settings.apple_team_id.is_some()),
+        ("apple_key_id", settings.apple_key_id.is_some()),
+        ("apple_p8", settings.apple_p8.is_some()),
+    ];
     let mut any_complete = false;
     let mut any_partial = false;
-    for provider in [&github[..], &oidc[..]] {
+    for provider in [&github[..], &oidc[..], &apple[..]] {
         let missing: Vec<&str> = provider
             .iter()
             .filter(|(_, present)| !present)

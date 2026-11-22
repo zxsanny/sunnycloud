@@ -2,7 +2,9 @@ use std::time::Duration;
 
 use sc_config::{KeyProblem, Reason, Secret, Settings};
 
-const PROVIDER_KINDS: [&str; 2] = ["github", "oidc"];
+const PROVIDER_KINDS: [&str; 3] = ["github", "oidc", "apple"];
+/// Apple Team IDs are 10 characters, letters and digits.
+const APPLE_TEAM_ID_LEN: usize = 10;
 const DEVICE_CODE_TTL_CEILING: Duration = Duration::from_secs(600);
 /// Above this the session cache outlives the 5 s revocation bound (AC-21).
 const SESSION_CACHE_TTL_CEILING: Duration = Duration::from_secs(3);
@@ -12,12 +14,20 @@ const SESSION_CACHE_TTL_CEILING: Duration = Duration::from_secs(3);
 pub struct ProviderConfig {
     /// The key the provider is addressed by in callback paths.
     pub key: String,
-    /// `github` or `oidc`; any other text is refused by [`IdentityConfig::validate`].
+    /// `github`, `oidc` or `apple`; any other text is refused by [`IdentityConfig::validate`].
     pub kind: String,
-    /// OIDC issuer; for `github` an override of the provider's base URL (used to point at mock-idp).
+    /// OIDC issuer; for `github` an override of the provider's base URL (used to point at mock-idp); for
+    /// `apple` an override of `https://appleid.apple.com`.
     pub issuer: Option<String>,
+    /// For `apple` the Services ID.
     pub client_id: String,
+    /// For `apple` the contents of the `.p8` private key file; the client secret sent to Apple is derived from
+    /// it for every exchange.
     pub client_secret: Secret<String>,
+    /// `apple` only: the 10-character Team ID, the `iss` of the client-secret JWT.
+    pub team_id: Option<String>,
+    /// `apple` only: the key id of the `.p8` key, the `kid` header of the client-secret JWT.
+    pub key_id: Option<String>,
 }
 
 /// The identity section of the key table, typed. Defaults and per-key ranges come from `sc_config`.
@@ -59,6 +69,8 @@ impl IdentityConfig {
                 issuer: None,
                 client_id: client_id.clone(),
                 client_secret: secret.clone(),
+                team_id: None,
+                key_id: None,
             });
         }
         if let (Some(issuer), Some(client_id), Some(secret)) = (
@@ -72,6 +84,24 @@ impl IdentityConfig {
                 issuer: Some(issuer.clone()),
                 client_id: client_id.clone(),
                 client_secret: secret.clone(),
+                team_id: None,
+                key_id: None,
+            });
+        }
+        if let (Some(client_id), Some(team_id), Some(key_id), Some(p8)) = (
+            &settings.apple_client_id,
+            &settings.apple_team_id,
+            &settings.apple_key_id,
+            &settings.apple_p8,
+        ) {
+            providers.push(ProviderConfig {
+                key: "apple".to_owned(),
+                kind: "apple".to_owned(),
+                issuer: None,
+                client_id: client_id.clone(),
+                client_secret: p8.clone(),
+                team_id: Some(team_id.clone()),
+                key_id: Some(key_id.clone()),
             });
         }
         IdentityConfig {
@@ -145,9 +175,37 @@ impl IdentityConfig {
                     format!("providers[{index}].kind"),
                     Reason::WrongType,
                 ));
+            } else if provider.kind == "apple" {
+                check_apple(index, provider, problems);
             }
         }
     }
+}
+
+/// An `apple` provider needs its `.p8` key, its 10-character Team ID and its key id; each problem names the
+/// provider's entry (whether the key file parses is checked when the client is built).
+fn check_apple(index: usize, provider: &ProviderConfig, problems: &mut Vec<KeyProblem>) {
+    let mut missing = |field: &str, reason: Reason| {
+        problems.push(KeyProblem::new(
+            format!("providers[{index}].{field}"),
+            reason,
+        ));
+    };
+    if provider.client_secret.expose().trim().is_empty() {
+        missing("client_secret", Reason::MissingRequired);
+    }
+    match provider.team_id.as_deref() {
+        None | Some("") => missing("team_id", Reason::MissingRequired),
+        Some(team_id) if !is_team_id(team_id) => missing("team_id", Reason::WrongType),
+        Some(_) => {}
+    }
+    if provider.key_id.as_deref().is_none_or(str::is_empty) {
+        missing("key_id", Reason::MissingRequired);
+    }
+}
+
+fn is_team_id(text: &str) -> bool {
+    text.len() == APPLE_TEAM_ID_LEN && text.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
 fn check_ceiling(

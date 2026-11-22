@@ -1381,6 +1381,8 @@ export interface components {
             providers: {
                 display_name: string;
                 key: string;
+                /** @description github, oidc or apple: a client tells Sign in with Apple by the kind, not by the key */
+                kind: string;
             }[];
             setup_required: boolean;
         };

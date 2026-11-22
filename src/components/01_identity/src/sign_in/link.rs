@@ -33,6 +33,7 @@ pub(super) fn provider_list(providers: &[ProviderConfig]) -> Vec<ProviderInfo> {
         .map(|provider| ProviderInfo {
             key: provider.key.clone(),
             display_name: display_name(provider).to_owned(),
+            kind: provider.kind.clone(),
         })
         .collect()
 }
@@ -41,6 +42,7 @@ fn display_name(provider: &ProviderConfig) -> &str {
     match provider.kind.as_str() {
         "github" => "GitHub",
         "oidc" => "OpenID Connect",
+        "apple" => "Apple",
         _ => provider.key.as_str(),
     }
 }
@@ -146,6 +148,8 @@ mod tests {
             issuer: None,
             client_id: "client".to_owned(),
             client_secret: Secret::new("secret".to_owned()),
+            team_id: None,
+            key_id: None,
         }
     }
 
@@ -158,11 +162,23 @@ mod tests {
         let list = provider_list(&configured);
 
         // Assert
-        let keys: Vec<(&str, &str)> = list
+        let keys: Vec<(&str, &str, &str)> = list
             .iter()
-            .map(|info| (info.key.as_str(), info.display_name.as_str()))
+            .map(|info| {
+                (
+                    info.key.as_str(),
+                    info.display_name.as_str(),
+                    info.kind.as_str(),
+                )
+            })
             .collect();
-        assert_eq!(keys, vec![("oidc", "OpenID Connect"), ("github", "GitHub")]);
+        assert_eq!(
+            keys,
+            vec![
+                ("oidc", "OpenID Connect", "oidc"),
+                ("github", "GitHub", "github")
+            ]
+        );
     }
 
     #[test]

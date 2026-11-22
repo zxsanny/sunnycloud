@@ -280,10 +280,12 @@ async fn the_provider_list_is_the_configured_providers_and_setup_is_required_unt
         ProviderInfo {
             key: GITHUB.to_owned(),
             display_name: "GitHub".to_owned(),
+            kind: "github".to_owned(),
         },
         ProviderInfo {
             key: OIDC.to_owned(),
             display_name: "OpenID Connect".to_owned(),
+            kind: "oidc".to_owned(),
         },
     ];
 

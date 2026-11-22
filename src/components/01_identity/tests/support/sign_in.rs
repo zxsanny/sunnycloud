@@ -75,10 +75,24 @@ pub async fn world_limited(change: impl FnOnce(&mut IdentityConfig), table: Limi
         issuer: Some(idp.base_url()),
         client_id: client_id.to_owned(),
         client_secret: Secret::new("provider-secret".to_owned()),
+        team_id: None,
+        key_id: None,
     };
     harness.config.providers = vec![provider(GITHUB, "gh-client"), provider(OIDC, "oidc-client")];
     harness.config.allow_plain_http_dev = true;
     change(&mut harness.config);
+    // A provider the test added without an issuer points at the in-process provider.
+    for added in harness
+        .config
+        .providers
+        .iter_mut()
+        .filter(|added| added.issuer.is_none())
+    {
+        added.issuer = Some(match added.kind.as_str() {
+            "apple" => idp.apple_issuer(),
+            _ => idp.base_url(),
+        });
+    }
     let service = IdentitySignIn::new(
         harness.api.clone(),
         harness.clock.clone(),

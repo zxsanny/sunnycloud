@@ -5,7 +5,8 @@ mod support;
 use std::time::Duration;
 
 use sc_config::{KeyProblem, Reason};
-use sunnycloud_identity::IdentityConfig;
+use sunnycloud_identity::{IdentityConfig, IdentityError, IdentityProvidersCheck};
+use support::apple::{APPLE, KEY_ID, SERVICES_ID, TEAM_ID, TeamKey};
 use support::{identity_config, load_settings};
 
 const MINUTE: u64 = 60;
@@ -32,7 +33,15 @@ fn assert_refused_then_accepted(
     break_it: impl FnOnce(&mut IdentityConfig),
     fix: impl FnOnce(&mut IdentityConfig),
 ) {
-    let mut config = valid();
+    refused_then_accepted(valid(), key, break_it, fix);
+}
+
+fn refused_then_accepted(
+    mut config: IdentityConfig,
+    key: &str,
+    break_it: impl FnOnce(&mut IdentityConfig),
+    fix: impl FnOnce(&mut IdentityConfig),
+) {
     break_it(&mut config);
     let refused = config.validate();
     assert_eq!(keys(&refused), [key]);
@@ -214,4 +223,108 @@ fn refusal_reasons_are_out_of_range_for_ceilings() {
             }
         )]
     );
+}
+
+fn apple_valid() -> IdentityConfig {
+    let mut config = valid();
+    config.providers = vec![TeamKey::generate().provider()];
+    config
+}
+
+#[test]
+fn an_apple_provider_with_its_key_team_id_and_key_id_is_valid() {
+    // Arrange
+    let config = apple_valid();
+
+    // Act
+    let problems = config.validate();
+
+    // Assert
+    assert_eq!(problems, Vec::new());
+}
+
+#[test]
+fn an_apple_provider_without_its_key_file_is_refused_naming_the_provider_entry() {
+    let good = apple_valid().providers;
+    refused_then_accepted(
+        apple_valid(),
+        "providers[0].client_secret",
+        |config| config.providers[0].client_secret = sc_config::Secret::new("  \n".to_owned()),
+        |config| config.providers = good,
+    );
+}
+
+#[test]
+fn an_apple_provider_without_a_team_id_or_key_id_or_with_a_malformed_team_id_is_refused_naming_it()
+{
+    for (key, broken) in [
+        ("providers[0].team_id", None),
+        ("providers[0].team_id", Some("SHORT")),
+        ("providers[0].team_id", Some("TEAM-23456")),
+    ] {
+        refused_then_accepted(
+            apple_valid(),
+            key,
+            |config| config.providers[0].team_id = broken.map(str::to_owned),
+            |config| config.providers[0].team_id = Some(TEAM_ID.to_owned()),
+        );
+    }
+    refused_then_accepted(
+        apple_valid(),
+        "providers[0].key_id",
+        |config| config.providers[0].key_id = None,
+        |config| config.providers[0].key_id = Some(KEY_ID.to_owned()),
+    );
+}
+
+#[test]
+fn a_key_file_that_is_not_an_ec_key_refuses_the_start_naming_the_provider_entry_without_echoing_it()
+{
+    // Arrange
+    let mut config = apple_valid();
+    config.providers[0].client_secret = sc_config::Secret::new("not-a-key-file".to_owned());
+
+    // Act
+    let result = IdentityProvidersCheck::new(sc_testdb::clock_at_start(), &config);
+
+    // Assert
+    let Err(IdentityError::Config(problems)) = result else {
+        panic!("expected a config refusal");
+    };
+    assert_eq!(keys(&problems), ["providers[0].client_secret"]);
+    assert!(!problems[0].to_string().contains("not-a-key-file"));
+}
+
+#[test]
+fn the_apple_keys_of_the_settings_make_an_apple_provider_after_github() {
+    // Arrange
+    let team = TeamKey::generate();
+    let dir = tempfile::tempdir().expect("scratch dir");
+    let file = dir.path().join("apple_p8");
+    std::fs::write(&file, &team.p8).expect("write the key file");
+    let file_path = file.to_string_lossy().into_owned();
+
+    // Act
+    let settings = load_settings(&[
+        ("SUNNYCLOUD_APPLE_CLIENT_ID", SERVICES_ID),
+        ("SUNNYCLOUD_APPLE_TEAM_ID", TEAM_ID),
+        ("SUNNYCLOUD_APPLE_KEY_ID", KEY_ID),
+        ("SUNNYCLOUD_APPLE_P8_FILE", file_path.as_str()),
+    ]);
+    let config = IdentityConfig::from_settings(&settings);
+
+    // Assert
+    let kinds: Vec<&str> = config.providers.iter().map(|p| p.kind.as_str()).collect();
+    assert_eq!(kinds, ["github", APPLE]);
+    let apple = &config.providers[1];
+    assert_eq!(
+        (
+            apple.client_id.as_str(),
+            apple.team_id.as_deref(),
+            apple.key_id.as_deref()
+        ),
+        (SERVICES_ID, Some(TEAM_ID), Some(KEY_ID))
+    );
+    assert_eq!(apple.client_secret.expose().as_str(), team.p8.trim_end());
+    assert_eq!(config.validate(), Vec::new());
 }

@@ -34,7 +34,7 @@ Plain configuration comes from environment variables (a `.env` file next to `com
 | `SUNNYCLOUD_TRUSTED_PROXIES` | Caddy's fixed address on `proxy` (`172.29.1.2`) | Default deny: unset means `X-Forwarded-For` is ignored and every client has the proxy's address (AC-20 would then rate-limit everyone as one) |
 | `SUNNYCLOUD_BLOB_FREE_RESERVE` | `20GiB` | Free-space floor; uploads and sessions are refused below it (AC-39) |
 | `SUNNYCLOUD_DEFAULT_QUOTA` | `100GiB` | Per-user quota default; admin override per user |
-| `SUNNYCLOUD_GITHUB_CLIENT_ID` and/or `SUNNYCLOUD_OIDC_ISSUER`, `SUNNYCLOUD_OIDC_CLIENT_ID` | | At least one provider (AC-19); client secrets are files |
+| `SUNNYCLOUD_GITHUB_CLIENT_ID` and/or `SUNNYCLOUD_OIDC_ISSUER`, `SUNNYCLOUD_OIDC_CLIENT_ID` and/or `SUNNYCLOUD_APPLE_CLIENT_ID`, `SUNNYCLOUD_APPLE_TEAM_ID`, `SUNNYCLOUD_APPLE_KEY_ID` | | At least one provider (AC-19); client secrets are files. Apple (v1.1) needs all three keys and the `apple_p8` secret file |
 | `SUNNYCLOUD_ALLOWLIST_EMAILS` | empty | Optional verified emails allowed to redeem an invite |
 
 Optional: `WORKER_CPUS` (default 2; at most half the host cores) and `WORKER_MEM` (default 4g) for the `decoder-general` container (`decoder-interactive` is fixed at 2 CPU and 2 GiB), `SUNNYCLOUD_INTERNAL_ADDR` (the worker listener; the install sets it to the API's `backend` address, `172.29.0.2:8081`, so the listener is not reachable from `proxy`; the key's default `0.0.0.0:8081` is for dev), `SUNNYCLOUD_SHARE_MAX_TTL` (default `365d`), `SUNNYCLOUD_NVENC` (v1.1, default `off`), `SUNNYCLOUD_LOG_LEVEL` (default `info`), `SUNNYCLOUD_AUDIT_RETENTION` (default `365d`, `0` = keep), `SUNNYCLOUD_SCRUB_INTERVAL`, `SUNNYCLOUD_SCRUB_MAX_RATE`.
@@ -92,7 +92,7 @@ WORKER_MEM=4g
 | `worker_api_token` | Operator at install | `secrets/` | api, worker | Two-secret rotation without a refusal window: `deployment_procedures.md` section "Worker secret rotation" (`worker_api_token_next` on the API first) |
 | `share_grant_key` | Operator at install (`openssl rand -out secrets/share_grant_key 32`) | `secrets/` | api only | Change and restart; outstanding share access grants stop working, links and passwords are unaffected |
 | Provider client secrets | Provider console | `secrets/` | api | Per provider policy |
-| Apple `.p8` (v1.1) | Apple developer console | `secrets/` as a file | api | Apple key lifetime; the server regenerates the ES256 client secret itself, so no six-month manual step |
+| Apple `.p8` (v1.1) | Apple developer console | `secrets/apple_p8` as a file (`SUNNYCLOUD_APPLE_P8_FILE`); with `SUNNYCLOUD_APPLE_CLIENT_ID`, `SUNNYCLOUD_APPLE_TEAM_ID` and `SUNNYCLOUD_APPLE_KEY_ID` | api | Apple key lifetime; the server regenerates the ES256 client secret itself, so no six-month manual step |
 | Setup token | Operator (optional) or the server at first start | `secrets/setup_token` or printed once | api until the first admin exists | Voided at use (AC-23) |
 | Updater keys (active and recovery Ed25519) | Owner, offline | Never in CI: the manifest is signed offline or in a manual job; the recovery key stays in cold storage | the owner only | Active key rotated through a manifest signed by the recovery key; see `ci_cd_pipeline.md` |
 | CI: image signing (keyless OIDC), store keys | Owner | GitHub Environment `release`; the Woodpecker fallback holds no signing secret | `release` jobs only | Per key; see `ci_cd_pipeline.md` |

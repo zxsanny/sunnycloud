@@ -1,8 +1,12 @@
 //! An identity provider that runs in this process on a local port: OIDC discovery, JWKS, token endpoint with
 //! ES256-signed id tokens, and the GitHub endpoints (`/login/oauth/access_token`, `/user`, `/user/emails`).
-//! It stands in for the external service (mock-idp, E-31/c13); the client under test talks to it over a real
+//! Under `/apple` it answers as Sign in with Apple does: no PKCE, a client-secret JWT checked by a hook the test
+//! installs, `email_verified` as text. It stands in for the external service (mock-idp, E-31/c13); the client under test talks to it over a real
 //! socket and validates its answers for real. The "browser" step is [`FakeProvider::authorize`]: it reads the
 //! authorization URL the service produced and mints the one-time code the callback carries.
+
+#[path = "mini_http.rs"]
+mod mini_http;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -16,13 +20,18 @@ use ring::digest::{SHA256, digest};
 use ring::rand::SystemRandom;
 use ring::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair};
 use serde_json::{Value, json};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::{JoinHandle, JoinSet};
+
+use mini_http::{Request, Response, read_request, url_form, write_response};
 
 const KEY_ID: &str = "fake-key-1";
 const ID_TOKEN_LIFETIME_SECS: i64 = 3600;
 const STALL: Duration = Duration::from_secs(3600);
+const APPLE: &str = "/apple";
+
+/// Judges the `client_secret` of an Apple token request: `Err` is the refusal's reason. Installed by the test.
+pub type ClientSecretCheck = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
 /// What the provider does differently from a healthy one; each field is off by default.
 #[derive(Clone, Default)]
@@ -32,6 +41,10 @@ pub struct Behaviour {
     /// `token_endpoint` and `jwks_uri` as the discovery document advertises them.
     pub advertised_token_endpoint: Option<String>,
     pub advertised_jwks_uri: Option<String>,
+    /// The key set endpoint answers 302 to this location.
+    pub jwks_redirect: Option<String>,
+    /// The id tokens are signed, then their signature is altered.
+    pub corrupt_id_token_signature: bool,
     /// The token endpoint answers 302 to this location.
     pub token_redirect: Option<String>,
     /// GitHub's `/user/emails`: `(address, primary, verified)`.
@@ -51,7 +64,8 @@ pub struct Grant {
     /// The id token's `name` and `preferred_username` claims; absent by default.
     pub name: Option<String>,
     pub preferred_username: Option<String>,
-    code_challenge: String,
+    /// `None` for an Apple grant: its authorization URL carries no PKCE challenge.
+    code_challenge: Option<String>,
 }
 
 struct Inner {
@@ -60,6 +74,8 @@ struct Inner {
     behaviour: Behaviour,
     hits: Vec<String>,
     counter: u64,
+    client_secret_check: Option<ClientSecretCheck>,
+    client_secrets: Vec<String>,
 }
 
 struct Shared {
@@ -74,27 +90,11 @@ pub struct FakeProvider {
     task: JoinHandle<()>,
 }
 
-struct Request {
-    method: String,
-    path: String,
-    headers: HashMap<String, String>,
-    body: Vec<u8>,
-}
-
-struct Response {
-    status: u16,
-    headers: Vec<(&'static str, String)>,
-    body: Vec<u8>,
-}
-
-impl Response {
-    fn json(status: u16, body: &Value) -> Response {
-        Response {
-            status,
-            headers: vec![("Content-Type", "application/json".to_owned())],
-            body: body.to_string().into_bytes(),
-        }
-    }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Github,
+    Oidc,
+    Apple,
 }
 
 impl FakeProvider {
@@ -119,6 +119,8 @@ impl FakeProvider {
                 behaviour: Behaviour::default(),
                 hits: Vec::new(),
                 counter: 0,
+                client_secret_check: None,
+                client_secrets: Vec::new(),
             }),
         });
         let task = tokio::spawn(accept_loop(listener, Arc::clone(&shared)));
@@ -139,6 +141,21 @@ impl FakeProvider {
 
     pub fn behave(&self, change: impl FnOnce(&mut Behaviour)) {
         change(&mut self.lock().behaviour);
+    }
+
+    /// Apple's token endpoint refuses a `client_secret` the check refuses; every secret it receives is recorded.
+    pub fn check_client_secrets(&self, check: ClientSecretCheck) {
+        self.lock().client_secret_check = Some(check);
+    }
+
+    /// The `client_secret` of every Apple token request so far, in order.
+    pub fn client_secrets(&self) -> Vec<String> {
+        self.lock().client_secrets.clone()
+    }
+
+    /// Where the Apple provider's issuer is (its discovery document and endpoints live under it).
+    pub fn apple_issuer(&self) -> String {
+        format!("{}{APPLE}", self.shared.base)
     }
 
     /// Requests received so far whose path starts with `prefix` (`""` counts all).
@@ -164,6 +181,18 @@ impl FakeProvider {
     ) -> Vec<(String, String)> {
         let url = Url::parse(authorization_url).expect("authorization url");
         let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+        let apple = url.path().starts_with(APPLE);
+        let code_challenge = if apple {
+            assert!(!query.contains_key("code_challenge"), "{authorization_url}");
+            None
+        } else {
+            Some(
+                query
+                    .get("code_challenge")
+                    .cloned()
+                    .expect("PKCE challenge in the url"),
+            )
+        };
         let mut grant = Grant {
             subject: subject.to_owned(),
             nonce: query.get("nonce").cloned().unwrap_or_default(),
@@ -171,14 +200,15 @@ impl FakeProvider {
                 .get("client_id")
                 .cloned()
                 .expect("client_id in the url"),
-            issuer: self.shared.base.clone(),
+            issuer: if apple {
+                self.apple_issuer()
+            } else {
+                self.shared.base.clone()
+            },
             email: None,
             name: None,
             preferred_username: None,
-            code_challenge: query
-                .get("code_challenge")
-                .cloned()
-                .expect("PKCE challenge in the url"),
+            code_challenge,
         };
         change(&mut grant);
         let mut inner = self.lock();
@@ -223,70 +253,7 @@ async fn connection(mut stream: TcpStream, shared: Arc<Shared>) {
         Err(error) => return eprintln!("fake provider: unreadable request: {error}"),
     };
     let response = shared.route(request).await;
-    let mut head = format!(
-        "HTTP/1.1 {} X\r\nContent-Length: {}\r\nConnection: close\r\n",
-        response.status,
-        response.body.len()
-    );
-    for (name, value) in &response.headers {
-        head.push_str(&format!("{name}: {value}\r\n"));
-    }
-    head.push_str("\r\n");
-    let written = async {
-        stream.write_all(head.as_bytes()).await?;
-        stream.write_all(&response.body).await?;
-        stream.shutdown().await
-    }
-    .await;
-    if let Err(error) = written {
-        eprintln!("fake provider: write failed: {error}");
-    }
-}
-
-async fn read_request(stream: &mut TcpStream) -> std::io::Result<Request> {
-    let mut buffer = Vec::new();
-    let head_end = loop {
-        if let Some(position) = buffer.windows(4).position(|window| window == b"\r\n\r\n") {
-            break position;
-        }
-        let mut chunk = [0u8; 2048];
-        let read = stream.read(&mut chunk).await?;
-        if read == 0 {
-            return Err(std::io::ErrorKind::UnexpectedEof.into());
-        }
-        buffer.extend_from_slice(&chunk[..read]);
-    };
-    let head = String::from_utf8_lossy(&buffer[..head_end]).into_owned();
-    let mut lines = head.split("\r\n");
-    let mut start = lines.next().unwrap_or_default().split(' ');
-    let (method, target) = (
-        start.next().unwrap_or_default().to_owned(),
-        start.next().unwrap_or_default().to_owned(),
-    );
-    let headers: HashMap<String, String> = lines
-        .filter_map(|line| line.split_once(':'))
-        .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_owned()))
-        .collect();
-    let length: usize = headers
-        .get("content-length")
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(0);
-    let mut body = buffer[head_end + 4..].to_vec();
-    while body.len() < length {
-        let mut chunk = [0u8; 2048];
-        let read = stream.read(&mut chunk).await?;
-        if read == 0 {
-            return Err(std::io::ErrorKind::UnexpectedEof.into());
-        }
-        body.extend_from_slice(&chunk[..read]);
-    }
-    let path = target.split('?').next().unwrap_or_default().to_owned();
-    Ok(Request {
-        method,
-        path,
-        headers,
-        body,
-    })
+    write_response(&mut stream, &response).await;
 }
 
 impl Shared {
@@ -300,12 +267,19 @@ impl Shared {
             inner.hits.push(request.path.clone());
             inner.behaviour.clone()
         };
-        match (request.method.as_str(), request.path.as_str()) {
-            ("GET", "/.well-known/openid-configuration") => self.discovery(&behaviour),
-            ("GET", "/jwks") => self.jwks(),
-            ("POST", "/token") => self.token(&request, &behaviour, true).await,
-            ("POST" | "GET", "/login/oauth/access_token") => {
-                self.token(&request, &behaviour, false).await
+        let (apple, path) = match request.path.strip_prefix(APPLE) {
+            Some(rest) if rest.starts_with('/') => (true, rest),
+            _ => (false, request.path.as_str()),
+        };
+        match (request.method.as_str(), path) {
+            ("GET", "/.well-known/openid-configuration") => self.discovery(&behaviour, apple),
+            ("GET", "/jwks") => self.jwks(&behaviour),
+            ("POST", "/token") => {
+                let kind = if apple { Kind::Apple } else { Kind::Oidc };
+                self.token(&request, &behaviour, kind).await
+            }
+            ("POST" | "GET", "/login/oauth/access_token") if !apple => {
+                self.token(&request, &behaviour, Kind::Github).await
             }
             ("GET", "/user") => self.github_user(&request, &behaviour),
             ("GET", "/user/emails") => self.github_emails(&behaviour),
@@ -313,8 +287,12 @@ impl Shared {
         }
     }
 
-    fn discovery(&self, behaviour: &Behaviour) -> Response {
-        let base = &self.base;
+    fn discovery(&self, behaviour: &Behaviour, apple: bool) -> Response {
+        let base = &if apple {
+            format!("{}{APPLE}", self.base)
+        } else {
+            self.base.clone()
+        };
         Response::json(
             200,
             &json!({
@@ -331,7 +309,14 @@ impl Shared {
         )
     }
 
-    fn jwks(&self) -> Response {
+    fn jwks(&self, behaviour: &Behaviour) -> Response {
+        if let Some(location) = &behaviour.jwks_redirect {
+            return Response {
+                status: 302,
+                headers: vec![("Location", location.clone())],
+                body: Vec::new(),
+            };
+        }
         let point = self.key.public_key().as_ref();
         Response::json(
             200,
@@ -343,7 +328,7 @@ impl Shared {
         )
     }
 
-    async fn token(&self, request: &Request, behaviour: &Behaviour, oidc: bool) -> Response {
+    async fn token(&self, request: &Request, behaviour: &Behaviour, kind: Kind) -> Response {
         if behaviour.stall_token_endpoint {
             tokio::time::sleep(STALL).await;
         }
@@ -357,31 +342,44 @@ impl Shared {
         let form: HashMap<String, String> = url_form(&request.body);
         let invalid_grant = || Response::json(400, &json!({"error": "invalid_grant"}));
         let mut inner = self.lock();
+        if kind == Kind::Apple {
+            let secret = form.get("client_secret").map_or("", String::as_str);
+            inner.client_secrets.push(secret.to_owned());
+            let verdict = inner
+                .client_secret_check
+                .as_ref()
+                .map_or(Ok(()), |check| check(secret));
+            if verdict.is_err() {
+                return Response::json(400, &json!({"error": "invalid_client"}));
+            }
+        }
         let Some(grant) = form
             .get("code")
             .and_then(|code| inner.grants.remove(code.as_str()))
         else {
             return invalid_grant();
         };
-        let verifier = form.get("code_verifier").map_or("", String::as_str);
-        let challenge = URL_SAFE_NO_PAD.encode(digest(&SHA256, verifier.as_bytes()));
-        if challenge != grant.code_challenge {
-            return invalid_grant();
+        if let Some(expected) = &grant.code_challenge {
+            let verifier = form.get("code_verifier").map_or("", String::as_str);
+            let challenge = URL_SAFE_NO_PAD.encode(digest(&SHA256, verifier.as_bytes()));
+            if &challenge != expected {
+                return invalid_grant();
+            }
         }
         let access_token = format!("access-{}", grant.subject);
         inner
             .access_tokens
             .insert(access_token.clone(), grant.subject.clone());
         let mut body = json!({"access_token": access_token, "token_type": "bearer"});
-        if oidc {
+        if kind != Kind::Github {
             body["token_type"] = json!("Bearer");
             body["expires_in"] = json!(ID_TOKEN_LIFETIME_SECS);
-            body["id_token"] = json!(self.id_token(&grant));
+            body["id_token"] = json!(self.id_token(&grant, kind == Kind::Apple, behaviour));
         }
         Response::json(200, &body)
     }
 
-    fn id_token(&self, grant: &Grant) -> String {
+    fn id_token(&self, grant: &Grant, apple: bool, behaviour: &Behaviour) -> String {
         let header = json!({"alg": "ES256", "typ": "JWT", "kid": KEY_ID});
         let mut claims = json!({
             "iss": grant.issuer,
@@ -393,7 +391,11 @@ impl Shared {
         });
         if let Some((address, verified)) = &grant.email {
             claims["email"] = json!(address);
-            claims["email_verified"] = json!(verified);
+            claims["email_verified"] = if apple {
+                json!(verified.to_string())
+            } else {
+                json!(verified)
+            };
         }
         if let Some(name) = &grant.name {
             claims["name"] = json!(name);
@@ -410,10 +412,11 @@ impl Shared {
             .key
             .sign(&SystemRandom::new(), signing_input.as_bytes())
             .expect("sign the id token");
-        format!(
-            "{signing_input}.{}",
-            URL_SAFE_NO_PAD.encode(signature.as_ref())
-        )
+        let mut bytes = signature.as_ref().to_vec();
+        if behaviour.corrupt_id_token_signature {
+            bytes[0] ^= 0xff;
+        }
+        format!("{signing_input}.{}", URL_SAFE_NO_PAD.encode(bytes))
     }
 
     fn github_user(&self, request: &Request, behaviour: &Behaviour) -> Response {
@@ -441,13 +444,4 @@ impl Shared {
             .collect();
         Response::json(200, &Value::Array(entries))
     }
-}
-
-fn url_form(body: &[u8]) -> HashMap<String, String> {
-    let text = String::from_utf8_lossy(body);
-    Url::parse(&format!("http://form.invalid/?{text}"))
-        .expect("form body")
-        .query_pairs()
-        .into_owned()
-        .collect()
 }

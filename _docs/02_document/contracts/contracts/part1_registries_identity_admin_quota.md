@@ -3,9 +3,9 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c03 — `_docs/02_tasks/todo/B01-12_contracts_part1.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c04 (part 2), E-00/c05 (part 3); other batches: E-10..E-22, E-30 (implementers and callers)
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: draft (frozen when the producer task is accepted)
-**Last Updated**: 2026-11-14
+**Last Updated**: 2026-11-22
 
 ## Purpose
 
@@ -59,7 +59,7 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | | `begin_link` | `&Principal, provider` -> `AuthorizationRedirect` | as `begin` |
 | | `complete_link` | `&Principal, provider, callback_params, browser_binding, host, client_ip` -> `Linked` | as `complete`, plus `IdentityTaken` |
 | | `exchange_mobile_code` | `code, code_verifier, client_ip` -> `SessionTokens` | `InvalidCode`, `RateLimited` |
-| | `list_providers` | `()` -> `ProviderList{providers: Vec<ProviderInfo>, setup_required}` | none |
+| | `list_providers` | `()` -> `ProviderList{providers: Vec<ProviderInfo{key, display_name, kind}>, setup_required}` | none |
 | `SessionService` | `refresh` | `refresh_token` -> `SessionTokens` | `ReuseDetected`, `Unauthenticated` |
 | | `revoke` | `account, session_id, reason` -> `()` | `Unexpected` |
 | | `revoke_all` | `account, reason` -> `()` | `Unexpected` |
@@ -97,7 +97,8 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | `SessionTokens` | `access, refresh, expires_in` (tokens print as placeholders) |
 | `DeviceToken` | the sync-only device token (printed as placeholder) |
 | `ClientKind` | the `client_kind` of `begin` (`web`, `android`, `ios`, `desktop`); `code_challenge` required for mobile kinds |
-| `ProviderInfo`, `SessionInfo`, `DeviceInfo`, `InviteInfo`, `AccountInfo` | ids and display fields only, no token (field lists open, see Open points) |
+| `ProviderInfo` | `key, display_name, kind` (`github`, `oidc` or `apple`): a client tells Sign in with Apple by the kind, not by the key (AZ-4024) |
+| `SessionInfo`, `DeviceInfo`, `InviteInfo`, `AccountInfo` | ids and display fields only, no token (field lists open, see Open points) |
 | `AccountProfile` | `display_name, identities: Vec<IdentityView>` (the account view's name and identities) |
 | `IdentityView` | `provider, email: Option` (`email` only when stored under the email rule); defined with the 01 types, used by `AccountView.identities`; path `contracts::IdentityView` unchanged |
 
@@ -161,7 +162,7 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 
 ## Open points (flagged in the producer task)
 
-1. `CycleStats` fields, `ProviderInfo`/`SessionInfo`/`DeviceInfo`/`InviteInfo`/`AccountInfo` field lists and the `list_accounts` filter are not specified by 01, 07 or 12.
+1. `CycleStats` fields, `SessionInfo`/`DeviceInfo`/`InviteInfo`/`AccountInfo` field lists and the `list_accounts` filter are not specified by 01, 07 or 12.
 2. `ReadinessCheck` has no method list in any spec; the shape above is inferred from the `/readyz` body of E-09 (`{name, status, detail}`).
 3. `DoctorContext` fields are derived from the `doctor` options in 12 §3; 12 names only `run(ctx)`.
 4. `Role`: data_model §4.1 says `user`/`admin`; 01 invites carry `grants_role` `member`/`admin`.
@@ -184,3 +185,4 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | 2.0.0 | 2026-11-14 | `AdminError::Forbidden` (CC-3) on all four `AdminService` operations; `health` returns `Result<HealthReport, AdminError>` so it can answer `Forbidden` (return type changed: the one implementer, 07, and the one caller, 11, plus every double updated in the same change; a contributor failure is still an item, never an error) | AZ-4309 |
 | 2.1.0 | 2026-11-18 | `AccountAdminError::NotFound` (`set_role`, `set_state`, `begin_deletion` on an unknown account) and `DeletionError::NotFound` (`request_as_operator`), owner decision 2026-11-18. New variants: every exhaustive match updated in the same change (07, 11, server, contract tests) | cumulative review 79-85 |
 | 2.2.0 | 2026-11-22 | `AdminService::list_users` returns `AdminUserPage{items, default_quota_bytes}`; `QuotaAdmin::default_quota_bytes() -> i64` (sync). Return type and a trait method changed: the implementers (07, 07a) and every double updated in the same change; the callers (11, the operator CLI) read `items` | owner decision 2026-11-22 |
+| 2.3.0 | 2026-11-22 | `ProviderInfo` gains `kind` (`github`, `oidc`, `apple`) so a client can tell that Sign in with Apple is enabled. Additive for callers; every constructor of `ProviderInfo` (01, doubles of 11) sets it. `ProviderClient` of 01 is not a contract port and does not change | AZ-4024 |

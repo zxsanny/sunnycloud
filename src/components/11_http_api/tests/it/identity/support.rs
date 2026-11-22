@@ -171,6 +171,7 @@ pub fn providers() -> ProviderList {
         providers: vec![ProviderInfo {
             key: "github".to_owned(),
             display_name: "GitHub".to_owned(),
+            kind: "github".to_owned(),
         }],
         setup_required: true,
     }

@@ -367,7 +367,10 @@ async fn the_provider_list_carries_the_setup_flag() {
     assert_eq!(answer.status, 200);
     assert_eq!(
         answer.json(),
-        json!({"providers": [{"key": "github", "display_name": "GitHub"}], "setup_required": true})
+        json!({
+            "providers": [{"key": "github", "display_name": "GitHub", "kind": "github"}],
+            "setup_required": true
+        })
     );
     stack.stop().await;
 }

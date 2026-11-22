@@ -140,6 +140,8 @@ impl SeedWorld {
             issuer: Some(idp.base_url()),
             client_id: "oidc-client".to_owned(),
             client_secret: Secret::new("provider-secret".to_owned()),
+            team_id: None,
+            key_id: None,
         }];
         identity_config.allow_plain_http_dev = true;
         let dir = std::env::temp_dir().join(format!("sc-admin-seed-{}", Uuid::new_v4()));

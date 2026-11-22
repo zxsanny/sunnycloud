@@ -145,7 +145,7 @@ The Caddyfile has no route to `api:8081` or `:9090`, and Caddy has no interface 
 | `worker_api_token` | api, worker | Bearer for the internal listener `:8081` (claim, heartbeat, fetch input, post result, fail) |
 | `share_grant_key` | api | Key for share access grants (06); the server refuses to start without it |
 | `provider_<name>_client_secret` (`github`, `oidc`) | api | |
-| `apple_p8` (v1.1) | api | File secret; the server builds Apple's ES256 client secret itself |
+| `apple_p8` (v1.1) | api | File secret (`SUNNYCLOUD_APPLE_P8_FILE`); the server builds Apple's ES256 client secret itself. Its Team ID, key id and Services ID are the plain keys `SUNNYCLOUD_APPLE_TEAM_ID`, `SUNNYCLOUD_APPLE_KEY_ID` and `SUNNYCLOUD_APPLE_CLIENT_ID` |
 
 Compose file secrets are bind mounts and keep host ownership, so the install guide sets the owner of each file to the uid that reads it (api 10001, migrate 10001, worker 10002, postgres 999) and mode 0400. Verify against the Compose version named in the release notes.
 

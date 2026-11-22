@@ -10,6 +10,7 @@ use contracts::{DoctorCheck, DoctorContext, Finding, FindingLevel, OperatorIdent
 use reqwest::Url;
 use sunnycloud_identity::{IdentityProvidersCheck, IdentitySetupCheck};
 use support::START;
+use support::apple::{APPLE, TeamKey, apple_world};
 use support::fixtures;
 use support::invites::{invites, token_rows};
 use support::sign_in::{GITHUB, OIDC, World, world_with};
@@ -66,6 +67,31 @@ async fn each_provider_finding_prints_the_redirect_uri_begin_sends_and_both_clie
             finding.message
         );
     }
+    world.finish().await;
+}
+
+#[tokio::test]
+async fn an_apple_provider_finding_prints_the_apple_redirect_uri_and_the_client_answers() {
+    // Arrange
+    let team = TeamKey::generate();
+    let world = apple_world(&team, |config| config.provider_timeout = TIMEOUT).await;
+    let check = providers_check(&world);
+    let (url, _) = world.begin(APPLE).await;
+
+    // Act
+    let findings = check.run(&PLAIN).await;
+
+    // Assert
+    let finding = about(&findings, APPLE);
+    assert_eq!(finding.level, FindingLevel::Ok, "{}", finding.message);
+    assert!(
+        finding
+            .message
+            .contains("https://sunnycloud.test/api/v1/auth/providers/apple/callback"),
+        "{}",
+        finding.message
+    );
+    assert!(finding.message.contains(&redirect_uri_of(&url)));
     world.finish().await;
 }
 

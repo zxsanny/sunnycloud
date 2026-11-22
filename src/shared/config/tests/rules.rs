@@ -233,6 +233,64 @@ fn ac8_oidc_alone_satisfies_the_rule() {
 }
 
 #[test]
+fn az4024_apple_alone_satisfies_the_rule_and_binds_its_four_keys() {
+    let mut sources = api_sources();
+    let dir = without_github_provider(&mut sources);
+    set_key(&mut sources, "apple_client_id", "services.id");
+    set_key(&mut sources, "apple_team_id", "TEAM123456");
+    set_key(&mut sources, "apple_key_id", "KEYID12345");
+    dir.write("apple_p8", "key-file-text");
+
+    let section = load::<ApiSettings>(&sources).expect("apple alone loads");
+
+    assert_eq!(
+        (
+            section.apple_client_id.as_deref(),
+            section.apple_team_id.as_deref(),
+            section.apple_key_id.as_deref(),
+            section.apple_p8.as_ref().map(|key| key.expose().as_str()),
+        ),
+        (
+            Some("services.id"),
+            Some("TEAM123456"),
+            Some("KEYID12345"),
+            Some("key-file-text")
+        )
+    );
+}
+
+#[test]
+fn az4024_an_apple_provider_without_its_key_file_names_the_missing_key() {
+    let mut sources = api_sources();
+    let _dir = without_github_provider(&mut sources);
+    set_key(&mut sources, "apple_client_id", "services.id");
+    set_key(&mut sources, "apple_team_id", "TEAM123456");
+    set_key(&mut sources, "apple_key_id", "KEYID12345");
+
+    let problems = problems_of(load_reader(Reader::Api, &sources));
+
+    assert_eq!(problems, vec![problem("apple_p8", Reason::MissingRequired)]);
+}
+
+#[test]
+fn az4024_an_apple_provider_without_its_team_id_or_key_id_names_each_missing_key() {
+    let mut sources = api_sources();
+    let dir = without_github_provider(&mut sources);
+    set_key(&mut sources, "apple_client_id", "services.id");
+    dir.write("apple_p8", "key-file-text");
+
+    let problems = problems_of(load_reader(Reader::Api, &sources));
+
+    assert_eq!(
+        problems,
+        vec![
+            problem("apple_team_id", Reason::MissingRequired),
+            problem("apple_key_id", Reason::MissingRequired),
+        ]
+    );
+}
+
+#[test]
 fn public_url_must_be_https_outside_development() {
     let mut sources = api_sources();
     set_key(&mut sources, "public_url", "http://cloud.example");

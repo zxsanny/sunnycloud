@@ -31,7 +31,11 @@ sha2 = { workspace = true }
 maxminddb = { workspace = true }
 # No bundled HTTP client: provider calls go through the guarded client of `outbound`.
 oauth2 = { workspace = true }
-openidconnect = { workspace = true }
+# Apple sends `email_verified` as the text "true" or "false".
+openidconnect = { workspace = true, features = ["accept-string-booleans"] }
+# The Sign in with Apple client secret is an ES256 JWT signed with the operator's `.p8` key; the crate is the
+# one rustls and the test provider already use.
+ring = "0.17"
 # TLS as in sync-core: rustls with the ring provider and the platform verifier.
 reqwest = { workspace = true, features = ["rustls-no-provider"] }
 rustls = { workspace = true }
@@ -60,7 +64,6 @@ tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-th
 uuid = { workspace = true, features = ["v4"] }
 # The in-process provider signs its id tokens (ES256) with a generated key.
 base64 = { workspace = true }
-ring = "0.17"
 # The test GeoIP database is written at test time; no binary is committed.
 maxminddb-writer = { workspace = true }
 tempfile = "3"
