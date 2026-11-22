@@ -91,9 +91,9 @@ fn it_10_8_cpu_transcodes_are_compliant_and_a_phone_clip_gets_smaller() {
                 worst as f64 / 1e6,
             ),
         );
-        // maxrate 8M with bufsize 4M: a window carries at most 12 Mbit, the average at most 10.
+        // maxrate 8M with bufsize 2M: no 1 s window carries more than 10 Mbit, nor does the average.
         assert!(average <= 10e6, "{name}: average {average}");
-        assert!(worst <= 12_000_000, "{name}: worst window {worst}");
+        assert!(worst <= 10_000_000, "{name}: worst window {worst}");
     }
     let (_, result, _) = run(&mut decoder, &mut peer, &phone, plan(false, AudioPlan::Aac));
     assert!(

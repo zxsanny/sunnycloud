@@ -284,7 +284,7 @@ fn assert_saturating_clip_is_held(name: &str, width: u32, height: u32, seconds: 
     record(
         "AZ-3860 maxrate",
         &format!(
-            "{name}: source {:.1} Mbit/s, ffprobe video bit_rate {:.2} Mbit/s, packet average {:.2} Mbit/s, worst 1 s window {:.2} Mbit (-maxrate 8M -bufsize 4M)",
+            "{name}: source {:.1} Mbit/s, ffprobe video bit_rate {:.2} Mbit/s, packet average {:.2} Mbit/s, worst 1 s window {:.2} Mbit (-maxrate 8M -bufsize 2M)",
             source_rate / 1e6,
             probed as f64 / 1e6,
             average / 1e6,
@@ -311,8 +311,8 @@ fn assert_saturating_clip_is_held(name: &str, width: u32, height: u32, seconds: 
         "{name}: the output fails the supervisor's compliance rule: {:?}",
         done.result.probe_of_output
     );
-    // The VBV bound: a window carries at most maxrate plus the buffer.
-    assert!(worst <= 12_000_000, "{name}: worst window {worst}");
+    // VBV: a window carries at most maxrate plus the buffer, 8M + 2M.
+    assert!(worst <= 10_000_000, "{name}: worst 1 s window {worst} bits");
 }
 
 #[test]

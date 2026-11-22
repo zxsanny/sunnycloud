@@ -9,7 +9,7 @@ bitrate settings that stay under the compliance bound; hello protocol number 2; 
   carries none (it reads no quality value). An unknown version is answered `DecodeError::ProtocolMismatch`: clean, no child started,
   the runner keeps serving, not hostile-class. `hello.protocol` is 2 (decoder and worker). Open point 7 is resolved.
 - The decoder holds the `Params` table (`src/decoder/src/params.rs`, never from env). Version 1: WebP quality 80 (the old fixed value; the
-  worker contract gives no number), `libx264 -preset veryfast -crf 23 -profile:v high -pix_fmt yuv420p -maxrate 8M -bufsize 4M`,
+  worker contract gives no number), `libx264 -preset veryfast -crf 23 -profile:v high -pix_fmt yuv420p -maxrate 8M -bufsize 2M`,
   `-c:a aac -b:a 128k -ac 2`, `-movflags +faststart`, BT.709 tags, long edge 1920 (a unit test ties it to the media-shared policy cap).
   CRF and preset are untuned (worker_job_protocol open point 4).
 - All producers, consumers, tests and corpus JSON updated in media-shared, decoder and worker; docs: decoder_protocol, worker_job_protocol 1.0.3,
@@ -18,7 +18,7 @@ bitrate settings that stay under the compliance bound; hello protocol number 2; 
 ## Bitrate (owner decision: lower cap, small buffer)
 
 The compliance rule needs an output of at most 10 Mbit/s inclusive. With the spec's `-maxrate 10M -bufsize 20M` a 4 s noisy 1080p clip
-averaged 13.9 Mbit/s (worst 1 s window 17.4) and would have been rejected as permanently invalid. With `-maxrate 8M -bufsize 4M`:
+averaged 13.9 Mbit/s (worst 1 s window 17.4) and would have been rejected as permanently invalid. With `-maxrate 8M -bufsize 2M`:
 4 s noisy 1080p 8.38 Mbit/s, 20 s noisy 720p 7.99, the container IT-10-8 phone clip 8.77 (output to input ratio 0.48 instead of 0.69).
 New tests assert at most 10 Mbit/s as ffprobe reports it and `is_compliant` on a 4 s and a 20 s saturating clip.
 
@@ -70,7 +70,7 @@ PT-10-2 speed budgets (REF-CPU4); AC-6 in the test-stubs image (covered on the h
 | 2 | The 20 % wall-time bound of the remux against a transcode (AC-3) is only recorded (remux 90 ms against 212 ms here) | AZ-3860 AC-3 | assert on a quiet host (CI) | clear |
 | 3 | A colour tag outside the conversion lists (PQ or HLG on a non-tone-mapped plan) is only retagged, by design | AZ-3860 | none | clear |
 | 4 | CRF and preset are untuned: derived storage at most 20 % of originals (NFT-PERF-20) is not measured on real clips | worker_job_protocol open point 4 | tune with real phone clips and bump `params_version` | unclear |
-| 5 | AC-1 also says the output stays at or below 10 Mbit/s in the worst 1 s window. With a buffer, any window can carry up to maxrate plus bufsize, so `-maxrate 8M -bufsize 4M` bounds it at 12 Mbit/s (measured worst windows 9.67 to 9.97 on the test clips are under 10 by luck, not by guarantee); the tests assert the average at most 10 and the VBV bound of 12. `-maxrate 8M -bufsize 2M` would bound the window at 10. AZ-3860 stays in `todo/` and its Jira ticket To Do until the owner picks: bufsize 2M (the guarantee) or amend AC-1 to the average only | AZ-3860 AC-1 | owner decision | unclear (owner) |
+| 5 | AC-1 also says the output stays at or below 10 Mbit/s in the worst 1 s window; a buffer lets a window carry up to maxrate plus bufsize, so `-maxrate 8M -bufsize 4M` bounded it at 12 Mbit/s | AZ-3860 AC-1 | RESOLVED 2026-11-22 (owner): bufsize 2M (8M + 2M = 10M). Measured over 5 runs each: 4 s noisy 1080p average 7.95 to 8.06, worst window 9.31 to 9.40 Mbit; 20 s noisy 720p 7.63 to 7.78 and 9.26 to 9.61; IT-10-8 phone clip 7.5 to 8.0 and 8.0 to 9.1; output to input size ratio 0.40 to 0.45 (0.48 with a 4M buffer). The tests assert the worst window at most 10 Mbit, the average at most 10, the ffprobe bit_rate and `is_compliant` | clear |
 
 ## Commit
 

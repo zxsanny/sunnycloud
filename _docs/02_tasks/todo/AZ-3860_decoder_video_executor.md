@@ -32,7 +32,7 @@ Phone clips arrive in many shapes: HEVC, HDR (HLG/PQ), rotated, variable frame r
 - Input options on every ffmpeg call: `-nostdin -protocol_whitelist file -format_whitelist <S5> -codec_whitelist <S5>`; `in/source` read as a file, never a pipe.
 - Mapping: first video and first audio stream only; no subtitles, data or chapters; `-map_metadata -1`.
 - Remux: `-c copy -movflags +faststart`, no filters.
-- CPU encode with the values of `Params` (`libx264 -preset veryfast -crf 23 -profile:v high -pix_fmt yuv420p -maxrate 8M -bufsize 4M`, `-c:a aac -b:a 128k -ac 2`, `-movflags +faststart`, BT.709 tags; an SDR input tagged other than BT.709 is converted by `zscale` to BT.709, limited range, after the downscale); `-threads` and `-filter_threads` equal to the clamped cpu limit.
+- CPU encode with the values of `Params` (`libx264 -preset veryfast -crf 23 -profile:v high -pix_fmt yuv420p -maxrate 8M -bufsize 2M`, `-c:a aac -b:a 128k -ac 2`, `-movflags +faststart`, BT.709 tags; an SDR input tagged other than BT.709 is converted by `zscale` to BT.709, limited range, after the downscale); `-threads` and `-filter_threads` equal to the clamped cpu limit.
 - Scale: short edge `min(1080, short)`, long edge at most 1920, even dimensions, orientation independent; ffmpeg's default autorotate kept (no `-noautorotate`).
 - HDR (HLG/PQ) to SDR with the chain fixed by gate S5 (downscale first, `zscale` linear, `tonemap=hable`, `zscale` BT.709, `yuv420p`).
 - VFR and audio: `-fps_mode vfr` and `aresample=async=1`.

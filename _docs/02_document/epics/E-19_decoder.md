@@ -134,7 +134,7 @@ flowchart TD
 
 - ADR-009 (sandboxed pipeline), ADR-010 (CPU-first transcoding, NVENC opt-in v1.1), ADR-011 (GPL ffmpeg image, source offer), ADR-001 (Rust). `canonical-names.md`: hardened runner, no gVisor in v1.0.
 - Technology pins: libvips 8.18.7 (CLI only, never the crate), libheif >= 1.22.0, ffmpeg with libx264 and native AAC (no `libfdk_aac`, no nonfree filters), tokio 1.54.1+ for the socket loop, no `contracts` port and no clock helper (monotonic `std::time`).
-- Encode command: `libx264 -preset veryfast -crf 23 -profile:v high -pix_fmt yuv420p -maxrate 8M -bufsize 4M`, `-c:a aac -b:a 128k -ac 2`, `-movflags +faststart`; values come from `Params`, never from env.
+- Encode command: `libx264 -preset veryfast -crf 23 -profile:v high -pix_fmt yuv420p -maxrate 8M -bufsize 2M`, `-c:a aac -b:a 128k -ac 2`, `-movflags +faststart`; values come from `Params`, never from env.
 - HDR: downscale first, then `zscale` linear light, `tonemap=hable`, `zscale` BT.709, `yuv420p`; order and operator tuned in gate S5.
 - `Plan` is an enum from `media-shared`; the decoder never receives free-form ffmpeg arguments.
 - Open owner item: poster-frame HDR (HLG) SSIM tolerance (gap G-10-6); this epic records the SSIM value only.

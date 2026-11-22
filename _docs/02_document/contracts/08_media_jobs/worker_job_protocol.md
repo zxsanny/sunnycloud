@@ -32,7 +32,7 @@ The interactive decoder claims `image` only; the general decoder claims `video` 
 | poster `thumb` | frame at `poster_offset_ms` (see `media_policy.md`), WebP 320 px |
 | `transcode` | H.264 High, short side at most 1080 and long side at most 1920 (orientation independent), AAC (native encoder), MP4 with the index first (faststart), HDR tone-mapped to SDR; CRF and preset: open point 4 |
 
-Changing any value bumps `params_version`. GPU (v1.1) uses the same values. The WebP quality and the x264/AAC values of each version live in the decoder's own `Params` table; the supervisor sends the version in `render_still` and in `Plan::Transcode` (`decoder_protocol.md` open point 7). Version 1: WebP quality 80, `libx264 -preset veryfast -crf 23 -profile:v high -pix_fmt yuv420p -maxrate 8M -bufsize 4M`, `-c:a aac -b:a 128k -ac 2` (the AZ-3860 numbers, untuned; maxrate 8M and bufsize 4M so that the output bit rate stays within the 10 Mbit/s compliance rule).
+Changing any value bumps `params_version`. GPU (v1.1) uses the same values. The WebP quality and the x264/AAC values of each version live in the decoder's own `Params` table; the supervisor sends the version in `render_still` and in `Plan::Transcode` (`decoder_protocol.md` open point 7). Version 1: WebP quality 80, `libx264 -preset veryfast -crf 23 -profile:v high -pix_fmt yuv420p -maxrate 8M -bufsize 2M`, `-c:a aac -b:a 128k -ac 2` (the AZ-3860 numbers, untuned; maxrate 8M and bufsize 2M so that the output average and every 1 s window stay within the 10 Mbit/s compliance rule).
 
 ### Accepted output types (sniffed by the API, never trusted from the worker)
 
