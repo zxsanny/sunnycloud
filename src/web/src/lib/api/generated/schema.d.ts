@@ -196,7 +196,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Where the provider sends the browser; 302 to the return path or to the SPA error route */
+        /** Where the provider sends the browser; 302 to the return path or the SPA error route, or to the account page when a session cookie ends an identity link */
         get: operations["get_auth_providers__provider__callback"];
         put?: never;
         post?: never;
@@ -1078,6 +1078,8 @@ export interface components {
             limit: number | null;
         };
         AdminUserList: {
+            /** @description Bytes; the installation default that an item's null limit stands for. */
+            default_quota_bytes: number;
             items: {
                 display_name: string;
                 /** Format: uuid */
@@ -1205,6 +1207,8 @@ export interface components {
             expires_at: string;
             /** @description Shown once; no other answer carries it. */
             token: string;
+            /** @description The invite page with the token in its fragment: <public_url>/invite#<token>. Shown once, like the token. */
+            url: string;
         };
         CreatedShare: {
             /** Format: date-time */
@@ -1440,6 +1444,10 @@ export interface components {
             max_staged_per_account: number;
             /** @description One MAJOR.MINOR.PATCH for every client family, or family=version,... per family. */
             min_client_version: string;
+            /** @description Seconds; the lifetime a share link gets when the owner names none. Optional for clients. */
+            share_default_ttl?: number;
+            /** @description Seconds; the longest lifetime a share link may have. Optional for clients. */
+            share_max_ttl?: number;
             /**
              * @description Bytes; the staged-upload cap.
              * @constant

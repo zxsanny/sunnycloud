@@ -92,6 +92,9 @@ pub trait QuotaAdmin: Send + Sync {
     /// `None` restores the installation default.
     async fn set_limit(&self, account: Uuid, limit: Option<i64>) -> Result<(), QuotaAdminError>;
 
+    /// The installation default limit in bytes: what an account with no limit of its own may use.
+    fn default_quota_bytes(&self) -> i64;
+
     /// Compares the stored usage with the numbers the caller computed; repairs it when `repair` is set.
     async fn recompute(
         &self,

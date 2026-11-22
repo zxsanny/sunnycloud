@@ -1,6 +1,6 @@
 use contracts::{
-    AccountStatus, AdminError, AdminUserView, CreatedInvite, HealthItem, HealthReport,
-    HealthStatus, InviteError, InviteInfo, InviteToken, Role,
+    AccountStatus, AdminError, AdminUserPage, AdminUserView, CreatedInvite, HealthItem,
+    HealthReport, HealthStatus, InviteError, InviteInfo, InviteToken, Role,
 };
 use sc_ids::TokenKind;
 use serde_json::json;
@@ -9,6 +9,7 @@ use super::support::*;
 use crate::auth::support::{ADMIN_ACCOUNT, ADMIN_TOKEN};
 
 const LIST_USERS: &str = "AdminService::list_users";
+const DEFAULT_QUOTA_BYTES: i64 = 107_374_182_400;
 const UPDATE: &str = "AdminService::update_user";
 const QUOTA: &str = "AdminService::set_quota";
 const SECRET: &str = "inv-ShownOnce_plain";
@@ -38,19 +39,26 @@ async fn the_user_list_acts_as_the_admin_and_pages_by_offset_and_limit() {
     let stack = Stack::start().await;
     stack.script.push(
         LIST_USERS,
-        Ok::<_, AdminError>(vec![AdminUserView {
-            account: TARGET,
-            display_name: "Ada Lovelace".to_owned(),
-            role: Role::Admin,
-            state: AccountStatus::Disabled,
-            last_login: Some(WHEN),
-            used: 10,
-            limit: None,
-        }]),
+        Ok::<_, AdminError>(AdminUserPage {
+            items: vec![AdminUserView {
+                account: TARGET,
+                display_name: "Ada Lovelace".to_owned(),
+                role: Role::Admin,
+                state: AccountStatus::Disabled,
+                last_login: Some(WHEN),
+                used: 10,
+                limit: None,
+            }],
+            default_quota_bytes: DEFAULT_QUOTA_BYTES,
+        }),
     );
-    stack
-        .script
-        .push(LIST_USERS, Ok::<_, AdminError>(Vec::<AdminUserView>::new()));
+    stack.script.push(
+        LIST_USERS,
+        Ok::<_, AdminError>(AdminUserPage {
+            items: Vec::new(),
+            default_quota_bytes: DEFAULT_QUOTA_BYTES,
+        }),
+    );
 
     // Act
     let listed = as_admin(&stack, "GET", "/api/v1/admin/users?offset=20&limit=5", "").await;
@@ -64,9 +72,13 @@ async fn the_user_list_acts_as_the_admin_and_pages_by_offset_and_limit() {
             "id": TARGET, "display_name": "Ada Lovelace", "role": "admin", "state": "disabled",
             "last_login": WHEN_TEXT,
             "used": 10, "limit": null,
-        }]})
+        }], "default_quota_bytes": DEFAULT_QUOTA_BYTES})
     );
     assert_eq!(default_page.status, 200);
+    assert_eq!(
+        default_page.json()["default_quota_bytes"],
+        DEFAULT_QUOTA_BYTES
+    );
     assert_eq!(
         (by_member.status, by_member.code().as_str()),
         (403, "forbidden")
@@ -202,6 +214,38 @@ async fn the_health_report_lists_each_item_with_its_status() {
 }
 
 #[tokio::test]
+async fn the_invite_url_is_built_from_the_configured_origin_with_one_trailing_slash_trimmed() {
+    // Arrange
+    let stack = Stack::start_with(|config| {
+        config.public_url = "https://drive.example.org/".to_owned();
+    })
+    .await;
+    stack.script.push(
+        "InviteService::create_invite",
+        Ok::<_, InviteError>(CreatedInvite {
+            token: InviteToken(token(TokenKind::Invite, SECRET)),
+            expires_at: WHEN,
+        }),
+    );
+
+    // Act
+    let created = as_admin(
+        &stack,
+        "POST",
+        "/api/v1/admin/invites",
+        r#"{"note":"for Bob"}"#,
+    )
+    .await;
+
+    // Assert
+    assert_eq!(
+        created.json()["url"],
+        format!("https://drive.example.org/invite#{SECRET}")
+    );
+    stack.stop().await;
+}
+
+#[tokio::test]
 async fn an_invite_shows_its_token_once_and_the_list_never_shows_one() {
     // Arrange
     let stack = Stack::start().await;
@@ -240,7 +284,11 @@ async fn an_invite_shows_its_token_once_and_the_list_never_shows_one() {
     // Assert
     assert_eq!(
         created.json(),
-        json!({"token": SECRET, "expires_at": WHEN_TEXT})
+        json!({
+            "token": SECRET,
+            "expires_at": WHEN_TEXT,
+            "url": format!("https://sunnycloud.test/invite#{SECRET}"),
+        })
     );
     let listing = String::from_utf8_lossy(&listed.body).into_owned();
     assert!(

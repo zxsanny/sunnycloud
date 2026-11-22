@@ -51,6 +51,10 @@ impl CookieNames {
         &self.binding
     }
 
+    pub(super) fn session_name(&self) -> &str {
+        &self.session
+    }
+
     /// The session cookie carries the access token for as long as the port says it lives.
     pub(super) fn session_cookie(
         &self,

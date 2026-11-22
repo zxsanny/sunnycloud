@@ -139,7 +139,7 @@ async fn caller(
         let start = page * PAGE as usize;
         let wanted = &expected[start..start + PAGE as usize];
         match answer {
-            Ok(views) if views == wanted => {}
+            Ok(page) if page.items == wanted => {}
             other => report.errors.push(format!("page {page}: {other:?}")),
         }
         n += 1;
@@ -257,7 +257,8 @@ async fn pt_07_1_each_page_of_20_runs_two_data_statements() {
             .admin
             .list_users(&actor, page_at(index))
             .await
-            .expect("list a page");
+            .expect("list a page")
+            .items;
         per_call.push((page.len(), log.take_data_statements()));
     }
 

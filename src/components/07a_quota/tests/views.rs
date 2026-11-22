@@ -3,7 +3,7 @@
 
 mod support;
 
-use contracts::{QuotaAdminError, QuotaView};
+use contracts::{QuotaAdmin, QuotaAdminError, QuotaView};
 use support::{GIB, Harness, Seeded, admin, initialized, seeded};
 use uuid::Uuid;
 
@@ -28,6 +28,20 @@ async fn views_of_500_ids_equal_the_seeded_values_and_unknown_ids_are_omitted() 
     assert_eq!(all, expected);
     assert_eq!(with_unknown, expected);
     assert!(none.is_empty());
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn the_port_names_the_installation_default_it_was_configured_with() {
+    // Arrange
+    let harness = Harness::new().await;
+    let quota = admin(&harness.api, DEFAULT);
+
+    // Act
+    let default = QuotaAdmin::default_quota_bytes(&quota);
+
+    // Assert
+    assert_eq!(default, DEFAULT);
     harness.finish().await;
 }
 

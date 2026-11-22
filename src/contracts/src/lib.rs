@@ -44,8 +44,8 @@ pub use async_trait::async_trait;
 
 pub use admin::{
     AccountDeletionService, AccountService, AccountServiceError, AccountView, Actor, AdminError,
-    AdminService, AdminUserView, DeletionAccepted, DeletionError, DevSeed, DevSeedError,
-    HealthReport, IdentityView,
+    AdminService, AdminUserPage, AdminUserView, DeletionAccepted, DeletionError, DevSeed,
+    DevSeedError, HealthReport, IdentityView,
 };
 pub use blob::{BlobRef, ByteRange, ByteStream, PlaintextStream, StreamError};
 pub use blobstore::{

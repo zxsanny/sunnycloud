@@ -6,6 +6,7 @@ mod invites;
 mod users;
 mod wire;
 
+use axum::Extension;
 use axum::routing::on;
 use sc_error::ErrorCode;
 
@@ -132,7 +133,9 @@ pub(super) fn routes() -> Vec<RouteDef> {
             on(filter, users::health).with_state(services(context))
         }),
         RouteDef::new(CREATE_INVITE, |context, filter| {
-            on(filter, invites::create).with_state(services(context))
+            on(filter, invites::create)
+                .layer(Extension(invites::InvitePage::new(&context.public_url)))
+                .with_state(services(context))
         }),
         RouteDef::new(LIST_INVITES, |context, filter| {
             on(filter, invites::list).with_state(services(context))

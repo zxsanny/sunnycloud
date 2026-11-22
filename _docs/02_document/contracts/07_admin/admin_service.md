@@ -3,9 +3,9 @@
 **Component**: 07_admin
 **Producer task**: E-17/c02 (construction), E-17/c03 (`list_users`, `update_user`, `set_quota`), E-17/c04 (last-admin rule), E-17/c07 (`health`) — `_docs/02_tasks/todo/B05-02_admin_crate_skeleton.md`, `B05-03_admin_user_management.md`, `B05-04_last_admin_guard.md`, `B05-07_admin_health_aggregation.md` (renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-21/c12 (admin handlers), E-22/c03 (composition root), E-22/c08 (`admin promote|demote`), E-22/c09 (`admin user list|set-quota`); in batch E-17/c08, E-17/c09, E-17/c10
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: draft (open points below)
-**Last Updated**: 2026-11-14
+**Last Updated**: 2026-11-22
 
 ## Purpose
 
@@ -17,7 +17,7 @@ The admin operations behind the web admin page and the operator CLI: list users 
 
 | Name | Signature (behavioural) | Errors | Blocking? |
 |------|-------------------------|--------|-----------|
-| `list_users` | `(Actor, page) -> Vec<AdminUserView{account, display_name, role, state, last_login, used, limit}>` | `Forbidden` | async; one `AccountAdmin::list_accounts` and one `QuotaAdmin::views` call per page; page size `admin_list_page_size` |
+| `list_users` | `(Actor, page) -> AdminUserPage{items: Vec<AdminUserView{account, display_name, role, state, last_login, used, limit}>, default_quota_bytes}` | `Forbidden` | async; one `AccountAdmin::list_accounts` and one `QuotaAdmin::views` call per page, and `QuotaAdmin::default_quota_bytes` (the installation default that a `limit` of `None` stands for; 07a holds it, 07 holds no copy); page size `admin_list_page_size` |
 | `update_user` | `(Actor, account, role?, state?) -> ()` | `Forbidden`, `NotFound`, `LastAdmin` | async; one short transaction: `lock_active_admins`, guard, `set_role` and/or `set_state` |
 | `set_quota` | `(Actor, account, limit: Option<i64>) -> ()` | `Forbidden`, `NotFound`, `InvalidLimit` (from 07a) | async; `QuotaAdmin::set_limit`; `None` = installation default |
 | `health` | `(Actor) -> Result<HealthReport{items: Vec<(name, HealthItem)>}, AdminError>` (a failing or timed-out contributor is an item, never an error) | `Forbidden` | async; each contributor check bounded by `health_check_timeout` |
@@ -37,7 +37,7 @@ The admin operations behind the web admin page and the operator CLI: list users 
 
 | Method | Path | Auth | Body | Success |
 |--------|------|------|------|---------|
-| GET | `/api/v1/admin/users` | Admin | — | 200 page of `AdminUserView` |
+| GET | `/api/v1/admin/users` | Admin | — | 200 `{items: [AdminUserView], default_quota_bytes}` |
 | PATCH | `/api/v1/admin/users/{id}` | Admin | `{role?, state?}` | 200 |
 | PUT | `/api/v1/admin/users/{id}/quota` | Admin | `{limit_bytes}` or null | 200 |
 | GET | `/api/v1/admin/health` | Admin | — | 200 `HealthReport` |
@@ -58,7 +58,7 @@ The admin operations behind the web admin page and the operator CLI: list users 
 
 - Last-admin rule: demotion, disabling and deletion of an account run in one short transaction that first calls `AccountAdmin::lock_active_admins`; if the change would leave no account with role admin and state active, the call returns `LastAdmin` and changes nothing. Disabled and `deleting` accounts are never active. The same rule serves `update_user`, `AccountDeletionService::request` and the operator path. Two concurrent removals never both pass; a lock conflict is retried at most once inside the port. The guard runs only for a removal (a demotion or a disabling); a target that is not an active admin removes none and passes. Lock order: the active admin rows (ordered by id), then the target row, on every path.
 - Every successful mutation writes one `admin_action` audit row with actor, subject account id and action code, and no name or email.
-- `list_users` returns every account exactly once across pages, in a stable order; no field carries a token or secret.
+- `list_users` returns every account exactly once across pages, in a stable order; no field carries a token or secret. `default_quota_bytes` is the same on every page, an empty page included.
 - 07 issues no SQL; accounts come from 01 and usage from 07a.
 - `health` lists every registered contributor by `name()`; a check that does not answer within `health_check_timeout` is reported `down` with a timed-out detail and does not hide the others.
 
@@ -104,3 +104,4 @@ The admin operations behind the web admin page and the operator CLI: list users 
 | 1.3.0 | 2026-11-14 | `impl AdminService for AdminServiceImpl` (one path; authorization before every operation); `Forbidden` on all four operations and fallible `health` (CC-3); dev seed queues media jobs through the shared effect | AZ-4309, AZ-4311 |
 | 1.2.0 | 2026-11-14 | Dev seed construction and behaviour (`DevSeedImpl`, `DevSeedPorts`, `ProviderLogin`); IT-07-14 | AZ-3822 |
 | 1.4.0 | 2026-11-21 | `AdminUserView` gains `display_name` (additive); the email stays out until the owner decides | web admin page |
+| 1.5.0 | 2026-11-22 | `list_users` returns `AdminUserPage{items, default_quota_bytes}` instead of the bare list (the operator CLI reads `items`); the value comes from the new `QuotaAdmin::default_quota_bytes` | owner decision 2026-11-22 |

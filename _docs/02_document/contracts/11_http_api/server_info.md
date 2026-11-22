@@ -3,9 +3,9 @@
 **Component**: 11_http_api
 **Producer task**: E-21/c06 — `_docs/02_tasks/todo/B07-06_version_gate_server_info.md`; keys assigned at Step 4
 **Consumer tasks**: E-22/c03 or E-22/c04 (builds the `ServerInfo` value from the typed config and the build), E-23/c04 (`sync-core-proto` DTO), E-23/c07 (`HttpSyncClient::connect`, version header, 426), E-26/c06 (SPA client, `web/<version>` header), E-24 daemon and E-27 Android `set_server` probes (through `sync-core`/`mobile_backup`), E-31 (FT-N-27, FT-P-05); resolved at Step 4
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft
-**Last Updated**: 2026-11-04
+**Last Updated**: 2026-11-22
 
 ## Purpose
 
@@ -27,8 +27,10 @@ Sources: `components/11_http_api/description.md` §5 layer 7, §8 (`ServerInfo`)
 | `longpoll_max_wait` | duration | yes | config key `longpoll_wait_max` | unit open (Open point 1) |
 | `min_client_version` | string | yes | configured minimum (one semver, or per family) | |
 | `api_versions` | array of strings | yes | served `/api/vN` families | `["v1"]` in v1.0 |
+| `share_default_ttl` | integer (seconds) | no | config key `share_default_ttl`, the lifetime a share link gets when the owner names none; whole seconds, rounded down | default 7 days (604800) |
+| `share_max_ttl` | integer (seconds) | no | config key `share_max_ttl`, the longest lifetime a share link may have; whole seconds, rounded down | default 365 days (31536000) |
 
-No provider list and no setup flag: clients read those from `GET /api/v1/auth/providers` (01). Clients ignore unknown fields.
+The two share fields are optional for clients (a client that does not find them keeps its own defaults); the server always sends them. Durations are whole seconds, as `longpoll_max_wait` is (`longpoll_max_wait` itself stays open, Open point 1). No provider list and no setup flag: clients read those from `GET /api/v1/auth/providers` (01). Clients ignore unknown fields.
 
 ### Request header `X-Sunnycloud-Client: <family>/<semver>`
 
@@ -66,13 +68,13 @@ Configuration `min_client_version` is either one semver for all families or `fam
 ## Versioning Rules
 
 - **Breaking**: a field removed, renamed or retyped; a change of `block_size` inside `/api/v1`; a stricter header grammar.
-- **Non-breaking**: a new optional field, a new `api_versions` entry.
+- **Non-breaking**: a new optional field (`share_default_ttl` and `share_max_ttl`, 1.1.0), a new `api_versions` entry.
 
 ## Test Cases
 
 | Case | Input | Expected | Notes |
 |------|-------|----------|-------|
-| fields | config `max_lanes=3`, `batch_max_entries=250`, `max_staged=7`, `longpoll_wait_max=20s`, minimum 1.2.0 | exactly the 8 keys; values as configured; `api_versions = ["v1"]` | IT-11-8 |
+| fields | config `max_lanes=3`, `batch_max_entries=250`, `max_staged=7`, `longpoll_wait_max=20s`, `share_default_ttl=7d`, `share_max_ttl=365d`, minimum 1.2.0 | exactly the 10 keys (the 8 required and the 2 share limits); values as configured; `api_versions = ["v1"]` | IT-11-8 |
 | old-client | `android/1.1.9`, minimum 1.2.0 | 426 with `min_version`, `update_url`; no handler ran | IT-11-7 |
 | per-family | `web=1.0.0,android=1.5.0` | each family checked against its own minimum | IT-11-7 |
 | exempt | `ios/0.9.0` on `server-info` and on a public route | 200 | IT-11-7, IT-11-8 |
@@ -93,3 +95,4 @@ Configuration `min_client_version` is either one semver for all families or `fam
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B07) |
+| 1.1.0 | 2026-11-22 | Optional `share_default_ttl` and `share_max_ttl` (whole seconds) for the share dialog | owner decision 2026-11-22 |

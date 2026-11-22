@@ -13,7 +13,8 @@ use axum::extract::{Extension, RawPathParams, State};
 use axum::http::{HeaderMap, StatusCode, Uri, header};
 use axum::response::IntoResponse;
 use contracts::{
-    AuthorizationRedirect, BrowserBinding, CallbackParams, SessionError, SignInError, SignInOutcome,
+    AuthenticatorError, AuthorizationRedirect, BrowserBinding, CallbackParams, Credential,
+    Principal, Scope, SessionError, SignInError, SignInOutcome,
 };
 use sc_error::{BusinessError, BusinessParams, CorrelationId, DomainError, ErrorCode};
 use sc_ids::{RawToken, TokenKind};
@@ -29,7 +30,10 @@ use crate::registry::request::{
 
 /// The SPA route a failed sign-in lands on; the reason is its `error` parameter.
 const ERROR_ROUTE: &str = "/login";
+/// The SPA route a link attempt lands on, whatever its outcome: `linked=1` or `error=<reason>`.
+const ACCOUNT_ROUTE: &str = "/account";
 const NOT_INVITED: &str = "invitation_required";
+const IDENTITY_TAKEN: &str = "identity_taken";
 
 pub(super) async fn providers(State(services): State<Services>, caller: Anonymous) -> Answer {
     let list = services
@@ -94,9 +98,11 @@ fn authorization(
     Ok(response)
 }
 
-/// The provider sends the browser here. A session outcome sets the session and refresh cookies and redirects to
-/// the return path; a mobile outcome redirects there with the one-time code; a refusal the browser should see is a redirect
-/// to the SPA error route. Everything else, 429 included, is the port's own answer.
+/// The provider sends the browser here. A request that carries a live session cookie is the end of an identity
+/// link (`complete_link`): a redirect to the account page, `linked=1` or `error=<reason>`. Any other request is a
+/// sign-in: a session outcome sets the session and refresh cookies and redirects to the return path; a mobile
+/// outcome redirects there with the one-time code; a refusal the browser should see is a redirect to the SPA
+/// error route. Everything else, 429 included, is the port's own answer.
 pub(super) async fn callback(
     State(services): State<Services>,
     Extension(cookies): Extension<CookieNames>,
@@ -121,6 +127,24 @@ pub(super) async fn callback(
             .unwrap_or_default()
             .to_owned(),
     );
+    if let Some(principal) = link_caller(&services, &cookies, &headers, request_id).await? {
+        let linked = services
+            .sign_in
+            .complete_link(
+                &principal,
+                provider,
+                CallbackParams(pairs.clone()),
+                &binding,
+                &host,
+                caller.client_ip,
+            )
+            .await;
+        // A state that is not a link state of this account is looked up by another hash and consumes nothing, so
+        // a browser that also holds a session (a web sign-in open next to a mobile one) still finishes its sign-in.
+        if !matches!(linked, Err(SignInError::UntrustedState)) {
+            return link_answer(linked.map(|_| ()), request_id);
+        }
+    }
     let outcome = services
         .sign_in
         .complete(
@@ -148,12 +172,68 @@ pub(super) async fn callback(
         Ok(SignInOutcome::MobileCode { code, return_to }) => {
             redirect(&with_code(&return_to, code.expose()), request_id)
         }
-        Err(SignInError::UntrustedState) => {
-            error_redirect(ErrorCode::InvalidRequest.as_str(), request_id)
+        Err(other) => match redirect_reason(&other) {
+            Some(reason) => error_redirect(ERROR_ROUTE, reason, request_id),
+            None => Err(ApiProblem::from_port(other, request_id)),
+        },
+    }
+}
+
+/// The account that began a link: the callback is a public route, so it authenticates the session cookie itself,
+/// through the same port and scope as a `SessionOnly` route. No cookie, or one 01 no longer accepts (a stale
+/// cookie of a signed-out browser), is a plain sign-in; any other failure is the port's own answer.
+async fn link_caller(
+    services: &Services,
+    cookies: &CookieNames,
+    headers: &HeaderMap,
+    request_id: CorrelationId,
+) -> Result<Option<Principal>, ApiProblem> {
+    let Some(value) =
+        cookie_value(headers, cookies.session_name()).filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+    let credential = Credential::Session(RawToken::from_presented(
+        TokenKind::Session,
+        value.to_owned(),
+    ));
+    match services.authenticator.authenticate(credential).await {
+        Ok(principal) => {
+            services
+                .authenticator
+                .require(&principal, Scope::SessionOnly)
+                .map_err(refused(request_id))?;
+            Ok(Some(principal))
         }
-        Err(SignInError::TrustedFailure { code }) => error_redirect(code.as_str(), request_id),
-        Err(SignInError::InvitationRequired) => error_redirect(NOT_INVITED, request_id),
+        Err(AuthenticatorError::Unauthenticated) => Ok(None),
         Err(other) => Err(ApiProblem::from_port(other, request_id)),
+    }
+}
+
+/// An identity link ends on the account page: `linked=1` (also for an identity the account already holds), or the
+/// reason it was refused. The reasons of a sign-in refusal keep their words; an identity that belongs to another
+/// account has no wire code, so it is named here.
+fn link_answer(result: Result<(), SignInError>, request_id: CorrelationId) -> Answer {
+    match result {
+        Ok(()) => redirect(&format!("{ACCOUNT_ROUTE}?linked=1"), request_id),
+        Err(SignInError::IdentityTaken) => {
+            error_redirect(ACCOUNT_ROUTE, IDENTITY_TAKEN, request_id)
+        }
+        Err(other) => match redirect_reason(&other) {
+            Some(reason) => error_redirect(ACCOUNT_ROUTE, reason, request_id),
+            None => Err(ApiProblem::from_port(other, request_id)),
+        },
+    }
+}
+
+/// The reason a browser is told when the callback refuses it with a redirect; the other refusals keep the port's
+/// answer (429, 503, 500).
+fn redirect_reason(error: &SignInError) -> Option<&str> {
+    match error {
+        SignInError::UntrustedState => Some(ErrorCode::InvalidRequest.as_str()),
+        SignInError::TrustedFailure { code } => Some(code.as_str()),
+        SignInError::InvitationRequired => Some(NOT_INVITED),
+        _ => None,
     }
 }
 
@@ -164,8 +244,8 @@ fn redirect(path: &str, request_id: CorrelationId) -> Answer {
     Ok(response)
 }
 
-fn error_redirect(reason: &str, request_id: CorrelationId) -> Answer {
-    redirect(&format!("{ERROR_ROUTE}?error={reason}"), request_id)
+fn error_redirect(route: &str, reason: &str, request_id: CorrelationId) -> Answer {
+    redirect(&format!("{route}?error={reason}"), request_id)
 }
 
 /// A relative return path (or a token) 01 produced that a header cannot hold is a broken 01: opaque 500, logged.

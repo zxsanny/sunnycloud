@@ -100,7 +100,7 @@ async fn the_operator_and_an_admin_session_are_accepted() {
             .await;
 
         // Assert
-        assert_eq!(list.expect("list").len(), 2);
+        assert_eq!(list.expect("list").items.len(), 2);
         assert!(update.is_ok());
         assert!(quota.is_ok());
     }

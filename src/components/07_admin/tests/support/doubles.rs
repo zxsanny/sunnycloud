@@ -92,6 +92,10 @@ impl QuotaAdmin for QuotaAdminDouble {
         Err(QuotaAdminError::Unexpected(NOT_CALLED.into()))
     }
 
+    fn default_quota_bytes(&self) -> i64 {
+        super::quota_double::DEFAULT_LIMIT
+    }
+
     async fn recompute(
         &self,
         _account: Uuid,

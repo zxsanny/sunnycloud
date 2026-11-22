@@ -1,5 +1,6 @@
 use contracts::{
-    AccountFilter, AccountState, Actor, AdminError, AdminUserView, Page, QuotaAdminError, Role,
+    AccountFilter, AccountState, Actor, AdminError, AdminUserPage, AdminUserView, Page,
+    QuotaAdminError, Role,
 };
 use sc_audit::{AuditDetail, AuditEvent, AuditEventKind, SubjectRef};
 use sc_db::{RunError, Scope};
@@ -14,8 +15,17 @@ pub(crate) const SUBJECT_TYPE: &str = "account";
 /// The bodies of `AdminService::list_users`, `update_user` and `set_quota` (`crate::admin_service`), run after the
 /// caller is authorized.
 impl AdminServiceImpl {
-    /// One page of accounts with their usage: one `list_accounts` call and one `views` call.
-    pub(crate) async fn users_page(&self, page: Page) -> Result<Vec<AdminUserView>, AdminError> {
+    /// One page of accounts with their usage: one `list_accounts` call and one `views` call, and the installation
+    /// default limit that 07a holds.
+    pub(crate) async fn users_page(&self, page: Page) -> Result<AdminUserPage, AdminError> {
+        let items = self.user_views(page).await?;
+        Ok(AdminUserPage {
+            items,
+            default_quota_bytes: self.quota.default_quota_bytes(),
+        })
+    }
+
+    async fn user_views(&self, page: Page) -> Result<Vec<AdminUserView>, AdminError> {
         let limit = page_limit(page.limit, self.config.admin_list_page_size);
         if limit == 0 {
             return Ok(Vec::new());

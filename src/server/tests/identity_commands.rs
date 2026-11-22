@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use contracts::{
-    AccountState, Actor, AdminError, AdminService, AdminUserView, CreatedInvite, Fault,
+    AccountState, Actor, AdminError, AdminService, AdminUserPage, CreatedInvite, Fault,
     HealthReport, InviteError, InviteInfo, InviteService, InviteToken, OperatorIdentityError,
     OperatorIdentityOps, Page, Role,
 };
@@ -106,7 +106,7 @@ impl InviteService for Ports {
 
 #[async_trait]
 impl AdminService for Ports {
-    async fn list_users(&self, _: &Actor, _: Page) -> Result<Vec<AdminUserView>, AdminError> {
+    async fn list_users(&self, _: &Actor, _: Page) -> Result<AdminUserPage, AdminError> {
         unreachable!("not an identity command")
     }
 

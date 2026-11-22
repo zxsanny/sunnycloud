@@ -29,7 +29,8 @@ pub(crate) async fn list(services: &ServiceContext) -> Result<Outcome, CliError>
         let rows = admin
             .list_users(&Actor::Operator, page)
             .await
-            .map_err(failure)?;
+            .map_err(failure)?
+            .items;
         if rows.is_empty() {
             break;
         }

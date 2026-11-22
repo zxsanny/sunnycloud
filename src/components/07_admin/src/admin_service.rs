@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use contracts::{
-    AccountAdmin, AccountState, Actor, AdminError, AdminService, AdminUserView, HealthContributor,
+    AccountAdmin, AccountState, Actor, AdminError, AdminService, AdminUserPage, HealthContributor,
     HealthReport, Page, QuotaAdmin, Role, async_trait,
 };
 use sc_audit::AuditWriter;
@@ -62,11 +62,7 @@ impl AdminServiceImpl {
 /// is read or written. The bodies are in `crate::user_admin` and `crate::health`.
 #[async_trait]
 impl AdminService for AdminServiceImpl {
-    async fn list_users(
-        &self,
-        actor: &Actor,
-        page: Page,
-    ) -> Result<Vec<AdminUserView>, AdminError> {
+    async fn list_users(&self, actor: &Actor, page: Page) -> Result<AdminUserPage, AdminError> {
         authorize(actor)?;
         self.users_page(page).await
     }

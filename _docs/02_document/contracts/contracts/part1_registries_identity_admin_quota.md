@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c03 — `_docs/02_tasks/todo/B01-12_contracts_part1.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: E-00/c04 (part 2), E-00/c05 (part 3); other batches: E-10..E-22, E-30 (implementers and callers)
-**Version**: 2.0.0
+**Version**: 2.2.0
 **Status**: draft (frozen when the producer task is accepted)
 **Last Updated**: 2026-11-14
 
@@ -105,7 +105,7 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 
 | Port | Method | Input -> Output | Errors |
 |---|---|---|---|
-| `AdminService` | `list_users` | `Actor, page` -> `Vec<AdminUserView{account, display_name, role, state, last_login, used, limit}>` | `Forbidden`, `Unexpected` |
+| `AdminService` | `list_users` | `Actor, page` -> `AdminUserPage{items: Vec<AdminUserView{account, display_name, role, state, last_login, used, limit}>, default_quota_bytes: i64}` | `Forbidden`, `Unexpected` |
 | | `update_user` | `Actor, account, role?, state?` -> `()` | `Forbidden`, `LastAdmin`, `NotFound` |
 | | `set_quota` | `Actor, account, limit: Option<i64>` -> `()` | `Forbidden`, `NotFound`, `InvalidLimit` |
 | | `health` | `Actor` -> `Result<HealthReport{items: Vec<(name, HealthItem)>}, AdminError>` (a failing contributor is an item) | `Forbidden` |
@@ -127,6 +127,7 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | `QuotaAdmin` | `view` | `account` -> `QuotaView{limit_bytes: Option<i64>, effective_limit, used, reserved}` | `NotFound` |
 | | `views` | `&[Uuid]` -> map account -> `QuotaView` (unknown ids omitted) | none |
 | | `set_limit` | `account, Option<i64>` (None = installation default) -> `()` | `NotFound`, `InvalidLimit` (valid 0 <= limit <= 2^53) |
+| | `default_quota_bytes` | (sync) -> `i64`, the installation default limit | none |
 | | `recompute` | `account, live_bytes: i64, reserved_bytes: i64, repair: bool` -> `Drift{stored, computed}` | none |
 
 ## Invariants
@@ -182,3 +183,4 @@ Sources: `canonical-names.md` § Ports; `components/01_identity/description.md` 
 | 1.6.0 | 2026-11-14 | `AccountAdmin::lock_deleting(tx, account) -> bool` (CC-1, `FOR NO KEY UPDATE SKIP LOCKED`, owner decision 2026-11-14); `AccountInfo.deletion_requested_at` for the purger's alert and `account_deletion_seconds`. Additive for callers; every `AccountAdmin` implementer gains the method | AZ-3820 |
 | 2.0.0 | 2026-11-14 | `AdminError::Forbidden` (CC-3) on all four `AdminService` operations; `health` returns `Result<HealthReport, AdminError>` so it can answer `Forbidden` (return type changed: the one implementer, 07, and the one caller, 11, plus every double updated in the same change; a contributor failure is still an item, never an error) | AZ-4309 |
 | 2.1.0 | 2026-11-18 | `AccountAdminError::NotFound` (`set_role`, `set_state`, `begin_deletion` on an unknown account) and `DeletionError::NotFound` (`request_as_operator`), owner decision 2026-11-18. New variants: every exhaustive match updated in the same change (07, 11, server, contract tests) | cumulative review 79-85 |
+| 2.2.0 | 2026-11-22 | `AdminService::list_users` returns `AdminUserPage{items, default_quota_bytes}`; `QuotaAdmin::default_quota_bytes() -> i64` (sync). Return type and a trait method changed: the implementers (07, 07a) and every double updated in the same change; the callers (11, the operator CLI) read `items` | owner decision 2026-11-22 |

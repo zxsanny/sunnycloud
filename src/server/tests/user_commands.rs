@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use contracts::{
     AccountDeletionService, AccountState, AccountStatus, Actor, AdminError, AdminService,
-    AdminUserView, DeletionAccepted, DeletionError, HealthReport, Page, Principal, Role,
+    AdminUserPage, AdminUserView, DeletionAccepted, DeletionError, HealthReport, Page, Principal,
+    Role,
 };
 use sc_clock::Timestamp;
 use serde_json::Value;
@@ -24,20 +25,19 @@ struct Recorder {
 
 #[async_trait]
 impl AdminService for Recorder {
-    async fn list_users(
-        &self,
-        actor: &Actor,
-        page: Page,
-    ) -> Result<Vec<AdminUserView>, AdminError> {
+    async fn list_users(&self, actor: &Actor, page: Page) -> Result<AdminUserPage, AdminError> {
         locked(&self.pages).push((actor.clone(), page));
         let start = usize::try_from(page.offset).expect("offset");
-        Ok(self
-            .users
-            .iter()
-            .skip(start)
-            .take(self.page_rows)
-            .cloned()
-            .collect())
+        Ok(AdminUserPage {
+            items: self
+                .users
+                .iter()
+                .skip(start)
+                .take(self.page_rows)
+                .cloned()
+                .collect(),
+            default_quota_bytes: 1 << 30,
+        })
     }
 
     async fn update_user(

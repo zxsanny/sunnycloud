@@ -9,7 +9,7 @@ use std::sync::Arc;
 use common::{Calls, NOW, id, principal, sorted};
 use contracts::{
     AccountDeletionService, AccountService, AccountServiceError, AccountState, AccountView, Actor,
-    AdminError, AdminService, AdminUserView, DeletionAccepted, DeletionError, DevSeed,
+    AdminError, AdminService, AdminUserPage, DeletionAccepted, DeletionError, DevSeed,
     DevSeedError, Drift, HealthItem, HealthReport, Page, Principal, QuotaAdmin, QuotaAdminError,
     QuotaLedger, QuotaLedgerError, QuotaView, Reserved, Role, async_trait,
 };
@@ -30,13 +30,12 @@ fn quota() -> QuotaView {
 
 #[async_trait]
 impl AdminService for Double {
-    async fn list_users(
-        &self,
-        _actor: &Actor,
-        _page: Page,
-    ) -> Result<Vec<AdminUserView>, AdminError> {
+    async fn list_users(&self, _actor: &Actor, _page: Page) -> Result<AdminUserPage, AdminError> {
         self.0.record("list_users");
-        Ok(Vec::new())
+        Ok(AdminUserPage {
+            items: Vec::new(),
+            default_quota_bytes: 1 << 30,
+        })
     }
 
     async fn update_user(
@@ -163,6 +162,10 @@ impl QuotaAdmin for Double {
     async fn set_limit(&self, _account: Uuid, _limit: Option<i64>) -> Result<(), QuotaAdminError> {
         self.0.record("set_limit");
         Ok(())
+    }
+
+    fn default_quota_bytes(&self) -> i64 {
+        1 << 30
     }
 
     async fn recompute(

@@ -44,6 +44,8 @@ pub(super) fn http_config(settings: &Settings) -> HttpConfig {
                 .as_deref()
                 .map_or(NO_MINIMUM, str::trim)
                 .to_owned(),
+            share_default_ttl: settings.share_default_ttl.get(),
+            share_max_ttl: settings.share_max_ttl.get(),
         },
         min_client_version,
         // No key and no documented source (`server_info.md` open point 2): with `min_client_version` set,

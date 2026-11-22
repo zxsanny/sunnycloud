@@ -24,6 +24,10 @@ pub struct ServerInfo {
     pub longpoll_max_wait: Duration,
     /// The configured minimum as written (one semver, or `family=semver,...`).
     pub min_client_version: String,
+    /// Config key `share_default_ttl`; served in whole seconds, rounded down.
+    pub share_default_ttl: Duration,
+    /// Config key `share_max_ttl`; served in whole seconds, rounded down.
+    pub share_max_ttl: Duration,
 }
 
 impl ServerInfo {
@@ -35,7 +39,7 @@ impl ServerInfo {
         BodyClass::Staged.limit_bytes()
     }
 
-    /// The JSON body of the route: exactly the eight fields of the contract.
+    /// The JSON body of the route: the eight required fields of the contract and the two optional share limits.
     pub(crate) fn to_body(&self) -> Bytes {
         let value = json!({
             "block_size": Self::block_size(),
@@ -46,6 +50,8 @@ impl ServerInfo {
             "longpoll_max_wait": self.longpoll_max_wait.as_secs(),
             "min_client_version": self.min_client_version,
             "api_versions": API_VERSIONS,
+            "share_default_ttl": self.share_default_ttl.as_secs(),
+            "share_max_ttl": self.share_max_ttl.as_secs(),
         });
         Bytes::from(value.to_string().into_bytes())
     }
@@ -81,7 +87,17 @@ impl ServerInfo {
                     "type": "string",
                     "description": "One MAJOR.MINOR.PATCH for every client family, or family=version,... per family."
                 },
-                "api_versions": {"type": "array", "items": {"type": "string"}}
+                "api_versions": {"type": "array", "items": {"type": "string"}},
+                "share_default_ttl": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Seconds; the lifetime a share link gets when the owner names none. Optional for clients."
+                },
+                "share_max_ttl": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Seconds; the longest lifetime a share link may have. Optional for clients."
+                }
             }
         })
     }
@@ -98,11 +114,13 @@ mod tests {
             max_staged_per_account: 7,
             longpoll_max_wait: Duration::from_secs(20),
             min_client_version: "1.2.0".to_owned(),
+            share_default_ttl: Duration::from_secs(604_800),
+            share_max_ttl: Duration::from_secs(31_536_000),
         }
     }
 
     #[test]
-    fn the_body_has_exactly_the_eight_fields_with_the_configured_values() {
+    fn the_body_has_exactly_the_ten_fields_with_the_configured_values() {
         // Arrange
         let info = info();
 
@@ -121,6 +139,8 @@ mod tests {
                 "longpoll_max_wait": 20,
                 "min_client_version": "1.2.0",
                 "api_versions": ["v1"],
+                "share_default_ttl": 604_800,
+                "share_max_ttl": 31_536_000,
             })
         );
     }
@@ -141,7 +161,24 @@ mod tests {
     }
 
     #[test]
-    fn the_schema_requires_every_field_it_describes() {
+    fn a_sub_second_remainder_of_a_share_limit_is_not_advertised() {
+        // Arrange
+        let info = ServerInfo {
+            share_default_ttl: Duration::from_millis(60_900),
+            share_max_ttl: Duration::from_millis(120_900),
+            ..info()
+        };
+
+        // Act
+        let body: Value = serde_json::from_slice(&info.to_body()).expect("json body");
+
+        // Assert
+        assert_eq!(body["share_default_ttl"], 60);
+        assert_eq!(body["share_max_ttl"], 120);
+    }
+
+    #[test]
+    fn the_schema_requires_the_eight_fields_and_describes_the_two_optional_share_limits() {
         // Arrange
         let schema = ServerInfo::schema();
 
@@ -151,6 +188,6 @@ mod tests {
 
         // Assert
         assert_eq!(required, Some(8));
-        assert_eq!(described, Some(8));
+        assert_eq!(described, Some(10));
     }
 }

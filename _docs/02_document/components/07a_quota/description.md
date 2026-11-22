@@ -17,7 +17,7 @@
 | Port | Methods | Consumers |
 |---|---|---|
 | `QuotaLedger` | `reserve`, `release_reservation`, `adjust_used` (all take `&mut DbTx`) | 02 (inside the commit transaction), 03 (session start, expiry, abort) |
-| `QuotaAdmin` | `view`, `views`, `set_limit`, `recompute(account, live_bytes, reserved_bytes, repair)` | 07, 11 (own quota view), 12 (doctor drift check) |
+| `QuotaAdmin` | `view`, `views`, `set_limit`, `default_quota_bytes` (sync), `recompute(account, live_bytes, reserved_bytes, repair)` | 07, 11 (own quota view), 12 (doctor drift check) |
 | `AccountLifecycleHook` | `initialize(tx, account)` inserts the `quota` row; `erase_batch(account, limit) -> EraseProgress{remaining}` deletes it (`remaining = 0`) | 01 (initialize), 07 (erase_batch; registered late by 12, run last) |
 
 **Requires**: none. The caller of `recompute` (12 doctor, 07) takes `live_bytes` from 02's `LiveUsageSource` and `reserved_bytes` from 03's `ReservationSource` and passes them in, so the crate graph has no edge from 07a to 02 or 03.

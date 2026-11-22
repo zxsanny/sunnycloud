@@ -88,6 +88,10 @@ impl QuotaAdmin for QuotaDouble {
             .collect())
     }
 
+    fn default_quota_bytes(&self) -> i64 {
+        DEFAULT_LIMIT
+    }
+
     async fn set_limit(&self, account: Uuid, limit: Option<i64>) -> Result<(), QuotaAdminError> {
         self.set_limit_calls.fetch_add(1, Ordering::SeqCst);
         if limit.is_some_and(|bytes| !(0..=MAX_LIMIT).contains(&bytes)) {

@@ -6,6 +6,7 @@ use contracts::{AccountStatus, AdminService, AdminUserView, Page, Role};
 use sc_clock::Timestamp;
 use sqlx::PgConnection;
 use support::harness::{Harness, START, admin_actor};
+use support::quota_double::DEFAULT_LIMIT;
 use support::seed;
 use uuid::Uuid;
 
@@ -86,7 +87,8 @@ async fn all_pages(
                 },
             )
             .await
-            .expect("list a page");
+            .expect("list a page")
+            .items;
         if page.is_empty() {
             return pages;
         }
@@ -165,7 +167,8 @@ async fn each_page_makes_one_accounts_call_and_one_usage_call() {
                 },
             )
             .await
-            .expect("list a page");
+            .expect("list a page")
+            .items;
         let after = harness.port_calls();
         per_page.push((
             page.len(),
@@ -210,6 +213,30 @@ fn a_listed_user_carries_no_token_or_password_field() {
 }
 
 #[tokio::test]
+async fn a_page_carries_the_installation_default_limit_that_07a_holds_even_when_it_is_empty() {
+    // Arrange
+    let harness = Harness::new().await;
+    let caller = admin_actor(Uuid::new_v4());
+
+    // Act
+    let page = harness
+        .service
+        .list_users(
+            &caller,
+            Page {
+                offset: 1_000,
+                limit: PAGE,
+            },
+        )
+        .await
+        .expect("list a page");
+
+    // Assert
+    assert_eq!(page.default_quota_bytes, DEFAULT_LIMIT);
+    harness.finish().await;
+}
+
+#[tokio::test]
 async fn an_account_without_a_ledger_row_is_listed_with_no_use_and_no_limit() {
     // Arrange
     let harness = Harness::new().await;
@@ -236,7 +263,8 @@ async fn an_account_without_a_ledger_row_is_listed_with_no_use_and_no_limit() {
             },
         )
         .await
-        .expect("list a page");
+        .expect("list a page")
+        .items;
 
     // Assert
     assert_eq!(page.len(), 1);
@@ -264,7 +292,8 @@ async fn a_page_never_asks_for_more_than_500_rows_or_the_configured_size() {
             },
         )
         .await
-        .expect("list a capped page");
+        .expect("list a capped page")
+        .items;
     let open_page = open
         .service
         .list_users(
@@ -275,7 +304,8 @@ async fn a_page_never_asks_for_more_than_500_rows_or_the_configured_size() {
             },
         )
         .await
-        .expect("list an open page");
+        .expect("list an open page")
+        .items;
 
     // Assert
     assert_eq!(capped_page.len(), 10);

@@ -45,7 +45,7 @@ fn server_info_schema() -> Value {
 }
 
 #[tokio::test]
-async fn server_info_has_exactly_the_eight_fields_for_any_client_and_no_credentials() {
+async fn server_info_has_exactly_the_ten_fields_for_any_client_and_no_credentials() {
     // Arrange
     let server = Gated::start(gated_config("1.2.0")).await;
     let schema = server_info_schema();
@@ -69,6 +69,8 @@ async fn server_info_has_exactly_the_eight_fields_for_any_client_and_no_credenti
         "longpoll_max_wait": 20,
         "min_client_version": "1.2.0",
         "api_versions": ["v1"],
+        "share_default_ttl": 604_800,
+        "share_max_ttl": 31_536_000,
     });
     for reply in [&anonymous, &web] {
         assert_eq!(reply.status, 200);
@@ -114,7 +116,7 @@ async fn server_info_names_no_provider_and_no_setup_flag() {
 
     // Assert
     let keys: Vec<&String> = body.as_object().expect("object").keys().collect();
-    assert_eq!(keys.len(), 8);
+    assert_eq!(keys.len(), 10);
     assert!(
         keys.iter()
             .all(|k| !k.contains("provider") && !k.contains("setup"))

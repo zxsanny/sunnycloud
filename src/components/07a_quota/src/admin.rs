@@ -131,6 +131,10 @@ impl QuotaAdmin for PgQuotaAdmin {
         PgQuotaAdmin::set_limit(self, account, limit).await
     }
 
+    fn default_quota_bytes(&self) -> i64 {
+        self.default_quota_bytes
+    }
+
     /// The `used_bytes` column. `recompute_columns` reports both columns.
     async fn recompute(
         &self,

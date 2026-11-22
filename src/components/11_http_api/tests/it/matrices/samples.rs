@@ -98,7 +98,10 @@ pub fn prepare(script: &Script, owner: &str) -> bool {
         }
         "AdminService::list_users" => script.push(
             "AdminService::list_users",
-            Ok::<Vec<AdminUserView>, AdminError>(Vec::new()),
+            Ok::<AdminUserPage, AdminError>(AdminUserPage {
+                items: Vec::new(),
+                default_quota_bytes: 1 << 30,
+            }),
         ),
         "AdminService::update_user" | "AdminService::set_quota" => {
             script.push(static_key(owner), Ok::<(), AdminError>(()));

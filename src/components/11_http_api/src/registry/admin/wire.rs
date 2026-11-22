@@ -2,7 +2,7 @@
 //! only (`InviteService` stores its hash).
 
 use contracts::{
-    AccountState, AccountStatus, AdminUserView, CreatedInvite, HealthReport, HealthStatus,
+    AccountState, AccountStatus, AdminUserPage, CreatedInvite, HealthReport, HealthStatus,
     InviteInfo, Role,
 };
 use serde_json::{Value, json};
@@ -60,8 +60,10 @@ fn status(status: AccountStatus) -> &'static str {
     }
 }
 
-pub(super) fn user_list(users: &[AdminUserView]) -> Value {
-    let items: Vec<Value> = users
+/// `default_quota_bytes` is what an item's `limit` of `null` stands for.
+pub(super) fn user_list(page: &AdminUserPage) -> Value {
+    let items: Vec<Value> = page
+        .items
         .iter()
         .map(|user| {
             json!({
@@ -75,7 +77,7 @@ pub(super) fn user_list(users: &[AdminUserView]) -> Value {
             })
         })
         .collect();
-    json!({"items": items})
+    json!({"items": items, "default_quota_bytes": page.default_quota_bytes})
 }
 
 pub(super) fn health(report: &HealthReport) -> Value {
@@ -94,9 +96,13 @@ pub(super) fn health(report: &HealthReport) -> Value {
     json!({"items": items})
 }
 
-/// The plaintext token, shown once, and its expiry.
-pub(super) fn created_invite(invite: &CreatedInvite) -> Value {
-    json!({"token": invite.token.0.expose(), "expires_at": rfc3339(invite.expires_at)})
+/// The plaintext token, shown once, its expiry and the link the admin hands over (`url` carries the token too).
+pub(super) fn created_invite(invite: &CreatedInvite, url: &str) -> Value {
+    json!({
+        "token": invite.token.0.expose(),
+        "expires_at": rfc3339(invite.expires_at),
+        "url": url,
+    })
 }
 
 pub(super) fn invite_list(invites: &[InviteInfo]) -> Value {
@@ -120,8 +126,9 @@ pub(super) const USER_LIST: SchemaRef = SchemaRef {
     build: || {
         json!({
             "type": "object",
-            "required": ["items"],
+            "required": ["items", "default_quota_bytes"],
             "properties": {
+                "default_quota_bytes": {"type": "integer", "description": "Bytes; the installation default that an item's null limit stands for."},
                 "items": {
                     "type": "array",
                     "items": {
@@ -210,10 +217,11 @@ pub(super) const CREATED_INVITE: SchemaRef = SchemaRef {
     build: || {
         json!({
             "type": "object",
-            "required": ["token", "expires_at"],
+            "required": ["token", "expires_at", "url"],
             "properties": {
                 "token": {"type": "string", "description": "Shown once; no other answer carries it."},
-                "expires_at": {"type": "string", "description": "When the invite stops being redeemable (RFC 3339)."}
+                "expires_at": {"type": "string", "description": "When the invite stops being redeemable (RFC 3339)."},
+                "url": {"type": "string", "description": "The invite page with the token in its fragment: <public_url>/invite#<token>. Shown once, like the token."}
             }
         })
     },

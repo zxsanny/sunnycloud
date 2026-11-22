@@ -1,7 +1,8 @@
 //! The Auth and Identity operations of `api_v1_surface.md` (01 section 3): the provider list, sign-in begin and
 //! callback, the mobile code exchange, the refresh, the browser's session renewal and the identity-link attempt.
 //!
-//! `complete_link` has no route: 01's route table lists none (open point 34 of the surface contract).
+//! `complete_link` has no route of its own: the provider callback calls it for a request that carries a live
+//! session cookie (open point 34 of the surface contract).
 
 mod cookie;
 mod handlers;
@@ -66,7 +67,7 @@ const CALLBACK_SPEC: RouteSpec = RouteSpec::new(
     AuthClass::Public,
     BodyClass::None,
 )
-.summary("Where the provider sends the browser; 302 to the return path or to the SPA error route")
+.summary("Where the provider sends the browser; 302 to the return path or the SPA error route, or to the account page when a session cookie ends an identity link")
 .params(PROVIDER)
 .errors(CALLBACK_ERRORS)
 .mutating()

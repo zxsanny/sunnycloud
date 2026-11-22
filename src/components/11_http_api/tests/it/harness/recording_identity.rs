@@ -104,14 +104,21 @@ impl SignInService for RecordingSignIn {
         &self,
         principal: &Principal,
         provider: &str,
-        _callback_params: CallbackParams,
-        _browser_binding: &BrowserBinding,
-        _host: &str,
+        callback_params: CallbackParams,
+        browser_binding: &BrowserBinding,
+        host: &str,
         _client_ip: std::net::IpAddr,
     ) -> Result<Linked, SignInError> {
+        let params: Vec<String> = callback_params
+            .0
+            .iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect();
         self.0.record(format!(
-            "SignInService::complete_link {} {provider}",
-            principal.account_id
+            "SignInService::complete_link {} provider={provider} params={} binding={} host={host}",
+            principal.account_id,
+            params.join("&"),
+            browser_binding.0
         ));
         self.next("SignInService::complete_link")
     }
@@ -299,11 +306,7 @@ fn actor_text(actor: &Actor) -> String {
 
 #[contracts::async_trait]
 impl AdminService for RecordingAdmin {
-    async fn list_users(
-        &self,
-        actor: &Actor,
-        page: Page,
-    ) -> Result<Vec<AdminUserView>, AdminError> {
+    async fn list_users(&self, actor: &Actor, page: Page) -> Result<AdminUserPage, AdminError> {
         self.0.record(format!(
             "AdminService::list_users {} offset={} limit={}",
             actor_text(actor),

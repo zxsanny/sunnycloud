@@ -254,11 +254,7 @@ impl AdminStub {
 
 #[contracts::async_trait]
 impl AdminService for AdminStub {
-    async fn list_users(
-        &self,
-        actor: &Actor,
-        page: Page,
-    ) -> Result<Vec<AdminUserView>, AdminError> {
+    async fn list_users(&self, actor: &Actor, page: Page) -> Result<AdminUserPage, AdminError> {
         let _arguments = (actor, page);
         let key = "AdminService::list_users";
         self.0

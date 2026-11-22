@@ -264,6 +264,8 @@ mod tests {
                 max_staged_per_account: 1000,
                 longpoll_max_wait: Duration::from_secs(30),
                 min_client_version: String::new(),
+                share_default_ttl: Duration::from_secs(604_800),
+                share_max_ttl: Duration::from_secs(31_536_000),
             },
             credentials: crate::CredentialFormat {
                 session_cookie: "__Host-test".to_owned(),

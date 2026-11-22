@@ -30,6 +30,14 @@ pub struct AdminUserView {
     pub limit: Option<i64>,
 }
 
+/// One page of `list_users`. `default_quota_bytes` is the installation default that an item's `limit` of
+/// `None` stands for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminUserPage {
+    pub items: Vec<AdminUserView>,
+    pub default_quota_bytes: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HealthReport {
     pub items: Vec<(String, HealthItem)>,
@@ -68,8 +76,7 @@ pub enum AdminError {
 
 #[async_trait]
 pub trait AdminService: Send + Sync {
-    async fn list_users(&self, actor: &Actor, page: Page)
-    -> Result<Vec<AdminUserView>, AdminError>;
+    async fn list_users(&self, actor: &Actor, page: Page) -> Result<AdminUserPage, AdminError>;
 
     /// Applies `role` and `state` when present, in one transaction under the last-admin rule.
     async fn update_user(

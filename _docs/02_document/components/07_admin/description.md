@@ -16,7 +16,7 @@
 **Provides**
 | Port | Methods | Consumers |
 |---|---|---|
-| `AdminService` | `list_users`, `update_user`, `set_quota`, `health` (take an `Actor`: `Admin(principal)` or `Operator`) | 11 (admin routes), 12 (`admin promote\|demote`, `admin user ...`) |
+| `AdminService` | `list_users` (a page of users with the installation default limit), `update_user`, `set_quota`, `health` (take an `Actor`: `Admin(principal)` or `Operator`) | 11 (admin routes), 12 (`admin promote\|demote`, `admin user ...`) |
 | `AccountService` | `view`, `quota_view` | 11 |
 | `AccountDeletionService` | `request` (session principal), `request_as_operator` (proposed, see §3) | 11 (`request`), 12 (`admin user delete` calls `request_as_operator`) |
 | `Janitor` (impl `DeletionPurger`) | `name()`, `run_cycle(now)` | 12 scheduler |

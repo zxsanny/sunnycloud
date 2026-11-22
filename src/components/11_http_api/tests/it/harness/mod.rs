@@ -79,6 +79,8 @@ pub fn sample_server_info(minimum: &str) -> ServerInfo {
         max_staged_per_account: 1000,
         longpoll_max_wait: Duration::from_secs(30),
         min_client_version: minimum.to_owned(),
+        share_default_ttl: Duration::from_secs(7 * 86_400),
+        share_max_ttl: Duration::from_secs(365 * 86_400),
     }
 }
 

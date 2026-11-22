@@ -3,7 +3,7 @@
 **Component**: 07a_quota
 **Producer task**: E-11/c03 — `_docs/02_tasks/todo/B02-18_quota_admin_lifecycle.md` (`view`, `views`, `set_limit`, `AccountLifecycleHook`); E-11/c04 — `B02-19_quota_recompute.md` (`recompute`) (both renamed to their AZ keys at Step 4)
 **Consumer tasks**: E-14 transfer (`view` for the staged pre-check), E-15 identity (`initialize` at account creation), E-17 admin (`views` in the user list, `set_limit`, `erase_batch` through the deletion purger), E-21 http_api (own quota view), E-22 operator CLI (`admin user set-quota`, doctor drift check through `recompute`)
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: draft (frozen when E-11/c04 is accepted)
 **Last Updated**: 2026-11-04
 
@@ -18,6 +18,7 @@ What the admin-side quota calls return and change, and what the quota lifecycle 
 | `QuotaAdmin::view` | `account` -> `QuotaView{limit_bytes: Option<i64>, effective_limit, used, reserved}` | `NotFound` | async |
 | `QuotaAdmin::views` | `&[account]` -> map account -> `QuotaView` | none | async |
 | `QuotaAdmin::set_limit` | `account, Option<i64>` -> `()` | `NotFound`, `InvalidLimit` | async |
+| `QuotaAdmin::default_quota_bytes` | `()` -> `i64`, the installation default limit (`default_quota`) | none | sync, no I/O |
 | `QuotaAdmin::recompute` | `account, live_bytes, reserved_bytes, repair: bool` -> `Drift{stored, computed}` | none | async, system scope |
 | `AccountLifecycleHook::initialize` | `tx: &mut DbTx, account` -> `()` | `Unexpected` | async, caller's tx |
 | `AccountLifecycleHook::erase_batch` | `account, limit` -> `EraseProgress{remaining}` | `Unexpected` | async |
@@ -56,3 +57,4 @@ What the admin-side quota calls return and change, and what the quota lifecycle 
 | Version | Date | Change | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-11-04 | Initial contract | decompose Step 2 (B02) |
+| 1.1.0 | 2026-11-22 | `QuotaAdmin::default_quota_bytes` (additive; read by 07's `list_users`) | owner decision 2026-11-22 |

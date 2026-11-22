@@ -2,7 +2,7 @@
 //! one port method, with the account of the principal.
 
 use contracts::{
-    AccountServiceError, AccountView, AdminError, AdminUserView, CreatedInvite, DeletionAccepted,
+    AccountServiceError, AccountView, AdminError, AdminUserPage, CreatedInvite, DeletionAccepted,
     DeletionError, DeviceGrantError, DeviceInfo, DeviceToken, HealthItem, HealthReport,
     IdentityView, InviteError, InviteInfo, InviteToken, Role, SessionError, SessionInfo,
     SignInError, SignInOutcome,
@@ -348,7 +348,10 @@ fn operations() -> Vec<Operation> {
             |s| {
                 s.push(
                     "AdminService::list_users",
-                    Ok::<_, AdminError>(Vec::<AdminUserView>::new()),
+                    Ok::<_, AdminError>(AdminUserPage {
+                        items: Vec::new(),
+                        default_quota_bytes: 1 << 30,
+                    }),
                 )
             },
         ),
