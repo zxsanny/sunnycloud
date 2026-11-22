@@ -9,6 +9,7 @@ import { hex, wasm } from '../../../tests/support/wasm';
 import { createApi } from '$lib/api';
 import { UploadEngine } from './engine';
 import type { FromWorker } from './protocol';
+import { rejectWhenAborted } from '../../../tests/support/abortable';
 
 const PARENT = '0190aaaa-0000-7000-8000-00000000f001';
 
@@ -431,11 +432,7 @@ describe('the large path: session, blocks on lanes, commit', () => {
     server.faults.push((request, route) => {
       if (route !== 'PUT /api/v1/uploads/:id/blocks/:n') return undefined;
       release();
-      return new Promise<Response>((_resolve, reject) =>
-        request.signal.addEventListener('abort', () =>
-          reject(new DOMException('aborted', 'AbortError')),
-        ),
-      );
+      return new Promise<Response>((_resolve, reject) => rejectWhenAborted(request.signal, reject));
     });
     const running = engine.handle({
       type: 'upload',

@@ -5,6 +5,7 @@ import { inProcessWorker, pageApi } from '../../../tests/support/inProcessWorker
 import { UploadServer, type ServerOptions } from '../../../tests/support/uploadServer';
 import type { ApiError } from '$lib/api';
 import { MAX_SELECTION_FILES, TransferService, type JobProgress } from '.';
+import { rejectWhenAborted } from '../../../tests/support/abortable';
 
 const PARENT = '0190aaaa-0000-7000-8000-00000000f001';
 
@@ -279,9 +280,7 @@ function holdBlocks(server: UploadServer, forever = false) {
     if (route !== 'PUT /api/v1/uploads/:id/blocks/:n') return undefined;
     held += 1;
     return new Promise<Response>((resolve, reject) => {
-      request.signal.addEventListener('abort', () =>
-        reject(new DOMException('aborted', 'AbortError')),
-      );
+      rejectWhenAborted(request.signal, reject);
       if (!forever) void gate.then(() => resolve(server.bypass(request)));
     });
   });

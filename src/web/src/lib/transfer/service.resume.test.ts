@@ -6,6 +6,7 @@ import { UploadServer } from '../../../tests/support/uploadServer';
 import { STOPPED_TEXT } from './errors';
 import { ResumeStore, type ResumeRecord } from './resume';
 import { TransferService, type JobProgress } from '.';
+import { rejectWhenAborted } from '../../../tests/support/abortable';
 
 const PARENT = '0190aaaa-0000-7000-8000-00000000f001';
 /** Six blocks: five of 2 MiB and a short one. */
@@ -113,11 +114,7 @@ describe('the resume record while an upload runs', () => {
     // A block on the wire that ends when its request is aborted, as a real fetch does.
     w.server.faults.push((request, route) =>
       route === BLOCK_PUT
-        ? new Promise<Response>((_resolve, reject) =>
-            request.signal.addEventListener('abort', () =>
-              reject(new DOMException('aborted', 'AbortError')),
-            ),
-          )
+        ? new Promise<Response>((_resolve, reject) => rejectWhenAborted(request.signal, reject))
         : undefined,
     );
     const service = w.tab();
