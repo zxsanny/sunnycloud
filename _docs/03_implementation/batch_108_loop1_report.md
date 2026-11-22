@@ -27,7 +27,7 @@ Not run: pending the batch review of the loop. The CI `images` job (a cold 4-vCP
 | # | Scenario or question | Spec ref | Proposed handling | clear / unclear |
 |---|----------------------|----------|-------------------|-----------------|
 | 1 | The demuxer allowlist is PROVISIONAL: it comes from the S4/S5 whitelist of decoder description 13.1, measured on ffmpeg 8.0.1 over synthetic clips | AZ-3863, AZ-3849, AZ-3850 | the spikes stay open for the reference host | clear |
-| 2 | ffmpeg 9.1 was released two days before the pin; the host decoder tests and the spike numbers use 8.0.1 (CI: Ubuntu 24.04's older ffmpeg). No video poster or probe has run through the container yet | AZ-3863 | owner confirms 9.1 over 9.0.2; the container suite (AZ-3865) proves video through the image | unclear (owner) |
+| 2 | ffmpeg 9.1 was released two days before the pin; the host decoder tests and the spike numbers use 8.0.1 (CI: Ubuntu 24.04's older ffmpeg). No video poster or probe has run through the container yet | AZ-3863 | owner confirms 9.1 over 9.0.2; the container suite (AZ-3865) proves video through the image | RESOLVED 2026-11-22 (owner): keep 9.1 |
 | 3 | The build-facts file path (`/usr/share/sunnycloud/build-facts.json`) is named by no doc; the runner's `hello` still returns "unknown" and build_timestamp 1 (placeholder of AZ-3861) | AZ-3861 | AZ-3861 reads the file; the owner confirms the path | unclear |
 | 4 | `--disable-devices` removes the lavfi device, so the v1.1 NVENC probe (`-f lavfi -i nullsrc`) needs another source | AZ-3862 | decide at AZ-3862 | unclear |
 | 5 | libvips is built without highway and orc (no SIMD speed-up): PT-10-1 timing is unchecked | AZ-3866 | measure at AZ-3866 on the reference host | clear |
