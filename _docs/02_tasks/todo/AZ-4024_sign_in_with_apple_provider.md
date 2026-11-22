@@ -61,10 +61,10 @@ Given one `begin` per case with the Apple module
 When `complete` runs with: missing, replayed, foreign and expired state; wrong nonce; wrong audience; wrong issuer; a bad RS256 signature; a reused code
 Then the state cases return `UntrustedState`, the token and id-token cases return `TrustedFailure{code}`, and the row counts of `sessions`, `accounts`, `identities` and `login_codes` are unchanged
 
-**AC-4: Email is never a key (AC-55, NFT-SEC-02 Apple-like case)**
-Given the Apple module returning a relay address with `email_verified=false`, an allowlist that contains that address, and a victim account with the same address
-When an unknown Apple identity signs in without an invite, and then redeems a valid invite
-Then the first creates nothing, the second creates a separate account, and no identity is linked to the victim
+**AC-4: Email is never a key (AC-55, NFT-SEC-02 Apple-like case)** (reworded 2026-11-22: the owner keeps the email allowlist rule of 2026-11-13, under which an invite is refused unless the email is verified, not a relay address and on the allowlist)
+Given the Apple module returning a relay address with `email_verified=false`, a victim account with the same address, and (a) an allowlist that contains that address, (b) no allowlist
+When an unknown Apple identity signs in, with and without a valid invite
+Then in case (a) nothing is created and no identity is linked, invite or not; in case (b) the invite creates a separate account with no email stored; in both cases no identity is linked to the victim
 
 **AC-5: Trait unchanged and provider listed (AZ-3684 constraint, AC-19)**
 Given the v1.0 `ProviderClient` trait definition and a server configured with `apple` and `gh`
