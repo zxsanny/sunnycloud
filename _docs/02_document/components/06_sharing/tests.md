@@ -301,6 +301,7 @@ Implementation (AZ-3704): `tests/sharing/acceptance.rs`, at the port boundary ov
 | 1 | `open` | `PasswordRequired` |
 | 2 | 10 wrong passwords, then the 11th | `WrongPassword` x10, then `RateLimited{retry_after}` |
 | 3 | after the window, right password, `authorize_content` | grant, then `ShareContent` |
+| 4 | `open` with that grant; with no grant, another link's grant, an expired grant; a link without password with a stray grant | `Available`; `PasswordRequired` x3; `Available` |
 
 ### AT-06-3: Link survives edits and moves, dies with delete
 **Summary**: owner-visible link behaviour over the file's life.

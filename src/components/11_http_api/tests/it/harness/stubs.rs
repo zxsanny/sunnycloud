@@ -160,7 +160,7 @@ stub_port!(ShareStub: ShareService, ShareError, {
 });
 
 stub_port!(PublicShareStub: PublicShareService, PublicShareError, {
-    async fn open(&self, token: &RawToken, client_ip: IpAddr)
+    async fn open(&self, token: &RawToken, grant: Option<&AccessGrant>, client_ip: IpAddr)
         -> Result<ShareOpen, PublicShareError>;
     async fn verify_password(&self, token: &RawToken, password: &str, client_ip: IpAddr)
         -> Result<AccessGrant, PublicShareError>;

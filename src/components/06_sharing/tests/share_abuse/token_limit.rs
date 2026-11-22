@@ -26,16 +26,16 @@ async fn open_limits_invalid_tokens_per_address_and_frees_it_after_the_window() 
     let mut first = Vec::new();
     let mut other = Vec::new();
     for n in 0..limit {
-        first.push(rig.shares.open(&unknown(n), IP1).await);
+        first.push(rig.shares.open(&unknown(n), None, IP1).await);
         if n % 2 == 0 {
-            other.push(rig.shares.open(&unknown(n), IP2).await);
+            other.push(rig.shares.open(&unknown(n), None, IP2).await);
         }
     }
-    let over = rig.shares.open(&unknown(limit), IP1).await;
-    let live_while_limited = rig.shares.open(&live.token, IP1).await;
-    let live_elsewhere = rig.shares.open(&live.token, IP2).await;
+    let over = rig.shares.open(&unknown(limit), None, IP1).await;
+    let live_while_limited = rig.shares.open(&live.token, None, IP1).await;
+    let live_elsewhere = rig.shares.open(&live.token, None, IP2).await;
     rig.harness.clock.tick(MINUTE);
-    let after = rig.shares.open(&unknown(limit + 1), IP1).await;
+    let after = rig.shares.open(&unknown(limit + 1), None, IP1).await;
 
     // Assert
     for answer in first.iter().chain(&other) {
@@ -71,7 +71,7 @@ async fn the_content_and_password_routes_count_on_the_same_address_counter_as_op
     // Act
     let mut answers = Vec::new();
     for n in 0..third {
-        let answer = rig.shares.open(&unknown(n), IP1).await;
+        let answer = rig.shares.open(&unknown(n), None, IP1).await;
         answers.push(match answer {
             Ok(ShareOpen::NotFound) => Err(PublicShareError::NotFound),
             other => other.map(|_| ()),
@@ -88,7 +88,7 @@ async fn the_content_and_password_routes_count_on_the_same_address_counter_as_op
         let answer = rig.shares.verify_password(&unknown(n), PASSWORD, IP1).await;
         answers.push(answer.map(|_| ()));
     }
-    let open_over = rig.shares.open(&unknown(limit), IP1).await;
+    let open_over = rig.shares.open(&unknown(limit), None, IP1).await;
     let content_over = rig
         .shares
         .authorize_content(&protected.token, None, IP1, false)
@@ -134,7 +134,7 @@ async fn the_derived_route_counts_unknown_tokens_on_the_same_address_counter_as_
     let limit = usize::try_from(rig.harness.config.invalid_token_limit).expect("fits");
     let half = limit / 2;
     for n in 0..half {
-        let answer = rig.shares.open(&unknown(n), IP1).await;
+        let answer = rig.shares.open(&unknown(n), None, IP1).await;
         assert!(matches!(answer, Ok(ShareOpen::NotFound)), "{answer:?}");
     }
 
@@ -144,7 +144,7 @@ async fn the_derived_route_counts_unknown_tokens_on_the_same_address_counter_as_
         derived.push(rig.shares.authorize_derived(&unknown(n), None, IP1).await);
     }
     let derived_over = rig.shares.authorize_derived(&live.token, None, IP1).await;
-    let open_over = rig.shares.open(&unknown(limit), IP1).await;
+    let open_over = rig.shares.open(&unknown(limit), None, IP1).await;
     let elsewhere = rig.shares.authorize_derived(&live.token, None, IP2).await;
 
     // Assert
@@ -180,8 +180,13 @@ async fn valid_tokens_do_not_count_against_the_address() {
     // Act
     let mut answers = Vec::new();
     for _ in 0..=limit {
-        answers.push(rig.shares.open(&plain.token, IP1).await.map(|_| ()));
-        answers.push(rig.shares.open(&protected.token, IP1).await.map(|_| ()));
+        answers.push(rig.shares.open(&plain.token, None, IP1).await.map(|_| ()));
+        answers.push(
+            rig.shares
+                .open(&protected.token, None, IP1)
+                .await
+                .map(|_| ()),
+        );
         let content = rig
             .shares
             .authorize_content(&plain.token, None, IP1, false)

@@ -22,7 +22,7 @@ async fn each_trip_writes_one_audit_event_and_one_warn_line_without_the_token() 
 
     // Act
     for n in 0..token_limit + 20 {
-        let answer = rig.shares.open(&unknown(n), IP1).await;
+        let answer = rig.shares.open(&unknown(n), None, IP1).await;
         assert!(answer.is_ok() || matches!(answer, Err(PublicShareError::RateLimited { .. })));
     }
     for _ in 0..rig.harness.config.wrong_password_limit + 5 {

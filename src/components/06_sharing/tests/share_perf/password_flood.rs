@@ -98,7 +98,9 @@ async fn visitor(
     while Instant::now() < end {
         let link = &links[n % links.len()];
         let began = Instant::now();
-        let answer = shares.open(&link.created.token, address(3, index)).await;
+        let answer = shares
+            .open(&link.created.token, None, address(3, index))
+            .await;
         times.push(began.elapsed());
         match answer {
             Ok(ShareOpen::Available { name, size, .. })

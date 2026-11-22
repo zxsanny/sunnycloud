@@ -29,9 +29,9 @@ async fn a_live_link_shows_the_current_revision_before_and_after_a_save_in_place
         .expect("create");
 
     // Act
-    let before = shares.open(&link.token, VISITOR).await.expect("open");
+    let before = shares.open(&link.token, None, VISITOR).await.expect("open");
     new_current_revision(&mut conn, account, file, 2048, "image/png").await;
-    let after = shares.open(&link.token, VISITOR).await.expect("open");
+    let after = shares.open(&link.token, None, VISITOR).await.expect("open");
 
     // Assert
     let expected = |size, media_type: &str| ShareOpen::Available {
@@ -56,7 +56,7 @@ async fn a_live_password_link_answers_password_required_with_no_file_data() {
     // Act
     let answer = cases
         .shares
-        .open(&cases.password, VISITOR)
+        .open(&cases.password, None, VISITOR)
         .await
         .expect("open");
 
@@ -86,7 +86,7 @@ async fn every_dead_case_and_every_malformed_token_is_the_same_not_found() {
     // Act
     let mut answers = Vec::new();
     for token in tokens {
-        answers.push(cases.shares.open(token, VISITOR).await.expect("open"));
+        answers.push(cases.shares.open(token, None, VISITOR).await.expect("open"));
     }
 
     // Assert
@@ -117,9 +117,9 @@ async fn a_link_is_live_one_microsecond_before_its_expiry_and_gone_at_it() {
 
     // Act
     harness.clock.tick(HOUR - micro);
-    let before = shares.open(&link.token, VISITOR).await.expect("open");
+    let before = shares.open(&link.token, None, VISITOR).await.expect("open");
     harness.clock.tick(micro);
-    let at = shares.open(&link.token, VISITOR).await.expect("open");
+    let at = shares.open(&link.token, None, VISITOR).await.expect("open");
 
     // Assert
     assert!(matches!(before, ShareOpen::Available { .. }), "{before:?}");
@@ -170,8 +170,8 @@ async fn a_revoked_link_stays_not_found_while_other_links_on_its_file_work() {
         .expect("another link on the same file");
 
     // Act
-    let revoked = cases.shares.open(&cases.revoked, VISITOR).await;
-    let other = cases.shares.open(&fresh.token, VISITOR).await;
+    let revoked = cases.shares.open(&cases.revoked, None, VISITOR).await;
+    let other = cases.shares.open(&fresh.token, None, VISITOR).await;
 
     // Assert
     assert_eq!(revoked.expect("open"), ShareOpen::NotFound);
@@ -181,5 +181,8 @@ async fn a_revoked_link_stays_not_found_while_other_links_on_its_file_work() {
 }
 
 async fn open(shares: &PgShareService, text: String) -> ShareOpen {
-    shares.open(&presented(text), VISITOR).await.expect("open")
+    shares
+        .open(&presented(text), None, VISITOR)
+        .await
+        .expect("open")
 }

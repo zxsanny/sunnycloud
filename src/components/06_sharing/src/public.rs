@@ -37,18 +37,21 @@ pub(crate) enum Target {
 
 impl PgShareService {
     /// `PublicShareService::open`: `Available` with the name, the current revision's size and media type and the
-    /// expiry; `PasswordRequired` for a live password link on a live file, with no file data; `NotFound` for
-    /// everything else, counted against `client_ip`'s invalid tokens; `RateLimited` before any read while that
+    /// expiry; `PasswordRequired` for a live password link on a live file without a valid grant of its own (the
+    /// rule of `content::allowed_file`: an expired, altered, empty, oversized or other link's grant counts as
+    /// absent), with no file data; a link without a password ignores grants; `NotFound` for everything else, counted against `client_ip`'s invalid tokens; `RateLimited` before any read while that
     /// address is limited (AC-20).
     pub(crate) async fn open_link(
         &self,
         token: &RawToken,
+        grant: Option<&AccessGrant>,
         client_ip: IpAddr,
     ) -> Result<ShareOpen, PublicShareError> {
         let ip = client_ip.to_canonical();
         self.check_token_ip(ip)?;
         let now = self.clock.now_utc();
-        let row = lookup_repo::by_token_hash(&self.db, &sha256_token(token.expose()))
+        let token_hash = sha256_token(token.expose());
+        let row = lookup_repo::by_token_hash(&self.db, &token_hash)
             .await
             .map_err(run_unexpected)?;
         let link = live_link(row, now);
@@ -57,7 +60,8 @@ impl PgShareService {
         let file = self.tree.resolve_live_file(account, node).await;
         let view = self.tree.get_node(account, NodeSelector::Id(node)).await;
         let target = target_of(file, view)?;
-        let answer = decide(link.as_ref(), target);
+        let granted = grant.is_some_and(|grant| self.grants.accepts(&token_hash, grant, now));
+        let answer = decide(link.as_ref(), target, granted);
         if answer == ShareOpen::NotFound {
             self.count_invalid_token(ip).await;
         }
@@ -72,9 +76,10 @@ impl PublicShareService for PgShareService {
     async fn open(
         &self,
         token: &RawToken,
+        grant: Option<&AccessGrant>,
         client_ip: IpAddr,
     ) -> Result<ShareOpen, PublicShareError> {
-        self.open_link(token, client_ip).await
+        self.open_link(token, grant, client_ip).await
     }
 
     async fn verify_password(
@@ -146,10 +151,12 @@ pub(crate) fn target_of(
     })
 }
 
-/// The answer from the live link (if any) and its target.
-pub(crate) fn decide(link: Option<&LinkRow>, target: Target) -> ShareOpen {
+/// The answer from the live link (if any), its target and whether a valid grant of this link was presented.
+pub(crate) fn decide(link: Option<&LinkRow>, target: Target, granted: bool) -> ShareOpen {
     match (link, target) {
-        (Some(link), Target::Live { .. }) if link.has_password => ShareOpen::PasswordRequired,
+        (Some(link), Target::Live { .. }) if link.has_password && !granted => {
+            ShareOpen::PasswordRequired
+        }
         (
             Some(link),
             Target::Live {
@@ -278,7 +285,7 @@ mod tests {
         // Act
         let answers: Vec<ShareOpen> = cases
             .into_iter()
-            .map(|(row, target)| decide(live_link(row, NOW).as_ref(), target))
+            .map(|(row, target)| decide(live_link(row, NOW).as_ref(), target, true))
             .collect();
 
         // Assert
@@ -295,8 +302,12 @@ mod tests {
         let protected = row(later(), false, true);
 
         // Act
-        let available = decide(live_link(Some(plain), NOW).as_ref(), live_target());
-        let password = decide(live_link(Some(protected), NOW).as_ref(), live_target());
+        let available = decide(live_link(Some(plain), NOW).as_ref(), live_target(), false);
+        let password = decide(
+            live_link(Some(protected), NOW).as_ref(),
+            live_target(),
+            false,
+        );
 
         // Assert
         assert_eq!(
@@ -312,9 +323,23 @@ mod tests {
     }
 
     #[test]
+    fn a_valid_grant_opens_a_password_link_and_no_grant_does_not() {
+        // Arrange
+        let protected = row(later(), false, true);
+
+        // Act
+        let granted = decide(Some(&protected), live_target(), true);
+        let not_granted = decide(Some(&protected), live_target(), false);
+
+        // Assert
+        assert!(matches!(granted, ShareOpen::Available { .. }));
+        assert_eq!(not_granted, ShareOpen::PasswordRequired);
+    }
+
+    #[test]
     fn available_has_exactly_name_size_media_type_and_expiry() {
         // Arrange
-        let answer = decide(Some(&row(later(), false, false)), live_target());
+        let answer = decide(Some(&row(later(), false, false)), live_target(), false);
 
         // Act
         // The pattern names every field without `..`: a fifth field fails to compile.

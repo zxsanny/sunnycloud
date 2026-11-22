@@ -71,7 +71,7 @@ impl FromRequestParts<Services> for Visitor {
 pub(super) async fn open(State(services): State<Services>, visitor: Visitor) -> Answer {
     let opened = services
         .public_shares
-        .open(&visitor.token, visitor.client_ip)
+        .open(&visitor.token, visitor.grant.as_ref(), visitor.client_ip)
         .await
         .map_err(refused(visitor.request_id))?;
     match opened {

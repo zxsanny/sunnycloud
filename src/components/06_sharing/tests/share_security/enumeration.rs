@@ -40,7 +40,7 @@ async fn ten_thousand_guesses_get_one_answer_and_trip_the_address_limit_at_call_
     let mut call_in_minute = 0;
     for (kind, token) in &corpus {
         call_in_minute += 1;
-        let answer = shares.open(token, ATTACKER).await;
+        let answer = shares.open(token, None, ATTACKER).await;
         answers.push((*kind, call_in_minute, answer));
         if call_in_minute == limit + 1 {
             harness.clock.tick(MINUTE);
@@ -49,7 +49,7 @@ async fn ten_thousand_guesses_get_one_answer_and_trip_the_address_limit_at_call_
     }
     let mut live_answers = Vec::new();
     for link in &live {
-        live_answers.push(shares.open(&link.created.token, VISITOR).await);
+        live_answers.push(shares.open(&link.created.token, None, VISITOR).await);
     }
 
     // Assert

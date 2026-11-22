@@ -48,7 +48,7 @@ async fn account_b_cannot_create_list_or_revoke_on_the_link_of_a() {
     let listed = shares.list(b, None).await;
     let listed_for_f = shares.list(b, Some(f)).await;
     let revoked = shares.revoke(b, link_of_a.id).await;
-    let opened = shares.open(&link_of_a.token, VISITOR).await;
+    let opened = shares.open(&link_of_a.token, None, VISITOR).await;
 
     // Assert
     for attempt in [&created, &created_with_password] {

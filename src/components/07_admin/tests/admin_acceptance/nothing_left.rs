@@ -113,7 +113,7 @@ async fn at_07_1_a_deleted_account_leaves_nothing_behind_after_a_purger_restart_
     let own = principal(&authenticator, first).await;
     principal(&authenticator, second).await;
     principal(&authenticator, token).await;
-    let open_before = ports.shares.open(&link.token, VISITOR).await;
+    let open_before = ports.shares.open(&link.token, None, VISITOR).await;
     let entered = Arc::new(Notify::new());
     let stuck = world.purger(
         wiring.accounts.clone(),
@@ -153,7 +153,7 @@ async fn at_07_1_a_deleted_account_leaves_nothing_behind_after_a_purger_restart_
     );
     drain(&world, &purger, &world.sweeper(&fresh), account).await;
     let purge_took = purge_started.elapsed();
-    let open_after = ports.shares.open(&link.token, VISITOR).await;
+    let open_after = ports.shares.open(&link.token, None, VISITOR).await;
 
     // Assert
     let deadline = world.config.account_delete_deadline;

@@ -21,7 +21,7 @@ async fn logged_open(
     token: &RawToken,
 ) -> (ShareOpen, Vec<String>) {
     log.take();
-    let answer = shares.open(token, VISITOR).await.expect("open");
+    let answer = shares.open(token, None, VISITOR).await.expect("open");
     (answer, log.take_data_statements())
 }
 

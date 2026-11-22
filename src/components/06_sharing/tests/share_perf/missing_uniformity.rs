@@ -53,7 +53,10 @@ async fn run(samples: usize) -> Report {
     ];
     let reference = format!("{:?}", Ok::<_, ()>(ShareOpen::NotFound));
     for (_, token) in &missing {
-        shares.open(token, VISITOR).await.expect("warm-up open");
+        shares
+            .open(token, None, VISITOR)
+            .await
+            .expect("warm-up open");
     }
     let mut times: Vec<Vec<Duration>> = missing
         .iter()
@@ -64,7 +67,7 @@ async fn run(samples: usize) -> Report {
         for step in 0..missing.len() {
             let case = (sample + step) % missing.len();
             let began = Instant::now();
-            let answer = shares.open(missing[case].1, VISITOR).await;
+            let answer = shares.open(missing[case].1, None, VISITOR).await;
             times[case].push(began.elapsed());
             let written = format!("{:?}", answer.map_err(|_| ()));
             if written != reference {

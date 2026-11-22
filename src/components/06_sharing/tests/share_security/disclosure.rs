@@ -99,9 +99,9 @@ async fn visitor_outcomes_carry_the_four_file_fields_and_no_identifier() {
 
     // Act
     let mut opens = vec![
-        shares.open(&plain.token, VISITOR).await,
-        shares.open(&locked.token, VISITOR).await,
-        shares.open(&unknown_token(), VISITOR).await,
+        shares.open(&plain.token, None, VISITOR).await,
+        shares.open(&locked.token, None, VISITOR).await,
+        shares.open(&unknown_token(), None, VISITOR).await,
     ];
     let mut checks = vec![
         shares
@@ -125,9 +125,9 @@ async fn visitor_outcomes_carry_the_four_file_fields_and_no_identifier() {
         );
     }
     for _ in 0..harness.config.invalid_token_limit {
-        opens.push(shares.open(&unknown_token(), LIMITED).await);
+        opens.push(shares.open(&unknown_token(), None, LIMITED).await);
     }
-    opens.push(shares.open(&plain.token, LIMITED).await);
+    opens.push(shares.open(&plain.token, None, LIMITED).await);
     checks.push(
         shares
             .verify_password(&locked.token, PASSWORD, LIMITED)

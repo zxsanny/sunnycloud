@@ -74,7 +74,7 @@ async fn request(
     let (link, ip) = (&target.link, address(1, visitor));
     let began = Instant::now();
     if n.is_multiple_of(2) {
-        let answer = shares.open(&link.created.token, ip).await;
+        let answer = shares.open(&link.created.token, None, ip).await;
         report.opens.push(began.elapsed());
         let expected = match link.password {
             Some(_) => ShareOpen::PasswordRequired,

@@ -142,11 +142,13 @@ impl PublicShareService for RecordingPublicShares {
     async fn open(
         &self,
         token: &RawToken,
+        grant: Option<&AccessGrant>,
         client_ip: IpAddr,
     ) -> Result<ShareOpen, PublicShareError> {
         self.0.record(format!(
-            "PublicShareService::open {} {client_ip}",
-            token.expose()
+            "PublicShareService::open {} {} {client_ip}",
+            token.expose(),
+            grant_line(grant)
         ));
         self.next("PublicShareService::open")
     }

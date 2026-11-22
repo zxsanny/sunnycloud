@@ -75,9 +75,12 @@ pub enum PublicShareError {
 /// Visitor-side access decisions; it never serves bytes.
 #[async_trait]
 pub trait PublicShareService: Send + Sync {
+    /// `PasswordRequired` for a live password link without a valid grant of its own (the grant rules of
+    /// `authorize_content`); with one, `Available`. A link without a password ignores the grant.
     async fn open(
         &self,
         token: &RawToken,
+        grant: Option<&AccessGrant>,
         client_ip: IpAddr,
     ) -> Result<ShareOpen, PublicShareError>;
 

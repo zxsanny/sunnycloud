@@ -7,7 +7,8 @@
 use std::time::{Duration, Instant};
 
 use contracts::{
-    AccessGrant, CreatedShare, PublicShareError, PublicShareService, ShareContent, ShareService,
+    AccessGrant, CreatedShare, PublicShareError, PublicShareService, ShareContent, ShareOpen,
+    ShareService,
 };
 use sc_ids::RawToken;
 use sqlx::Connection;
@@ -62,6 +63,14 @@ impl Links {
         self.shares
             .authorize_content(token, grant, VISITOR, false)
             .await
+    }
+
+    async fn open(
+        &self,
+        token: &RawToken,
+        grant: Option<&AccessGrant>,
+    ) -> Result<ShareOpen, PublicShareError> {
+        self.shares.open(token, grant, VISITOR).await
     }
 
     async fn grants(&self) -> (AccessGrant, AccessGrant) {
@@ -313,5 +322,50 @@ async fn a_near_valid_grant_is_refused_as_fast_as_an_invalid_one() {
         gap <= tolerance,
         "near {near_median:?}, invalid {invalid_median:?}"
     );
+    links.finish(harness).await;
+}
+
+#[tokio::test]
+async fn open_answers_a_password_link_with_the_file_only_for_a_valid_grant_of_its_own() {
+    // Arrange
+    let harness = Harness::new().await;
+    let links = Links::new(&harness).await;
+    let (grant, other) = links.grants().await;
+    let altered = with_value(&grant, "A".repeat(grant.value.len()));
+
+    // Act
+    let without = links.open(&links.first.token, None).await;
+    let other_link = links.open(&links.first.token, Some(&other)).await;
+    let tampered = links.open(&links.first.token, Some(&altered)).await;
+    let valid = links.open(&links.first.token, Some(&grant)).await;
+    harness.clock.tick(harness.config.grant_ttl);
+    let expired = links.open(&links.first.token, Some(&grant)).await;
+
+    // Assert
+    for refused in [without, other_link, tampered, expired] {
+        assert!(
+            matches!(refused, Ok(ShareOpen::PasswordRequired)),
+            "{refused:?}"
+        );
+    }
+    let opened = valid.expect("open with the link's own grant");
+    assert!(matches!(opened, ShareOpen::Available { .. }), "{opened:?}");
+    links.finish(harness).await;
+}
+
+#[tokio::test]
+async fn open_of_a_link_without_a_password_ignores_a_stray_grant() {
+    // Arrange
+    let harness = Harness::new().await;
+    let links = Links::new(&harness).await;
+    let (grant, _) = links.grants().await;
+
+    // Act
+    let plain_with = links.open(&links.plain.token, Some(&grant)).await;
+    let plain_without = links.open(&links.plain.token, None).await;
+
+    // Assert
+    assert!(matches!(plain_with, Ok(ShareOpen::Available { .. })));
+    assert_eq!(plain_with.ok(), plain_without.ok());
     links.finish(harness).await;
 }

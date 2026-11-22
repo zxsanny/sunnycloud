@@ -70,11 +70,11 @@ async fn b_reads_only_its_rows_and_the_lookup_answers_only_an_exact_token() {
         })
         .await
         .expect("scoped read");
-    let exact_a = shares.open(&links_of_a[0].token, VISITOR).await;
-    let exact_b = shares.open(&link_of_b.token, VISITOR).await;
+    let exact_a = shares.open(&links_of_a[0].token, None, VISITOR).await;
+    let exact_b = shares.open(&link_of_b.token, None, VISITOR).await;
     let mut partial = Vec::new();
     for input in partial_inputs(links_of_a[0].token.expose()) {
-        let answer = shares.open(&presented(input.clone()), PROBER).await;
+        let answer = shares.open(&presented(input.clone()), None, PROBER).await;
         let content = shares
             .authorize_content(&presented(input.clone()), None, PROBER, false)
             .await;

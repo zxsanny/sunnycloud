@@ -117,7 +117,10 @@ async fn an_open_link_names_only_the_file_and_the_end_of_the_link() {
         })
     );
     assert_eq!(reply.header("cache-control"), Some("no-store"));
-    assert_eq!(stack.log(OPEN), [format!("{OPEN} {TOKEN} 127.0.0.1")]);
+    assert_eq!(
+        stack.log(OPEN),
+        [format!("{OPEN} {TOKEN} no grant 127.0.0.1")]
+    );
     stack.stop().await;
 }
 

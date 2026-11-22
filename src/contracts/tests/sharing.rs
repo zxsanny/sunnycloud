@@ -88,6 +88,7 @@ impl PublicShareService for Double {
     async fn open(
         &self,
         _token: &RawToken,
+        _grant: Option<&AccessGrant>,
         _client_ip: IpAddr,
     ) -> Result<ShareOpen, PublicShareError> {
         self.0.record("open");
@@ -179,7 +180,7 @@ async fn public_share_service_double_records_all_four_methods() {
     let token = token();
 
     // Act
-    let opened = public.open(&token, IP).await.expect("open");
+    let opened = public.open(&token, None, IP).await.expect("open");
     let verified = public
         .verify_password(&token, "pw", IP)
         .await

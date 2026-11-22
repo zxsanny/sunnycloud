@@ -34,7 +34,7 @@ const WRONG: &str = "wrong-guess-of-the-visitor";
 async fn visit(shares: &sunnycloud_sharing::PgShareService, links: &[FactoryLink]) {
     for link in &links[..VISITED] {
         let token = &link.created.token;
-        shares.open(token, VISITOR).await.expect("open");
+        shares.open(token, None, VISITOR).await.expect("open");
         let grant = match link.password {
             Some(password) => Some(
                 shares
@@ -76,7 +76,7 @@ async fn visit(shares: &sunnycloud_sharing::PgShareService, links: &[FactoryLink
         .into_iter()
         .filter(|(kind, _)| *kind != Guess::Random)
     {
-        let answer = shares.open(&guess, GUESSER).await;
+        let answer = shares.open(&guess, None, GUESSER).await;
         assert!(answer.is_ok() || matches!(answer, Err(PublicShareError::RateLimited { .. })));
     }
 }

@@ -59,7 +59,7 @@ async fn at_06_1_a_shared_photo_opens_downloads_once_and_is_not_found_after_revo
         .list(owner.account, None)
         .await
         .expect("list the owner's links");
-    let opened = shares.open(&created.token, VISITOR).await;
+    let opened = shares.open(&created.token, None, VISITOR).await;
     let content = shares
         .authorize_content(&created.token, None, VISITOR, true)
         .await;
@@ -68,7 +68,7 @@ async fn at_06_1_a_shared_photo_opens_downloads_once_and_is_not_found_after_revo
         .revoke(owner.account, created.id)
         .await
         .expect("revoke");
-    let after_revoke = shares.open(&created.token, VISITOR).await;
+    let after_revoke = shares.open(&created.token, None, VISITOR).await;
     let content_after_revoke = shares
         .authorize_content(&created.token, None, VISITOR, true)
         .await;
@@ -124,7 +124,7 @@ async fn at_06_2_a_password_link_limits_wrong_guesses_and_grants_content_after_t
     let window = harness.config.wrong_password_window;
 
     // Act
-    let opened = shares.open(&link.token, VISITOR).await;
+    let opened = shares.open(&link.token, None, VISITOR).await;
     let mut wrong = Vec::new();
     for _ in 0..limit {
         wrong.push(shares.verify_password(&link.token, WRONG, VISITOR).await);
@@ -179,14 +179,14 @@ async fn at_06_3_a_link_follows_edits_renames_and_moves_and_is_not_found_within_
     owner
         .update(notes.node, Some("notes-final.txt"), Some(archive))
         .await;
-    let opened_after_move = shares.open(&link.token, VISITOR).await;
+    let opened_after_move = shares.open(&link.token, None, VISITOR).await;
     let after_move = shares
         .authorize_content(&link.token, None, VISITOR, false)
         .await;
     let rows_after_move = link_rows_as_text(owner.probe()).await;
     owner.delete(notes.node).await;
     let deleted_at = Instant::now();
-    let opened_after_delete = shares.open(&link.token, VISITOR).await;
+    let opened_after_delete = shares.open(&link.token, None, VISITOR).await;
     let after_delete = shares
         .authorize_content(&link.token, None, VISITOR, false)
         .await;

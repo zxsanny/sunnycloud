@@ -102,7 +102,7 @@ async fn tombstoned_links_are_not_found_before_the_erase_and_every_erased_link_a
     for (_, token, tombstoned) in &links {
         before.push((
             *tombstoned,
-            shares.open(token, VISITOR).await.expect("open"),
+            shares.open(token, None, VISITOR).await.expect("open"),
         ));
     }
     let mut after_erase = Vec::new();
@@ -115,7 +115,7 @@ async fn tombstoned_links_are_not_found_before_the_erase_and_every_erased_link_a
             .remaining;
         for (id, token, _) in &links {
             if !link_exists(&mut conn, *id).await {
-                after_erase.push(shares.open(token, VISITOR).await.expect("open"));
+                after_erase.push(shares.open(token, None, VISITOR).await.expect("open"));
             }
         }
     }

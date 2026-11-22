@@ -36,7 +36,7 @@ async fn share(shares: &PgShareService, owner: &Owner, file: Version) -> Created
 
 /// The name `open` shows for a live plain link.
 async fn shown_name(shares: &PgShareService, token: &RawToken) -> String {
-    match shares.open(token, VISITOR).await.expect("open") {
+    match shares.open(token, None, VISITOR).await.expect("open") {
         ShareOpen::Available { name, .. } => name,
         other => panic!("expected Available, got {other:?}"),
     }
@@ -185,7 +185,7 @@ async fn the_link_follows_renames_and_moves_and_is_not_found_right_after_the_del
     let rows_after_moves = link_rows_as_text(owner.probe()).await;
     owner.delete(file.node).await;
     let after_delete = authorize(&shares, &link.token, false).await;
-    let open_after_delete = shares.open(&link.token, VISITOR).await;
+    let open_after_delete = shares.open(&link.token, None, VISITOR).await;
 
     // Assert
     for ((_, _, expected_name), (name, content)) in steps.iter().zip(seen) {
@@ -214,7 +214,7 @@ async fn a_file_under_a_deleted_folder_is_not_found_before_the_cascade_marks_it(
     // Act
     owner.delete(folder).await;
     let after = authorize(&shares, &link.token, false).await;
-    let open_after = shares.open(&link.token, VISITOR).await;
+    let open_after = shares.open(&link.token, None, VISITOR).await;
 
     // Assert
     assert_eq!(before.expect("live"), content_of(&owner, file));

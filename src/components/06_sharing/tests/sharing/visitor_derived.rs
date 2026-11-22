@@ -238,7 +238,7 @@ async fn the_four_visitor_operations_answer_through_the_port() {
     let port: Arc<dyn PublicShareService> = shares.clone();
 
     // Act
-    let opened = port.open(&plain.token, VISITOR).await;
+    let opened = port.open(&plain.token, None, VISITOR).await;
     let grant = port
         .verify_password(&protected.token, PASSWORD, VISITOR)
         .await;

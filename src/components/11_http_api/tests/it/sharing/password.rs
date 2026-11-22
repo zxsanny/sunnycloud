@@ -192,3 +192,88 @@ async fn a_password_over_the_auth_limit_is_413_before_the_body_is_read() {
     assert_eq!(stack.log("PublicShareService"), Vec::<String>::new());
     stack.stop().await;
 }
+
+#[tokio::test]
+async fn the_page_of_a_password_link_opens_with_the_cookie_the_verification_set() {
+    // Arrange
+    let stack = Stack::start().await;
+    let granted = grant(600);
+    let expires_at = sc_clock::Timestamp::from_unix_micros(1_793_956_272_123_456);
+    for answer in [
+        Ok::<ShareOpen, PublicShareError>(ShareOpen::PasswordRequired),
+        Ok(ShareOpen::Available {
+            name: "holiday.png".to_owned(),
+            size: 2048,
+            media_type: Some("image/png".to_owned()),
+            expires_at,
+        }),
+        Ok(ShareOpen::PasswordRequired),
+    ] {
+        stack.script.push(OPEN, answer);
+    }
+    stack
+        .script
+        .push(VERIFY, Ok::<AccessGrant, PublicShareError>(granted.clone()));
+
+    // Act
+    let before = stack.as_visitor("GET", &link(""), &[]).await;
+    let verified = stack
+        .call(
+            "POST",
+            &link("/password-verifications"),
+            &[],
+            &serde_json::json!({"password": PASSWORD}).to_string(),
+        )
+        .await;
+    let pair = verified
+        .header("set-cookie")
+        .and_then(|cookie| cookie.split(';').next())
+        .expect("the verification sets the grant")
+        .to_owned();
+    let after = stack
+        .as_visitor("GET", &link(""), &[("cookie", pair.as_str())])
+        .await;
+    let tampered_pair = pair.replacen(".g-", ".x-", 1);
+    let tampered = stack
+        .as_visitor("GET", &link(""), &[("cookie", tampered_pair.as_str())])
+        .await;
+
+    // Assert
+    assert_eq!(verified.status, 204);
+    assert_eq!(before.status, 401);
+    assert_eq!(before.code(), "password_required");
+    let text = String::from_utf8_lossy(&before.body).into_owned();
+    for field in ["name", "size", "media_type", "expires_at"] {
+        assert!(
+            !text.contains(&format!("\"{field}\"")),
+            "file data before unlock"
+        );
+    }
+    assert_eq!(after.status, 200);
+    assert_eq!(
+        after.json(),
+        serde_json::json!({
+            "name": "holiday.png",
+            "size": 2048,
+            "media_type": "image/png",
+            "expires_at": "2026-11-06T09:11:12.123456Z",
+        })
+    );
+    assert_eq!(tampered.status, 401);
+    assert_eq!(tampered.code(), "password_required");
+    // The grant is a secret: only whether 06 received it is compared, never the value itself.
+    let calls = stack.log(OPEN);
+    let own = format!(
+        "grant={} expires_at={}",
+        granted.value,
+        granted.expires_at.as_unix_micros()
+    );
+    assert_ne!(tampered_pair, pair, "the cookie was altered");
+    assert!(calls[0].contains("no grant"), "the first open sent a grant");
+    assert!(calls[1].contains(&own), "06 did not get the cookie's grant");
+    assert!(
+        calls[2].contains("grant=") && !calls[2].contains(&own),
+        "06 got the original grant for the altered cookie"
+    );
+    stack.stop().await;
+}
