@@ -70,6 +70,7 @@ PT-10-2 speed budgets (REF-CPU4); AC-6 in the test-stubs image (covered on the h
 | 2 | The 20 % wall-time bound of the remux against a transcode (AC-3) is only recorded (remux 90 ms against 212 ms here) | AZ-3860 AC-3 | assert on a quiet host (CI) | clear |
 | 3 | A colour tag outside the conversion lists (PQ or HLG on a non-tone-mapped plan) is only retagged, by design | AZ-3860 | none | clear |
 | 4 | CRF and preset are untuned: derived storage at most 20 % of originals (NFT-PERF-20) is not measured on real clips | worker_job_protocol open point 4 | tune with real phone clips and bump `params_version` | unclear |
+| 5 | AC-1 also says the output stays at or below 10 Mbit/s in the worst 1 s window. With a buffer, any window can carry up to maxrate plus bufsize, so `-maxrate 8M -bufsize 4M` bounds it at 12 Mbit/s (measured worst windows 9.67 to 9.97 on the test clips are under 10 by luck, not by guarantee); the tests assert the average at most 10 and the VBV bound of 12. `-maxrate 8M -bufsize 2M` would bound the window at 10. AZ-3860 stays in `todo/` and its Jira ticket To Do until the owner picks: bufsize 2M (the guarantee) or amend AC-1 to the average only | AZ-3860 AC-1 | owner decision | unclear (owner) |
 
 ## Commit
 
