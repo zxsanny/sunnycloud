@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
+mod generated;
 pub mod media;
+pub mod reference;
 
 use std::io::Read;
 use std::os::unix::net::{UnixListener, UnixStream};

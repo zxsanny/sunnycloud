@@ -7,8 +7,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use common::media::{
-    Media, MediaRunner, RunnerEnd, WAIT, image_result, limits, path_with_stub, render,
-    wait_until_gone,
+    Media, MediaRunner, RunnerEnd, WAIT, age_of, image_result, limits, live_descendants,
+    path_with_stub, render, wait_until_gone,
 };
 use media_shared::decoder_protocol::{DecodeError, LimitKind, Request, Response};
 
@@ -232,4 +232,58 @@ fn work_is_removed_after_a_cancel_and_after_the_connection_is_lost() {
 
     wait_for("work/ to be removed", || !work_of(&lost).exists());
     wait_until_gone(&["59.406"]);
+}
+
+#[test]
+fn an_escaped_descendant_is_dead_within_a_second_of_the_tool_ending_and_cannot_read_the_next_job() {
+    // The tool starts a descendant that leaves the group, ignores SIGTERM and loops: when
+    // `job2/in/source` becomes readable it appends LEAK to `leak.txt`; every pass it stamps
+    // `heartbeat`. Paths are relative to `job1/out/`, the working directory of the tool.
+    let (_bin, path) = path_with_stub(
+        "setsid -f sh -c 'trap \"\" TERM HUP; echo > escaped; \
+           while :; do \
+             if [ -r ../../job2/in/source ]; then echo LEAK >> ../../leak.txt; fi; \
+             read up _ < /proc/uptime; echo $up > heartbeat; \
+           done'\n\
+         while [ ! -e escaped ]; do :; done\n\
+         read up _ < /proc/uptime; echo $up > ../../tool_ended",
+    );
+    let mut runner = MediaRunner::start_with(
+        &[("SUNNYCLOUD_DECODER_MEMORY_POLL_INTERVAL", "50ms")],
+        &path,
+    );
+    let mut client = runner.connect();
+    let job_a = runner.job(&photo());
+
+    let response = render(&mut client, &job_a, 320, limits());
+
+    // The reply is in hand; its age is read at once. The tool stamped `tool_ended` when it was
+    // done, so the age of that stamp is the time the kill-all and the reply took.
+    let tool_ended: f64 = std::fs::read_to_string(runner.scratch.join("tool_ended"))
+        .expect("the tool ended")
+        .trim()
+        .parse()
+        .expect("an uptime stamp");
+    let reply_after_tool = age_of(tool_ended);
+    assert_eq!(response, Response::Error(DecodeError::OutputInvalid));
+    assert!(live_descendants(runner.pid()).is_empty());
+    assert!(!job_a.join("work").exists());
+    assert!(
+        job_a.join("out/heartbeat").exists(),
+        "the descendant never ran"
+    );
+    assert!(
+        reply_after_tool < Duration::from_secs(1),
+        "{reply_after_tool:?}"
+    );
+
+    // Job B exists only now, as in production; the runner ended (a descendant was found) and
+    // its replacement serves B.
+    let job_b = runner.job(&photo());
+    runner.restart_with_path(&std::env::var("PATH").expect("PATH"));
+    let mut next_client = runner.connect();
+    let next = render(&mut next_client, &job_b, 320, limits());
+
+    assert!(matches!(next, Response::ImageResult(_)), "{next:?}");
+    assert!(!runner.scratch.join("leak.txt").exists());
 }

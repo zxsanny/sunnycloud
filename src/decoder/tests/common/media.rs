@@ -6,7 +6,7 @@ use std::os::unix::fs::{PermissionsExt, symlink};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -19,6 +19,8 @@ pub const WAIT: Duration = Duration::from_secs(20);
 
 pub struct MediaRunner {
     child: Child,
+    env: Vec<(String, String)>,
+    path: String,
     socket: PathBuf,
     pub scratch: PathBuf,
     next_job: u32,
@@ -36,23 +38,15 @@ impl MediaRunner {
         let socket = dir.path().join("decoder.sock");
         let scratch = dir.path().join("scratch");
         std::fs::create_dir_all(&scratch).expect("scratch root");
-        let mut command = Command::new(env!("CARGO_BIN_EXE_decoder-runner"));
-        command
-            .env_clear()
-            .env("PATH", path)
-            .env("SUNNYCLOUD_ENVIRONMENT", "development")
-            .env("SUNNYCLOUD_DECODER_SOCKET_PATH", &socket)
-            .env("SUNNYCLOUD_DECODER_SCRATCH_ROOT", &scratch);
-        for (key, value) in env {
-            command.env(key, value);
-        }
-        let child = command
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn runner");
+        let env: Vec<(String, String)> = env
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect();
+        let child = spawn_runner(&socket, &scratch, path, &env);
         let runner = Self {
             child,
+            env,
+            path: path.to_owned(),
             socket,
             scratch,
             next_job: 0,
@@ -60,6 +54,20 @@ impl MediaRunner {
         };
         runner.wait_for_socket();
         runner
+    }
+
+    /// Starts a new runner process in place of the one that ended (a hostile-class outcome ends
+    /// the process and the container restarts it): same scratch tree, same settings, tools found
+    /// in `path` (a restarted container has the real tools again).
+    pub fn restart_with_path(&mut self, path: &str) {
+        self.path = path.to_owned();
+        assert_eq!(
+            self.end_within(WAIT),
+            RunnerEnd::Exited(3),
+            "the runner must have ended before it is restarted"
+        );
+        self.child = spawn_runner(&self.socket, &self.scratch, &self.path, &self.env);
+        self.wait_for_socket();
     }
 
     fn wait_for_socket(&self) {
@@ -72,6 +80,15 @@ impl MediaRunner {
 
     pub fn connect(&self) -> Client {
         Client::new(UnixStream::connect(&self.socket).expect("connect"))
+    }
+
+    /// Everything the runner has logged so far.
+    pub fn log(&self) -> String {
+        std::fs::read_to_string(self.socket.with_file_name(LOG_FILE)).expect("read the runner log")
+    }
+
+    pub fn pid(&self) -> u32 {
+        self.child.id()
     }
 
     /// A job directory holding `content` as `in/source` and an empty `out/`.
@@ -102,6 +119,32 @@ impl MediaRunner {
     }
 }
 
+fn spawn_runner(socket: &Path, scratch: &Path, path: &str, env: &[(String, String)]) -> Child {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_decoder-runner"));
+    command
+        .env_clear()
+        .env("PATH", path)
+        .env("SUNNYCLOUD_ENVIRONMENT", "development")
+        .env("SUNNYCLOUD_DECODER_SOCKET_PATH", socket)
+        .env("SUNNYCLOUD_DECODER_SCRATCH_ROOT", scratch);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    // The runner's log is kept for the cases that look for what it must not have written.
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(socket.with_file_name(LOG_FILE))
+        .expect("open the runner log");
+    command
+        .stdout(log.try_clone().expect("clone the log handle"))
+        .stderr(log)
+        .spawn()
+        .expect("spawn runner")
+}
+
+const LOG_FILE: &str = "runner.log";
+
 /// How a runner process ended; a signal and "did not end" are different failures.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RunnerEnd {
@@ -121,24 +164,118 @@ impl Drop for MediaRunner {
 /// A directory that is the runner's whole `PATH`: the real `vipsheader`, `ffmpeg`, `ffprobe`
 /// and a `vips` (the thumbnail step) running the given script.
 pub fn path_with_stub(stub: &str) -> (TempDir, String) {
+    path_with_scripts(&[("vips", stub)])
+}
+
+/// A directory that is the runner's whole `PATH`: the real tools, except that each tool named
+/// in `scripts` is a shell script with that body.
+pub fn path_with_scripts(scripts: &[(&str, &str)]) -> (TempDir, String) {
     let dir = TempDir::new().expect("bin dir");
-    for tool in ["vipsheader", "ffmpeg", "ffprobe"] {
-        symlink(real(tool), dir.path().join(tool)).expect("link real tool");
+    for tool in ["vips", "vipsheader", "ffmpeg", "ffprobe"] {
+        let target = dir.path().join(tool);
+        match scripts.iter().find(|(name, _)| *name == tool) {
+            Some((_, body)) => {
+                fs::write(&target, format!("#!/bin/sh\n{body}\n")).expect("write stub");
+                fs::set_permissions(&target, fs::Permissions::from_mode(0o755))
+                    .expect("chmod stub");
+            }
+            None => symlink(real_tool(tool), &target).expect("link real tool"),
+        }
     }
-    let script = dir.path().join("vips");
-    fs::write(&script, format!("#!/bin/sh\n{stub}\n")).expect("write stub");
-    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).expect("chmod stub");
     let path = dir.path().to_str().expect("utf8").to_owned();
     (dir, path)
 }
 
-fn real(tool: &str) -> std::path::PathBuf {
+pub fn real_tool(tool: &str) -> std::path::PathBuf {
     std::env::var("PATH")
         .expect("PATH")
         .split(':')
         .map(|dir| Path::new(dir).join(tool))
         .find(|candidate| candidate.exists())
         .unwrap_or_else(|| panic!("{tool} is not installed"))
+}
+
+/// Every live process whose chain of parents reaches `root`, read from the process table.
+pub fn live_descendants(root: u32) -> Vec<u32> {
+    let table = decoder_runner::proc_table::snapshot().expect("process table");
+    descendants_in(&table, root)
+        .into_iter()
+        .map(|process| process.pid)
+        .collect()
+}
+
+fn descendants_in(
+    table: &[decoder_runner::proc_table::Process],
+    root: u32,
+) -> Vec<decoder_runner::proc_table::Process> {
+    let mut found: Vec<decoder_runner::proc_table::Process> = Vec::new();
+    let mut frontier = vec![root];
+    while let Some(parent) = frontier.pop() {
+        for process in table.iter().filter(|process| process.ppid == parent) {
+            if !found.iter().any(|known| known.pid == process.pid) {
+                found.push(*process);
+                frontier.push(process.pid);
+            }
+        }
+    }
+    found.retain(|process| !process.zombie);
+    found
+}
+
+/// The resident memory of the runner and of everything it started, summed from one process-table
+/// snapshot.
+pub fn group_rss(root: u32) -> u64 {
+    let table = decoder_runner::proc_table::snapshot().expect("process table");
+    let own = table
+        .iter()
+        .find(|process| process.pid == root)
+        .map_or(0, |process| process.rss_bytes);
+    own + descendants_in(&table, root)
+        .iter()
+        .map(|process| process.rss_bytes)
+        .sum::<u64>()
+}
+
+/// Samples [`group_rss`] on a thread until [`PeakWatch::peak`] is called.
+pub struct PeakWatch {
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    thread: thread::JoinHandle<u64>,
+}
+
+impl PeakWatch {
+    pub fn start(root: u32) -> Self {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&stop);
+        let thread = thread::spawn(move || {
+            let mut peak = group_rss(root);
+            while !flag.load(std::sync::atomic::Ordering::Acquire) {
+                peak = peak.max(group_rss(root));
+                thread::sleep(Duration::from_millis(2));
+            }
+            peak
+        });
+        Self { stop, thread }
+    }
+
+    pub fn peak(self) -> u64 {
+        self.stop.store(true, std::sync::atomic::Ordering::Release);
+        self.thread.join().expect("the sampler thread")
+    }
+}
+
+/// Seconds since boot from `/proc/uptime` (10 ms resolution): a stamp a shell stub can write.
+pub fn uptime_seconds() -> f64 {
+    fs::read_to_string("/proc/uptime")
+        .expect("read /proc/uptime")
+        .split_whitespace()
+        .next()
+        .and_then(|text| text.parse().ok())
+        .expect("uptime in seconds")
+}
+
+/// How long ago `stamp` (a [`uptime_seconds`] value) was.
+pub fn age_of(stamp: f64) -> Duration {
+    Duration::from_secs_f64((uptime_seconds() - stamp).max(0.0))
 }
 
 pub fn alive(marker: &str) -> bool {
@@ -242,212 +379,6 @@ pub fn rotated_heic() -> Vec<u8> {
         .collect()
 }
 
-/// A directory of generated media: noise images in each format, and the two clips.
-pub struct Media {
-    dir: TempDir,
-}
-
-impl Media {
-    pub fn new() -> Self {
-        Self {
-            dir: TempDir::new().expect("media dir"),
-        }
-    }
-
-    pub fn path(&self, name: &str) -> PathBuf {
-        self.dir.path().join(name)
-    }
-
-    fn text(&self, name: &str) -> String {
-        self.path(name).to_str().expect("utf8").to_owned()
-    }
-
-    /// A noise picture of `width` x `height` saved by libvips as the format of `name`'s extension.
-    pub fn image(&self, name: &str, width: u32, height: u32) -> Vec<u8> {
-        let raw = self.text(&format!("{name}.v"));
-        run_tool(
-            "vips",
-            &["gaussnoise", &raw, &width.to_string(), &height.to_string()],
-        );
-        let out = self.text(name);
-        let save = match name.rsplit('.').next().expect("extension") {
-            "jpg" => "jpegsave",
-            "png" => "pngsave",
-            "webp" => "webpsave",
-            "heic" => "heifsave",
-            "gif" => "gifsave",
-            other => panic!("no saver for {other}"),
-        };
-        run_tool("vips", &[save, &raw, &out]);
-        std::fs::read(self.path(name)).expect("read generated image")
-    }
-
-    /// A JPEG whose EXIF orientation is `orientation`, made by patching the tag libvips writes.
-    pub fn oriented_jpeg(&self, width: u32, height: u32, orientation: u8) -> Vec<u8> {
-        let mut bytes = self.image("oriented.jpg", width, height);
-        let at = set_orientation_at(&bytes);
-        bytes[at] = orientation;
-        bytes
-    }
-
-    fn ffmpeg(&self, input: &[&str], output: &str, rest: &[&str]) -> Vec<u8> {
-        let out = self.text(output);
-        let mut args = vec!["-loglevel", "error", "-y"];
-        args.extend_from_slice(input);
-        args.extend_from_slice(rest);
-        args.push(&out);
-        run_tool("ffmpeg", &args);
-        std::fs::read(self.path(output)).expect("read generated clip")
-    }
-
-    /// A `seconds` long H.264 MP4 of the test pattern; the index (`moov`) is at the end.
-    pub fn mp4(&self, seconds: u32) -> Vec<u8> {
-        let source = format!("testsrc=d={seconds}:s=320x240:r=10");
-        self.ffmpeg(
-            &["-f", "lavfi", "-i", &source],
-            "clip.mp4",
-            &["-pix_fmt", "yuv420p"],
-        )
-    }
-
-    /// The same clip with the index first.
-    pub fn faststart_mp4(&self, seconds: u32) -> Vec<u8> {
-        let source = format!("testsrc=d={seconds}:s=320x240:r=10");
-        self.ffmpeg(
-            &["-f", "lavfi", "-i", &source],
-            "fast.mp4",
-            &["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
-        )
-    }
-
-    /// A QuickTime file (brand `qt  `).
-    pub fn mov(&self) -> Vec<u8> {
-        self.ffmpeg(
-            &["-f", "lavfi", "-i", "testsrc=d=1:s=320x240:r=10"],
-            "clip.mov",
-            &["-pix_fmt", "yuv420p", "-f", "mov"],
-        )
-    }
-
-    /// Three seconds at 10 fps whose frame `n` is a flat grey of luma `8 * n`, so the frame a
-    /// poster shows is told by its brightness.
-    pub fn stepped_clip(&self) -> Vec<u8> {
-        let source = "color=c=black:s=64x64:r=10:d=3,format=yuv420p,geq=lum='8*N':cb=128:cr=128";
-        self.ffmpeg(
-            &["-f", "lavfi", "-i", source],
-            "stepped.mp4",
-            &["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
-        )
-    }
-
-    /// The clip with a display-matrix rotation of 90 degrees (a phone held upright).
-    pub fn rotated_mp4(&self) -> Vec<u8> {
-        std::fs::write(self.path("unrotated.mp4"), self.mp4(2)).expect("write clip");
-        let input = self.text("unrotated.mp4");
-        self.ffmpeg(
-            &["-display_rotation", "90", "-i", &input],
-            "rotated.mp4",
-            &["-c", "copy"],
-        )
-    }
-
-    /// A 10-bit HEVC clip tagged HLG, BT.2020.
-    pub fn hlg_mp4(&self) -> Vec<u8> {
-        self.ffmpeg(
-            &["-f", "lavfi", "-i", "testsrc=d=2:s=320x240:r=10"],
-            "hlg.mp4",
-            &[
-                "-vf",
-                "format=yuv420p10le",
-                "-c:v",
-                "libx265",
-                "-x265-params",
-                "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:log-level=error",
-            ],
-        )
-    }
-}
-
-/// The mean of all pixel values of an image file, as printed by `vips avg`.
-pub fn mean_of(path: &Path) -> f64 {
-    let output = Command::new("vips")
-        .arg("avg")
-        .arg(path)
-        .output()
-        .expect("vips avg");
-    assert!(output.status.success(), "{}", path.display());
-    String::from_utf8(output.stdout)
-        .expect("utf8")
-        .trim()
-        .parse()
-        .expect("a number")
-}
-
-/// What `ffprobe` reports about the first video stream, read independently of the runner.
-pub fn ffprobe_fields(path: &Path, entries: &str) -> String {
-    let output = Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            entries,
-            "-of",
-            "csv=p=0",
-        ])
-        .arg(path)
-        .output()
-        .expect("ffprobe");
-    assert!(output.status.success(), "{}", path.display());
-    String::from_utf8(output.stdout)
-        .expect("utf8")
-        .trim()
-        .to_owned()
-}
-
-/// Where the EXIF orientation value is in a JPEG written by libvips (little-endian TIFF).
-pub fn set_orientation_at(jpeg: &[u8]) -> usize {
-    let tag = [0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00];
-    jpeg.windows(tag.len())
-        .position(|window| window == tag)
-        .expect("libvips writes an orientation tag")
-        + tag.len()
-}
-
-/// A PNG whose header claims `width` x `height` and whose pixel data is absent: only a header
-/// read can accept it, and no decoder can finish it.
-pub fn png_header_only(width: u32, height: u32) -> Vec<u8> {
-    let mut ihdr = Vec::new();
-    ihdr.extend_from_slice(&width.to_be_bytes());
-    ihdr.extend_from_slice(&height.to_be_bytes());
-    ihdr.extend_from_slice(&[8, 2, 0, 0, 0]);
-    let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-    png.extend(chunk(b"IHDR", &ihdr));
-    png.extend(chunk(b"IDAT", &[0x78, 0x9c, 0x01]));
-    png
-}
-
-fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
-    let mut chunk = (data.len() as u32).to_be_bytes().to_vec();
-    let mut body = kind.to_vec();
-    body.extend_from_slice(data);
-    chunk.extend_from_slice(&body);
-    chunk.extend_from_slice(&crc32(&body).to_be_bytes());
-    chunk
-}
-
-fn crc32(bytes: &[u8]) -> u32 {
-    let mut crc = u32::MAX;
-    for &byte in bytes {
-        crc ^= u32::from(byte);
-        for _ in 0..8 {
-            crc = if crc & 1 == 1 {
-                (crc >> 1) ^ 0xEDB8_8320
-            } else {
-                crc >> 1
-            };
-        }
-    }
-    !crc
-}
+// Each test binary uses some of these.
+#[allow(unused_imports)]
+pub use super::generated::{Media, ffprobe_fields, mean_of, png_header_only, set_orientation_at};

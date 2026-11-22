@@ -103,6 +103,7 @@ impl Exec<'_> {
             input,
             limits: self.limits,
             memory_poll: self.config.memory_poll,
+            progress: false,
         };
         let finished = process::run(&spec, self.context)
             .map_err(|error| internal("cannot run a media tool", &error))?;

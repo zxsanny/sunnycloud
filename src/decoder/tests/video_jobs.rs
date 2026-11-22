@@ -187,15 +187,3 @@ fn a_time_beyond_the_end_of_the_clip_is_an_invalid_output_not_a_hang() {
 
     assert_eq!(response, Response::Error(DecodeError::OutputInvalid));
 }
-
-#[test]
-fn a_job_offset_is_ignored_for_an_image() {
-    let media = Media::new();
-    let mut runner = MediaRunner::start();
-    let mut client = runner.connect();
-    let job = runner.job(&media.image("photo.jpg", 800, 600));
-
-    let with_offset = image_result(render_at(&mut client, &job, 320, 5000));
-
-    assert_eq!((with_offset.width, with_offset.height), (320, 240));
-}

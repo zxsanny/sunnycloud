@@ -1,12 +1,16 @@
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{Receiver, channel};
 
 use tempfile::TempDir;
 
 use super::*;
+use crate::job::JobMessage;
 use crate::proc_table::snapshot;
+
+mod ffmpeg;
+mod kills;
 
 /// The killed test children sleep 30 s: a kill that comes before this bound was a kill, not
 /// the child ending, however slow the machine.
@@ -17,6 +21,8 @@ struct Harness {
     input: File,
     cancel: Arc<AtomicBool>,
     context: JobContext,
+    /// The progress events the guard forwarded; dropping it would cancel the job.
+    messages: Receiver<JobMessage>,
 }
 
 fn harness(input_bytes: &[u8]) -> Harness {
@@ -26,7 +32,7 @@ fn harness(input_bytes: &[u8]) -> Harness {
         .and_then(|mut file| file.write_all(input_bytes))
         .expect("write input");
     let cancel = Arc::new(AtomicBool::new(false));
-    let (sender, _messages) = channel();
+    let (sender, messages) = channel();
     let context = JobContext::new(
         File::open(&path).expect("open input"),
         Arc::clone(&cancel),
@@ -38,6 +44,7 @@ fn harness(input_bytes: &[u8]) -> Harness {
         dir,
         cancel,
         context,
+        messages,
     }
 }
 
@@ -58,6 +65,26 @@ fn run_child(
     env: &[(&'static str, &str)],
     limits: &JobLimits,
 ) -> Finished {
+    run_with(
+        harness,
+        program,
+        args,
+        env,
+        limits,
+        Duration::from_millis(20),
+        false,
+    )
+}
+
+fn run_with(
+    harness: &Harness,
+    program: &str,
+    args: &[&str],
+    env: &[(&'static str, &str)],
+    limits: &JobLimits,
+    memory_poll: Duration,
+    progress: bool,
+) -> Finished {
     let spec = Spec {
         program: Path::new(program),
         args: args.iter().map(|arg| (*arg).to_owned()).collect(),
@@ -66,7 +93,8 @@ fn run_child(
         work: harness.dir.path(),
         input: &harness.input,
         limits,
-        memory_poll: Duration::from_millis(20),
+        memory_poll,
+        progress,
     };
     run(&spec, &harness.context).expect("guard run")
 }
@@ -157,37 +185,6 @@ fn the_rlimits_are_set_and_no_address_space_limit_is_applied() {
 }
 
 #[test]
-fn a_child_that_sleeps_is_killed_at_the_wall_limit_with_its_whole_group() {
-    let harness = harness(b"");
-    let limits = limits(Duration::from_millis(400), 1 << 30, 1 << 30);
-    let started = Instant::now();
-
-    let finished = run_child(
-        &harness,
-        "/bin/sh",
-        &["-c", "echo $$; sleep 30 & sleep 30 & wait"],
-        &[],
-        &limits,
-    );
-
-    assert_eq!(finished.outcome, Outcome::Killed(Kill::Wall));
-    assert!(
-        started.elapsed() < KILLED_WELL_BEFORE_THE_CHILD_ENDS,
-        "{:?}",
-        started.elapsed()
-    );
-    let pgid: u32 = stdout_of(&finished)
-        .trim()
-        .parse()
-        .expect("the child's pid");
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !group_is_empty(pgid) {
-        assert!(Instant::now() < deadline, "the group is still alive");
-        thread::yield_now();
-    }
-}
-
-#[test]
 fn a_child_that_ends_but_leaves_a_member_of_its_group_alive_is_reported_and_the_member_is_killed() {
     let harness = harness(b"");
 
@@ -227,39 +224,6 @@ fn a_child_that_ends_alone_leaves_no_straggler() {
 }
 
 #[test]
-fn a_child_above_the_memory_limit_is_killed_at_the_next_poll() {
-    let harness = harness(b"");
-    let limits = limits(Duration::from_secs(30), 64 << 20, 1 << 30);
-    let started = Instant::now();
-
-    // dd fills a 700 MB buffer and then blocks writing to a pipe that nobody reads.
-    let finished = run_child(
-        &harness,
-        "/bin/sh",
-        &["-c", "dd if=/dev/zero bs=700M count=1 | sleep 30"],
-        &[],
-        &limits,
-    );
-
-    assert_eq!(finished.outcome, Outcome::Killed(Kill::Memory));
-    assert!(
-        started.elapsed() < KILLED_WELL_BEFORE_THE_CHILD_ENDS,
-        "{:?}",
-        started.elapsed()
-    );
-}
-
-#[test]
-fn a_child_writing_past_the_file_size_limit_ends_by_the_file_size_signal() {
-    let harness = harness(b"");
-    let limits = limits(Duration::from_secs(30), 1 << 30, 1 << 20);
-
-    let finished = run_child(&harness, "/bin/cat", &["/dev/zero"], &[], &limits);
-
-    assert_eq!(finished.outcome, Outcome::Signaled(25));
-}
-
-#[test]
 fn exit_code_and_signal_are_typed_whatever_stderr_says() {
     let harness = harness(b"");
 
@@ -274,24 +238,6 @@ fn exit_code_and_signal_are_typed_whatever_stderr_says() {
 
     assert_eq!(exited.outcome, Outcome::Exited(1));
     assert_eq!(crashed.outcome, Outcome::Signaled(11));
-}
-
-#[test]
-fn stderr_is_kept_as_a_two_kilobyte_tail_without_control_characters() {
-    let harness = harness(b"");
-    let script = "i=0; while [ $i -lt 20000 ]; do printf '\\033[31mred\\nline\\r\\n' >&2; i=$((i+1)); done; exit 3";
-
-    let finished = run_child(&harness, "/bin/sh", &["-c", script], &[], &roomy());
-
-    assert_eq!(finished.outcome, Outcome::Exited(3));
-    assert!(finished.stderr_tail.len() <= 2048);
-    assert!(!finished.stderr_tail.is_empty());
-    assert!(
-        finished
-            .stderr_tail
-            .chars()
-            .all(|c| (' '..='~').contains(&c))
-    );
 }
 
 #[test]

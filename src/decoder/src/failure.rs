@@ -42,7 +42,7 @@ impl Failure {
             self,
             Failure::Crashed
                 | Failure::LeftProcesses
-                | Failure::Decode(DecodeError::LimitExceeded { .. })
+                | Failure::Decode(DecodeError::LimitExceeded { .. } | DecodeError::Stalled)
         )
     }
 
@@ -57,10 +57,14 @@ impl Failure {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("{tool} ended {outcome:?}, stderr tail: {stderr_tail}")]
+#[error(
+    "{tool} ended {outcome:?} after {ran_ms} ms, last progress {silent_ms:?} ms before the end, stderr tail: {stderr_tail}"
+)]
 struct ChildFailed {
     tool: &'static str,
     outcome: Outcome,
+    ran_ms: u128,
+    silent_ms: Option<u128>,
     stderr_tail: String,
 }
 
@@ -72,6 +76,7 @@ pub(crate) fn check(tool: &'static str, finished: &Finished) -> Result<(), Failu
         Outcome::Killed(Kill::Cancelled) => return Err(Failure::Cancelled),
         Outcome::Exited(_) | Outcome::Signaled(_) if finished.stragglers => Failure::LeftProcesses,
         Outcome::Exited(0) => return Ok(()),
+        Outcome::Killed(Kill::Stall) => DecodeError::Stalled.into(),
         Outcome::Killed(Kill::Wall) | Outcome::Signaled(SIGXCPU) => Failure::limit(LimitKind::Wall),
         Outcome::Killed(Kill::Memory) | Outcome::Signaled(SIGKILL) => {
             Failure::limit(LimitKind::Memory)
@@ -85,6 +90,16 @@ pub(crate) fn check(tool: &'static str, finished: &Finished) -> Result<(), Failu
         err = &ChildFailed {
             tool,
             outcome: finished.outcome,
+            ran_ms: finished
+                .timing
+                .decided
+                .duration_since(finished.timing.started)
+                .as_millis(),
+            silent_ms: finished.timing.last_progress.map(|at| finished
+                .timing
+                .decided
+                .duration_since(at)
+                .as_millis()),
             stderr_tail: finished.stderr_tail.clone(),
         }
     );
@@ -93,7 +108,10 @@ pub(crate) fn check(tool: &'static str, finished: &Finished) -> Result<(), Failu
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
+    use crate::process::Timing;
 
     fn finished(outcome: Outcome) -> Finished {
         Finished {
@@ -101,6 +119,11 @@ mod tests {
             stdout: Vec::new(),
             stragglers: false,
             stderr_tail: String::new(),
+            timing: Timing {
+                started: Instant::now(),
+                last_progress: None,
+                decided: Instant::now(),
+            },
         }
     }
 
@@ -123,6 +146,7 @@ mod tests {
                 Outcome::Killed(Kill::Memory),
                 Failure::limit(LimitKind::Memory),
             ),
+            (Outcome::Killed(Kill::Stall), DecodeError::Stalled.into()),
             (Outcome::Killed(Kill::Cancelled), Failure::Cancelled),
         ];
 
@@ -156,6 +180,7 @@ mod tests {
             Failure::limit(LimitKind::Wall),
             Failure::limit(LimitKind::Memory),
             Failure::limit(LimitKind::Output),
+            Failure::Decode(DecodeError::Stalled),
         ];
         let clean = [
             Failure::Decode(DecodeError::Corrupt),

@@ -41,6 +41,7 @@ pub mod limits;
 mod poster;
 pub mod proc_table;
 mod process;
+mod progress;
 pub mod safe_open;
 mod self_check;
 pub mod server;
