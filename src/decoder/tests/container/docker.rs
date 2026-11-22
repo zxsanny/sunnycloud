@@ -1,5 +1,7 @@
-//! `docker` through `std::process::Command`: the only way the suite talks to the daemon.
+//! `docker` through `std::process::Command`, and the one wait the suite makes on the daemon's own API.
 
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::net::UnixStream;
 use std::process::{Command, Output};
 use std::sync::mpsc::{Receiver, channel};
 use std::thread;
@@ -81,22 +83,52 @@ pub fn processes_of(name: &str) -> Option<Vec<Process>> {
     )
 }
 
-/// `docker wait` on a thread: the exit code of the next stop of the container and the moment it
+/// The wait of the Docker API on a thread: the exit code of the next stop of the container and the moment it
 /// was seen, so that a test can time "the runner exits within 5 s of the reply".
+///
+/// `docker wait` cannot be used for this: the CLI registers with the daemon some tens of milliseconds after it
+/// starts (seconds on a loaded host), and a runner that exits at once is restarted by `--restart
+/// unless-stopped` before that, so the late wait blocks for the next exit. This waiter calls
+/// `POST /containers/{name}/wait` itself and returns only after the daemon has answered the headers, which it
+/// does once the wait is registered: a stop after `start` returns is never missed.
 pub struct Waiter {
     result: Receiver<(i64, Instant)>,
 }
 
 impl Waiter {
     pub fn start(name: &str) -> Self {
+        let mut stream =
+            UnixStream::connect(docker_socket()).expect("connect to the Docker socket");
+        write!(
+            stream,
+            "POST /containers/{name}/wait?condition=not-running HTTP/1.0\r\nHost: docker\r\nContent-Length: 0\r\n\r\n"
+        )
+        .expect("send the wait request");
+        let mut reader = BufReader::new(stream);
+        let mut status = String::new();
+        reader
+            .read_line(&mut status)
+            .expect("read the wait status line");
+        assert!(
+            status.contains(" 200 "),
+            "the Docker wait answered {status:?}"
+        );
+        loop {
+            let mut header = String::new();
+            reader.read_line(&mut header).expect("read a wait header");
+            if header.trim().is_empty() {
+                break;
+            }
+        }
         let (sender, result) = channel();
-        let name = name.to_owned();
         thread::spawn(move || {
-            let code = docker_ok(&["wait", &name]);
+            let mut body = String::new();
+            reader
+                .read_to_string(&mut body)
+                .expect("read the wait body");
+            let code = status_code(&body);
             // The receiver is gone when the test already failed: nothing is left to tell.
-            sender
-                .send((code.parse().expect("exit code"), Instant::now()))
-                .unwrap_or_default();
+            sender.send((code, Instant::now())).unwrap_or_default();
         });
         Self { result }
     }
@@ -124,4 +156,27 @@ pub fn only_the_runner_runs(name: &str) -> bool {
                 .iter()
                 .all(|row| row.comm == "decoder-runner" || row.comm == "docker-init")
     })
+}
+
+/// The unix socket of the Docker daemon: `DOCKER_HOST=unix://...` or the default path.
+fn docker_socket() -> String {
+    std::env::var("DOCKER_HOST")
+        .ok()
+        .and_then(|host| host.strip_prefix("unix://").map(str::to_owned))
+        .unwrap_or_else(|| "/var/run/docker.sock".to_owned())
+}
+
+/// `StatusCode` of the wait answer `{"Error":null,"StatusCode":2}`, whatever the framing around it.
+fn status_code(body: &str) -> i64 {
+    let after = body
+        .split("\"StatusCode\":")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no StatusCode in the wait answer {body:?}"));
+    let digits: String = after
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '-')
+        .collect();
+    digits
+        .parse()
+        .unwrap_or_else(|error| panic!("StatusCode {digits:?} of {body:?}: {error}"))
 }
