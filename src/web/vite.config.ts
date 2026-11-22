@@ -39,5 +39,9 @@ export default defineConfig({
     setupFiles: ['./tests/setup.ts'],
     globalSetup: ['./tests/support/globalSetup.ts'],
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    // The transfer tests hash megabytes with WASM and wait up to 15 s for a state, while the CI job runs a production
+    // build beside them on four shared vCPUs: the 5 s default failed one 160 ms test there. The bound is for a hang.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
 });
