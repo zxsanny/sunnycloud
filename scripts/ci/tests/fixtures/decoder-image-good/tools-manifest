@@ -1,0 +1,5 @@
+ffmpeg: OK
+ffprobe: OK
+vips: OK
+vipsheader: OK
+vipsthumbnail: OK

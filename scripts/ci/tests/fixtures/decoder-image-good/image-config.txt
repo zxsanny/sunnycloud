@@ -1,0 +1,10 @@
+user=10003:10003
+entrypoint=["decoder-runner"]
+size=73248547
+label.org.opencontainers.image.licenses=AGPL-3.0-only
+label.org.opencontainers.image.revision=local
+label.org.opencontainers.image.source=https://github.com/zxsanny/sunnycloud
+label.org.opencontainers.image.version=0.0.0-dev
+label.org.sunnycloud.media-toolchain=present
+label.org.sunnycloud.source-offer=https://github.com/zxsanny/sunnycloud/releases/download/v0.0.0-dev/decoder-sources-0.0.0-dev-20261122.tar.zst
+label.org.sunnycloud.test-clock=false

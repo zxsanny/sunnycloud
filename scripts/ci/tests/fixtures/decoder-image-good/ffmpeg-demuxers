@@ -1,0 +1,9 @@
+Formats:
+ D.. = Demuxing supported
+ .E. = Muxing supported
+ ..d = Is a device
+ ---
+ D   avi             AVI (Audio Video Interleaved)
+ D   matroska,webm   Matroska / WebM
+ D   mov,mp4,m4a,3gp,3g2,mj2 QuickTime / MOV
+ D   mpegts          MPEG-TS (MPEG-2 Transport Stream)

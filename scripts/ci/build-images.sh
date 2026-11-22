@@ -7,6 +7,8 @@
 # IMAGE_PREFIX (default sunnycloud) and IMAGE_TAG (default ci) name the images: ${IMAGE_PREFIX}-api:${IMAGE_TAG}, ...-api:${IMAGE_TAG}-test
 # BUILDX_CACHE_DIR   when set, a per-image local BuildKit cache is read from and written to it (needs a docker-container builder)
 # VERSION, REVISION  build args for the OCI labels (defaults 0.0.0-ci and the HEAD commit)
+# BUILD_TIMESTAMP    Unix seconds of the decoder build (default now): the build facts of the runner's `hello` and the
+#                    yyyymmdd of the source-offer asset name come from it
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -14,6 +16,8 @@ prefix="${IMAGE_PREFIX:-sunnycloud}"
 image_tag="${IMAGE_TAG:-ci}"
 version="${VERSION:-0.0.0-ci}"
 revision="${REVISION:-$(git -C "$repo_root" rev-parse HEAD)}"
+build_timestamp="${BUILD_TIMESTAMP:-$(date +%s)}"
+build_date="$(date -u -d "@$build_timestamp" +%Y%m%d)"
 tag="[build-images]"
 cd "$repo_root"
 
@@ -50,7 +54,11 @@ build_named() {
   case "$1" in
     api) build_image api deploy/docker/api.Dockerfile "$api"; ref="$api" ;;
     worker) build_image worker deploy/docker/worker.Dockerfile "$worker"; ref="$worker" ;;
-    decoder) build_image decoder deploy/docker/decoder.Dockerfile "$decoder"; ref="$decoder" ;;
+    decoder)
+      build_image decoder deploy/docker/decoder.Dockerfile "$decoder" \
+        --build-arg "BUILD_TIMESTAMP=$build_timestamp" --build-arg "BUILD_DATE=$build_date"
+      ref="$decoder"
+      ;;
     api-test) build_image api-test deploy/docker/api.Dockerfile "$api_test" --build-arg FEATURES=test-clock --build-arg TEST_CLOCK=true; ref="$api_test" ;;
     worker-test) build_image worker-test deploy/docker/worker.Dockerfile "$worker_test" --build-arg FEATURES=test-clock --build-arg TEST_CLOCK=true; ref="$worker_test" ;;
     *) echo "$tag FAILED: unknown image '$1' (api, worker, decoder, api-test, worker-test)" >&2; exit 2 ;;

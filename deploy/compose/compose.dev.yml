@@ -49,6 +49,8 @@ x-api-build: &api-build
     VERSION: dev
     REVISION: ${REVISION:-dev}
 
+# The decoder services add deploy/seccomp/decoder.json (Docker's default profile minus ptrace and process_vm_*, which
+# answer EPERM; AZ-3855 AC-6). A local build carries the 1970 build-time placeholders: build-images.sh passes the real ones.
 x-decoder-image: &decoder-image
   build:
     context: ../..
@@ -198,6 +200,7 @@ services:
     network_mode: none
     read_only: true
     user: "10003:10003"
+    security_opt: ["no-new-privileges:true", "seccomp=../seccomp/decoder.json"]
     volumes:
       - sock_interactive:/run/decoder
       - scratch_interactive:/scratch
@@ -216,6 +219,7 @@ services:
     network_mode: none
     read_only: true
     user: "10003:10003"
+    security_opt: ["no-new-privileges:true", "seccomp=../seccomp/decoder.json"]
     volumes:
       - sock_general:/run/decoder
       - scratch_general_dev:/scratch

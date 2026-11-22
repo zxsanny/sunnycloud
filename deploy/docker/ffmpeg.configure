@@ -1,0 +1,22 @@
+# ffmpeg configure options, one per line (containerization.md, "ffmpeg build"). decoder.Dockerfile adds
+# --prefix, one --enable-demuxer per name of FFMPEG_DEMUXERS in versions.env, and nothing else.
+# Licence: GPL through libx264; no nonfree, no libfdk_aac, no libx265, no CUDA/NPP.
+--enable-gpl
+--enable-libx264
+--enable-libzimg
+# AV1 decoder named in the codec whitelist (libdav1d); zlib for the PNG poster frame and compressed MOV headers
+--enable-libdav1d
+--enable-zlib
+# Attack surface
+--disable-autodetect
+--disable-network
+--disable-devices
+--disable-doc
+--disable-ffplay
+--disable-protocols
+--enable-protocol=file
+--enable-protocol=pipe
+--disable-demuxers
+--disable-debug
+--disable-shared
+--enable-static

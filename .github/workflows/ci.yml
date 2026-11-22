@@ -287,7 +287,8 @@ jobs:
   # One leg per image: the five builds are independent, and api and api-test alone take 4 minutes each.
   image-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    # the decoder builds ffmpeg, libvips and libheif from source: about 25 minutes cold, minutes with the media layers cached
+    timeout-minutes: ${{ matrix.target == 'decoder' && 60 || 25 }}
     strategy:
       fail-fast: false
       matrix:
@@ -302,7 +303,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/buildx-cache
-          key: buildx-${{ matrix.target }}-${{ hashFiles('src/Cargo.lock', 'src/rust-toolchain.toml', 'src/**/Cargo.toml', 'deploy/docker/*.Dockerfile') }}
+          key: buildx-${{ matrix.target }}-${{ hashFiles('src/Cargo.lock', 'src/rust-toolchain.toml', 'src/**/Cargo.toml', 'deploy/docker/*.Dockerfile', 'deploy/docker/versions.env', 'deploy/docker/ffmpeg.configure', 'deploy/docker/media-metadata.sh') }}
           restore-keys: buildx-${{ matrix.target }}-
       - name: Build ${{ matrix.target }} (no push)
         env:
@@ -339,6 +340,14 @@ jobs:
           scripts/ci/watchdog.sh --name check-release-symbols -- scripts/ci/check-release-symbols.sh
           --image sunnycloud-api:ci /usr/local/bin/sunnycloud
           --image sunnycloud-worker:ci /usr/local/bin/sunnycloud-worker
+      - name: Decoder image build checks (AZ-3864)
+        run: scripts/ci/watchdog.sh --name check-decoder-image -- scripts/ci/check-decoder-image.sh sunnycloud-decoder:ci
+      - name: Decoder seccomp profile (AZ-3855 AC-6)
+        run: scripts/ci/watchdog.sh --name check-decoder-seccomp -- scripts/ci/check-decoder-seccomp.sh sunnycloud-decoder:ci
+      - name: Decoder image check fails on each seeded property (AZ-3864 AC-2)
+        run: >-
+          scripts/ci/watchdog.sh --name test-check-decoder-image-real --
+          scripts/ci/tests/test-check-decoder-image-real.sh sunnycloud-decoder:ci
 
   # v1.2 only (E-29, AZ-4007): the vault-core matrix (native, WASM, UniFFI). No v1.0 or v1.1 release build runs
   # or links vault-core (ADR-016, FT-P-73); this PR gate job builds nothing that ships.
