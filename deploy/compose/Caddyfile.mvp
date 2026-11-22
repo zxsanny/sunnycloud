@@ -47,6 +47,9 @@
 	# Everything else is the web app; an unknown path gets index.html and the client router decides.
 	handle {
 		root * /srv/web
+		# The share page lives at /s/<token>: its early same-origin requests must not carry that address as the referrer.
+		@share path /s /s/*
+		header @share Referrer-Policy "no-referrer"
 		header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 		try_files {path} /index.html
 		file_server

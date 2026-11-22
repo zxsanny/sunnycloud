@@ -26,7 +26,10 @@ function staticFile(pathname: string): Response {
   const isFile = inside && existsSync(candidate) && statSync(candidate).isFile();
   // An unknown path gets index.html and the client router decides, as in the Caddyfile.
   const file = Bun.file(isFile ? candidate : join(root, "index.html"));
-  return new Response(file, { headers: { "content-security-policy": CSP, "cache-control": "no-cache" } });
+  const headers = new Headers({ "content-security-policy": CSP, "cache-control": "no-cache" });
+  // As in the Caddyfile: the share page address (/s/<token>) is not sent as a referrer by its early requests.
+  if (pathname === "/s" || pathname.startsWith("/s/")) headers.set("referrer-policy", "no-referrer");
+  return new Response(file, { headers });
 }
 
 function upstreamHeaders(request: Request, clientIp: string): Headers {

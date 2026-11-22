@@ -77,6 +77,17 @@ describe('the app-level error mapping', () => {
     expect(notices.items).toMatchObject([{ title: 'Too many requests.', retryAt: 1_007_000 }]);
   });
 
+  it('leaves the 429 of the public share page to its own countdown', () => {
+    // Arrange
+    navigate('/s/some-token', { replace: true });
+
+    // Act
+    handleApiError(failure(429, 'rate_limited', { retryAfterSeconds: 7 }));
+
+    // Assert
+    expect(notices.items).toEqual([]);
+  });
+
   it('shows the quota numbers from the quota view for a 507', async () => {
     // Arrange
     stubServer({

@@ -67,6 +67,8 @@ Given a 1 GiB upload whose content is replaced at 60 %, and a second run where o
 When the Worker reaches the pre-commit check
 Then it aborts and restarts, the final server content equals the new file, and 0 revisions with mixed content exist
 
+*Owner decision 2026-11-22:* a `File` from an `<input>` cannot be re-read after an edit, so the job stops (`FileChanged`, record kept) and the person selects the file again, which restarts the upload from the start. 0 mixed revisions stays the rule; the restart is a second step by the person, not automatic.
+
 **AC-6: Stopped jobs are listed after reopening**
 Given two large uploads stopped by closing the tab
 When the app is opened again by the same account

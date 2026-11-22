@@ -5,7 +5,13 @@ recorded: 2026-11-21
 
 Not run (cannot run on this host): Firefox and Safari engines (the e2e "Firefox" and "Safari" paths are Chromium with that user agent), heap at 5 GiB inside a browser (the engine-level number is flat at about 64 MiB for 1 GiB and 5 GiB; AZ-3952 holds the browser run), the real save dialog (stubbed with an OPFS handle), Forbidden for a non-current revision as a non-admin (unit test only).
 
-Decisions for the owner:
+Decided 2026-11-22 (owner):
+1. Accept `Failed(Network)` for a corrupt server block; AC-5 amended in the done spec.
+2. **Add the hash to the public share answer** (`ShareOpen`, contracts part 3, web share download verifies). Approved, not yet scheduled: needs a task (contract bump, 06/11 change, web wiring).
+3. Keep `web.hash_verify_max_ff_safari` a build constant.
+4. Keep both row buttons until E-26/c08 lands.
+
+Decisions for the owner (original text):
 1. AC-5 says a corrupt block on the volume gives `Failed(HashMismatch)`. The server reader detects its own corruption and aborts the stream, so the client reports `Failed(Network)` ("The download did not finish. Nothing was kept as good."). Nothing is saved or labelled good. `HashMismatch` appears when bytes arrive intact but wrong. Amend AC-5 or accept.
 2. A public share link carries no file hash (`GET /public-shares/{token}` has no `content_hash`), so share downloads end `SavedUnverified{NoServerHash}`. Needs a server field to verify them.
 3. `web.hash_verify_max_ff_safari` is a build constant, not exposed by `server-info`.

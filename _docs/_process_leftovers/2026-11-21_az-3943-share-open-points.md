@@ -9,6 +9,8 @@ recorded: 2026-11-21
 3. Public-link download is always `SavedUnverified{NoServerHash}` (no hash on `ShareOpen`), see the AZ-3942 note.
 
 ## Decisions for the owner
+Decided 2026-11-22: (1) keep the one identical "isn't available" page; (2) add `Referrer-Policy: no-referrer` for `/s` and `/s/*` (done: `deploy/compose/Caddyfile.mvp`, `tests/e2e/server/web-server.ts`); (3) hide the general 429 notice on the share page (done: `handleApiError.ts`); (4) wait for the row menu (E-26/c08) for the tooltip and the transfers-panel overlap.
+
 - Reload of the public page after the token left the address opens "This link isn't available", and a transient 5xx on first load looks the same (spec AC-7 wants one page for every failure; recovery needs the token). Keep, or add a non-identical retry.
 - A path-scoped `Referrer-Policy: no-referrer` for `/s/*` in Caddy (and `tests/e2e/server/web-server.ts`) would close the referrer leak of the pre-mount same-origin requests; the page's own meta covers its API calls only.
 - A 429 also shows the app-level "Too many requests" notice next to the countdown (`handleApiError`).

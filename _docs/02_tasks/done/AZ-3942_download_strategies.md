@@ -69,6 +69,8 @@ Given a server copy with one corrupt block (seeded on the volume)
 When it is downloaded through each verified path
 Then the outcome is `Failed(HashMismatch)`, no saved file is labelled verified, and the partial file is removed where the browser allows it
 
+*Owner decision 2026-11-22:* a corrupt block on the server's volume is detected by the server reader, which aborts the stream, so the client reports `Failed(Network)` ("The download did not finish. Nothing was kept as good."). `HashMismatch` is the outcome when bytes arrive intact but wrong. Nothing corrupt is saved or labelled good either way.
+
 **AC-6: Non-current revision and missing file**
 Given the id of a non-current revision as a non-admin, and a deleted file
 When each is downloaded

@@ -17,6 +17,10 @@ function sessionEnded() {
   navigate(`/login?return=${encodeURIComponent(route.relative)}`, { replace: true });
 }
 
+function isSharePage(path: string): boolean {
+  return path === '/s' || path.startsWith('/s/');
+}
+
 async function quotaReached() {
   const quota = await api.getAccountsMeQuota();
   const numbers = quota.ok
@@ -45,6 +49,8 @@ export function handleApiError(error: ApiError) {
       action: 'reload',
     });
   } else if (error.status === 429) {
+    // The public share page shows its own countdown.
+    if (isSharePage(route.path)) return;
     const seconds = error.retryAfterSeconds;
     notices.show({
       key: 'rate-limit',
