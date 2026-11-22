@@ -13,7 +13,8 @@ regexTarget = "secret"
 regexes = ['''^AZ-\d+_[a-z0-9_]+$''']
 
 # Test fixtures with made-up values: a redaction test plants token-shaped strings on purpose, and the tree and sharing
-# tests use base64 of "wrapped-1" and a dummy secret. The allowlist names the three files and the generic rule only.
+# tests use base64 of "wrapped-1" and a dummy secret, and the three share tests of the web app plant one made-up share
+# token (`sc_shr_` plus random-looking text) as their TOKEN constant. The allowlist names the files and the generic rule only.
 [[allowlists]]
 description = "Planted fake secrets of three test files"
 targetRules = ["generic-api-key"]
@@ -21,4 +22,7 @@ paths = [
     '''src/shared/observability/tests/logging_redaction\.rs''',
     '''src/components/02_tree/tests/tree/vault_moves\.rs''',
     '''src/components/06_sharing/tests/sharing/config\.rs''',
+    '''src/web/src/lib/shares/address\.test\.ts''',
+    '''src/web/src/pages/SharePublicPage\.test\.ts''',
+    '''src/web/src/pages/files/ShareDialog\.test\.ts''',
 ]
