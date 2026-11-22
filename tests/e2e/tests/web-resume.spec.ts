@@ -22,7 +22,7 @@ import {
   writeRandomFile,
   type BlockTraffic,
 } from "../support/resume.ts";
-import { inviteToken, mockIdpUser, signInAlice } from "../support/session.ts";
+import { filesPage, inviteToken, mockIdpUser, signInAlice } from "../support/session.ts";
 
 // A run-specific name, so the spec can run again on the same stack.
 const FOLDER = `Resume ${Date.now()}`;
@@ -56,7 +56,7 @@ function watchProblems(page: Page): Page {
 async function reopen(): Promise<Page> {
   const page = watchProblems(await context.newPage());
   await page.goto(folderUrl);
-  await expect(page.getByRole("heading", { name: "Files", level: 1 }).or(page.getByRole("navigation", { name: "Breadcrumb" }))).toBeVisible();
+  await expect(filesPage(page)).toBeVisible();
   return page;
 }
 
@@ -261,13 +261,13 @@ test("AC-6: two uploads stopped by closing the tab are listed again for their ow
   await owner.goto("/login");
   await owner.getByRole("button", { name: /OpenID Connect/ }).click();
   const notInvited = owner.getByText("This account is not invited.");
-  await expect(notInvited.or(owner.getByRole("heading", { name: "Files", level: 1 }))).toBeVisible();
+  await expect(notInvited.or(filesPage(owner))).toBeVisible();
   if (await notInvited.isVisible()) {
     await owner.goto(`/invite#${token}`);
     await expect(owner.getByText("You have an invite.")).toBeVisible();
     await owner.getByRole("button", { name: /OpenID Connect/ }).click();
   }
-  await expect(owner.getByRole("heading", { name: "Files", level: 1 })).toBeVisible();
+  await expect(filesPage(owner)).toBeVisible();
   await expect(owner.getByText("This folder is empty")).toBeVisible();
   await expect.poll(async () => (await dumpRecords(owner)).length, { message: "alice's records are still in this profile" }).toBe(2);
   await owner.waitForTimeout(1500);
@@ -280,7 +280,7 @@ test("AC-6: two uploads stopped by closing the tab are listed again for their ow
   await signOut(owner);
   await mockIdpUser("alice");
   await owner.getByRole("button", { name: /OpenID Connect/ }).click();
-  await expect(owner.getByRole("heading", { name: "Files", level: 1 })).toBeVisible();
+  await expect(filesPage(owner)).toBeVisible();
   await owner.goto(folderUrl);
   await expect(banner(owner)).toHaveText("2 uploads stopped when the tab closed.");
   await selectWithBanner(owner, [one.path, two.path]);

@@ -161,18 +161,19 @@ test("AC-3: a folder cannot be shared: the control is off with its reason, and t
   expect(await (await owner.request.get(`/api/v1/shares?node_id=${nodes.get(files.jpeg.name)?.node_id}`)).json()).toEqual(before);
 });
 
-test("AC-2 (what the API allows): an expiry the server refuses is shown next to the field and creates nothing", async () => {
+test("AC-2 (what the API allows): the dialog offers nothing above the server's longest lifetime and preselects its default", async () => {
   // Arrange
-  const name = files.pdf.name;
-  const dialog = await openDialog(main, name);
+  const info = (await (await owner.request.get("/api/v1/server-info")).json()) as { share_default_ttl: number; share_max_ttl: number };
+  const dialog = await openDialog(main, files.pdf.name);
 
   // Act
-  await dialog.getByLabel("Expires after (days)").fill("999999");
-  await dialog.getByRole("button", { name: "Create link" }).click();
+  const select = dialog.getByLabel("Expires", { exact: true });
+  const offered = (await select.locator("option").evaluateAll((options) => options.map((option) => Number((option as unknown as { value: string }).value)))).sort((a, b) => a - b);
 
   // Assert
-  await expect(dialog.getByText("The server does not accept this expiry. Choose a shorter time.")).toBeVisible();
-  await expect(created(dialog)).toHaveCount(0);
+  expect(Math.max(...offered), "the longest choice is the server's maximum").toBe(info.share_max_ttl);
+  expect(offered.every((seconds) => seconds > 0 && seconds <= info.share_max_ttl), `choices ${offered}`).toBe(true);
+  await expect(select).toHaveValue(String(info.share_default_ttl));
   await expect(dialog.getByText("This file has no links yet.")).toBeVisible();
   await closeDialog(dialog);
 });
@@ -339,13 +340,7 @@ test("AC-8 and AC-11 (password), before unlock: nothing is revealed, a wrong pas
   await context.close();
 });
 
-// KNOWN SERVER GAP (reported with AZ-3943): `GET /public-shares/{token}` does not read the grant cookie (11 `visitor::open`
-// passes only token and IP to 06 `open`), so it answers 401 `password_required` to an unlocked visitor and the page has no
-// name, size or type to show; `transfer.download({shareToken})` reads the same route and fails the same way. This test states
-// the behaviour AC-8 asks for and is expected to fail until that route honours the grant; Playwright fails the suite when it
-// starts to pass, which is the signal to remove `test.fail`.
 test("AC-8 (after unlock): the right password shows name, size and type, and the download equals the file", async ({ browser }) => {
-  test.fail(true, "GET /public-shares/{token} ignores the grant cookie: no metadata after unlock");
   const { context, page } = await visit(browser, secretUrl);
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Unlock" }).click();

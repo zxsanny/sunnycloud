@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { setupToken } from "../support/env.ts";
 import { generateMedia, hashFile, HOSTILE_NAME, LARGE_MIB, writeRandom, type MediaFile } from "../support/media.ts";
+import { filesPage } from "../support/session.ts";
 
 interface Dimensions {
   naturalWidth: number;
@@ -73,7 +74,7 @@ test("first-run setup: the setup token and the mock IdP lead to the file browser
   await page.getByLabel("Setup token").fill(token);
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: /OpenID Connect/ }).click();
-  await expect(page.getByRole("heading", { name: "Files", level: 1 })).toBeVisible();
+  await expect(filesPage(page)).toBeVisible();
 
   // Assert: a Secure, HttpOnly __Host- session cookie works on http://localhost, and the setup page is gone for good.
   const session = (await context.cookies()).find((cookie) => cookie.name === "__Host-session");

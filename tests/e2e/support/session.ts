@@ -1,16 +1,24 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { expect, type BrowserContext, type Page } from "@playwright/test";
+import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { readAcceptanceEnv } from "./env.ts";
 
 const run = promisify(execFile);
+
+/**
+ * The Files page is up: its h1 while the root folder loads, then the breadcrumb that replaces it (the two never show together).
+ * A wait on the h1 alone loses a race with a fast root load and fails a sign-in that worked.
+ */
+export function filesPage(page: Page): Locator {
+  return page.getByRole("heading", { name: "Files", level: 1 }).or(page.getByRole("navigation", { name: "Breadcrumb" }));
+}
 
 /** Signs alice in through the real sign-in page and the mock IdP (the account already exists). */
 export async function signInAlice(context: BrowserContext): Promise<Page> {
   const page = await context.newPage();
   await page.goto("/login");
   await page.getByRole("button", { name: /OpenID Connect/ }).click();
-  await expect(page.getByRole("heading", { name: "Files", level: 1 })).toBeVisible();
+  await expect(filesPage(page)).toBeVisible();
   return page;
 }
 

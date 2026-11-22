@@ -13,7 +13,7 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { FIREFOX_UA, MIB, NO_PICKER, PICKER_TO_OPFS, SAFARI_UA, blockHashesOfPath, pickedFile } from "../support/download.ts";
 import { writeRandomFile } from "../support/resume.ts";
 import { ACC_DATA } from "../support/env.ts";
-import { signInAlice } from "../support/session.ts";
+import { filesPage, signInAlice } from "../support/session.ts";
 
 const FOLDER = `Download ${Date.now()}`;
 const WAIT = { timeout: 120_000 };
@@ -53,7 +53,7 @@ async function openAs(options: { userAgent?: string; picker: boolean; cutRealtim
   const page = watch(await context.newPage());
   if (options.cutRealtime) await page.routeWebSocket(/\/api\/v1\/realtime/, (socket) => socket.close());
   await page.goto(folderUrl);
-  await expect(page.getByRole("heading", { name: "Files", level: 1 }).or(page.getByRole("navigation", { name: "Breadcrumb" }))).toBeVisible();
+  await expect(filesPage(page)).toBeVisible();
   await expect(fileRow(page, SMALL)).toBeVisible(WAIT);
   return { context, page };
 }
