@@ -372,6 +372,13 @@ jobs:
       - name: Install cargo-deny
         if: matrix.leg == 'native'
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-deny
+      # The leg downloads its pinned tools (SHA-256 verified by the script) and Maven Central answers 429 to the
+      # runners at times; the script skips a file that is already present, so the directory is cached on the script,
+      # which holds every pin. A cache never hides a bad file: the hash is checked on every run.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: src/target/vault-ci-tools
+          key: vault-ci-tools-${{ matrix.leg }}-${{ hashFiles('src/vault-core/ci/vault-core-ci.sh') }}
       - name: vault-core ${{ matrix.leg }} leg
         run: scripts/ci/watchdog.sh --name vault-core-${{ matrix.leg }} -- src/vault-core/ci/vault-core-ci.sh ${{ matrix.leg }}
       - name: cargo deny licence allowlist of the iOS build graph
