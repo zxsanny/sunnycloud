@@ -35,7 +35,6 @@ docker build --file deploy/docker/decoder.Dockerfile --target test-stubs \
 cd src
 export DECODER_IMAGE="$image" DECODER_TEST_IMAGE="$test_image"
 echo "$tag running the cases against $image and $test_image"
-# Cases named known_failure_* are recorded findings (the report of AZ-3865); they stay out of the gate until fixed.
-cargo nextest run --locked -p decoder-runner --run-ignored only -E 'binary(container) & not test(/known_failure_/)' \
+cargo nextest run --locked -p decoder-runner --run-ignored only -E 'binary(container)' \
   --no-fail-fast --test-threads "$threads" --success-output immediate --failure-output immediate "$@"
 echo "$tag OK: every case passed (values recorded in src/target/tmp/decoder-suite-records.txt)"

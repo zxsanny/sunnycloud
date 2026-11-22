@@ -10,7 +10,7 @@ use crate::docker::wait_for;
 use crate::host::remove_tree;
 use crate::marker::Behaviour;
 use crate::peer::{photo_limits, render};
-use crate::refs::record;
+use crate::refs::{pattern_jpeg, record, workdir};
 
 const WAIT: Duration = Duration::from_secs(30);
 const WATCHDOG: Duration = Duration::from_secs(3);
@@ -81,25 +81,30 @@ fn abort_mid_job() -> (Decoder, Job) {
 fn it_10_18_a_runner_waiting_on_a_job_aborts_and_the_new_instance_answers() {
     let (decoder, job) = abort_mid_job();
 
-    // `work/` of the interrupted job survives the abort (finding F1, next test); it is removed here so
-    // that the group check of AC-7 can look at everything else.
+    // `work/` of the interrupted job survives the abort and is the supervisor's to sweep (next test); it is
+    // removed here, as that sweep would, so that the group check of AC-7 can look at everything else.
     remove_tree(&job.work(), &decoder.image);
     decoder.finish();
 }
 
-/// IT-10-18 (b) says `work/` of the interrupted job is gone. An abort runs no destructors and nothing
-/// starts the cleanup, so the directory stays: the runner removes `work/` only when the same job runs
-/// again, and AC-71 leaves scratch residue to the supervisor's start-up sweep. Which side owns it is an
-/// owner decision; the case stays out of the gate until then (decoder-suite.sh skips `known_failure_`).
+/// IT-10-18 (b), as decided by the owner on 2026-11-22: an abort runs no destructors, so the runner leaves `work/`
+/// of the interrupted job, and the supervisor's start-up sweep (E-20, AC-71) removes it. The harness plays the
+/// sweep here; what the runner owes is a new instance that serves the next job on the swept scratch.
 #[test]
-#[ignore = "known failure F1: work/ survives a watchdog abort"]
-fn known_failure_f1_it_10_18_work_of_the_interrupted_job_is_removed() {
-    let (decoder, job) = abort_mid_job();
+#[ignore = "needs DECODER_IMAGE and docker"]
+fn it_10_18_work_of_the_interrupted_job_is_left_for_the_supervisor_sweep_and_the_next_job_runs() {
+    let (mut decoder, job) = abort_mid_job();
+    let left = job.work().exists();
 
-    let survived = job.work().exists();
     remove_tree(&job.work(), &decoder.image);
+    let samples = workdir();
+    let next = decoder.job(&pattern_jpeg(samples.path(), "next.jpg", 640, 480));
+    let answer = decoder
+        .connect()
+        .call(render(&next, 320, photo_limits()), WAIT);
 
-    assert!(!survived, "work/ of the interrupted job survived the abort");
+    assert!(left, "the runner left work/ for the sweep");
+    assert!(matches!(answer, Response::ImageResult(_)), "{answer:?}");
     decoder.finish();
 }
 
