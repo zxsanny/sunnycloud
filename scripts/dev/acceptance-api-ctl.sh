@@ -12,7 +12,7 @@ case "${1:-}" in
     load_env
     start_process api
     wait_http "api ops" "http://127.0.0.1:$ACC_OPS_PORT/readyz"
-    wait_http "server-info through the web server" "$ACC_ORIGIN/api/v1/server-info"
+    wait_http "server-info through the web server" "$ACC_ORIGIN/api/v1/server-info" -k
     ;;
   *) die "usage: acceptance-api-ctl.sh stop|start" ;;
 esac

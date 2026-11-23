@@ -29,7 +29,7 @@ done
 echo "== health"
 probe() {
   local label="$1" url="$2" code
-  code="$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "$url" || true)"
+  code="$(curl -sk --max-time 5 -o /dev/null -w '%{http_code}' "$url" || true)"
   printf '%-26s %s %s\n' "$label" "${code:-000}" "$url"
   [ "$code" = 200 ] || unhealthy=1
 }
@@ -39,7 +39,7 @@ probe "mock idp discovery" "$ACC_ISSUER/.well-known/openid-configuration"
 probe "web server" "$ACC_ORIGIN/__acceptance/health"
 probe "server-info via web server" "$ACC_ORIGIN/api/v1/server-info"
 
-echo "== listeners (all must be 127.0.0.1)"
+echo "== listeners (127.0.0.1 only, the web port also on ACC_HOST when it is not localhost)"
 ss -Hltn| awk '{print $4}' | grep -E ":($(IFS='|'; echo "${ACC_PORTS[*]}"))\$" | sort || true
 echo "logs: $MVP_RUN/*.log, data: $ACC_DATA"
 exit "$unhealthy"

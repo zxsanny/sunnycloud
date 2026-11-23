@@ -36,7 +36,7 @@ systemctl --user status sunnycloud-mvp-decoder-general.service
 journalctl --user -u sunnycloud-mvp-decoder-general.service -n 20
 ```
 
-The decoder refuses to start unless `vipsthumbnail`, `vipsheader`, `ffmpeg` and `ffprobe` are on its `PATH`; the units get `PATH=/usr/local/bin:/usr/bin:/bin`. `mvp-up.sh` checks it before starting and `mvp-status.sh` prints the path of each tool.
+The decoder units also get `NoNewPrivileges`, an empty capability set, no network, a read-only root (run and scratch folders writable) and an environment of their own keys only, because the worker refuses a decoder whose self-check fails (`acceptance.md`, "Decoders under systemd are isolated like the container"); a restart of the live stack with an older `mvp-lib.sh` leaves the worker unready. The decoder refuses to start unless `vipsthumbnail`, `vipsheader`, `ffmpeg` and `ffprobe` are on its `PATH`; the units get `PATH=/usr/local/bin:/usr/bin:/bin`. `mvp-up.sh` checks it before starting and `mvp-status.sh` prints the path of each tool.
 
 ## Logs
 

@@ -17,6 +17,8 @@ export default defineConfig({
     baseURL: origin,
     browserName: "chromium",
     headless: true,
+    // The stack is opened over https with a self-signed certificate when it is not on localhost.
+    ignoreHTTPSErrors: origin.startsWith("https:"),
     acceptDownloads: true,
     actionTimeout: 30_000,
     trace: "retain-on-failure",

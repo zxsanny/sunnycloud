@@ -81,6 +81,30 @@ SUPERVISED_PATH="/usr/local/bin:/usr/bin:/bin"
 # shellcheck disable=SC2034 # used by mvp-up.sh and mvp-status.sh
 MEDIA_TOOLS=(vipsthumbnail vipsheader ffmpeg ffprobe)
 
+# The decoder's self-check (10 section 4) refuses a runner that is not isolated, and a bare user unit has the whole
+# user's rights. These properties give the unit the properties the check reads, the way the container does: no new
+# privileges, an empty capability set, a read-only root with only its socket and scratch folders writable, no network
+# (the socket is a file path, so the worker still reaches it) and an environment of the decoder's own keys only.
+# Sets `isolation`, `setenv` and `command` of start_process.
+decoder_isolation() {
+  local name="$1" entry var writable="$MVP_RUN"
+  while IFS= read -r entry; do
+    case "$entry" in SUNNYCLOUD_DECODER_SCRATCH_ROOT=*) writable+=" ${entry#*=}" ;; esac
+  done < <(process_env "$name")
+  isolation=(--property=NoNewPrivileges=yes --property=CapabilityBoundingSet= --property=PrivateNetwork=yes
+    --property=ReadOnlyPaths=/ "--property=ReadWritePaths=$writable")
+  # systemd hands a user unit the manager's whole environment; `env -i` leaves the unit's own keys and nothing else.
+  local -a keys=()
+  while IFS= read -r var; do
+    keys+=("$var=${!var}")
+  done < <(compgen -e | grep -E '^SUNNYCLOUD_(ENVIRONMENT|DECODER_|PHOTO_|VIDEO_)')
+  while IFS= read -r entry; do
+    [ -n "$entry" ] && keys+=("$entry")
+  done < <(process_env "$name")
+  setenv=()
+  command=(env -i "PATH=$SUPERVISED_PATH" "${keys[@]}" "${command[@]}")
+}
+
 # Starts one process under systemd --user, once. Restart=always with a delay that grows from 1 s to 5 s;
 # systemd never resets the step counter while the unit lives (NRestarts only grows), so the cap is kept low: a
 # decoder that ends after a hostile file is back within 5 s. StartLimitIntervalSec=0 so the unit is never given up. SIGTERM, then 60 s (the API's
@@ -103,11 +127,15 @@ start_process() {
   while IFS= read -r entry; do
     [ -n "$entry" ] && setenv+=("--setenv=$entry")
   done < <(process_env "$name")
+  local -a isolation=()
+  case "$name" in
+    decoder-*) decoder_isolation "$name" ;;
+  esac
   systemd-run --user --quiet --unit="$(unit_of "$name")" --description="sunnycloud MVP $name" \
     --property=Restart=always --property=RestartSec=1 --property=RestartSteps=3 \
     --property=RestartMaxDelaySec=5 --property=StartLimitIntervalSec=0 --property=TimeoutStopSec=60 \
     --property="StandardOutput=append:$(log_file "$name")" --property="StandardError=append:$(log_file "$name")" \
-    "${setenv[@]}" "${command[@]}"
+    "${isolation[@]}" "${setenv[@]}" "${command[@]}"
   log "$name started under systemd --user as $(unit_of "$name") (log $(log_file "$name"))"
 }
 

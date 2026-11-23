@@ -86,8 +86,10 @@ interface SocketData {
 }
 
 const server = Bun.serve<SocketData>({
-  hostname: "127.0.0.1",
+  hostname: process.env.WEB_HOST ?? "127.0.0.1",
   port,
+  // Set when the stack is opened by an address other than localhost (a Secure cookie needs https there).
+  ...(process.env.TLS_CERT && process.env.TLS_KEY ? { tls: { cert: Bun.file(process.env.TLS_CERT), key: Bun.file(process.env.TLS_KEY) } } : {}),
   maxRequestBodySize: 4 * 1024 ** 3,
   idleTimeout: 120,
   async fetch(request, server) {
@@ -124,7 +126,7 @@ const server = Bun.serve<SocketData>({
   },
 });
 
-console.log(`acceptance web server on http://127.0.0.1:${server.port}, api ${apiUrl.origin}, dist ${webDist}`);
+console.log(`acceptance web server on ${server.url}, api ${apiUrl.origin}, dist ${webDist}`);
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     void server.stop(true);

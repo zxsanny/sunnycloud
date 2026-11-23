@@ -37,7 +37,15 @@ ACC_OPS_PORT=$((ACC_PORT_BASE + 3))
 ACC_WORKER_OPS_PORT=$((ACC_PORT_BASE + 4))
 ACC_IDP_PORT=$((ACC_PORT_BASE + 5))
 ACC_DB_PORT=$((ACC_PORT_BASE + 6))
-ACC_ORIGIN="http://localhost:$ACC_WEB_PORT"
+# The host the browser opens. `localhost` is a secure context for Chromium (the Secure __Host- cookies work without TLS)
+# and the web server listens on 127.0.0.1 only. Any other value (ACC_HOST=192.168.88.100) makes the web server listen on
+# that address, so it is reachable from the LAN, over https with a self-signed certificate made for that address:
+# Chromium keeps a Secure cookie only from https or localhost (its secure-origin flag does not change that).
+# acceptance-up.sh records it in acceptance.env, so down, status and api-ctl address the stack the way it was started.
+ACC_HOST="${ACC_HOST:-$(sed -n 's/^ACC_HOST=//p' "$ACC_DATA/acceptance.env" 2> /dev/null)}"
+ACC_HOST="${ACC_HOST:-localhost}"
+if [ "$ACC_HOST" = localhost ]; then ACC_SCHEME=http; else ACC_SCHEME=https; fi
+ACC_ORIGIN="$ACC_SCHEME://$ACC_HOST:$ACC_WEB_PORT"
 ACC_ISSUER="http://127.0.0.1:$ACC_IDP_PORT"
 ACC_CLIENT_ID="sunnycloud-acceptance"
 ACC_REDIRECT_URI="$ACC_ORIGIN/api/v1/auth/providers/oidc/callback"
@@ -83,6 +91,7 @@ ENV
 # What the tests and the other scripts need to know: origin, ports and where things are. No secret.
 write_acceptance_env() {
   cat > "$ACC_DATA/acceptance.env" <<ENV
+ACC_HOST=$ACC_HOST
 ACC_ORIGIN=$ACC_ORIGIN
 ACC_WEB_PORT=$ACC_WEB_PORT
 ACC_API_PORT=$ACC_API_PORT

@@ -134,9 +134,26 @@ done
 wait_http "api ops" "http://127.0.0.1:$ACC_OPS_PORT/readyz"
 wait_http "worker ops" "http://127.0.0.1:$ACC_WORKER_OPS_PORT/readyz"
 
-start_aux web "$REPO_ROOT/tests/e2e" "WEB_PORT=$ACC_WEB_PORT" "API_URL=http://127.0.0.1:$ACC_API_PORT" \
-  "WEB_DIST=$ACC_WEB_DIST" -- "$BUN" server/web-server.ts
-wait_http "web server" "$ACC_ORIGIN/__acceptance/health"
-wait_http "server-info through the web server" "$ACC_ORIGIN/api/v1/server-info"
+web_bind=127.0.0.1
+tls_env=()
+if [ "$ACC_SCHEME" = https ]; then
+  web_bind="$ACC_HOST"
+  tls_dir="$ACC_DATA/tls"
+  mkdir -p "$tls_dir"
+  # A throwaway certificate for this address only, renewed when the address changes or 30 days pass.
+  if ! grep -qs "^$ACC_HOST\$" "$tls_dir/host" || [ -n "$(find "$tls_dir/cert.pem" -mtime +25 2> /dev/null)" ] || [ ! -s "$tls_dir/cert.pem" ]; then
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 30 -subj "/CN=$ACC_HOST" \
+      -addext "subjectAltName=IP:$ACC_HOST" -keyout "$tls_dir/key.pem" -out "$tls_dir/cert.pem" 2> /dev/null
+    chmod 600 "$tls_dir/key.pem"
+    printf '%s\n' "$ACC_HOST" > "$tls_dir/host"
+  fi
+  tls_env=("TLS_CERT=$tls_dir/cert.pem" "TLS_KEY=$tls_dir/key.pem")
+fi
+start_aux web "$REPO_ROOT/tests/e2e" "WEB_PORT=$ACC_WEB_PORT" "WEB_HOST=$web_bind" "API_URL=http://127.0.0.1:$ACC_API_PORT" \
+  "WEB_DIST=$ACC_WEB_DIST" "${tls_env[@]}" -- "$BUN" server/web-server.ts
+curl_flags=()
+[ "$ACC_SCHEME" = https ] && curl_flags=(-k)
+wait_http "web server" "$ACC_ORIGIN/__acceptance/health" "${curl_flags[@]}"
+wait_http "server-info through the web server" "$ACC_ORIGIN/api/v1/server-info" "${curl_flags[@]}"
 
 log "up at $ACC_ORIGIN (mock IdP $ACC_ISSUER). Status: scripts/dev/acceptance-status.sh, remove: scripts/dev/acceptance-down.sh"

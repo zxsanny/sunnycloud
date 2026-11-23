@@ -24,7 +24,7 @@ Playwright is pinned at 1.65.0, whose Chromium revision 1254 is the one in `~/.c
 
 | | Live MVP | Acceptance |
 |---|---|---|
-| Origin | `https://drive.zxsanny.com` (Caddy 80/443) | `http://localhost:18800` (Bun web server) |
+| Origin | `https://drive.zxsanny.com` (Caddy 80/443) | `http://localhost:18800` (Bun web server), or `https://<ACC_HOST>:18800` |
 | Loopback ports | 8080, 8081, 9090, 9092, 5532 | 18800 to 18806 (`ACC_PORT_BASE`; start refuses a taken port) |
 | systemd --user units | `sunnycloud-mvp-*` | `sunnycloud-acc-{api,worker,decoder-interactive,decoder-general,idp,web}` |
 | Database | Postgres container, volume `pgdata`, database `sunnycloud` | container `sunnycloud-acc-db`, database `acceptance`, data on tmpfs |
@@ -32,7 +32,7 @@ Playwright is pinned at 1.65.0, whose Chromium revision 1254 is the one in `~/.c
 | Binaries | `/develop/zxsanny/targets/stack` | `/develop/zxsanny/targets/acceptance` (cargo target and a copy of `src/web` with its bundle; a build cache that `down` keeps, `ACC_PURGE_BUILD=1` removes) |
 | Cookies | host `drive.zxsanny.com` | host `localhost` (cookies ignore ports, but a fresh Playwright context has none) |
 
-Everything listens on 127.0.0.1 only (the mock IdP has no setting to change that). `acceptance-down.sh` leaves no unit,
+Everything listens on 127.0.0.1 only (the mock IdP has no setting to change that), unless the stack is opened by a LAN address (next section). `acceptance-down.sh` leaves no unit,
 container, database or data directory. The scripts source `mvp-lib.sh` and override only the unit name, the data directory and the target.
 
 Why a throwaway database container and not a second database in the MVP Postgres: roles are cluster-wide (the schema
@@ -68,6 +68,14 @@ First-run setup page with the setup token, sign-in through the mock IdP, a folde
 - Realtime behind Caddy and Cloudflare (the proxy here is Bun); the live tests prove the browser client against the API.
 - Production-mode validation (`environment=production`, https `public_url`), the container decoder stage, a 1 GB video, the transcode path (its jobs end `dead` with `Unsupported`), more than two sessions at once.
 
+## Opening the stack by the host's LAN address
+
+`ACC_HOST=192.168.88.100 scripts/dev/acceptance-up.sh` serves the web port on that address only, over https with a throwaway self-signed certificate for it (`$ACC_DATA/tls/`, 30 days, remade when the address changes). Origin becomes `https://192.168.88.100:18800`; the API, the worker and the mock IdP stay on 127.0.0.1, so a sign-in works from this host only. The host is written to `acceptance.env`, so `status`, `api-ctl`, `down` and the Playwright config use the same origin; `acceptance-down.sh` removes it with the rest, so every `up` that should use the address names it again. Playwright then sets `ignoreHTTPSErrors`. Why https and not plain http on the address: Chromium keeps a `Secure` or `__Host-` cookie only from https or localhost, and its `--unsafely-treat-insecure-origin-as-secure` flag does not change that (the sign-in cookie was dropped and the callback answered `invalid_request`).
+
+## Decoders under systemd are isolated like the container
+
+The worker refuses a decoder whose self-check fails (10 section 4). A plain user unit has the user's whole rights, so `start_process` in `mvp-lib.sh` starts the decoder units (MVP and acceptance) with `NoNewPrivileges=yes`, an empty `CapabilityBoundingSet`, `PrivateNetwork=yes` (the socket is a file path, so the worker still reaches it), `ReadOnlyPaths=/` with only the run directory and the scratch root writable, and `env -i` with the decoder's own keys. Without them the worker stays unready and `acceptance-up.sh` stops at "worker ops did not answer 200".
+
 ## Edge cases and concurrency (also in the smoke test)
 
 - A 0-byte file, a 255-character name, a Ukrainian and emoji name, a text file named `.jpg` and two files with the same name all upload. The empty, long, Unicode and fake-JPEG files end as rows with a "No preview" icon; the Unicode file downloads under its own name with the same bytes.
@@ -83,5 +91,11 @@ Context A and context B are two browser contexts of alice (B carries A's session
 3. `acceptance-api-ctl.sh stop`: B's chip says Reconnecting; `start`: it returns to Live by itself, and a file uploaded in A after the restart appears in B once, with no duplicate rows.
 4. B idle for 70 s: no REST request at all, the chip never leaves Live, two Pings and two Pongs cross the socket.
 5. A third context signs in as alice; A deletes that session with `DELETE /sessions/{id}`; that page goes to `/login` (close 4401).
+
+## Session renewal, device approval, account and admin (`web-renewal`, `web-device`, `web-account-admin`)
+
+- `web-renewal.spec.ts`: a sign-in sets `__Secure-refresh` (HttpOnly, Secure, SameSite=Strict, path `/api/v1/auth/session-renewals`). With only the session cookie deleted (the state of an expired 15-minute cookie) a reload stays signed in, sets a new session cookie and rotates the refresh cookie. With both deleted a reload shows the sign-in page.
+- `web-device.spec.ts`: the desktop app is played by `POST /device-grants` on the API port with `X-Forwarded-For` (trusted from 127.0.0.1). Same place: no warning, Approve connects the device, the poll gets its token, the account lists it. Another place: warning, Deny is the main button, Approve needs the tick, Deny yields no token. A used or unknown code ends on one "expired or isn't valid" page. Signed out: sign-in first. Not run: AC-5 (10-minute expiry, no test clock) and AC-7 (six wrong codes would block the page for the other specs).
+- `web-account-admin.spec.ts`: profile, storage and the current-browser chip; a second browser of alice is listed and "Revoke browser" signs it out; the admin tabs, an invite created with a note and revoked, the health table; bob (a member) gets "Page not found" and 403 from the admin API. Not run: account deletion and provider linking.
 
 Run the whole suite on a fresh stack each time (`acceptance-down.sh && acceptance-up.sh`); the setup test needs an empty database.
