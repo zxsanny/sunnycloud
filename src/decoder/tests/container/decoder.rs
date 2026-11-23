@@ -109,6 +109,15 @@ impl Job {
     }
 }
 
+/// A container that departs from the production flags in one property, for the self-check cases.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Variant<'a> {
+    /// Docker arguments appended after the production ones (a later `--user` wins).
+    pub extra: &'a [&'a str],
+    /// Leave out `--read-only`.
+    pub writable_root: bool,
+}
+
 pub struct Decoder {
     pub name: String,
     pub image: String,
@@ -127,6 +136,17 @@ impl Decoder {
     /// Starts a container, inspects it against the production flags (AC-1: a mismatch panics
     /// before any case runs) and waits until it answers `hello`.
     pub fn start(image: &str, flavor: Flavor, env: &[(&str, &str)]) -> Self {
+        Self::start_variant(image, flavor, env, Variant::default())
+    }
+
+    /// Like [`Decoder::start`] with one property changed; the flags check is skipped, because a
+    /// variant differs from the production flags on purpose.
+    pub fn start_variant(
+        image: &str,
+        flavor: Flavor,
+        env: &[(&str, &str)],
+        variant: Variant,
+    ) -> Self {
         let root = TempDir::new_in(flavor.base()).expect("scratch base directory");
         let (sock_dir, scratch) = (root.path().join("sock"), root.path().join("scratch"));
         for dir in [root.path(), &sock_dir, &scratch] {
@@ -154,18 +174,20 @@ impl Decoder {
             next: 0,
             root: Some(root),
         };
-        decoder.run(&sock_dir, env);
-        assert_production_flags(
-            &decoder.name,
-            decoder.flavor.name(),
-            decoder.flavor.cpus(),
-            decoder.flavor.memory_bytes(),
-        );
+        decoder.run(&sock_dir, env, variant);
+        if variant.extra.is_empty() && !variant.writable_root {
+            assert_production_flags(
+                &decoder.name,
+                decoder.flavor.name(),
+                decoder.flavor.cpus(),
+                decoder.flavor.memory_bytes(),
+            );
+        }
         decoder.wait_ready(READY);
         decoder
     }
 
-    fn run(&self, sock_dir: &Path, env: &[(&str, &str)]) {
+    fn run(&self, sock_dir: &Path, env: &[(&str, &str)], variant: Variant) {
         let seccomp = format!("seccomp={}", seccomp_profile().display());
         let mut args: Vec<String> = [
             "run",
@@ -218,6 +240,10 @@ impl Decoder {
         for (key, value) in config {
             args.extend(["--env".into(), format!("{key}={value}")]);
         }
+        if variant.writable_root {
+            args.retain(|arg| arg != "--read-only");
+        }
+        args.extend(variant.extra.iter().map(|arg| (*arg).to_owned()));
         args.push(self.image.clone());
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
         docker_ok(&refs);

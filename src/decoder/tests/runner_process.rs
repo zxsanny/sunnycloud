@@ -249,7 +249,7 @@ fn ac8_invalid_duration_and_unknown_variable_refuse_start_and_are_both_listed() 
 }
 
 #[test]
-fn a_job_that_is_no_media_is_unsupported_and_the_self_check_reports_only_what_it_ran() {
+fn a_job_that_is_no_media_is_unsupported_and_the_self_check_names_every_property() {
     let runner = Runner::start();
     let mut client = runner.connect();
 
@@ -267,7 +267,15 @@ fn a_job_that_is_no_media_is_unsupported_and_the_self_check_reports_only_what_it
     let names: Vec<&str> = report.0.iter().map(|item| item.name.as_str()).collect();
     assert_eq!(
         names,
-        ["proc_status_readable", "not_root", "no_capabilities"]
+        [
+            "forbidden_targets_unreachable",
+            "environment_is_allowlist",
+            "no_blob_or_secret_mounts",
+            "not_root",
+            "no_capabilities",
+            "no_new_privs",
+            "root_filesystem_read_only",
+        ]
     );
 }
 #[test]

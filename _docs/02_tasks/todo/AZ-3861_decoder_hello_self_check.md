@@ -80,6 +80,12 @@ Then exactly the matching item is `ok = false`, the others stay `ok`, the call n
 - *Risk*: a missing file reads as "no blob mount".
 - *Mitigation*: AC-3 variants prove each item can fail.
 
+## Implementation notes (batch 112)
+
+- The three versions and the build time come from one source, the build facts file; IT-10-1 compares them with the tools' own output (`vips --version`, `ffmpeg -version`, the `libheif.so.x.y.z` the image links) instead of the runner running the tools. A missing or invalid file answers `unknown` and time 1 and is logged.
+- `no_capabilities` checks the effective, permitted and bounding sets: with `cap_add NET_RAW` a non-root runner still has `CapEff` 0, so the spec's `CapEff == 0` alone could not flip (Risk 1). The runner is not dumpable, so its environment is read in-process, not from `/proc/self/environ`.
+- The five variants of AC-3 run in the container suite (`it_10_2_each_variant_flips_only_its_own_item`), not only in AZ-3865's NOT RUN list.
+
 ## Flagged concerns
 
 | Concern | Policy / owner | Status | Severity |

@@ -7,6 +7,7 @@ use media_shared::decoder_protocol::{Capabilities, DecodeError, Response, SelfCh
 
 use sc_observability::log_error;
 
+use crate::build_facts::{BUILD_FACTS_PATH, BuildFacts};
 use crate::config::RunnerConfig;
 use crate::containment::{Sweep, kill_all_descendants};
 use crate::exec::{Exec, ExecutorConfig, Work, internal};
@@ -20,6 +21,7 @@ use crate::video;
 pub struct MediaHandler {
     tools: Tools,
     config: ExecutorConfig,
+    facts: BuildFacts,
 }
 
 impl MediaHandler {
@@ -30,6 +32,7 @@ impl MediaHandler {
                 photo_max_pixels: config.photo_max_pixels,
                 memory_poll: config.memory_poll_interval,
             },
+            facts: BuildFacts::load(Path::new(BUILD_FACTS_PATH)),
         }
     }
 
@@ -66,21 +69,11 @@ impl MediaHandler {
 
 impl JobHandler for MediaHandler {
     fn capabilities(&self) -> Capabilities {
-        // The tool versions and the build timestamp are E-19/c12; "unknown" and 1 (the lowest
-        // timestamp the protocol accepts) mean "not reported".
-        Capabilities {
-            protocol: crate::PROTOCOL_VERSION,
-            vips: "unknown".into(),
-            ffmpeg: "unknown".into(),
-            libheif: "unknown".into(),
-            build_timestamp: 1,
-            nvenc_probe_ok: false,
-            nvenc_sessions: 0,
-        }
+        self.facts.capabilities(crate::PROTOCOL_VERSION)
     }
 
-    fn self_check(&self, _forbidden_targets: &[String]) -> SelfCheckReport {
-        crate::self_check::report()
+    fn self_check(&self, forbidden_targets: &[String]) -> SelfCheckReport {
+        crate::self_check::report(forbidden_targets)
     }
 
     /// Runs the job, then kills and reaps every descendant of the runner and removes `work/`,

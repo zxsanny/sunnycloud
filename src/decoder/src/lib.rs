@@ -26,6 +26,7 @@
 //!   exceeded, a descendant found alive) is answered and then ends the runner: [`Exit::HostileOutcome`],
 //!   exit code 3.
 
+mod build_facts;
 pub mod config;
 mod connection;
 mod containment;
