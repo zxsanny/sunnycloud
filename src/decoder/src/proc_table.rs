@@ -34,8 +34,16 @@ pub fn snapshot() -> io::Result<Vec<Process>> {
         let Some(stat) = read_stat(&entry.path().join("stat"))? else {
             continue;
         };
+        // The text is in the error: a `stat` that does not parse was seen once in CI and its content
+        // was not recorded.
         let process = parse_stat(pid, &stat, page).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "unreadable /proc/<pid>/stat")
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "unreadable /proc/{pid}/stat: {:?}",
+                    stat.chars().take(200).collect::<String>()
+                ),
+            )
         })?;
         processes.push(process);
     }
