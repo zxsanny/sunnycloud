@@ -54,7 +54,7 @@ async fn a_password_link_reveals_nothing_before_unlock_and_the_grant_is_a_scoped
         assert_eq!(answer.status, 401);
         assert_eq!(answer.code(), "password_required");
         let text = String::from_utf8_lossy(&answer.body).into_owned();
-        for field in ["name", "size", "media_type", "expires_at"] {
+        for field in ["name", "size", "media_type", "content_hash", "expires_at"] {
             assert!(!text.contains(&format!("\"{field}\"")), "{text}");
         }
     }
@@ -205,6 +205,7 @@ async fn the_page_of_a_password_link_opens_with_the_cookie_the_verification_set(
             name: "holiday.png".to_owned(),
             size: 2048,
             media_type: Some("image/png".to_owned()),
+            content_hash: sc_ids::FileHash::from_bytes([0xAB; 32]),
             expires_at,
         }),
         Ok(ShareOpen::PasswordRequired),
@@ -243,7 +244,7 @@ async fn the_page_of_a_password_link_opens_with_the_cookie_the_verification_set(
     assert_eq!(before.status, 401);
     assert_eq!(before.code(), "password_required");
     let text = String::from_utf8_lossy(&before.body).into_owned();
-    for field in ["name", "size", "media_type", "expires_at"] {
+    for field in ["name", "size", "media_type", "content_hash", "expires_at"] {
         assert!(
             !text.contains(&format!("\"{field}\"")),
             "file data before unlock"
@@ -256,6 +257,7 @@ async fn the_page_of_a_password_link_opens_with_the_cookie_the_verification_set(
             "name": "holiday.png",
             "size": 2048,
             "media_type": "image/png",
+            "content_hash": "ab".repeat(32),
             "expires_at": "2026-11-06T09:11:12.123456Z",
         })
     );

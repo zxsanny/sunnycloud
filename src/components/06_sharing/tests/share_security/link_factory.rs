@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use contracts::{CreatedShare, ShareService};
+use sc_ids::FileHash;
 use sqlx::Connection;
 use sunnycloud_sharing::PgShareService;
 use tokio::task::JoinSet;
@@ -15,7 +16,7 @@ use uuid::Uuid;
 use crate::corpora::{Seeded, passwords};
 use crate::harness::Harness;
 use crate::owner_support::account_with_root;
-use crate::visitor_support::named_file;
+use crate::visitor_support::{current_hash, named_file};
 
 const HOUR_SECS: u64 = 3600;
 const MAX_TTL_SECS: u64 = 365 * 24 * HOUR_SECS;
@@ -32,6 +33,7 @@ pub struct FactoryFile {
     pub revision: Uuid,
     pub name: String,
     pub size: i64,
+    pub content_hash: FileHash,
 }
 
 /// One link the factory made, with its file and the password it was given.
@@ -69,12 +71,14 @@ impl LinkFactory {
                         .fetch_one(&mut conn)
                         .await
                         .expect("read the current revision");
+                let content_hash = current_hash(&mut conn, node).await;
                 files.push(FactoryFile {
                     account,
                     node,
                     revision,
                     name,
                     size,
+                    content_hash,
                 });
             }
         }

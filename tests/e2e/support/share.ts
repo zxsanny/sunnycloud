@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { expect, type BrowserContext, type Page } from "@playwright/test";
 import { readAcceptanceEnv } from "./env.ts";
+import { FIREFOX_UA, NO_PICKER } from "./download.ts";
 import { HOSTILE_NAME } from "./media.ts";
 
 const run = promisify(execFile);
@@ -77,9 +78,14 @@ export async function revokeShare(owner: BrowserContext, id: string): Promise<vo
   expect(response.status()).toBe(204);
 }
 
-/** A fresh browser with no session, as a visitor of a link. Problems of the page are collected into `problems`. */
+/**
+ * A fresh browser with no session, as a visitor of a link. Problems of the page are collected into `problems`.
+ * It has no save dialog and the user agent of Firefox: a download is read by ranged pulls into the browser's private
+ * storage, checked against the hash of the link answer, and then saved by the browser, which the tests see as a download.
+ */
 export async function visitor(browser: import("@playwright/test").Browser, problems: string[]): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({ acceptDownloads: true });
+  const context = await browser.newContext({ acceptDownloads: true, userAgent: FIREFOX_UA });
+  await context.addInitScript(NO_PICKER);
   const page = await context.newPage();
   page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {

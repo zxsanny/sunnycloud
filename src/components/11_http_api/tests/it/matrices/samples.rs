@@ -300,6 +300,7 @@ fn prepare_shares(script: &Script, owner: &str) -> bool {
                 name: "photo.png".to_owned(),
                 size: 4,
                 media_type: Some("image/png".to_owned()),
+                content_hash: sc_ids::FileHash::from_bytes([0xAB; 32]),
                 expires_at: WHEN,
             }),
         ),

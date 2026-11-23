@@ -10,6 +10,7 @@ import { readAcceptanceEnv } from "../support/env.ts";
 import { HOSTILE_NAME } from "../support/media.ts";
 import { signInAlice } from "../support/session.ts";
 import { PASSWORD, SECRET_BYTES, SECRET_NAME, UNAVAILABLE, createShare, createShareApi, downloadHash, dumpStorage, revokeShare, visitor, writeShareFiles, type Created, type ShareFile } from "../support/share.ts";
+import { FIREFOX_UA, NO_PICKER, PICKER_TO_OPFS, blockHashesOfPath, pickedFile } from "../support/download.ts";
 
 const FOLDER = `Share ${Date.now()}`;
 const WAIT = { timeout: 120_000 };
@@ -205,7 +206,27 @@ test("AC-6: a JPEG shows inline, an MP4 plays inline, a PDF is a download with t
   expect(await c.page.locator("img, video, iframe, object, embed").count()).toBe(0);
   const saved = await downloadHash(c.page, () => c.page.getByRole("button", { name: "Download" }).click());
   expect(saved).toEqual({ sha256: files.pdf.sha256, name: files.pdf.name });
+  await expect(c.page.getByText("Downloaded and checked in the browser.")).toBeVisible();
   await c.context.close();
+});
+
+test("AC-6 (Chromium save dialog): a shared file is checked against the link's hash and the saved file equals the source", async ({ browser }) => {
+  // Arrange: the dialog is replaced by a file handle in the browser's private storage (it cannot be driven headless)
+  const pdf = await createShare(owner, { node_id: nodes.get(files.pdf.name)?.node_id });
+  const context = await browser.newContext({ acceptDownloads: true });
+  await context.addInitScript(PICKER_TO_OPFS);
+  const page = await context.newPage();
+  await page.goto(pdf.url);
+  await expect(page.getByRole("heading", { name: files.pdf.name })).toBeVisible();
+
+  // Act
+  await page.getByRole("button", { name: "Download" }).click();
+
+  // Assert
+  await expect(page.getByText("Downloaded and checked in the browser.")).toBeVisible(WAIT);
+  const picked = await pickedFile((script) => page.evaluate(script));
+  expect(picked?.blocks).toEqual(await blockHashesOfPath(files.pdf.path));
+  await context.close();
 });
 
 test("AC-7: an expired, a revoked and an unknown link render the same page text with the same HTTP answer", async ({ browser }) => {
@@ -349,6 +370,8 @@ test("AC-8 (after unlock): the right password shows name, size and type, and the
   await expect(page.getByText(`${(SECRET_BYTES / 1_000_000).toFixed(1)} MB · PDF document · Available until`)).toBeVisible();
   const saved = await downloadHash(page, () => page.getByRole("button", { name: "Download" }).click());
   expect(saved).toEqual({ sha256: files.secret.sha256, name: SECRET_NAME });
+  // The link answer carries the file hash, so the browser checked the bytes it saved (after the password, with the grant cookie).
+  await expect(page.getByText("Downloaded and checked in the browser.")).toBeVisible();
   await context.close();
 });
 
@@ -384,7 +407,8 @@ test("AC-9: the 11th wrong password gets 429, the page counts down from Retry-Af
 test("AC-10: after load the address, the history, the console and later requests hold no token", async ({ browser }) => {
   // Arrange
   const link = await createShare(owner, { node_id: nodes.get(files.jpeg.name)?.node_id });
-  const context = await browser.newContext({ acceptDownloads: true });
+  const context = await browser.newContext({ acceptDownloads: true, userAgent: FIREFOX_UA });
+  await context.addInitScript(NO_PICKER);
   const page = await context.newPage();
   const lines: string[] = [];
   const referers: { url: string; referer: string | undefined }[] = [];

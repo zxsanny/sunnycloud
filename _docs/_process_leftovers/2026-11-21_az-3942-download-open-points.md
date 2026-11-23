@@ -7,7 +7,7 @@ Not run (cannot run on this host): Firefox and Safari engines (the e2e "Firefox"
 
 Decided 2026-11-22 (owner):
 1. Accept `Failed(Network)` for a corrupt server block; AC-5 amended in the done spec.
-2. **Add the hash to the public share answer** (`ShareOpen`, contracts part 3, web share download verifies). Scheduled as AZ-4350 (`_docs/02_tasks/todo/AZ-4350_share_open_content_hash.md`).
+2. **Add the hash to the public share answer** (`ShareOpen`, contracts part 3, web share download verifies). Done as AZ-4350 (2026-11-23): the share open answer carries `content_hash` and share downloads verify.
 3. Keep `web.hash_verify_max_ff_safari` a build constant.
 4. Keep both row buttons until E-26/c08 lands.
 

@@ -41,7 +41,7 @@ list(account) -> ShareInfo without token; filter by node; never another account'
 **Input data**: live link, live password link, expired (clock), revoked, target tombstoned, target purged (row cascaded), unknown token, malformed token (`""`, 10 kB, non-ASCII), password link that is also expired.
 **Expected result**:
 ```
-live: Available{name, size, media_type, expires_at} (media type of the CURRENT revision as sniffed by 03; name from get_node); password link: PasswordRequired
+live: Available{name, size, media_type, content_hash, expires_at} (media type and hash of the CURRENT revision, the type as sniffed by 03; name from get_node); password link: PasswordRequired
 every other case, including expired password link: NotFound; the NotFound values are equal (same enum value, same serialisation)
 after a save-in-place edit, size and media_type reflect the new revision
 ```

@@ -10,8 +10,8 @@ use uuid::Uuid;
 use crate::harness::Harness;
 use crate::owner_support::account_with_root;
 use crate::visitor_support::{
-    HOUR, VISITOR, cases, malformed_tokens, named_file, new_current_revision, presented,
-    unknown_token,
+    HOUR, VISITOR, cases, current_hash, malformed_tokens, named_file, new_current_revision,
+    presented, unknown_token,
 };
 
 #[tokio::test]
@@ -30,18 +30,25 @@ async fn a_live_link_shows_the_current_revision_before_and_after_a_save_in_place
 
     // Act
     let before = shares.open(&link.token, None, VISITOR).await.expect("open");
+    let hash_before = current_hash(&mut conn, file).await;
     new_current_revision(&mut conn, account, file, 2048, "image/png").await;
+    let hash_after = current_hash(&mut conn, file).await;
     let after = shares.open(&link.token, None, VISITOR).await.expect("open");
 
     // Assert
-    let expected = |size, media_type: &str| ShareOpen::Available {
+    let expected = |size, media_type: &str, content_hash| ShareOpen::Available {
         name: "photo.jpg".to_owned(),
         size,
         media_type: Some(media_type.to_owned()),
+        content_hash,
         expires_at: link.expires_at,
     };
-    assert_eq!(before, expected(1000, "image/jpeg"));
-    assert_eq!(after, expected(2048, "image/png"));
+    assert_ne!(
+        hash_before, hash_after,
+        "the save in place changes the hash"
+    );
+    assert_eq!(before, expected(1000, "image/jpeg", hash_before));
+    assert_eq!(after, expected(2048, "image/png", hash_after));
     conn.close().await.expect("close fixture connection");
     drop(shares);
     harness.finish().await;

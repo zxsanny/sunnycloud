@@ -7,7 +7,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 
 use contracts::ShareService;
-use sc_ids::{RawToken, TokenKind};
+use sc_ids::{FileHash, RawToken, TokenKind};
 use sqlx::{Connection, PgConnection};
 use sunnycloud_sharing::{PgShareService, SHARE_TOKEN_PREFIX};
 use uuid::Uuid;
@@ -60,6 +60,18 @@ pub async fn new_current_revision(
         .execute(conn)
         .await
         .expect("point the file at its revision");
+}
+
+/// The content hash stored for the current revision of `file`: what a visitor's open answer must carry.
+pub async fn current_hash(conn: &mut PgConnection, file: Uuid) -> FileHash {
+    let bytes: Vec<u8> = sqlx::query_scalar(
+        "SELECT r.content_hash FROM revisions r JOIN nodes n ON n.current_revision_id = r.id WHERE n.id = $1",
+    )
+    .bind(file)
+    .fetch_one(conn)
+    .await
+    .expect("read the current content hash");
+    FileHash::from_bytes(bytes.try_into().expect("32 hash bytes"))
 }
 
 /// A live file `name` under `parent` whose current revision has `size` and `media_type`.

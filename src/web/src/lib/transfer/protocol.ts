@@ -16,8 +16,8 @@ export type BatchEntryResult =
 export type DownloadFailure =
   'HashMismatch' | 'Forbidden' | 'NotFound' | 'Network' | 'SaveFailed' | 'Cancelled';
 
-/** Which content route a download reads (each answers Range). A share link has no server hash, so it is never read here. */
-export type ContentSource = { kind: 'node' | 'revision'; id: string };
+/** Which content route a download reads (each answers Range); for a share link `id` is its token. */
+export type ContentSource = { kind: 'node' | 'revision' | 'share'; id: string };
 
 /** Where verified bytes go: a file the person chose in the save dialog, or a private browser file (OPFS) for later. */
 export type DownloadSink =

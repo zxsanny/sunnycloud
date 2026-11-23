@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::harness::Harness;
 use crate::owner_support::{account_with_root, link_count};
-use crate::visitor_support::{HOUR, VISITOR, named_file};
+use crate::visitor_support::{HOUR, VISITOR, current_hash, named_file};
 
 async fn row_of(conn: &mut PgConnection, link: Uuid) -> String {
     sqlx::query_scalar("SELECT row_to_json(s)::text FROM share_links s WHERE id = $1")
@@ -34,6 +34,7 @@ async fn account_b_cannot_create_list_or_revoke_on_the_link_of_a() {
     let root_of_a = account_with_root(&mut conn, a).await;
     account_with_root(&mut conn, b).await;
     let f = named_file(&mut conn, a, root_of_a, "a-only.jpg", 512, "image/jpeg").await;
+    let hash_of_f = current_hash(&mut conn, f).await;
     let shares = harness.shares();
     let link_of_a = shares
         .create(a, f, Some(24 * HOUR), None)
@@ -69,6 +70,7 @@ async fn account_b_cannot_create_list_or_revoke_on_the_link_of_a() {
             name: "a-only.jpg".to_owned(),
             size: 512,
             media_type: Some("image/jpeg".to_owned()),
+            content_hash: hash_of_f,
             expires_at: link_of_a.expires_at,
         }
     );

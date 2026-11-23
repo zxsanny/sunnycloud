@@ -64,6 +64,10 @@ export class ContentServer {
     if (kind === 'revisions' && tail === undefined) return this.revision(id as string);
     if (kind === 'revisions' && tail === 'content') return this.content(id as string, range);
     if (kind === 'public-shares' && tail === undefined) return this.share(id as string);
+    if (kind === 'public-shares' && tail === 'content') {
+      const file = this.shares.get(id as string);
+      return file ? this.serve(file, range) : problem(404, 'not_found');
+    }
     throw new Error(`unplanned request: ${route}`);
   };
 
@@ -104,6 +108,7 @@ export class ContentServer {
       name: file.name,
       size: file.bytes.length,
       media_type: null,
+      content_hash: file.hash ?? fileHashOf(file.bytes),
       expires_at: '2026-12-01T00:00:00Z',
     });
   }
@@ -112,6 +117,10 @@ export class ContentServer {
     if (this.retired.has(id)) return problem(404, 'not_found');
     const file = this.files.get(id.replace(/^rev-/, ''));
     if (!file || file.state === 'tombstone') return problem(404, 'not_found');
+    return this.serve(file, range);
+  }
+
+  private serve(file: StoredFile, range: string | null): Response {
     const match = /^bytes=(\d+)-(\d+)$/.exec(range ?? '');
     const whole = match === null || this.fault.ignoreRange === true;
     const last = file.bytes.length - 1;

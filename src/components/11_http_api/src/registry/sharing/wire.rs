@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use contracts::{CreatedShare, ShareInfo};
 use sc_clock::Timestamp;
+use sc_ids::FileHash;
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
@@ -72,17 +73,20 @@ pub(super) fn share_list(shares: &[ShareInfo]) -> Value {
     json!({"items": items})
 }
 
-/// What a visitor may learn of an available link: the name, size and type of the file, and when the link ends.
+/// What a visitor may learn of an available link: the name, size, type and hash of the file, and when the link
+/// ends.
 pub(super) fn share_open(
     name: &str,
     size: i64,
     media_type: Option<&str>,
+    content_hash: FileHash,
     expires_at: Timestamp,
 ) -> Value {
     let mut object = Map::new();
     object.insert("name".to_owned(), json!(name));
     object.insert("size".to_owned(), json!(size));
     object.insert("media_type".to_owned(), json!(media_type));
+    object.insert("content_hash".to_owned(), json!(content_hash.to_string()));
     object.insert("expires_at".to_owned(), json!(rfc3339(expires_at)));
     Value::Object(object)
 }
@@ -161,11 +165,12 @@ pub(super) const SHARE_OPEN: SchemaRef = SchemaRef {
     build: || {
         json!({
             "type": "object",
-            "required": ["name", "size", "media_type", "expires_at"],
+            "required": ["name", "size", "media_type", "content_hash", "expires_at"],
             "properties": {
                 "name": {"type": "string"},
                 "size": {"type": "integer", "minimum": 0},
                 "media_type": {"type": ["string", "null"]},
+                "content_hash": {"type": "string", "description": "64 hex digits: the hash of the current revision."},
                 "expires_at": {"type": "string", "format": "date-time"}
             }
         })

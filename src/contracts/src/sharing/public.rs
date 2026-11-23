@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sc_clock::Timestamp;
-use sc_ids::RawToken;
+use sc_ids::{FileHash, RawToken};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -19,6 +19,8 @@ pub enum ShareOpen {
         name: String,
         size: i64,
         media_type: Option<String>,
+        /// Hash of the current revision, so the recipient can check the bytes of the download.
+        content_hash: FileHash,
         expires_at: Timestamp,
     },
     PasswordRequired,

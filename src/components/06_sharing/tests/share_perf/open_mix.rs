@@ -82,6 +82,7 @@ async fn request(
                 name: link.file.name.clone(),
                 size: link.file.size,
                 media_type: Some(MEDIA_TYPE.to_owned()),
+                content_hash: link.file.content_hash,
                 expires_at: link.created.expires_at,
             },
         };

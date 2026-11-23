@@ -3,7 +3,7 @@
 **Component**: `contracts` (server-only port crate, E-00)
 **Producer task**: E-00/c05 — `_docs/02_tasks/todo/B01-14_contracts_part3.md` (renamed to its AZ key at Step 4)
 **Consumer tasks**: other batches: E-10, E-13, E-14, E-16, E-18, E-21, E-22, E-30
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: draft (frozen when the producer task is accepted; `VaultService` stays a v1.2 proposal, 20 §1)
 **Last Updated**: 2026-11-22
 
@@ -56,7 +56,7 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 | `ShareService` | `create` | `account, node_id, expires_in?, password?` -> `CreatedShare{id, token (plaintext, only here), url_path, expires_at, has_password}` | `TargetNotFound`, `TargetNotShareable` (a folder, and in v1.2 a file in a vault, read from 02's `LiveFile::vault`), `ExpiryOutOfRange` |
 | | `list` | `account, node_id?` -> `Vec<ShareInfo>` (no token) | none |
 | | `revoke` | `account, share_id` -> `()` (idempotent) | `NotFound` |
-| `PublicShareService` | `open` | `token, Option<AccessGrant>, client_ip` -> `ShareOpen{Available{name, size, media_type, expires_at} \| PasswordRequired \| NotFound}` | `RateLimited{retry_after}` |
+| `PublicShareService` | `open` | `token, Option<AccessGrant>, client_ip` -> `ShareOpen{Available{name, size, media_type, content_hash, expires_at} \| PasswordRequired \| NotFound}` | `RateLimited{retry_after}` |
 | | `verify_password` | `token, password, client_ip` -> `AccessGrant{value, expires_at}` | `NotFound`, `WrongPassword`, `RateLimited{retry_after}` |
 | | `authorize_content` | `token, Option<AccessGrant>, client_ip, starts_download: bool` -> `ShareContent{account_id, node_id, revision_id}` | `NotFound`, `PasswordRequired`, `RateLimited{retry_after}` |
 | | `authorize_derived` | `token, Option<AccessGrant>, client_ip` -> `ShareDerived{account_id, file: LiveFile}` (see Open points) | `NotFound`, `PasswordRequired`, `RateLimited{retry_after}` |
@@ -145,3 +145,4 @@ Errors are the typed enum `BlobError` = `NoSpace`, `FreeSpaceFloor`, `Io`, `Blob
 | 1.4.0 | 2026-11-14 | `BlobCatalog::get_uploading_plan` (additive, required; parent-approved, AZ-3736) so 03 can reopen an upload's writer after a restart | AZ-3736 |
 | 1.5.0 | 2026-11-14 | Vault membership (v1.2): `ShareService::create` refuses a file in a vault with `TargetNotShareable`; `create_vault` claims its root through 02's `VaultRoots` in its own transaction (no signature change) | AZ-3927 |
 | 1.6.0 | 2026-11-22 | `PublicShareService::open` takes `Option<&AccessGrant>` (between `token` and `client_ip`), so a password link opened with a valid grant answers `Available` instead of `PasswordRequired` forever; breaking for implementers and callers of `open` (06, 11, the test doubles); wire unchanged | AZ-3943 AC-8 bug fix |
+| 1.7.0 | 2026-11-23 | `ShareOpen::Available` gains `content_hash: FileHash` (the current revision's hash), so a recipient can check the bytes of a share download; breaking for code that builds `Available` or matches it without `..` (06, 11, test doubles) | AZ-4350 |

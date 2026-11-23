@@ -37,8 +37,8 @@ export type ShareList = components['schemas']['ShareList'];
 export type ShareCreateRequest = components['schemas']['ShareCreateRequest'];
 export type CreatedShare = components['schemas']['CreatedShare'];
 
-/** A content route that answers Range: the node's current revision, or one named revision. */
-export type ContentRoute = { kind: 'node' | 'revision'; id: string };
+/** A content route that answers Range: the node's current revision, one named revision, or a share link (`id` is its token). */
+export type ContentRoute = { kind: 'node' | 'revision' | 'share'; id: string };
 
 /** The answer of one ranged content request: the status (206 for a range) and the body as a stream. */
 export interface ContentAnswer {
@@ -207,10 +207,15 @@ export function createApi(options: ApiOptions = {}) {
                 params: { path: { node_id: route.id } },
                 ...init,
               })
-            : await client.GET('/api/v1/revisions/{revision_id}/content', {
-                params: { path: { revision_id: route.id } },
-                ...init,
-              });
+            : route.kind === 'share'
+              ? await client.GET('/api/v1/public-shares/{token}/content', {
+                  params: { path: { token: route.id } },
+                  ...init,
+                })
+              : await client.GET('/api/v1/revisions/{revision_id}/content', {
+                  params: { path: { revision_id: route.id } },
+                  ...init,
+                });
         return {
           error: raw.error,
           response: raw.response,

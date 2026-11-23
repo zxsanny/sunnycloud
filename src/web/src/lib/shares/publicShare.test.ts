@@ -6,6 +6,7 @@ const OPEN: ShareOpen = {
   name: 'f.jpg',
   size: 10,
   media_type: 'image/jpeg',
+  content_hash: 'ab'.repeat(32),
   expires_at: '2026-11-30T00:00:00Z',
 };
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ContentServer, fileHashOf } from '../../../tests/support/contentServer';
-import { MIB } from '../../../tests/support/files';
+import { ContentServer, fileHashOf, type StoredFile } from '../../../tests/support/contentServer';
+import { MIB, patternBytes } from '../../../tests/support/files';
 import { inProcessWorker, pageApi } from '../../../tests/support/inProcessWorker';
 import { MemorySink } from '../../../tests/support/memorySink';
 import { UploadServer } from '../../../tests/support/uploadServer';
@@ -263,17 +263,33 @@ describe('download in a browser with no verified mechanism (Safari: not measured
     expect(server.requests.some((r) => r.range !== null)).toBe(false);
   });
 
-  it('downloads a public link with the browser, as unverified, because the link answer carries no file hash', async () => {
+  it('verifies a public link download against the hash of the link answer', async () => {
     // Arrange
-    const { server, service, saved } = setup({ picker: 'chosen' });
-    server.shares.set('tok', { name: 'shared.pdf', bytes: new Uint8Array(10) });
+    const { server, service, sinks, saved } = setup({ picker: 'chosen' });
+    const file: StoredFile = { name: 'shared.pdf', bytes: patternBytes(3 * MIB) };
+    server.shares.set('tok', file);
 
     // Act
     const outcome = await service.download({ shareToken: 'tok' });
 
     // Assert
-    expect(outcome).toEqual({ kind: 'SavedUnverified', reason: 'NoServerHash', serverHash: null });
-    expect(saved).toEqual([{ source: '/api/v1/public-shares/tok/content', name: 'shared.pdf' }]);
+    expect(outcome).toEqual({ kind: 'VerifiedSaved' });
+    expect(fileHashOf(sinks[0]?.sink.bytes as Uint8Array)).toBe(fileHashOf(file.bytes));
+    expect(saved).toEqual([]);
+  });
+
+  it('fails a public link download whose bytes differ from the hash of the link answer', async () => {
+    // Arrange
+    const { server, service, sinks } = setup({ picker: 'chosen' });
+    server.shares.set('tok', { name: 'shared.pdf', bytes: patternBytes(3 * MIB) });
+    server.fault = { flipAt: 5 };
+
+    // Act
+    const outcome = await service.download({ shareToken: 'tok' });
+
+    // Assert
+    expect(outcome).toEqual({ kind: 'Failed', reason: 'HashMismatch' });
+    expect(sinks[0]?.sink.discarded).toBe(true);
   });
 });
 

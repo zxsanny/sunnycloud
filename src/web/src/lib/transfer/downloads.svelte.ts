@@ -19,7 +19,7 @@ import { OPFS_PREFIX } from './sinks';
 interface Source {
   name: string;
   size: number;
-  /** The server's file hash (roll-up of the block hashes), or null when the API gives none (a public link). */
+  /** The server's file hash (roll-up of the block hashes), or null when the API gives none. */
   hash: string | null;
   /** The ranged routes the Worker reads; null when there is no hash to check against. */
   route: ContentRoute | null;
@@ -144,8 +144,8 @@ export class DownloadQueue extends UploadQueue {
       return {
         name: share.value.name,
         size: share.value.size,
-        hash: null,
-        route: null,
+        hash: share.value.content_hash,
+        route: { kind: 'share', id: target.shareToken },
         url: `/api/v1/public-shares/${encodeURIComponent(target.shareToken)}/content`,
       };
     }

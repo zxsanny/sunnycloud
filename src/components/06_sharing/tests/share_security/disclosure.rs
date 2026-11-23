@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::harness::Harness;
 use crate::owner_support::{account_with_root, node};
-use crate::visitor_support::{HOUR, PASSWORD, VISITOR, named_file, unknown_token};
+use crate::visitor_support::{HOUR, PASSWORD, VISITOR, current_hash, named_file, unknown_token};
 
 const LIMITED: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 77));
 const FOLDERS: [&str; 2] = ["Private Projects", "client-x"];
@@ -68,7 +68,7 @@ fn written_out<T: std::fmt::Debug>(outcome: &Result<T, PublicShareError>) -> Str
 }
 
 #[tokio::test]
-async fn visitor_outcomes_carry_the_four_file_fields_and_no_identifier() {
+async fn visitor_outcomes_carry_the_five_file_fields_and_no_identifier() {
     // Arrange
     let harness = Harness::new().await;
     let mut conn = harness.fixture_conn().await;
@@ -86,6 +86,7 @@ async fn visitor_outcomes_carry_the_four_file_fields_and_no_identifier() {
         "application/pdf",
     )
     .await;
+    let plain_hash = current_hash(&mut conn, plain_file).await;
     conn.close().await.expect("close fixture connection");
     let shares = harness.shares();
     let plain = shares
@@ -139,18 +140,31 @@ async fn visitor_outcomes_carry_the_four_file_fields_and_no_identifier() {
         name,
         size,
         media_type,
+        content_hash,
         expires_at,
     } = opens[0].as_ref().expect("available")
     else {
         panic!("expected Available: {:?}", opens[0]);
     };
     assert_eq!(
-        (name.as_str(), *size, media_type.as_deref(), *expires_at),
-        ("report.jpg", 900, Some("image/jpeg"), plain.expires_at)
+        (
+            name.as_str(),
+            *size,
+            media_type.as_deref(),
+            *content_hash,
+            *expires_at
+        ),
+        (
+            "report.jpg",
+            900,
+            Some("image/jpeg"),
+            plain_hash,
+            plain.expires_at
+        )
     );
     assert_eq!(
         debug_fields(&format!("{:?}", opens[0].as_ref().expect("available"))),
-        ["name", "size", "media_type", "expires_at"]
+        ["name", "size", "media_type", "content_hash", "expires_at"]
     );
     let AccessGrant { value, expires_at } = checks[0].as_ref().expect("a grant");
     assert_eq!(value.len(), 43);

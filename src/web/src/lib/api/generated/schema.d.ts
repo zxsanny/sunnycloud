@@ -1496,6 +1496,8 @@ export interface components {
             }[];
         };
         ShareOpen: {
+            /** @description 64 hex digits: the hash of the current revision. */
+            content_hash: string;
             /** Format: date-time */
             expires_at: string;
             media_type: string | null;

@@ -28,7 +28,7 @@ Scope for all: `SessionOnly` (device tokens get 403, AC-57). Share links target 
 ### PublicShareService (visitor side, no account)
 | Method | Input | Output | Errors / outcomes |
 |---|---|---|---|
-| `open` | token, `Option<AccessGrant>`, client IP | `ShareOpen::Available{name, size, media_type, expires_at}` \| `PasswordRequired` \| `NotFound` | `RateLimited{retry_after}` |
+| `open` | token, `Option<AccessGrant>`, client IP | `ShareOpen::Available{name, size, media_type, content_hash, expires_at}` \| `PasswordRequired` \| `NotFound` | `RateLimited{retry_after}` |
 | `verify_password` | token, password, IP | `AccessGrant{value, expires_at}` | `NotFound`, `WrongPassword`, `RateLimited` |
 | `authorize_content` | token, `Option<AccessGrant>`, IP, `starts_download: bool` | `ShareContent{account_id, node_id, revision_id}` | `NotFound`, `PasswordRequired`, `RateLimited` |
 | `authorize_derived` | token, `Option<AccessGrant>`, IP | `ShareDerived{account_id, file: LiveFile}` | `NotFound`, `PasswordRequired`, `RateLimited` |

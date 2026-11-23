@@ -14,7 +14,7 @@ use crate::content_support::{Body, Owner, content_of};
 use crate::harness::Harness;
 use crate::owner_support::{audit_rows, link_rows_as_text};
 use crate::settings::{TEST_GRANT_KEY, load_settings};
-use crate::visitor_support::{PASSWORD, VISITOR};
+use crate::visitor_support::{PASSWORD, VISITOR, current_hash};
 
 /// A DS-03 photo as 02 records it after the upload: 3 MiB, inside DS-03's 2.5-5 MB range.
 const PHOTO: Body = Body {
@@ -48,6 +48,7 @@ async fn at_06_1_a_shared_photo_opens_downloads_once_and_is_not_found_after_revo
     config.default_ttl = production.default_ttl;
     let shares = harness.shares_with(&config);
     let created_at = harness.clock.now_utc();
+    let photo_hash = current_hash(owner.probe(), photo.node).await;
 
     // Act
     let created = shares
@@ -93,6 +94,7 @@ async fn at_06_1_a_shared_photo_opens_downloads_once_and_is_not_found_after_revo
             name: PHOTO_NAME.to_owned(),
             size: PHOTO.size,
             media_type: Some("image/jpeg".to_owned()),
+            content_hash: photo_hash,
             expires_at,
         }
     );

@@ -18,7 +18,9 @@ use uuid::Uuid;
 use crate::content_support::{Body, Owner, Version, content_of};
 use crate::harness::Harness;
 use crate::owner_support::audit_rows;
-use crate::visitor_support::{HOUR, PASSWORD, VISITOR, cases, malformed_tokens, presented};
+use crate::visitor_support::{
+    HOUR, PASSWORD, VISITOR, cases, current_hash, malformed_tokens, presented,
+};
 
 const JPEG: Body = Body {
     size: 2048,
@@ -235,6 +237,7 @@ async fn the_four_visitor_operations_answer_through_the_port() {
     let plain = share(&shares, &owner, photo, None).await;
     let protected = share(&shares, &owner, photo, Some(PASSWORD)).await;
     let expected = resolved(&harness, &owner, photo).await;
+    let photo_hash = current_hash(owner.probe(), photo.node).await;
     let port: Arc<dyn PublicShareService> = shares.clone();
 
     // Act
@@ -260,6 +263,7 @@ async fn the_four_visitor_operations_answer_through_the_port() {
             name: "photo.jpg".to_owned(),
             size: JPEG.size,
             media_type: Some(JPEG.media_type.to_owned()),
+            content_hash: photo_hash,
             expires_at: plain.expires_at,
         }
     );

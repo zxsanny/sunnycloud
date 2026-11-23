@@ -98,6 +98,7 @@ async fn an_open_link_names_only_the_file_and_the_end_of_the_link() {
             name: "holiday.png".to_owned(),
             size: 2048,
             media_type: Some("image/png".to_owned()),
+            content_hash: sc_ids::FileHash::from_bytes([0xAB; 32]),
             expires_at: sc_clock::Timestamp::from_unix_micros(1_793_956_272_123_456),
         }),
     );
@@ -113,6 +114,7 @@ async fn an_open_link_names_only_the_file_and_the_end_of_the_link() {
             "name": "holiday.png",
             "size": 2048,
             "media_type": "image/png",
+            "content_hash": "ab".repeat(32),
             "expires_at": "2026-11-06T09:11:12.123456Z",
         })
     );

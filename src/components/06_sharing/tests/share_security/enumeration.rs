@@ -85,9 +85,17 @@ async fn ten_thousand_guesses_get_one_answer_and_trip_the_address_limit_at_call_
         let expected_password = link.password.is_some();
         match answer {
             Ok(ShareOpen::PasswordRequired) => assert!(expected_password),
-            Ok(ShareOpen::Available { name, size, .. }) => {
+            Ok(ShareOpen::Available {
+                name,
+                size,
+                content_hash,
+                ..
+            }) => {
                 assert!(!expected_password);
-                assert_eq!((name, *size), (&link.file.name, link.file.size));
+                assert_eq!(
+                    (name, *size, *content_hash),
+                    (&link.file.name, link.file.size, link.file.content_hash)
+                );
             }
             other => panic!("a live link stops opening: {other:?}"),
         }

@@ -79,11 +79,13 @@ pub(super) async fn open(State(services): State<Services>, visitor: Visitor) -> 
             name,
             size,
             media_type,
+            content_hash,
             expires_at,
         } => Ok(Json(wire::share_open(
             &name,
             size,
             media_type.as_deref(),
+            content_hash,
             expires_at,
         ))
         .into_response()),

@@ -6,7 +6,7 @@ import { App } from '../app';
 import { api } from '$lib/api';
 import { navigate } from '$lib/router';
 import { session } from '$lib/session';
-import { transfer } from '$lib/transfer';
+import { VERIFIED_TEXT, transfer } from '$lib/transfer';
 
 const TOKEN = 'sc_shr_Q7mVb4LpT8wZr1NcY6dHs3EjA5uG0oRkWiPqXe9fK2x';
 const SHARE = `/api/v1/public-shares/${TOKEN}`;
@@ -16,6 +16,7 @@ const available = (over: Record<string, unknown> = {}) => ({
   name: 'beach-sunset.jpg',
   size: 4_100_000,
   media_type: 'image/jpeg',
+  content_hash: 'ab'.repeat(32),
   expires_at: '2026-11-30T12:00:00Z',
   ...over,
 });
@@ -122,9 +123,7 @@ describe('the public page: previews by type (AC-6)', () => {
     stubServer({
       [`GET ${SHARE}`]: json(available({ name: 'itinerary.pdf', media_type: 'application/pdf' })),
     });
-    const download = vi
-      .spyOn(transfer, 'download')
-      .mockResolvedValue({ kind: 'SavedUnverified', reason: 'NoServerHash', serverHash: null });
+    const download = vi.spyOn(transfer, 'download').mockResolvedValue({ kind: 'VerifiedSaved' });
     const user = userEvent.setup();
     open();
     await screen.findByRole('heading', { name: 'itinerary.pdf' });
@@ -135,11 +134,7 @@ describe('the public page: previews by type (AC-6)', () => {
 
     // Assert
     expect(download).toHaveBeenCalledWith({ shareToken: TOKEN });
-    expect(
-      await screen.findByText(
-        'Saved by the browser without a check (the server gives no file hash for this link).',
-      ),
-    ).toBeVisible();
+    expect(await screen.findByText(VERIFIED_TEXT)).toBeVisible();
   });
 });
 

@@ -14,7 +14,7 @@ use contracts::{
 };
 use sc_clock::Timestamp;
 use sc_db::{DbError, RunError};
-use sc_ids::{RawToken, sha256_token};
+use sc_ids::{FileHash, RawToken, sha256_token};
 use uuid::Uuid;
 
 use crate::lookup_repo::{self, LinkRow};
@@ -31,6 +31,7 @@ pub(crate) enum Target {
         name: String,
         size: i64,
         media_type: Option<String>,
+        content_hash: FileHash,
     },
     Gone,
 }
@@ -145,6 +146,7 @@ pub(crate) fn target_of(
                 name: view.name,
                 size: revision.size,
                 media_type: revision.media_type,
+                content_hash: revision.content_hash,
             }
         }
         _ => Target::Gone,
@@ -163,11 +165,13 @@ pub(crate) fn decide(link: Option<&LinkRow>, target: Target, granted: bool) -> S
                 name,
                 size,
                 media_type,
+                content_hash,
             },
         ) => ShareOpen::Available {
             name,
             size,
             media_type,
+            content_hash,
             expires_at: link.expires_at,
         },
         _ => ShareOpen::NotFound,
@@ -184,10 +188,8 @@ pub(crate) fn run_unexpected(error: RunError<DbError>) -> PublicShareError {
 
 #[cfg(test)]
 mod tests {
-    use contracts::{LiveFile, RevisionView, ThumbState};
-    use sc_ids::FileHash;
-
     use super::*;
+    use contracts::{LiveFile, RevisionView, ThumbState};
 
     const NOW: Timestamp = Timestamp::from_unix_micros(1_794_052_800_000_000);
     const MICRO: std::time::Duration = std::time::Duration::from_micros(1);
@@ -216,6 +218,7 @@ mod tests {
             name: "f.jpg".to_owned(),
             size: 5,
             media_type: Some("image/jpeg".to_owned()),
+            content_hash: FileHash::from_bytes([7; 32]),
         }
     }
 
@@ -316,6 +319,7 @@ mod tests {
                 name: "f.jpg".to_owned(),
                 size: 5,
                 media_type: Some("image/jpeg".to_owned()),
+                content_hash: FileHash::from_bytes([7; 32]),
                 expires_at: later(),
             }
         );
@@ -337,16 +341,17 @@ mod tests {
     }
 
     #[test]
-    fn available_has_exactly_name_size_media_type_and_expiry() {
+    fn available_has_exactly_name_size_media_type_hash_and_expiry() {
         // Arrange
         let answer = decide(Some(&row(later(), false, false)), live_target(), false);
 
         // Act
-        // The pattern names every field without `..`: a fifth field fails to compile.
+        // The pattern names every field without `..`: a sixth field fails to compile.
         let ShareOpen::Available {
             name,
             size,
             media_type,
+            content_hash,
             expires_at,
         } = answer
         else {
@@ -355,8 +360,20 @@ mod tests {
 
         // Assert
         assert_eq!(
-            (name.as_str(), size, media_type.as_deref(), expires_at),
-            ("f.jpg", 5, Some("image/jpeg"), later())
+            (
+                name.as_str(),
+                size,
+                media_type.as_deref(),
+                content_hash,
+                expires_at
+            ),
+            (
+                "f.jpg",
+                5,
+                Some("image/jpeg"),
+                FileHash::from_bytes([7; 32]),
+                later()
+            )
         );
     }
 
@@ -400,6 +417,7 @@ mod tests {
                 name: "f.png".to_owned(),
                 size: 42,
                 media_type: Some("image/png".to_owned()),
+                content_hash: FileHash::from_bytes([7; 32]),
             }
         );
         assert!(targets[1..].iter().all(|target| *target == Target::Gone));
