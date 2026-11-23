@@ -28,8 +28,9 @@
 
 Host: 229 decoder tests pass (clippy `-D warnings` clean); 19 new unit tests (crafted status files, mount tables, environments, a real listener
 for the network item). Container (image built from this tree, `sunnycloud-decoder:az3861`): IT-10-1, IT-10-2 production and the five variants pass;
-`check-decoder-image.sh` passes. The full container suite runs in CI (`decoder-suite` job).
+`check-decoder-image.sh` passes. CI run 45133395977 (03e8ea0) passed all 25 jobs, the `decoder-suite` job included.
 One `image_fidelity` case failed once in a full host run at 2 s (it takes 17 s); it passed alone and in two further full runs: not reproduced.
+The first CI run (45130998088, 7c802c6) failed one job: `rust-test (6)`, `process::tests::exit_code_and_signal_are_typed_whatever_stderr_says`, a `/proc/<pid>/stat` that did not parse in the process guard, unrelated to this batch. Not reproduced (a local stress scan was too slow); the error now names the pid and the text (03e8ea0) and a leftover records it: `_process_leftovers/2026-11-23_proc-stat-unparsable-once.md`.
 
 ## Not covered
 
