@@ -12,6 +12,8 @@ STATE_FILE="$RESULTS/.stack-state"
 PROJECT="sunnycloud-e2e"
 PGDATA_VOLUME="${PROJECT}_pgdata"
 GOLDEN_VOLUME="${PROJECT}-pgdata-golden"
+BLOBS_VOLUME="${PROJECT}_blobs"
+GOLDEN_BLOBS_VOLUME="${PROJECT}-blobs-golden"
 CONSUMER_IMAGE="sunnycloud-e2e-consumer:local"
 CTL_PORT="${E2E_CTL_PORT:-8088}"
 READY_TIMEOUT_SECONDS=120
@@ -35,7 +37,7 @@ profiles: ${KNOWN_PROFILES// /, }
   the others have no services yet and refuse to run ("not available yet"): they never report a pass
 
   --keep   leave the stack up after the run (needed for 'reset'); remove it with 'down'
-  reset    stop the database, restore its volume from the golden snapshot taken after 'up', start it (< ${RESET_BUDGET_SECONDS} s)
+  reset    stop api, worker and the database, restore the database and blob volumes from the golden snapshot taken after 'up', start them (< ${RESET_BUDGET_SECONDS} s)
   down     tear down the stack, the ctl stub and the generated secrets
 
 environment: E2E_KEEP_ON_FAILURE=1 leaves the stack up when the run fails (read the logs, then 'down'); SEED_FAIL=1 adds one failing self-test (proves that a FAIL fails the run); E2E_CTL_PORT (default 8088)
@@ -72,10 +74,13 @@ copy_volume() { # copy_volume <from> <to>: replace the contents of <to> with <fr
   docker run --rm -v "$1:/from:ro" -v "$2:/to" "$image" sh -c 'set -eu; find /to -mindepth 1 -delete; cp -a /from/. /to/'
 }
 
+# The blob volume is part of the snapshot: its `.epoch` marker is written by the first api start, and the api refuses a
+# database whose epoch is below it (a restore without `admin epoch-bump`), so the two must go back together.
 take_golden_snapshot() {
   log "golden snapshot: stopping db for a consistent copy"
   dc stop -t 30 db
   copy_volume "$PGDATA_VOLUME" "$GOLDEN_VOLUME"
+  copy_volume "$BLOBS_VOLUME" "$GOLDEN_BLOBS_VOLUME"
   dc start db
   wait_db_healthy
 }
@@ -83,12 +88,13 @@ take_golden_snapshot() {
 cmd_reset() {
   load_state
   local started=$SECONDS elapsed
-  log "reset: restoring $PGDATA_VOLUME from $GOLDEN_VOLUME"
-  dc stop -t 30 db
+  log "reset: restoring $PGDATA_VOLUME from $GOLDEN_VOLUME and $BLOBS_VOLUME from $GOLDEN_BLOBS_VOLUME"
+  dc stop -t 30 api worker db
   copy_volume "$GOLDEN_VOLUME" "$PGDATA_VOLUME"
+  copy_volume "$GOLDEN_BLOBS_VOLUME" "$BLOBS_VOLUME"
   dc start db
   wait_db_healthy
-  dc restart api worker
+  dc start api worker
   elapsed=$((SECONDS - started))
   log "reset finished in ${elapsed} s (budget ${RESET_BUDGET_SECONDS} s)"
   (( elapsed < RESET_BUDGET_SECONDS )) || die "reset took ${elapsed} s, budget is ${RESET_BUDGET_SECONDS} s"
@@ -109,9 +115,12 @@ teardown() {
   fi
   log "teardown: removing containers, networks and volumes of project $PROJECT"
   dc down --volumes --remove-orphans || log "WARN: compose down failed"
-  if docker volume ls -q | grep -Fxq "$GOLDEN_VOLUME"; then
-    docker volume rm "$GOLDEN_VOLUME" || log "WARN: could not remove $GOLDEN_VOLUME"
-  fi
+  local golden
+  for golden in "$GOLDEN_VOLUME" "$GOLDEN_BLOBS_VOLUME"; do
+    if docker volume ls -q | grep -Fxq "$golden"; then
+      docker volume rm "$golden" || log "WARN: could not remove $golden"
+    fi
+  done
   log "teardown: deleting generated secrets $E2E_SECRETS_DIR"
   rm -rf "$E2E_SECRETS_DIR"
   rm -f "$STATE_FILE"
@@ -188,7 +197,7 @@ run_core() {
   log "starting e2e-ctl on $gateway:$CTL_PORT"
   nohup setsid python3 -B "$ROOT/tests/tools/e2e-ctl/e2e_ctl.py" --bind "$gateway" --port "$CTL_PORT" \
     --token-file "$E2E_SECRETS_DIR/ctl_token" --audit-log "$RESULTS/ctl-audit.log" \
-    --project "$PROJECT" --compose-file "$COMPOSE_FILE" --secrets-dir "$E2E_SECRETS_DIR" >> "$RESULTS/e2e-ctl.log" 2>&1 &
+    --project "$PROJECT" --compose-file "$COMPOSE_FILE" --secrets-dir "$E2E_SECRETS_DIR" --reset-script "$ROOT/tests/run.sh" >> "$RESULTS/e2e-ctl.log" 2>&1 &
   printf 'E2E_CTL_PID=%q\n' "$!" >> "$STATE_FILE"
   wait_tcp "$gateway" "$CTL_PORT"
   log "e2e-ctl stub is listening"

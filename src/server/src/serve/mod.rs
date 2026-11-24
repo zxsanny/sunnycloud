@@ -1,8 +1,9 @@
 //! `serve` (E-22/c05): the start in its documented order, serving until SIGTERM or SIGINT, and the shutdown in its
 //! documented order. SIGTERM ends with exit 0, SIGINT with 130; a refusal at start or a failed shutdown step
-//! with exit 2.
+//! with exit 2. On an install without accounts the start ends by printing the setup token (`setup`).
 
 mod http;
+mod setup;
 mod start;
 mod stop;
 
@@ -15,6 +16,8 @@ use crate::context::ServiceContext;
 use crate::error::CliError;
 use crate::exit::Exit;
 use crate::outcome::{Class, Outcome};
+use crate::output::Mode;
+use crate::terminal::Terminal;
 
 /// The signal that ended the serving.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +39,8 @@ impl Stop {
 pub(crate) async fn run(
     services: &ServiceContext,
     interrupt: CancellationToken,
+    terminal: &Terminal,
+    mode: Mode,
 ) -> Result<Outcome, CliError> {
     // Installed first, so a SIGTERM during the start is held for the serving instead of killing the process.
     let mut terminate = signal(SignalKind::terminate()).map_err(|error| CliError::Operator {
@@ -44,6 +49,7 @@ pub(crate) async fn run(
         exit: Exit::Failed,
     })?;
     let started = start::start(services).await?;
+    setup::announce(services, terminal, mode).await?;
     let mut stopped_by = None;
     log_info!("serve start: ready");
     started

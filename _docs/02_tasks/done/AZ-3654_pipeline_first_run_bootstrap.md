@@ -108,5 +108,5 @@ Integration through the real binaries; the system scenarios stay in E-31.
 
 | Concern | Policy / owner | Status | Severity |
 |---------|----------------|--------|----------|
-| The `serve` callsite that issues the setup token with zero accounts is named by neither E-22/c05 nor E-15/c08 | This task owns it | resolved | Low |
+| The `serve` callsite that issues the setup token with zero accounts is named by neither E-22/c05 nor E-15/c08 | This task owns it | resolved: `serve` prints the token as the last step of its start (`src/server/src/serve/setup.rs`, batch 116) | Low |
 | Setup page route and fields are still a spike (E-26/c04) | E-26 | open | Low |

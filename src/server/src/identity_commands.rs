@@ -97,7 +97,7 @@ pub(crate) async fn invite(
     }
 }
 
-fn with_token(token: &str) -> Outcome {
+pub(crate) fn with_token(token: &str) -> Outcome {
     Outcome::success()
         .field("hint", HINT)
         .with_secret(OneTimeSecret::new("token", token.to_owned()))
@@ -128,7 +128,7 @@ fn row(invite: &InviteInfo) -> Value {
     Value::Object(object)
 }
 
-fn operator_failure(error: OperatorIdentityError) -> CliError {
+pub(crate) fn operator_failure(error: OperatorIdentityError) -> CliError {
     let (code, detail) = match error {
         OperatorIdentityError::NotFound => {
             (ErrorCode::NotFound.as_str(), "no such account".to_owned())

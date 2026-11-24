@@ -37,7 +37,9 @@ impl Handler for Commands {
                 Command::Openapi => openapi(),
                 Command::Healthcheck => healthcheck::run(healthcheck::OPS_ADDR, &call.cancel).await,
                 Command::Migrate(args) => migration::run(call.command, args, call.services).await,
-                Command::Serve => serve::run(call.services, call.cancel).await,
+                Command::Serve => {
+                    serve::run(call.services, call.cancel, call.terminal, call.mode).await
+                }
                 Command::Doctor(args) => doctor_command::run(args, call.services).await,
                 Command::Admin {
                     command: AdminCommand::SetupToken,

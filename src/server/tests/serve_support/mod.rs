@@ -23,7 +23,7 @@ pub const PROBE_EVERY: Duration = Duration::from_millis(100);
 const PROBE_TIMEOUT: Duration = Duration::from_millis(50);
 
 /// The start steps of `serve`, in their documented order (AC-1).
-pub const START_STEPS: [&str; 10] = [
+pub const START_STEPS: [&str; 11] = [
     "serve start: configuration",
     "serve start: database role",
     "serve start: schema version",
@@ -33,6 +33,7 @@ pub const START_STEPS: [&str; 10] = [
     "serve start: listeners",
     "serve start: late lists",
     "serve start: scheduler",
+    "serve start: setup token",
     "serve start: ready",
 ];
 
@@ -128,7 +129,12 @@ impl Stack {
     }
 
     pub fn spawn(&self) -> Server {
-        Server::spawn(&self.root.setup.env)
+        Server::spawn(&self.root.setup.env, &["serve"])
+    }
+
+    /// `sunnycloud` with these arguments instead of the bare `serve` (for a global flag such as `--json`).
+    pub fn spawn_with(&self, args: &[&str]) -> Server {
+        Server::spawn(&self.root.setup.env, args)
     }
 
     /// Starts `serve` while every listener address is dialled every 100 ms, and waits for it to exit.
@@ -226,10 +232,10 @@ pub fn positions(messages: &[String], steps: &[&str]) -> Vec<usize> {
 }
 
 impl Server {
-    fn spawn(env: &std::collections::BTreeMap<String, String>) -> Server {
+    fn spawn(env: &std::collections::BTreeMap<String, String>, args: &[&str]) -> Server {
         let started = Instant::now();
         let mut child = Command::new(env!("CARGO_BIN_EXE_sunnycloud"))
-            .arg("serve")
+            .args(args)
             .env_clear()
             .envs(env)
             .stdin(Stdio::null())

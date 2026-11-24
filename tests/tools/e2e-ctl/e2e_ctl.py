@@ -12,8 +12,8 @@ names the action and its status, never the body (a body may carry a credential).
 import argparse
 import hmac
 import json
-import subprocess
 import sys
+import traceback
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -88,9 +88,10 @@ class CtlHandler(BaseHTTPRequestHandler):
             return 200, None, None, action, handler(ctl_actions.parse_body(raw_body))
         except ctl_actions.ActionError as error:
             return error.status, error.code, str(error), action, None
-        except (OSError, subprocess.SubprocessError) as error:
-            # A hung command or a lost connection is still an answer, and still audited.
+        except Exception as error:  # noqa: BLE001 - a hung command, a lost connection or a bug is still an audited answer
+            traceback.print_exc()
             return 500, "action_failed", f"{type(error).__name__}: {error}"[:400], action, None
+
 
     def _handle(self):
         length = int(self.headers.get("Content-Length") or 0)
@@ -130,9 +131,10 @@ def main(argv=None):
     parser.add_argument("--actions-file", default=str(Path(__file__).with_name("actions.json")))
     parser.add_argument("--project", required=True, help="the compose project of the stack")
     parser.add_argument("--compose-file", required=True)
+    parser.add_argument("--reset-script", required=True, help="tests/run.sh: `reset` restores the golden snapshot")
     parser.add_argument("--secrets-dir", required=True, help="the generated secrets (the worker token never leaves ctl)")
     args = parser.parse_args(argv)
-    handlers = ctl_actions.Actions(args.project, args.compose_file, args.secrets_dir).handlers()
+    handlers = ctl_actions.Actions(args.project, args.compose_file, args.secrets_dir, args.reset_script).handlers()
     server = build_server(args.bind, args.port, load_token(args.token_file), load_actions(args.actions_file),
                           args.audit_log, handlers)
     print(f"e2e-ctl listening on {args.bind}:{args.port}, audit log {args.audit_log}", flush=True)

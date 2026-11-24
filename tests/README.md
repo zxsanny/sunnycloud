@@ -7,7 +7,7 @@ Python consumer with its CSV reporter, and the `e2e-ctl` stub. Pipeline tasks an
 
     tests/run.sh --profile core            # start db + consumer, run the self-tests, tear everything down
     tests/run.sh --profile core --keep     # same, but leave the stack up
-    tests/run.sh reset                     # restore the database volume to the golden snapshot (stack must be up)
+    tests/run.sh reset                     # restore the database and blob volumes to the golden snapshot (stack must be up)
     tests/run.sh down                      # tear down a kept stack
     SEED_FAIL=1 tests/run.sh --profile core   # adds one failing self-test; the run must exit non-zero
     tests/tools/check-reset.sh             # needs --keep: writes rows, resets, checks they are gone and the time
@@ -106,5 +106,7 @@ table and is not listed.
 
 ## reset
 
-After the database is healthy, `run.sh` stops it, copies the `pgdata` volume to a second volume (golden snapshot) and
-starts it again. `reset` does the reverse copy. The XFS blob-volume snapshot is E-31's and is not covered.
+After the database is healthy, `run.sh` stops it, copies the `pgdata` and the `blobs` volumes to two more volumes (the
+golden snapshot) and starts it again. `reset` stops api, worker and database, does the reverse copies and starts them. The
+blob volume goes back with the database because the api refuses a database whose epoch is below the blob volume's `.epoch`
+marker (a restore without `admin epoch-bump`). The XFS blob-volume snapshot of the reference host is E-31's and is not covered.

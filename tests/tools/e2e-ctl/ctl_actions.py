@@ -4,9 +4,12 @@ answering `not_implemented` in `e2e_ctl.py`.
 
     internal-http        one HTTP request from the host to a backend listener of a service of the stack
     db-outage            stop or start the database container
+    db-restore           restore the database to the golden snapshot (`tests/run.sh reset`: api and worker restart)
+    exec-operator        run `sunnycloud admin ...`, `doctor` or `key-check` inside the api container
     interrupted-upgrade  revert the latest migrations, or apply the pending ones, with the product's own `migrate`
 """
 import http.client
+import ipaddress
 import json
 import subprocess
 import time
@@ -15,6 +18,8 @@ from pathlib import Path
 HTTP_SERVICES = frozenset({"api"})
 HTTP_PORTS = frozenset({8080, 8081, 9090, 9091})
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "DELETE", "HEAD"})
+OPERATOR_COMMANDS = frozenset({"admin", "doctor", "key-check"})
+GOLDEN = "golden"
 HEADER_NAMES = frozenset({"authorization", "cookie", "content-type", "x-sunnycloud-client", "x-forwarded-for", "x-worker-id"})
 BODY_LIMIT = 4096
 REQUEST_TIMEOUT_SECONDS = 10
@@ -50,9 +55,11 @@ def send_request(address, method, path, headers, body):
 
 
 class Actions:
-    def __init__(self, project, compose_file, secrets_dir, run=run_command, request=send_request, sleep=time.sleep):
+    def __init__(self, project, compose_file, secrets_dir, reset_script="", run=run_command, request=send_request,
+                 sleep=time.sleep):
         self.project = project
         self.compose_file = str(compose_file)
+        self.reset_script = str(reset_script)
         self.secrets_dir = Path(secrets_dir)
         self._run = run
         self._request = request
@@ -62,6 +69,8 @@ class Actions:
         return {
             "internal-http": self.internal_http,
             "db-outage": self.db_outage,
+            "db-restore": self.db_restore,
+            "exec-operator": self.exec_operator,
             "interrupted-upgrade": self.interrupted_upgrade,
         }
 
@@ -83,9 +92,11 @@ class Actions:
     def _address(self, service):
         template = f'{{{{(index .NetworkSettings.Networks "{self.project}_backend").IPAddress}}}}'
         ip = self._checked(["docker", "inspect", "-f", template, self._container(service)]).strip()
-        if not ip:
-            raise ActionError(409, "service_not_on_backend", f"service {service} has no address on the backend network")
-        return ip
+        try:
+            return str(ipaddress.ip_address(ip))
+        except ValueError as error:
+            # docker prints `invalid IP` (or nothing) for a container that is stopped or restarting.
+            raise ActionError(409, "service_not_on_backend", f"service {service} has no address on the backend network") from error
 
     def internal_http(self, params):
         service, port = params.get("service", "api"), params.get("port")
@@ -125,6 +136,20 @@ class Actions:
                 return {"db": "healthy"}
             self._sleep(POLL_SECONDS)
         raise ActionError(504, "db_not_healthy", f"the database was not healthy within {DB_HEALTHY_TIMEOUT_SECONDS} s")
+
+    def db_restore(self, params):
+        if params.get("snapshot") != GOLDEN:
+            raise ActionError(400, "bad_request", "snapshot is `golden`, the one snapshot the stack takes")
+        self._checked(["bash", self.reset_script, "reset"])
+        return {"restored": GOLDEN}
+
+    def exec_operator(self, params):
+        args = params.get("args")
+        if not isinstance(args, list) or not args or not all(isinstance(a, str) and a and "\0" not in a for a in args) \
+                or args[0] not in OPERATOR_COMMANDS:
+            raise ActionError(400, "bad_request", f"args is a list of texts starting with one of {sorted(OPERATOR_COMMANDS)}")
+        code, out, err = self._run(self._compose("exec", "-T", "api", "sunnycloud", *args))
+        return {"exit_code": code, "stdout": out[-BODY_LIMIT:], "stderr": err[-BODY_LIMIT:]}
 
     def interrupted_upgrade(self, params):
         op = params.get("op")

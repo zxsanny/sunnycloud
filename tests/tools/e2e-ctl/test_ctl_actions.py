@@ -109,6 +109,44 @@ class ActionsTest(unittest.TestCase):
         tails = [call[call.index("migrate"):] for call in self.docker.calls if "run" in call]
         self.assertEqual(tails, [["migrate", "migrate", "revert", "--steps", "2", "--yes"], ["migrate", "migrate", "run"]])
 
+    def test_exec_operator_runs_the_binary_in_the_api_container_and_returns_the_exit_code(self):
+        # Arrange
+        self.docker_result = (3, "out\n", "err\n")
+        runner = lambda args: (self.docker.calls.append(args) or self.docker_result)
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=runner)
+
+        # Act
+        result = actions.exec_operator({"args": ["admin", "setup-token"]})
+
+        # Assert
+        self.assertEqual(result, {"exit_code": 3, "stdout": "out\n", "stderr": "err\n"})
+        self.assertEqual(self.docker.calls[0][-5:], ["-T", "api", "sunnycloud", "admin", "setup-token"])
+
+    def test_exec_operator_refuses_commands_outside_the_allow_list(self):
+        # Arrange
+        bad = [{}, {"args": []}, {"args": ["serve"]}, {"args": ["migrate", "revert"]}, {"args": ["admin", 1]}, {"args": "admin"}]
+
+        for params in bad:
+            with self.subTest(params=params):
+                # Act and Assert
+                with self.assertRaises(ctl_actions.ActionError) as raised:
+                    self.actions.exec_operator(params)
+                self.assertEqual(raised.exception.status, 400)
+        self.assertEqual(self.docker.calls, [])
+
+    def test_db_restore_runs_the_reset_script_only_for_the_golden_snapshot(self):
+        # Arrange
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, "/x/run.sh", run=self.docker)
+
+        # Act
+        result = actions.db_restore({"snapshot": "golden"})
+        with self.assertRaises(ctl_actions.ActionError):
+            actions.db_restore({})
+
+        # Assert
+        self.assertEqual(result, {"restored": "golden"})
+        self.assertEqual(self.docker.calls, [["bash", "/x/run.sh", "reset"]])
+
     def test_a_failing_command_is_a_typed_error(self):
         # Arrange
         failing = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=lambda args: (1, "", "boom"))

@@ -61,7 +61,7 @@ pub async fn run(args: Vec<OsString>, env: &CliEnv) -> u8 {
 
     let result = match install_for_spawned_tasks(&cli.command, &dispatch) {
         Ok(()) => {
-            execute(&cli.command, env, settings)
+            execute(&cli.command, env, settings, mode)
                 .with_subscriber(dispatch.clone())
                 .await
         }
@@ -122,6 +122,7 @@ async fn execute(
     command: &Command,
     env: &CliEnv,
     settings: CliSettings,
+    mode: Mode,
 ) -> Result<Outcome, CliError> {
     if let Some(confirmation) = command.confirmation() {
         guard::confirm(&env.terminal, &confirmation, settings.confirm_required)?;
@@ -134,6 +135,7 @@ async fn execute(
             services: &env.services,
             cancel,
             terminal: &env.terminal,
+            mode,
         })
         .await
 }
