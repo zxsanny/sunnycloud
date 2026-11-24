@@ -20,7 +20,11 @@ def audit_lines(path):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
-def test_every_action_with_the_token_returns_not_implemented_and_one_audit_line_each(ctl):
+# Actions with an implementation refuse the empty body `{}` this test sends; the others say `not_implemented`.
+IMPLEMENTED = {"internal-http", "db-outage", "interrupted-upgrade"}
+
+
+def test_every_action_with_the_token_answers_a_typed_error_and_one_audit_line_each(ctl):
     # Arrange
     before = len(audit_lines(ctl["audit"]))
 
@@ -30,9 +34,10 @@ def test_every_action_with_the_token_returns_not_implemented_and_one_audit_line_
 
     # Assert
     assert len(ctl["actions"]) == 22
-    assert {a: (s, b["error"]["code"]) for a, (s, b) in answers.items()} == {a: (501, "not_implemented") for a in ctl["actions"]}
+    expected = {a: (400, "bad_request") if a in IMPLEMENTED else (501, "not_implemented") for a in ctl["actions"]}
+    assert {a: (s, b["error"]["code"]) for a, (s, b) in answers.items()} == expected
     assert [line["action"] for line in after[before:]] == ctl["actions"]
-    assert all(line["auth"] == "ok" and line["status"] == 501 for line in after[before:])
+    assert all(line["auth"] == "ok" and line["status"] == expected[line["action"]][0] for line in after[before:])
 
 
 def test_call_without_the_token_is_refused_and_audited(ctl):

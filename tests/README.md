@@ -72,18 +72,30 @@ test needs is not part of the profile / build yet".
 - `unit/`: the reporter on synthetic pass, fail, skip, setup error, collection error and the NOT-RUN marker (no stack needed;
   on a host run `PYTHONPATH=tests/consumer pytest -v --tb=short -p e2e_report tests/consumer/selftests/unit` with
   `E2E_RESULTS_DIR` set).
-- `stack/`: the consumer cannot resolve `db` nor open TCP to the database address; every `e2e-ctl` action answers
-  `not_implemented` with one audit line each; no token is refused and audited.
+- `stack/`: the consumer cannot resolve `db` nor open TCP to the database address; every `e2e-ctl` action answers a typed
+  error with one audit line each (`bad_request` for the implemented ones given an empty body, `not_implemented` for the
+  rest); no token is refused and audited.
 - `stack/test_sut_edge.py`: the front door: `server-info` through Caddy over the exported root certificate, TLS 1.3, the
   mock identity provider's issuer, and that no backend service name resolves from the consumer.
 - `test_not_run_sentinel.py`: one test marked `NOT-RUN(NO-SERVICE)`; it proves the NOT-RUN rule on every run.
 - `test_seeded_failure.py`: collected only with `SEED_FAIL=1`.
-- `tools/e2e-ctl/test_e2e_ctl.py`: stub unit tests, run by `run.sh` on the host (`python3 -m unittest -v` in that directory).
+- `tools/e2e-ctl/test_e2e_ctl.py` and `test_ctl_actions.py`: ctl unit tests, run by `run.sh` on the host (`python3 -m unittest -v` in that directory).
 
-## e2e-ctl stub
+## Suites (`tests/consumer/suites`)
 
-`tests/tools/e2e-ctl/e2e_ctl.py`, Python stdlib only. `POST /v1/actions/<name>` with `Authorization: Bearer <token>`.
-Typed JSON errors `{"error": {"code", "message", "action"}}`: `not_implemented` (501) for every action in `actions.json`,
+Test cases of the component test specs, run against the stack. `suites/http_api/`: IT-11-9 (listener placement on the test
+image, AZ-3835 AC-2) and IT-11-17 (readiness through a database outage and a pending migration, AC-3). They reach the
+listeners Caddy does not route (`:8081`, `:9090`, `:9091`) through the ctl action `internal-http` (`stackkit.py`).
+The release-image leg of IT-11-9 is not run: the stack carries the test image only (see the leftover of AZ-3835).
+
+## e2e-ctl
+
+`tests/tools/e2e-ctl/e2e_ctl.py`, Python stdlib only. `POST /v1/actions/<name>` with `Authorization: Bearer <token>` and a
+JSON body of parameters. Implemented (`ctl_actions.py`): `internal-http` (one HTTP request to a listener of the api on the
+backend network; `auth: "worker"` adds the worker bearer, which never leaves ctl), `db-outage` (`op` `stop` or `start`,
+start waits for a healthy database), `interrupted-upgrade` (`op` `revert` with `steps`, or `apply`, through the product's
+own `migrate`). The audit line names the action and status, never the body.
+Typed JSON errors `{"error": {"code", "message", "action"}}`: `not_implemented` (501) for every other action in `actions.json`,
 `unauthorized` (401) without or with a wrong token, `unknown_action` / `not_found` (404), `method_not_allowed` (405). The
 audit line is written before the response. A wildcard bind address is refused.
 

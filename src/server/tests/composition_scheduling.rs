@@ -1,5 +1,5 @@
 //! AZ-3789 and AZ-3792 in the composition root: the janitors on their owners' intervals, the one scheduler, and
-//! the readiness list (the database, then `scheduler_alive`). Split from `composition_root` by responsibility.
+//! the readiness list (the database, the migrations, then `scheduler_alive`). Split from `composition_root` by responsibility.
 
 mod janitor_support;
 mod root_support;
@@ -11,11 +11,12 @@ use axum::http::StatusCode;
 use janitor_support::{get, series};
 use root_support::{INTERVALS, Root};
 use sc_config::parse_duration;
+use sc_db::Migrator;
 use sc_observability::{
     Liveness, Metrics, ReadinessCheck as _, ReadinessRegistry, ReadinessStatus, ops_router,
 };
 use sunnycloud_server::janitor::Scheduler;
-use sunnycloud_server::root::{self, DatabaseReady, Janitors, ReadinessChecks};
+use sunnycloud_server::root::{self, DatabaseReady, Janitors, MigrationsReady, ReadinessChecks};
 
 fn interval(key: &str) -> Duration {
     let (_, text) = INTERVALS
@@ -67,7 +68,7 @@ async fn statuses(checks: &ReadinessChecks) -> Vec<(String, ReadinessStatus)> {
 }
 
 #[tokio::test]
-async fn readiness_list_is_the_database_then_scheduler_alive_and_both_are_ok_once_started() {
+async fn readiness_list_is_database_migrations_scheduler_alive_all_ok_once_started() {
     // Arrange
     let root = Root::new().await;
 
@@ -88,6 +89,7 @@ async fn readiness_list_is_the_database_then_scheduler_alive_and_both_are_ok_onc
         built,
         [
             ("database".to_owned(), ReadinessStatus::Ok),
+            ("migrations".to_owned(), ReadinessStatus::Ok),
             ("scheduler_alive".to_owned(), ReadinessStatus::Failing),
         ],
         "the scheduler is not started by building the list"
@@ -96,6 +98,7 @@ async fn readiness_list_is_the_database_then_scheduler_alive_and_both_are_ok_onc
         started,
         [
             ("database".to_owned(), ReadinessStatus::Ok),
+            ("migrations".to_owned(), ReadinessStatus::Ok),
             ("scheduler_alive".to_owned(), ReadinessStatus::Ok),
         ]
     );
@@ -120,6 +123,32 @@ async fn database_readiness_fails_once_the_database_is_gone() {
     // Assert
     assert_eq!(item.status, ReadinessStatus::Failing);
     drop(services);
+}
+
+#[tokio::test]
+async fn migrations_readiness_fails_while_one_is_pending_and_recovers_once_applied() {
+    // Arrange
+    let root = Root::new().await;
+    let check = root
+        .services
+        .get::<MigrationsReady>()
+        .await
+        .expect("migrations check");
+    let migrator = root.db.migrator().await;
+    let before = check.check().await;
+
+    // Act
+    Migrator::revert(&migrator, 1).await.expect("revert one");
+    let pending = check.check().await;
+    Migrator::run_pending(&migrator).await.expect("apply again");
+    let applied = check.check().await;
+
+    // Assert
+    assert_eq!(before.status, ReadinessStatus::Ok);
+    assert_eq!(pending.status, ReadinessStatus::Failing);
+    assert_eq!(pending.detail, "migrations pending");
+    assert_eq!(applied.status, ReadinessStatus::Ok);
+    root.finish().await;
 }
 
 #[tokio::test]

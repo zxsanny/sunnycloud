@@ -22,7 +22,7 @@ use sunnycloud_identity::{
 use sunnycloud_transfer::{IdleFlush, ReceiptJanitor, SessionReaper};
 use sunnycloud_tree::TreeJanitor;
 
-use super::base::{DatabaseReady, Shutdown};
+use super::base::{DatabaseReady, MigrationsReady, Shutdown};
 use super::domain::{Admin, Feed, Identity, Quota, Sharing, Transfer, Tree};
 use super::failed;
 use super::media::{Media, MediaPlanning};
@@ -216,9 +216,11 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
         })
         .register::<ReadinessChecks, _, _>(|services| async move {
             let database = services.get::<DatabaseReady>().await?;
+            let migrations = services.get::<MigrationsReady>().await?;
             let scheduler = services.get::<Scheduler>().await?;
             Ok(Arc::new(ReadinessChecks(vec![
                 database,
+                migrations,
                 scheduler.readiness(),
             ])))
         })

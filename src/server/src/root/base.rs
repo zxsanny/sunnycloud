@@ -91,6 +91,10 @@ pub(super) fn register(builder: ContextBuilder, clock: Arc<dyn Clock>) -> Contex
             let db = services.get::<Db>().await?;
             Ok(Arc::new(DatabaseReady { db: Db::clone(&db) }))
         })
+        .register::<MigrationsReady, _, _>(|services| async move {
+            let db = services.get::<Db>().await?;
+            Ok(Arc::new(MigrationsReady { db: Db::clone(&db) }))
+        })
 }
 
 /// The configured abuse limits on top of the AC-20 defaults of `LimitTable::new`. The IP limits without an
@@ -130,6 +134,29 @@ impl ReadinessCheck for DatabaseReady {
                 ReadinessItem::ok()
             } else {
                 ReadinessItem::failing("database unreachable")
+            }
+        })
+    }
+}
+
+/// The `migrations` item of `/readyz` (AC-22, AC-65): Ok while every embedded migration is applied. An upgrade or a
+/// restore that leaves one pending, or a bookkeeping table that cannot be read, is not ready. An unreachable
+/// database fails the `database` item; this one then fails too, because nothing can be said about the schema.
+pub struct MigrationsReady {
+    db: Db,
+}
+
+impl ReadinessCheck for MigrationsReady {
+    fn name(&self) -> &str {
+        "migrations"
+    }
+
+    fn check(&self) -> CheckFuture<'_, ReadinessItem> {
+        Box::pin(async move {
+            match self.db.health().await.migrations_pending {
+                Some(0) => ReadinessItem::ok(),
+                Some(_) => ReadinessItem::failing("migrations pending"),
+                None => ReadinessItem::failing("migration state unknown"),
             }
         })
     }

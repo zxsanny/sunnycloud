@@ -185,9 +185,10 @@ run_core() {
   dc up --no-start consumer
   gateway="$(docker network inspect -f '{{(index .IPAM.Config 0).Gateway}}' "${PROJECT}_ctl-net")"
   log "ctl-net gateway: $gateway"
-  log "starting the e2e-ctl stub on $gateway:$CTL_PORT"
+  log "starting e2e-ctl on $gateway:$CTL_PORT"
   nohup setsid python3 -B "$ROOT/tests/tools/e2e-ctl/e2e_ctl.py" --bind "$gateway" --port "$CTL_PORT" \
-    --token-file "$E2E_SECRETS_DIR/ctl_token" --audit-log "$RESULTS/ctl-audit.log" >> "$RESULTS/e2e-ctl.log" 2>&1 &
+    --token-file "$E2E_SECRETS_DIR/ctl_token" --audit-log "$RESULTS/ctl-audit.log" \
+    --project "$PROJECT" --compose-file "$COMPOSE_FILE" --secrets-dir "$E2E_SECRETS_DIR" >> "$RESULTS/e2e-ctl.log" 2>&1 &
   printf 'E2E_CTL_PID=%q\n' "$!" >> "$STATE_FILE"
   wait_tcp "$gateway" "$CTL_PORT"
   log "e2e-ctl stub is listening"

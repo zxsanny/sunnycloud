@@ -1,0 +1,153 @@
+"""The actions of e2e-ctl that have an implementation (environment.md, Fault injectors). Each takes the JSON body of
+the call and returns a JSON-able dict, or raises `ActionError` for a refused or failed call. The others keep
+answering `not_implemented` in `e2e_ctl.py`.
+
+    internal-http        one HTTP request from the host to a backend listener of a service of the stack
+    db-outage            stop or start the database container
+    interrupted-upgrade  revert the latest migrations, or apply the pending ones, with the product's own `migrate`
+"""
+import http.client
+import json
+import subprocess
+import time
+from pathlib import Path
+
+HTTP_SERVICES = frozenset({"api"})
+HTTP_PORTS = frozenset({8080, 8081, 9090, 9091})
+HTTP_METHODS = frozenset({"GET", "POST", "PUT", "DELETE", "HEAD"})
+HEADER_NAMES = frozenset({"authorization", "cookie", "content-type", "x-sunnycloud-client", "x-forwarded-for", "x-worker-id"})
+BODY_LIMIT = 4096
+REQUEST_TIMEOUT_SECONDS = 10
+COMMAND_TIMEOUT_SECONDS = 180
+DB_HEALTHY_TIMEOUT_SECONDS = 120
+POLL_SECONDS = 1.0
+WORKER_TOKEN_SECRET = "worker_api_token"
+
+
+class ActionError(Exception):
+    def __init__(self, status, code, message):
+        super().__init__(message)
+        self.status = status
+        self.code = code
+
+
+def run_command(args, timeout=COMMAND_TIMEOUT_SECONDS):
+    done = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout, check=False)
+    return done.returncode, done.stdout, done.stderr
+
+
+def send_request(address, method, path, headers, body):
+    """One request; `None` when the connection is refused or reset (what a closed listener looks like)."""
+    connection = http.client.HTTPConnection(address[0], address[1], timeout=REQUEST_TIMEOUT_SECONDS)
+    try:
+        connection.request(method, path, body=body, headers=headers)
+        answer = connection.getresponse()
+        return answer.status, {k.lower(): v for k, v in answer.getheaders()}, answer.read(BODY_LIMIT)
+    except ConnectionError:
+        return None
+    finally:
+        connection.close()
+
+
+class Actions:
+    def __init__(self, project, compose_file, secrets_dir, run=run_command, request=send_request, sleep=time.sleep):
+        self.project = project
+        self.compose_file = str(compose_file)
+        self.secrets_dir = Path(secrets_dir)
+        self._run = run
+        self._request = request
+        self._sleep = sleep
+
+    def handlers(self):
+        return {
+            "internal-http": self.internal_http,
+            "db-outage": self.db_outage,
+            "interrupted-upgrade": self.interrupted_upgrade,
+        }
+
+    def _compose(self, *args):
+        return ["docker", "compose", "-p", self.project, "-f", self.compose_file, "--profile", "core", *args]
+
+    def _checked(self, args):
+        code, out, err = self._run(args)
+        if code != 0:
+            raise ActionError(500, "command_failed", f"{' '.join(args[:6])}... exited {code}: {err.strip()[-400:]}")
+        return out
+
+    def _container(self, service):
+        container = self._checked(self._compose("ps", "-q", service)).strip()
+        if not container:
+            raise ActionError(409, "service_not_running", f"service {service} has no container")
+        return container
+
+    def _address(self, service):
+        template = f'{{{{(index .NetworkSettings.Networks "{self.project}_backend").IPAddress}}}}'
+        ip = self._checked(["docker", "inspect", "-f", template, self._container(service)]).strip()
+        if not ip:
+            raise ActionError(409, "service_not_on_backend", f"service {service} has no address on the backend network")
+        return ip
+
+    def internal_http(self, params):
+        service, port = params.get("service", "api"), params.get("port")
+        method, path = params.get("method", "GET"), params.get("path", "")
+        if service not in HTTP_SERVICES or port not in HTTP_PORTS or method not in HTTP_METHODS or not str(path).startswith("/"):
+            raise ActionError(400, "bad_request", f"service {HTTP_SERVICES}, port {sorted(HTTP_PORTS)}, a method and a path are required")
+        headers = {}
+        for name, value in (params.get("headers") or {}).items():
+            if name.lower() not in HEADER_NAMES or not isinstance(value, str):
+                raise ActionError(400, "bad_request", f"header {name!r} is not allowed")
+            headers[name] = value
+        if params.get("auth") == "worker":
+            token = (self.secrets_dir / WORKER_TOKEN_SECRET).read_text(encoding="utf-8").strip()
+            headers["Authorization"] = f"Bearer {token}"
+        elif params.get("auth") not in (None, "none"):
+            raise ActionError(400, "bad_request", "auth is `none` or `worker`")
+        body = params["body"].encode() if isinstance(params.get("body"), str) else None
+        answer = self._request((self._address(service), port), method, path, headers, body)
+        if answer is None:
+            return {"connection": "refused"}
+        status, answer_headers, answer_body = answer
+        return {"connection": "open", "status": status, "headers": answer_headers, "body": answer_body.decode("utf-8", "replace")}
+
+    def db_outage(self, params):
+        op = params.get("op")
+        if op == "stop":
+            self._checked(self._compose("stop", "db"))
+            return {"db": "stopped"}
+        if op != "start":
+            raise ActionError(400, "bad_request", "op is `stop` or `start`")
+        self._checked(self._compose("start", "db"))
+        container = self._container("db")
+        deadline = time.monotonic() + DB_HEALTHY_TIMEOUT_SECONDS
+        template = "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}"
+        while time.monotonic() < deadline:
+            if self._checked(["docker", "inspect", "-f", template, container]).strip() == "healthy":
+                return {"db": "healthy"}
+            self._sleep(POLL_SECONDS)
+        raise ActionError(504, "db_not_healthy", f"the database was not healthy within {DB_HEALTHY_TIMEOUT_SECONDS} s")
+
+    def interrupted_upgrade(self, params):
+        op = params.get("op")
+        if op == "revert":
+            steps = params.get("steps", 1)
+            if not isinstance(steps, int) or isinstance(steps, bool) or steps < 1:
+                raise ActionError(400, "bad_request", "steps is a positive integer")
+            command = ["migrate", "revert", "--steps", str(steps), "--yes"]
+        elif op == "apply":
+            command = ["migrate", "run"]
+        else:
+            raise ActionError(400, "bad_request", "op is `revert` or `apply`")
+        output = self._checked(self._compose("run", "--rm", "--no-deps", "-T", "migrate", *command))
+        return {"op": op, "output": output[-BODY_LIMIT:]}
+
+
+def parse_body(raw):
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except ValueError as error:
+        raise ActionError(400, "bad_request", f"the body is not JSON: {error}") from error
+    if not isinstance(value, dict):
+        raise ActionError(400, "bad_request", "the body is a JSON object")
+    return value

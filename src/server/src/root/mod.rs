@@ -24,7 +24,7 @@ use crate::context::ContextBuilder;
 use crate::error::CliError;
 
 pub use api::api_services;
-pub use base::{DatabaseReady, Shutdown};
+pub use base::{DatabaseReady, MigrationsReady, Shutdown};
 pub use domain::{Admin, Feed, Identity, Quota, Sharing, Transfer, Tree};
 pub use lists::{
     AccountHooks, BlobCleanups, CommitEffects, DoctorChecks, HealthContributors, Janitors,
