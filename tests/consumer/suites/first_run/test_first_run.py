@@ -3,28 +3,11 @@ the api behind Caddy, with only the identity provider mocked (AC-1, AC-2, AC-4).
 printing of the token by `serve` (AC-1's source of the token) are covered by the binary tests of the server crate
 (`serve_start.rs`, `serve_setup_token.rs`); here the token comes from `admin setup-token`.
 
-Each test starts from the golden snapshot (no accounts) and the module leaves the stack the same way.
+Each test starts from the golden snapshot (no accounts, fixture `fresh_install` in `suites/conftest.py`).
 """
 import concurrent.futures
 
-import pytest
-
 from stackkit import Browser, operator_token
-
-READY_SECONDS = 90
-
-
-def restore_and_wait(stack_ctl):
-    stack_ctl.call("db-restore", snapshot="golden")
-    status, body = stack_ctl.wait_ready(READY_SECONDS)
-    assert status == 200, f"the stack is not ready after the restore: {body}"
-
-
-@pytest.fixture
-def fresh_install(stack_ctl):
-    restore_and_wait(stack_ctl)
-    yield stack_ctl
-    restore_and_wait(stack_ctl)
 
 
 def is_refused(location):

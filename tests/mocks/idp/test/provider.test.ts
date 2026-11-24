@@ -210,6 +210,30 @@ describe("user selection", () => {
     expect(controlled.email).toBe("bob@acceptance.test");
   });
 
+  test("a plain login_hint names a new verified user only when acceptAnyHint is on", async () => {
+    // Arrange
+    const open = await startMockIdp(defaultConfig({ redirectUris: [REDIRECT], acceptAnyHint: true }));
+    const query = (hint: string) =>
+      new URLSearchParams({
+        response_type: "code",
+        client_id: "sunnycloud-acceptance",
+        redirect_uri: REDIRECT,
+        state: "s",
+        code_challenge: "c",
+        code_challenge_method: "S256",
+        login_hint: hint,
+      });
+
+    // Act
+    const minted = await fetch(`${open.issuer}/authorize?${query("race-a-7")}`, { redirect: "manual" });
+    const odd = await fetch(`${open.issuer}/authorize?${query("Race A!")}`, { redirect: "manual" });
+    const closed = await fetch(await authorizeUrl({ login_hint: "race-a-7" }), { redirect: "manual" });
+    await open.stop();
+
+    // Assert
+    expect([minted.status, odd.status, closed.status]).toEqual([302, 400, 400]);
+  });
+
   test("the control API refuses an unknown user", async () => {
     // Act
     const response = await fetch(`${idp.issuer}/__control/user`, { method: "POST", body: JSON.stringify({ user: "mallory" }) });

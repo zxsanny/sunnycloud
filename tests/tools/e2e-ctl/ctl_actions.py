@@ -5,6 +5,7 @@ answering `not_implemented` in `e2e_ctl.py`.
     internal-http        one HTTP request from the host to a backend listener of a service of the stack
     db-outage            stop or start the database container
     db-restore           restore the database to the golden snapshot (`tests/run.sh reset`: api and worker restart)
+    db-probe             one of a fixed set of read-only count queries on the database (no free-form SQL)
     exec-operator        run `sunnycloud admin ...`, `doctor` or `key-check` inside the api container
     interrupted-upgrade  revert the latest migrations, or apply the pending ones, with the product's own `migrate`
 """
@@ -20,6 +21,13 @@ HTTP_PORTS = frozenset({8080, 8081, 9090, 9091})
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "DELETE", "HEAD"})
 OPERATOR_COMMANDS = frozenset({"admin", "doctor", "key-check"})
 GOLDEN = "golden"
+# The fixed queries of `db-probe`: each returns one row of integers, named by the keys.
+PROBES = {
+    # The rows an account has after sign-in: the account, its identity and the rows the lifecycle hooks create.
+    "account_rows": (("accounts", "identities", "quota", "account_feeds"),
+                     "SELECT (SELECT count(*) FROM accounts), (SELECT count(*) FROM identities), "
+                     "(SELECT count(*) FROM quota), (SELECT count(*) FROM account_feeds)"),
+}
 HEADER_NAMES = frozenset({"authorization", "cookie", "content-type", "x-sunnycloud-client", "x-forwarded-for", "x-worker-id"})
 BODY_LIMIT = 4096
 REQUEST_TIMEOUT_SECONDS = 10
@@ -69,6 +77,7 @@ class Actions:
         return {
             "internal-http": self.internal_http,
             "db-outage": self.db_outage,
+            "db-probe": self.db_probe,
             "db-restore": self.db_restore,
             "exec-operator": self.exec_operator,
             "interrupted-upgrade": self.interrupted_upgrade,
@@ -136,6 +145,17 @@ class Actions:
                 return {"db": "healthy"}
             self._sleep(POLL_SECONDS)
         raise ActionError(504, "db_not_healthy", f"the database was not healthy within {DB_HEALTHY_TIMEOUT_SECONDS} s")
+
+    def db_probe(self, params):
+        probe = PROBES.get(params.get("query"))
+        if probe is None:
+            raise ActionError(400, "bad_request", f"query is one of {sorted(PROBES)}")
+        keys, sql = probe
+        out = self._checked(self._compose("exec", "-T", "db", "psql", "-U", "postgres", "-d", "sunnycloud", "-At", "-F", ",", "-c", sql))
+        values = out.strip().split(",")
+        if len(values) != len(keys) or not all(v.lstrip("-").isdigit() for v in values):
+            raise ActionError(500, "probe_failed", f"unexpected probe output: {out.strip()[:200]}")
+        return dict(zip(keys, (int(v) for v in values)))
 
     def db_restore(self, params):
         if params.get("snapshot") != GOLDEN:

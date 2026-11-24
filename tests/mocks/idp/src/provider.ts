@@ -44,6 +44,13 @@ export async function createProvider(config: MockConfig, issuer: string): Promis
     return Object.hasOwn(config.users, name) ? config.users[name] : undefined;
   }
 
+  /** A configured user, or with `acceptAnyHint` a new verified one named by a plain `login_hint`. */
+  function userForHint(hint: string): MockUser | undefined {
+    const known = userNamed(hint);
+    if (known || !config.acceptAnyHint || !/^[a-z0-9-]{1,40}$/.test(hint)) return known;
+    return { sub: `any-${hint}`, email: `${hint}@e2e.test`, emailVerified: true, name: hint };
+  }
+
   function discovery(): Response {
     return json({
       issuer,
@@ -71,8 +78,9 @@ export async function createProvider(config: MockConfig, issuer: string): Promis
     if (!challenge || query.get("code_challenge_method") !== "S256") return badRequest("PKCE with S256 is required");
     const state = query.get("state");
     if (!state) return badRequest("state is required");
-    const userName = query.get("login_hint") ?? currentUser;
-    const user = userNamed(userName);
+    const hint = query.get("login_hint");
+    const userName = hint ?? currentUser;
+    const user = hint === null ? userNamed(userName) : userForHint(hint);
     if (!user) return badRequest(`unknown user ${userName}`);
 
     const code = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url");

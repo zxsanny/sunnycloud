@@ -7,5 +7,5 @@ required), `/token` (RS256 id token, key generated at start), `/jwks`. It listen
 
 Settings (environment): `MOCK_IDP_PORT` (default 9000, 0 = free), `MOCK_IDP_ISSUER` (default `http://127.0.0.1:<port>`),
 `MOCK_IDP_CLIENT_ID`, `MOCK_IDP_CLIENT_SECRET` and `MOCK_IDP_REDIRECT_URIS` (comma separated, exact match; both required), `MOCK_IDP_USERS` (JSON, default `alice`
-and `bob`), `MOCK_IDP_DEFAULT_USER` (default `alice`). The user of a sign-in is `login_hint`, else the one set by
+and `bob`), `MOCK_IDP_DEFAULT_USER` (default `alice`), `MOCK_IDP_ACCEPT_ANY_HINT=1` (a `login_hint` of letters, digits and dashes that names no configured user signs in as a new verified user of that name; the compose test stack sets it). The user of a sign-in is `login_hint`, else the one set by
 `POST /__control/user {"user":"bob"}`, else the default. Tests: `bun test`; types: `bun run typecheck`.

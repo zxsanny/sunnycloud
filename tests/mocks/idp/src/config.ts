@@ -19,6 +19,8 @@ export interface MockConfig {
   /** Exact-match list; authorization requests to any other redirect URI are refused. */
   redirectUris: string[];
   users: Record<string, MockUser>;
+  /** Opt-in: a `login_hint` that names no user (letters, digits, dashes, at most 40) signs in as a new verified user of that name, so a test can mint one identity per round. */
+  acceptAnyHint: boolean;
   /** The user the authorization endpoint approves unless `login_hint` or the control API says otherwise. */
   defaultUser: string;
   codeTtlMs: number;
@@ -37,6 +39,7 @@ export function defaultConfig(overrides: Partial<MockConfig> = {}): MockConfig {
     clientSecret: "mock-client-secret",
     redirectUris: [],
     users: DEFAULT_USERS,
+    acceptAnyHint: false,
     defaultUser: "alice",
     codeTtlMs: 60_000,
     tokenTtlSeconds: 300,
@@ -65,6 +68,7 @@ export function configFromEnv(env: Record<string, string | undefined>): MockConf
     clientSecret: required(env, "MOCK_IDP_CLIENT_SECRET"),
     redirectUris: required(env, "MOCK_IDP_REDIRECT_URIS").split(","),
     users,
+    acceptAnyHint: env.MOCK_IDP_ACCEPT_ANY_HINT === "1",
     defaultUser: env.MOCK_IDP_DEFAULT_USER ?? "alice",
   });
 }

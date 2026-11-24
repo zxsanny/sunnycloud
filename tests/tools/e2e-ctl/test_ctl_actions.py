@@ -134,6 +134,21 @@ class ActionsTest(unittest.TestCase):
                 self.assertEqual(raised.exception.status, 400)
         self.assertEqual(self.docker.calls, [])
 
+    def test_db_probe_returns_the_counts_of_a_fixed_query_and_refuses_any_other(self):
+        # Arrange
+        runner = lambda args: (self.docker.calls.append(args) or (0, "2,2,2,2\n", ""))
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=runner)
+
+        # Act
+        counts = actions.db_probe({"query": "account_rows"})
+        with self.assertRaises(ctl_actions.ActionError) as raised:
+            actions.db_probe({"query": "DROP TABLE accounts"})
+
+        # Assert
+        self.assertEqual(counts, {"accounts": 2, "identities": 2, "quota": 2, "account_feeds": 2})
+        self.assertEqual(raised.exception.status, 400)
+        self.assertEqual(len(self.docker.calls), 1)
+
     def test_db_restore_runs_the_reset_script_only_for_the_golden_snapshot(self):
         # Arrange
         actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, "/x/run.sh", run=self.docker)

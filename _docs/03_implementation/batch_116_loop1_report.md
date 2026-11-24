@@ -1,7 +1,7 @@
 # Batch Report
 
 **Batch**: 116
-**Tasks**: AZ-3654 first-run bootstrap pipeline (AC-1 to AC-5)
+**Tasks**: AZ-3654 first-run bootstrap pipeline (AC-1 to AC-5). Jira: In Testing (the first two attempts timed out in a hook; the replay on 2026-11-24 succeeded)
 **Date**: 2026-11-24
 
 ## What changed

@@ -105,9 +105,9 @@ class Browser:
         self.jar = http.cookiejar.CookieJar()
         self._opener = urllib.request.build_opener(_NoRedirect, urllib.request.HTTPCookieProcessor(self.jar))
 
-    def request(self, url, method="GET", body=None):
+    def request(self, url, method="GET", body=None, headers=None):
         data = json.dumps(body).encode() if body is not None else None
-        request = urllib.request.Request(url, data=data, method=method)
+        request = urllib.request.Request(url, data=data, method=method, headers=headers or {})
         if data is not None:
             request.add_header("Content-Type", "application/json")
         try:
@@ -116,8 +116,8 @@ class Browser:
         except urllib.error.HTTPError as error:
             return error.code, dict(error.headers), error.read().decode("utf-8", "replace")
 
-    def api(self, path, method="GET", body=None):
-        status, headers, text = self.request(required_env("E2E_BASE_URL") + path, method, body)
+    def api(self, path, method="GET", body=None, headers=None):
+        status, _, text = self.request(required_env("E2E_BASE_URL") + path, method, body, headers)
         return status, (json.loads(text) if text.strip().startswith(("{", "[")) else text)
 
     def signed_in(self):
@@ -125,9 +125,11 @@ class Browser:
         status, _ = self.api("/api/v1/accounts/me")
         return status == 200
 
-    def sign_in(self, subject, setup_token=None, invite_token=None):
-        """The whole web sign-in as `subject` of the mock identity provider; returns the final `Location`."""
-        body = {"provider": "oidc", "return_to": "/", "client_kind": "web"}
+    def sign_in(self, subject, setup_token=None, invite_token=None, client_kind="web", return_to="/", code_challenge=None):
+        """The whole sign-in as `subject` of the mock identity provider; returns the final `Location`."""
+        body = {"provider": "oidc", "return_to": return_to, "client_kind": client_kind}
+        if code_challenge:
+            body["code_challenge"] = code_challenge
         if setup_token:
             body["setup_token"] = setup_token
         if invite_token:
@@ -159,3 +161,14 @@ def operator_token(ctl, *args):
     values = [line[len("token: "):] for line in result["stdout"].splitlines() if line.startswith("token: ")]
     assert len(values) == 1, f"{args}: stdout has {len(values)} token lines"
     return values[0]
+
+
+def pkce_pair():
+    """A PKCE verifier and its S256 challenge (RFC 7636)."""
+    import base64
+    import hashlib
+    import secrets
+
+    verifier = secrets.token_urlsafe(48)
+    digest = hashlib.sha256(verifier.encode()).digest()
+    return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
