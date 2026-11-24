@@ -21,12 +21,24 @@ HTTP_PORTS = frozenset({8080, 8081, 9090, 9091})
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "DELETE", "HEAD"})
 OPERATOR_COMMANDS = frozenset({"admin", "doctor", "key-check"})
 GOLDEN = "golden"
-# The fixed queries of `db-probe`: each returns one row of integers, named by the keys.
+# The fixed queries of `db-probe`: each returns one row of integers, named by the keys, or (kind `list`) one text of
+# comma-separated values.
+LIST = "list"
 PROBES = {
     # The rows an account has after sign-in: the account, its identity and the rows the lifecycle hooks create.
     "account_rows": (("accounts", "identities", "quota", "account_feeds"),
                      "SELECT (SELECT count(*) FROM accounts), (SELECT count(*) FROM identities), "
                      "(SELECT count(*) FROM quota), (SELECT count(*) FROM account_feeds)"),
+    # The security events the sign-in and session rules write.
+    "audit_events": (("sign_in", "abuse_trip", "refresh_reuse", "session_revoked"),
+                     "SELECT count(*) FILTER (WHERE event = 'sign_in'), count(*) FILTER (WHERE event = 'abuse_trip'), "
+                     "count(*) FILTER (WHERE event = 'refresh_reuse'), count(*) FILTER (WHERE event = 'session_revoked') "
+                     "FROM audit_log"),
+    # The distinct keys of the detail of those events: the audit log holds ids, codes and integers, so a key that
+    # names a secret or a person would show here.
+    "audit_detail_keys": (LIST,
+                          "SELECT coalesce(string_agg(k, ',' ORDER BY k), '') FROM (SELECT DISTINCT jsonb_object_keys(detail) AS k "
+                          "FROM audit_log WHERE detail IS NOT NULL AND jsonb_typeof(detail) = 'object') s"),
 }
 HEADER_NAMES = frozenset({"authorization", "cookie", "content-type", "x-sunnycloud-client", "x-forwarded-for", "x-worker-id"})
 BODY_LIMIT = 4096
@@ -152,6 +164,8 @@ class Actions:
             raise ActionError(400, "bad_request", f"query is one of {sorted(PROBES)}")
         keys, sql = probe
         out = self._checked(self._compose("exec", "-T", "db", "psql", "-U", "postgres", "-d", "sunnycloud", "-At", "-F", ",", "-c", sql))
+        if keys == LIST:
+            return {"values": [v for v in out.strip().split(",") if v]}
         values = out.strip().split(",")
         if len(values) != len(keys) or not all(v.lstrip("-").isdigit() for v in values):
             raise ActionError(500, "probe_failed", f"unexpected probe output: {out.strip()[:200]}")

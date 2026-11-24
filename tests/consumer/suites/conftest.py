@@ -1,13 +1,7 @@
 """Fixtures of the suites that need an install without accounts (the golden snapshot) and leave one behind."""
 import pytest
 
-READY_SECONDS = 90
-
-
-def restore_and_wait(stack_ctl):
-    stack_ctl.call("db-restore", snapshot="golden")
-    status, body = stack_ctl.wait_ready(READY_SECONDS)
-    assert status == 200, f"the stack is not ready after the restore: {body}"
+from stackkit import restore_and_wait
 
 
 @pytest.fixture

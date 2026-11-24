@@ -234,6 +234,70 @@ describe("user selection", () => {
     expect([minted.status, odd.status, closed.status]).toEqual([302, 400, 400]);
   });
 
+  describe("scripted faults of the token endpoint", () => {
+    async function idTokenClaims(fault: string | null): Promise<Record<string, unknown>> {
+      await fetch(`${idp.issuer}/__control/fault`, { method: "POST", body: JSON.stringify({ fault }) });
+      const code = await authorizeCode({ nonce: "nonce-9" });
+      const answer = await (await tokenRequest(code)).json();
+      return JSON.parse(Buffer.from((answer.id_token as string).split(".")[1]!, "base64url").toString("utf8"));
+    }
+
+    test("each fault changes exactly one claim of the next id token and then clears", async () => {
+      // Arrange and Act
+      const nonce = await idTokenClaims("wrong-nonce");
+      const audience = await idTokenClaims("wrong-audience");
+      const issuer = await idTokenClaims("wrong-issuer");
+      const clean = await idTokenClaims(null);
+
+      // Assert
+      expect(nonce.nonce).toBe("nonce-9-tampered");
+      expect(audience.aud).toBe("some-other-client");
+      expect(issuer.iss).toBe("http://evil.example");
+      expect([clean.nonce, clean.aud, clean.iss]).toEqual(["nonce-9", "sunnycloud-acceptance", idp.issuer]);
+    });
+
+    test("a fault applies once", async () => {
+      // Arrange
+      await fetch(`${idp.issuer}/__control/fault`, { method: "POST", body: JSON.stringify({ fault: "wrong-audience" }) });
+
+      // Act
+      await tokenRequest(await authorizeCode({ nonce: "n" }));
+      const state = await (await fetch(`${idp.issuer}/__control/fault`)).json();
+
+      // Assert
+      expect(state.fault).toBeNull();
+    });
+
+    test("the slow fault delays the answer by slowMs and an unknown fault is refused", async () => {
+      // Arrange
+      const slow = await startMockIdp(defaultConfig({ redirectUris: [REDIRECT], slowMs: 300 }));
+      await fetch(`${slow.issuer}/__control/fault`, { method: "POST", body: JSON.stringify({ fault: "slow" }) });
+      const query = new URLSearchParams({
+        response_type: "code",
+        client_id: "sunnycloud-acceptance",
+        redirect_uri: REDIRECT,
+        state: "s",
+        code_challenge: await sha256Base64url(VERIFIER),
+        code_challenge_method: "S256",
+      });
+      const code = new URL((await fetch(`${slow.issuer}/authorize?${query}`, { redirect: "manual" })).headers.get("location") ?? "").searchParams.get("code") ?? "";
+      const started = Date.now();
+
+      // Act
+      const answer = await fetch(`${slow.issuer}/token`, {
+        method: "POST",
+        headers: { authorization: `Basic ${Buffer.from("sunnycloud-acceptance:mock-client-secret").toString("base64")}` },
+        body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT, code_verifier: VERIFIER }),
+      });
+      const elapsed = Date.now() - started;
+      const unknown = await fetch(`${slow.issuer}/__control/fault`, { method: "POST", body: JSON.stringify({ fault: "melt" }) });
+      await slow.stop();
+
+      // Assert
+      expect([answer.status, elapsed >= 280, unknown.status]).toEqual([200, true, 400]);
+    });
+  });
+
   test("the control API refuses an unknown user", async () => {
     // Act
     const response = await fetch(`${idp.issuer}/__control/user`, { method: "POST", body: JSON.stringify({ user: "mallory" }) });

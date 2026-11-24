@@ -1,21 +1,15 @@
-"""AZ-3664 (flow F2) on the stack, the part that needs no scripted provider faults and no test clock: an invite
-sign-in creates a complete account (AC-1), the mobile one-time code (AC-4) and one invite redeemed by two identities
-at once (AC-75). Not here yet: the 12 negative callbacks and the slow provider (AC-2, needs the scripted mock-idp),
-session rules with the test clock (AC-3), the shared limiter and the audit rows (AC-5).
+"""AZ-3664 (flow F2) on the stack, the success paths: an invite sign-in creates a complete account (AC-1), the mobile
+one-time code (AC-4) and one invite redeemed by two identities at once (AC-75). The refusals are in
+`test_negative_callbacks.py` (AC-2), the session rules in `test_session_rules.py` (AC-3), the limiter and the audit
+rows in `test_abuse_and_audit.py` (AC-5).
 """
 import concurrent.futures
-import time
 import urllib.parse
 
-from stackkit import Browser, operator_token, pkce_pair
+from stackkit import Browser, budget, operator_token, pkce_pair
 
 ROUNDS = 20
 MOBILE_RETURN = "/mobile-done"
-# AC-20: 10 failed sign-in steps per client address per minute, a fixed default with no key to change it. Every race
-# round makes one loser fail, and all the consumer's traffic comes from one address, so the rounds are paced to keep
-# at most FAILED_STEPS_PER_WINDOW inside any one window (a wait for the limiter's own window, not a guess).
-FAILED_STEPS_PER_WINDOW = 9
-WINDOW_SECONDS = 61
 
 
 def is_refused(location):
@@ -90,12 +84,9 @@ def test_one_invite_redeemed_by_two_identities_at_once_makes_exactly_one_account
     # Arrange
     _, admin_id = first_admin(fresh_install)
     failures = []
-    failed_at = []
 
     for round_number in range(ROUNDS):
-        failed_at[:] = [t for t in failed_at if time.monotonic() - t < WINDOW_SECONDS]
-        if len(failed_at) >= FAILED_STEPS_PER_WINDOW:
-            time.sleep(max(0.0, WINDOW_SECONDS - (time.monotonic() - failed_at[0])))
+        budget.spend(1)  # the loser's failed step; see FailureBudget
         invite = invite_for(fresh_install, admin_id)
         before = rows(fresh_install)
         names = [f"race-a-{round_number}", f"race-b-{round_number}"]
@@ -105,7 +96,6 @@ def test_one_invite_redeemed_by_two_identities_at_once_makes_exactly_one_account
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             futures = {name: pool.submit(browsers[name].sign_in, name, None, invite) for name in names}
             locations = {name: future.result() for name, future in futures.items()}
-        failed_at.append(time.monotonic())
         after = rows(fresh_install)
 
         # Assert

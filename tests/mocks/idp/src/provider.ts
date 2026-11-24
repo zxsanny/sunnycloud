@@ -34,11 +34,18 @@ function basicCredentials(header: string | null): { id: string; secret: string }
   return { id: form(decoded.slice(0, colon)), secret: form(decoded.slice(colon + 1)) };
 }
 
+/** Faults of the token endpoint a test can script: the id token of the next exchange is wrong in one way, or the answer is late. */
+const FAULTS = ["wrong-nonce", "wrong-audience", "wrong-issuer", "slow"] as const;
+type Fault = (typeof FAULTS)[number];
+const SLOW_MS = 12_000;
+
 /** The request handler of the provider for one issuer. State is in memory: a restart forgets every code. */
 export async function createProvider(config: MockConfig, issuer: string): Promise<(request: Request) => Promise<Response>> {
   const key: SigningKey = await generateSigningKey();
   const codes = new Map<string, PendingCode>();
   let currentUser = config.defaultUser;
+  /** The fault the next token exchange applies (and clears), set through `POST /__control/fault`. */
+  let nextFault: Fault | null = null;
 
   function userNamed(name: string): MockUser | undefined {
     return Object.hasOwn(config.users, name) ? config.users[name] : undefined;
@@ -121,9 +128,12 @@ export async function createProvider(config: MockConfig, issuer: string): Promis
       return tokenError("invalid_grant", "PKCE verification failed");
     }
     const now = Math.floor(Date.now() / 1000);
+    const fault = nextFault;
+    nextFault = null;
+    if (fault === "slow") await new Promise((resolve) => setTimeout(resolve, config.slowMs ?? SLOW_MS));
     const claims: Record<string, unknown> = {
-      iss: issuer,
-      aud: config.clientId,
+      iss: fault === "wrong-issuer" ? "http://evil.example" : issuer,
+      aud: fault === "wrong-audience" ? "some-other-client" : config.clientId,
       sub: pending.user.sub,
       email: pending.user.email,
       email_verified: pending.user.emailVerified,
@@ -131,7 +141,7 @@ export async function createProvider(config: MockConfig, issuer: string): Promis
       iat: now,
       exp: now + config.tokenTtlSeconds,
     };
-    if (pending.nonce !== null) claims.nonce = pending.nonce;
+    if (pending.nonce !== null) claims.nonce = fault === "wrong-nonce" ? `${pending.nonce}-tampered` : pending.nonce;
     return json({
       access_token: Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url"),
       token_type: "Bearer",
@@ -149,6 +159,16 @@ export async function createProvider(config: MockConfig, issuer: string): Promis
     return json({ user: currentUser });
   }
 
+  async function faultControl(request: Request): Promise<Response> {
+    if (request.method === "GET") return json({ fault: nextFault });
+    if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
+    const body = (await request.json()) as { fault?: unknown };
+    if (body.fault === null) nextFault = null;
+    else if (typeof body.fault === "string" && (FAULTS as readonly string[]).includes(body.fault)) nextFault = body.fault as Fault;
+    else return json({ error: `fault is null or one of ${FAULTS.join(", ")}` }, 400);
+    return json({ fault: nextFault });
+  }
+
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const get = request.method === "GET";
@@ -157,6 +177,7 @@ export async function createProvider(config: MockConfig, issuer: string): Promis
     if (get && url.pathname === "/authorize") return authorize(url);
     if (request.method === "POST" && url.pathname === "/token") return token(request);
     if (url.pathname === "/__control/user") return control(request);
+    if (url.pathname === "/__control/fault") return faultControl(request);
     return new Response("not found\n", { status: 404 });
   };
 }

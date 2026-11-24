@@ -149,6 +149,17 @@ class ActionsTest(unittest.TestCase):
         self.assertEqual(raised.exception.status, 400)
         self.assertEqual(len(self.docker.calls), 1)
 
+    def test_db_probe_list_query_returns_its_values(self):
+        # Arrange
+        runner = lambda args: (0, "client_kind,ip\n", "")
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=runner)
+
+        # Act
+        result = actions.db_probe({"query": "audit_detail_keys"})
+
+        # Assert
+        self.assertEqual(result, {"values": ["client_kind", "ip"]})
+
     def test_db_restore_runs_the_reset_script_only_for_the_golden_snapshot(self):
         # Arrange
         actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, "/x/run.sh", run=self.docker)

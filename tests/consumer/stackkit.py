@@ -125,24 +125,35 @@ class Browser:
         status, _ = self.api("/api/v1/accounts/me")
         return status == 200
 
+    def begin(self, provider="oidc", return_to="/", client_kind="web", setup_token=None, invite_token=None,
+              code_challenge=None, headers=None):
+        """`POST login-attempts`: `(status, body)`; 201 carries the provider's `authorization_url`."""
+        body = {"provider": provider, "return_to": return_to, "client_kind": client_kind}
+        for name, value in (("setup_token", setup_token), ("invite_token", invite_token), ("code_challenge", code_challenge)):
+            if value:
+                body[name] = value
+        return self.api("/api/v1/auth/login-attempts", "POST", body, headers)
+
+    @staticmethod
+    def consent(authorization_url, subject):
+        """The user's step at the mock identity provider: the callback URL it redirects to."""
+        hint = ("&" if "?" in authorization_url else "?") + "login_hint=" + subject
+        status, headers, _ = _plain_get(authorization_url + hint)
+        assert status == 302, f"the identity provider answered {status}"
+        return headers["Location"]
+
+    def callback(self, location):
+        """`GET` the callback URL without following the redirect: `(status, Location or "")`."""
+        status, headers, _ = self.request(location)
+        return status, headers.get("Location", "")
+
     def sign_in(self, subject, setup_token=None, invite_token=None, client_kind="web", return_to="/", code_challenge=None):
         """The whole sign-in as `subject` of the mock identity provider; returns the final `Location`."""
-        body = {"provider": "oidc", "return_to": return_to, "client_kind": client_kind}
-        if code_challenge:
-            body["code_challenge"] = code_challenge
-        if setup_token:
-            body["setup_token"] = setup_token
-        if invite_token:
-            body["invite_token"] = invite_token
-        status, started = self.api("/api/v1/auth/login-attempts", "POST", body)
+        status, started = self.begin("oidc", return_to, client_kind, setup_token, invite_token, code_challenge)
         assert status == 201, f"login-attempts answered {status}: {started}"
-        url = started["authorization_url"]
-        hint = ("&" if "?" in url else "?") + "login_hint=" + subject
-        idp_status, idp_headers, _ = _plain_get(url + hint)
-        assert idp_status == 302, f"the identity provider answered {idp_status}"
-        status, headers, _ = self.request(idp_headers["Location"])
+        status, location = self.callback(self.consent(started["authorization_url"], subject))
         assert status == 302, f"the callback answered {status}"
-        return headers["Location"]
+        return location
 
 
 def _plain_get(url):
@@ -172,3 +183,55 @@ def pkce_pair():
     verifier = secrets.token_urlsafe(48)
     digest = hashlib.sha256(verifier.encode()).digest()
     return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+class FailureBudget:
+    """The sign-in limit (AC-20): 10 failed steps per client address per minute, fixed. All the consumer's traffic is
+    one address, so a test that makes failed steps asks first; this waits for the limiter's own window when the
+    budget is used up. A restore of the golden snapshot restarts the api and so resets the limiter."""
+
+    PER_WINDOW = 9
+    WINDOW_SECONDS = 61
+
+    def __init__(self):
+        self._spent = []
+
+    def reset(self):
+        self._spent.clear()
+
+    def spend(self, count=1):
+        while True:
+            now = time.monotonic()
+            self._spent = [t for t in self._spent if now - t < self.WINDOW_SECONDS]
+            if len(self._spent) + count <= self.PER_WINDOW:
+                self._spent.extend([now] * count)
+                return
+            time.sleep(max(0.5, self.WINDOW_SECONDS - (now - self._spent[0])))
+
+
+budget = FailureBudget()
+READY_SECONDS = 90
+
+
+def restore_and_wait(ctl):
+    """The stack back to the golden snapshot (no accounts), ready for requests."""
+    ctl.call("db-restore", snapshot="golden")
+    status, body = ctl.wait_ready(READY_SECONDS)
+    assert status == 200, f"the stack is not ready after the restore: {body}"
+    budget.reset()
+
+
+def advance_clock(ctl, seconds):
+    """Moves the server's test clock (the `:9091` listener of the test image) and returns the new offset."""
+    answer = ctl.internal(9091, "/test/clock", method="POST", headers={"Content-Type": "application/json"},
+                          body=json.dumps({"advance_seconds": seconds}))
+    assert answer["status"] == 200, answer
+    return json.loads(answer["body"])["offset_seconds"]
+
+
+def idp_fault(fault):
+    """Scripts the mock identity provider's next token exchange (`None` clears it)."""
+    request = urllib.request.Request(required_env("E2E_IDP_URL") + "/__control/fault",
+                                     data=json.dumps({"fault": fault}).encode(), method="POST")
+    with urllib.request.urlopen(request, timeout=10) as answer:
+        assert answer.status == 200

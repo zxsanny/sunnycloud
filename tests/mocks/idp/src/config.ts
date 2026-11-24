@@ -23,6 +23,8 @@ export interface MockConfig {
   acceptAnyHint: boolean;
   /** The user the authorization endpoint approves unless `login_hint` or the control API says otherwise. */
   defaultUser: string;
+  /** How long the `slow` fault delays the token answer; the default is 12 s, past the server's 10 s provider timeout. */
+  slowMs?: number;
   codeTtlMs: number;
   tokenTtlSeconds: number;
 }

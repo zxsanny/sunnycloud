@@ -298,7 +298,7 @@ services:
       MOCK_IDP_REDIRECT_URIS: https://sunnycloud.test/api/v1/auth/providers/oidc/callback
       # A plain login_hint becomes a new verified user, so a race test can mint one identity per round.
       MOCK_IDP_ACCEPT_ANY_HINT: "1"
-      MOCK_IDP_USERS: '{"alice":{"sub":"mock-alice","email":"alice@e2e.test","emailVerified":true,"name":"Alice Admin"},"bob":{"sub":"mock-bob","email":"bob@e2e.test","emailVerified":true,"name":"Bob Builder"},"dev-seed-admin":{"sub":"dev-seed-admin","email":"admin@seed.test","emailVerified":true,"name":"Seed Admin"},"dev-seed-user-1":{"sub":"dev-seed-user-1","email":"u1@seed.test","emailVerified":true,"name":"Seed One"},"dev-seed-user-2":{"sub":"dev-seed-user-2","email":"u2@seed.test","emailVerified":true,"name":"Seed Two"}}'
+      MOCK_IDP_USERS: '{"alice":{"sub":"mock-alice","email":"alice@e2e.test","emailVerified":true,"name":"Alice Admin"},"bob":{"sub":"mock-bob","email":"bob@e2e.test","emailVerified":true,"name":"Bob Builder"},"mallory":{"sub":"mock-mallory","email":"alice@e2e.test","emailVerified":false,"name":"Mallory"},"dev-seed-admin":{"sub":"dev-seed-admin","email":"admin@seed.test","emailVerified":true,"name":"Seed Admin"},"dev-seed-user-1":{"sub":"dev-seed-user-1","email":"u1@seed.test","emailVerified":true,"name":"Seed One"},"dev-seed-user-2":{"sub":"dev-seed-user-2","email":"u2@seed.test","emailVerified":true,"name":"Seed Two"}}'
     secrets: [provider_oidc_client_secret]
     networks:
       client-net: { aliases: [idp.test] }
