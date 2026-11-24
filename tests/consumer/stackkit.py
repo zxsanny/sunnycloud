@@ -106,21 +106,27 @@ class Browser:
         self.jar = http.cookiejar.CookieJar()
         self._opener = urllib.request.build_opener(_NoRedirect, urllib.request.HTTPCookieProcessor(self.jar))
 
-    def request(self, url, method="GET", body=None, headers=None):
-        """`body` is bytes (sent as is, octet-stream) or a JSON-able value."""
+    def request(self, url, method="GET", body=None, headers=None, raw=False):
+        """`body` is bytes (sent as is, octet-stream) or a JSON-able value. `raw` returns the answer's bytes, not text."""
         data = body if isinstance(body, bytes) else json.dumps(body).encode() if body is not None else None
         request = urllib.request.Request(url, data=data, method=method, headers=headers or {})
         if data is not None and "Content-Type" not in request.headers:
             request.add_header("Content-Type", "application/octet-stream" if isinstance(body, bytes) else "application/json")
         try:
             with self._opener.open(request, timeout=15) as answer:
-                return answer.status, dict(answer.headers), answer.read().decode("utf-8", "replace")
+                data = answer.read()
+                return answer.status, dict(answer.headers), data if raw else data.decode("utf-8", "replace")
         except urllib.error.HTTPError as error:
-            return error.code, dict(error.headers), error.read().decode("utf-8", "replace")
+            data = error.read()
+            return error.code, dict(error.headers), data if raw else data.decode("utf-8", "replace")
 
     def api(self, path, method="GET", body=None, headers=None):
         status, _, text = self.request(required_env("E2E_BASE_URL") + path, method, body, headers)
         return status, (json.loads(text) if text.strip().startswith(("{", "[")) else text)
+
+    def fetch(self, path, headers=None):
+        """`GET` of a file route: `(status, headers, bytes)`."""
+        return self.request(required_env("E2E_BASE_URL") + path, "GET", None, headers, raw=True)
 
     def signed_in(self):
         """The cookies the browser holds authenticate the next request (the one that names the account)."""

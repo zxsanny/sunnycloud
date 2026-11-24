@@ -28,6 +28,7 @@ usage() {
   cat <<USAGE
 usage: tests/run.sh --profile <name> [--keep]
        tests/run.sh reset
+       tests/run.sh rerun <pytest arguments>
        tests/run.sh down
        tests/run.sh --help
 
@@ -37,10 +38,11 @@ profiles: ${KNOWN_PROFILES// /, }
   the others have no services yet and refuse to run ("not available yet"): they never report a pass
 
   --keep   leave the stack up after the run (needed for 'reset'); remove it with 'down'
+  rerun    rebuild the consumer image and run pytest with the given arguments against the kept stack (no start, no teardown)
   reset    stop api, worker and the database, restore the database and blob volumes from the golden snapshot taken after 'up', start them (< ${RESET_BUDGET_SECONDS} s)
   down     tear down the stack, the ctl stub and the generated secrets
 
-environment: E2E_KEEP_ON_FAILURE=1 leaves the stack up when the run fails (read the logs, then 'down'); SEED_FAIL=1 adds one failing self-test (proves that a FAIL fails the run); E2E_CTL_PORT (default 8088)
+environment: E2E_PYTEST_ARGS narrows the consumer run (e.g. "suites/media"); E2E_KEEP_ON_FAILURE=1 leaves the stack up when the run fails (read the logs, then 'down'); SEED_FAIL=1 adds one failing self-test (proves that a FAIL fails the run); E2E_CTL_PORT (default 8088)
 results: e2e-results/report.csv, metrics.json, not-run.csv, ctl-audit.log
 USAGE
 }
@@ -128,6 +130,20 @@ teardown() {
 
 cmd_down() { teardown; }
 
+# Rebuilds the consumer image and runs pytest (the given arguments) against the kept stack: no stack start, no teardown.
+cmd_rerun() {
+  load_state
+  export E2E_PROFILE=core E2E_UID="$(id -u)" E2E_GID="$(id -g)"
+  local gateway db_addr rc=0
+  dc build consumer
+  gateway="$(docker network inspect -f '{{(index .IPAM.Config 0).Gateway}}' "${PROJECT}_ctl-net")"
+  db_addr="$(docker inspect -f "{{(index .NetworkSettings.Networks \"${PROJECT}_backend\").IPAddress}}" "$(db_container)")"
+  dc rm --force consumer
+  dc run --rm --no-deps -T -e "E2E_CTL_URL=http://$gateway:$CTL_PORT" -e "E2E_DB_ADDR=$db_addr" consumer pytest -v --tb=short -p e2e_report "$@" || rc=$?
+  [[ -f "$RESULTS/report.csv" ]] && cat "$RESULTS/report.csv"
+  return "$rc"
+}
+
 export_root_certificate() { # Caddy's internal CA root: the consumer trusts it (SSL_CERT_FILE) and nothing else
   local out="$RESULTS/certs"
   mkdir -p "$out"
@@ -172,12 +188,18 @@ run_core() {
 
   E2E_SECRETS_DIR="$(generate_secrets)"
   export E2E_SECRETS_DIR E2E_PROFILE=core E2E_UID="$(id -u)" E2E_GID="$(id -g)"
+  E2E_BUILD_TIMESTAMP="$(git -C "$ROOT" log -1 --format=%ct)"
+  E2E_BUILD_DATE="$(date -u -d "@$E2E_BUILD_TIMESTAMP" +%Y%m%d)"
+  export E2E_BUILD_TIMESTAMP E2E_BUILD_DATE
   printf 'E2E_SECRETS_DIR=%q\n' "$E2E_SECRETS_DIR" > "$STATE_FILE"
   log "generated secrets in $E2E_SECRETS_DIR (deleted at teardown)"
   trap 'status=$?; if [[ "${KEEP_STACK:-0}" == 1 || ( "${E2E_KEEP_ON_FAILURE:-0}" == 1 && $status -ne 0 ) ]]; then log "stack kept up; remove with: tests/run.sh down"; else teardown; fi' EXIT
 
   log "building the images (api and worker test images, decoder, mock identity provider, consumer)"
   dc build api worker decoder-interactive mock-idp consumer
+  log "media fixtures for the media suites ($RESULTS/media)"
+  command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null || die "ffmpeg and ffprobe are required on the host (media fixtures)"
+  python3 -B "$ROOT/tests/tools/gen_media.py" "$RESULTS/media"
   log "starting the database (role init script runs on the empty data directory)"
   dc up -d db
   wait_db_healthy
@@ -210,7 +232,10 @@ run_core() {
 
   log "running the consumer: pytest -v --tb=short -p e2e_report (SEED_FAIL=${SEED_FAIL:-0})"
   dc rm --force consumer
-  dc run --rm --no-deps -T -e "E2E_CTL_URL=http://$gateway:$CTL_PORT" -e "E2E_DB_ADDR=$db_addr" consumer || rc=$?
+  # E2E_PYTEST_ARGS narrows a run (for example "suites/media"); empty runs everything.
+  # shellcheck disable=SC2086
+  dc run --rm --no-deps -T -e "E2E_CTL_URL=http://$gateway:$CTL_PORT" -e "E2E_DB_ADDR=$db_addr" consumer \
+    pytest -v --tb=short -p e2e_report ${E2E_PYTEST_ARGS:-} || rc=$?
   log "consumer exit code: $rc"
 
   log "results in $RESULTS:"
@@ -224,6 +249,7 @@ main() {
   case "${1:-}" in
     -h|--help|help) usage; exit 0 ;;
     reset) [[ $# -eq 1 ]] || { usage >&2; exit 2; }; cmd_reset ;;
+    rerun) shift; cmd_rerun "$@" ;;
     down) [[ $# -eq 1 ]] || { usage >&2; exit 2; }; cmd_down ;;
     --profile)
       [[ $# -ge 2 ]] || { usage >&2; exit 2; }

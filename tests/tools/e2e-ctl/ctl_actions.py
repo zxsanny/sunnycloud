@@ -46,6 +46,24 @@ PROBES = {
                    "(SELECT count(*) FROM blobs), (SELECT count(*) FROM blob_gc), (SELECT count(*) FROM upload_sessions), "
                    "(SELECT count(*) FROM share_links), (SELECT count(*) FROM jobs), (SELECT count(*) FROM derived), "
                    "(SELECT count(*) FROM quota), (SELECT count(*) FROM account_feeds), (SELECT count(*) FROM login_codes)"),
+    # The media pipeline (AZ-3661): job states and outcomes, derived rows by kind, blobs that nothing refers to (neither a
+    # revision nor a derived row: a surplus derived blob), and the supervisor's own status rows.
+    "media_jobs": (("queued", "running", "derived", "skipped_compliant", "obsolete", "dead"),
+                   "SELECT count(*) FILTER (WHERE status = 'queued'), count(*) FILTER (WHERE status = 'running'), "
+                   "count(*) FILTER (WHERE status = 'succeeded' AND outcome = 'derived'), "
+                   "count(*) FILTER (WHERE status = 'succeeded' AND outcome = 'skipped_compliant'), "
+                   "count(*) FILTER (WHERE status = 'succeeded' AND outcome = 'obsolete'), "
+                   "count(*) FILTER (WHERE status = 'dead') FROM jobs"),
+    "job_attempts": (("most",), "SELECT coalesce(max(attempts), 0) FROM jobs"),
+    "derived_rows": (("thumb", "preview", "transcode", "total"),
+                     "SELECT count(*) FILTER (WHERE kind = 'thumb'), count(*) FILTER (WHERE kind = 'preview'), "
+                     "count(*) FILTER (WHERE kind = 'transcode'), count(*) FROM derived"),
+    "blob_refs": (("blobs", "committed", "unreferenced"),
+                  "SELECT count(*), count(*) FILTER (WHERE state = 'committed'), count(*) FILTER (WHERE state = 'committed' AND "
+                  "NOT EXISTS (SELECT 1 FROM revisions r WHERE r.blob_id = blobs.id) AND "
+                  "NOT EXISTS (SELECT 1 FROM derived d WHERE d.blob_id = blobs.id)) FROM blobs"),
+    "worker_status": (("workers", "decoder_ok"),
+                      "SELECT count(*), count(*) FILTER (WHERE decoder_ok) FROM worker_status"),
     "account_states": (("active", "deleting"),
                        "SELECT count(*) FILTER (WHERE state = 'active'), count(*) FILTER (WHERE state = 'deleting') FROM accounts"),
     # What a share link row stores: the column names show a token hash and no token.
@@ -59,6 +77,9 @@ PROBES = {
                           "FROM audit_log WHERE detail IS NOT NULL AND jsonb_typeof(detail) = 'object') s"),
 }
 KILLABLE = frozenset({"api", "worker"})
+PAUSABLE = frozenset({"decoder-interactive", "decoder-general"})
+INSPECTABLE = frozenset({"api", "worker", "decoder-interactive", "decoder-general"})
+SCRATCH_LANES = frozenset({"interactive", "general"})
 HEADER_NAMES = frozenset({"authorization", "cookie", "content-type", "x-sunnycloud-client", "x-forwarded-for", "x-worker-id"})
 BODY_LIMIT = 4096
 REQUEST_TIMEOUT_SECONDS = 10
@@ -110,6 +131,7 @@ class Actions:
             "db-outage": self.db_outage,
             "db-probe": self.db_probe,
             "process-kill": self.process_kill,
+            "inspect": self.inspect,
             "db-restore": self.db_restore,
             "exec-operator": self.exec_operator,
             "interrupted-upgrade": self.interrupted_upgrade,
@@ -179,14 +201,35 @@ class Actions:
         raise ActionError(504, "db_not_healthy", f"the database was not healthy within {DB_HEALTHY_TIMEOUT_SECONDS} s")
 
     def process_kill(self, params):
+        """`kill` (SIGKILL) or `start` an api or worker; `pause` or `unpause` a decoder (the container is frozen, so a job
+        that is being decoded stays in the decoder and the supervisor waits: a deterministic "during decoding")."""
         service, op = params.get("service"), params.get("op")
-        if service not in KILLABLE or op not in ("kill", "start"):
-            raise ActionError(400, "bad_request", f"service is one of {sorted(KILLABLE)}, op is `kill` or `start`")
+        if not ((service in KILLABLE and op in ("kill", "start")) or (service in PAUSABLE and op in ("pause", "unpause"))):
+            raise ActionError(400, "bad_request", f"`kill` or `start` for {sorted(KILLABLE)}, `pause` or `unpause` for {sorted(PAUSABLE)}")
         if op == "kill":
             self._checked(self._compose("kill", "-s", "KILL", service))
         else:
-            self._checked(self._compose("start", service))
+            self._checked(self._compose(op, service))
         return {"service": service, "op": op}
+
+    def inspect(self, params):
+        """`{"service"}`: the container's state, start time and restart count (a hostile-class decoder exit shows as a new
+        start time). `{"scratch": "interactive"|"general"}`: the top-level names in that decoder scratch volume, listed
+        by a throwaway container with the volume read-only (the isolation check of AC-71: nothing left after a job)."""
+        if params.get("scratch") is not None:
+            lane = params["scratch"]
+            if lane not in SCRATCH_LANES:
+                raise ActionError(400, "bad_request", f"scratch is one of {sorted(SCRATCH_LANES)}")
+            image = self._checked(["docker", "inspect", "-f", "{{.Config.Image}}", self._container("db")]).strip()
+            listing = self._checked(["docker", "run", "--rm", "--network", "none", "-v", f"{self.project}_scratch_{lane}:/s:ro",
+                                     "--entrypoint", "ls", image, "-A", "/s"])
+            return {"entries": [name for name in listing.split("\n") if name]}
+        service = params.get("service")
+        if service not in INSPECTABLE:
+            raise ActionError(400, "bad_request", f"service is one of {sorted(INSPECTABLE)}")
+        template = "{{.State.Status}}|{{.State.StartedAt}}|{{.RestartCount}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}"
+        status, started_at, restarts, health = self._checked(["docker", "inspect", "-f", template, self._container(service)]).strip().split("|")
+        return {"status": status, "started_at": started_at, "restart_count": int(restarts), "health": health}
 
     def db_probe(self, params):
         probe = PROBES.get(params.get("query"))

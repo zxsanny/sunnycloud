@@ -88,13 +88,26 @@ image, AZ-3835 AC-2) and IT-11-17 (readiness through a database outage and a pen
 listeners Caddy does not route (`:8081`, `:9090`, `:9091`) through the ctl action `internal-http` (`stackkit.py`).
 The release-image leg of IT-11-9 is not run: the stack carries the test image only (see the leftover of AZ-3835).
 
+`suites/media/` (AZ-3661, flow F10): `test_media_pipeline.py` commits a JPEG with EXIF orientation 6, three clips (above the
+bitrate limit, compliant with the index first, compliant with the index last), a truncated HEIC and an SVG named `.png`, and
+reads what the real supervisor and decoders made of them through the thumbnail, transcode and thumbnail-states routes and
+`doctor`. `test_worker_crash.py` (AC-71) freezes both decoders (`process-kill pause`), kills the supervisor while a job is
+in a decoder, starts it again, moves the test clock past the 10 s lease and counts what is left: one row per derived kind,
+no unreferenced blob after the derived janitor, empty scratch volumes. NOT-RUN: a hostile-class decoder exit (needs the
+decoder test image), and the supervisor kill during the input fetch and during the output post (no hold on those phases).
+The files come from `tests/tools/gen_media.py`, which `run.sh` runs with the host's `ffmpeg` into `e2e-results/media`.
+`tests/run.sh rerun <pytest args>` runs the consumer against a kept stack without starting or stopping it; a change in
+`tests/tools/e2e-ctl/` needs a new stack (the ctl process is started once).
+
 ## e2e-ctl
 
 `tests/tools/e2e-ctl/e2e_ctl.py`, Python stdlib only. `POST /v1/actions/<name>` with `Authorization: Bearer <token>` and a
 JSON body of parameters. Implemented (`ctl_actions.py`): `internal-http` (one HTTP request to a listener of the api on the
 backend network; `auth: "worker"` adds the worker bearer, which never leaves ctl), `db-outage` (`op` `stop` or `start`,
 start waits for a healthy database), `interrupted-upgrade` (`op` `revert` with `steps`, or `apply`, through the product's
-own `migrate`). The audit line names the action and status, never the body.
+own `migrate`), `process-kill` (`kill` or `start` of the api or the worker, `pause` or `unpause` of a decoder), `inspect` (a
+container's state, start time and restart count, or the top-level names in a decoder scratch volume), `db-probe` (fixed
+queries, among them the media jobs and derived rows). The audit line names the action and status, never the body.
 Typed JSON errors `{"error": {"code", "message", "action"}}`: `not_implemented` (501) for every other action in `actions.json`,
 `unauthorized` (401) without or with a wrong token, `unknown_action` / `not_found` (404), `method_not_allowed` (405). The
 audit line is written before the response. A wildcard bind address is refused.

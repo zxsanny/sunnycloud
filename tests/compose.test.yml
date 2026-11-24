@@ -72,6 +72,9 @@ x-sunnycloud-env: &sunnycloud-env
   SUNNYCLOUD_PHOTO_JOB_TIMEOUT: 10s
   SUNNYCLOUD_VIDEO_JOB_TIMEOUT: 60s
   SUNNYCLOUD_SCRUB_INTERVAL: 10s
+  SUNNYCLOUD_DERIVED_JANITOR_INTERVAL: 5s
+  SUNNYCLOUD_JOB_REAP_INTERVAL: 2s
+  SUNNYCLOUD_JOB_RETRY_BACKOFF: 1s
 
 # The test image: the same build as the release image plus the clock control (features test-clock).
 x-api-image: &api-image
@@ -92,6 +95,9 @@ x-decoder-image: &decoder-image
     args:
       VERSION: e2e
       REVISION: ${REVISION:-e2e}
+      # The commit time of the tree under test: the operator's "image age" is then a few days, not 1970.
+      BUILD_TIMESTAMP: ${E2E_BUILD_TIMESTAMP:-1}
+      BUILD_DATE: ${E2E_BUILD_DATE:-19700101}
   image: sunnycloud-decoder:e2e
 
 services:
@@ -248,13 +254,17 @@ services:
   decoder-interactive:
     <<: [*decoder-image, *hardened]
     profiles: [core]
+    # The worker names a job's folder by its own path, so the decoder mounts the volume at the same path (a job_dir
+    # outside the decoder's scratch root is refused).
+    environment:
+      SUNNYCLOUD_DECODER_SCRATCH_ROOT: /scratch-interactive
     network_mode: none
     read_only: true
     user: "10003:10003"
     security_opt: ["no-new-privileges:true", "seccomp=../deploy/seccomp/decoder.json"]
     volumes:
       - sock_interactive:/run/decoder
-      - scratch_interactive:/scratch
+      - scratch_interactive:/scratch-interactive
     cpus: 2
     mem_limit: 2g
     memswap_limit: 2g
@@ -268,13 +278,15 @@ services:
   decoder-general:
     <<: [*decoder-image, *hardened]
     profiles: [core]
+    environment:
+      SUNNYCLOUD_DECODER_SCRATCH_ROOT: /scratch-general
     network_mode: none
     read_only: true
     user: "10003:10003"
     security_opt: ["no-new-privileges:true", "seccomp=../deploy/seccomp/decoder.json"]
     volumes:
       - sock_general:/run/decoder
-      - scratch_general:/scratch
+      - scratch_general:/scratch-general
     cpus: ${WORKER_CPUS:-2}
     mem_limit: ${WORKER_MEM:-4g}
     memswap_limit: ${WORKER_MEM:-4g}

@@ -1,7 +1,7 @@
 //! The per-job scratch tree shared with the untrusted decoder (09 section 2, Scratch).
 //!
 //! `<root>/<job_id>/` holds `in/` (the supervisor writes `source`, mode 0440) and `out/` (the decoder writes
-//! `result.<ext>`). The tree is group `decoder_gid` with no world bits, and is removed on every exit path,
+//! `result.<ext>`); the decoder also makes and removes `work/` beside them. The tree is group `decoder_gid` with no world bits, and is removed on every exit path,
 //! drop included. Everything the decoder can write is hostile input: see [`ScratchDir::open_output`].
 
 mod resolve;
@@ -23,7 +23,8 @@ const IN_DIR: &str = "in";
 const OUT_DIR: &str = "out";
 const SOURCE: &str = "source";
 
-const JOB_DIR_MODE: u32 = 0o750;
+/// Group-writable: the decoder creates and removes `work/` next to `in/` and `out/` (10 description, `job_dir`).
+const JOB_DIR_MODE: u32 = 0o770;
 const IN_DIR_MODE: u32 = 0o750;
 const OUT_DIR_MODE: u32 = 0o770;
 const SOURCE_MODE: u32 = 0o440;

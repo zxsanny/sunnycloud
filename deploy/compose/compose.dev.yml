@@ -197,13 +197,17 @@ services:
 
   decoder-interactive:
     <<: [*decoder-image, *hardened]
+    # The worker names a job's folder by its own path, so the decoder mounts the volume at the same path (a job_dir
+    # outside the decoder's scratch root is refused).
+    environment:
+      SUNNYCLOUD_DECODER_SCRATCH_ROOT: /scratch-interactive
     network_mode: none
     read_only: true
     user: "10003:10003"
     security_opt: ["no-new-privileges:true", "seccomp=../seccomp/decoder.json"]
     volumes:
       - sock_interactive:/run/decoder
-      - scratch_interactive:/scratch
+      - scratch_interactive:/scratch-interactive
     cpus: 2
     mem_limit: 2g
     memswap_limit: 2g
@@ -216,13 +220,15 @@ services:
 
   decoder-general:
     <<: [*decoder-image, *hardened]
+    environment:
+      SUNNYCLOUD_DECODER_SCRATCH_ROOT: /scratch-general
     network_mode: none
     read_only: true
     user: "10003:10003"
     security_opt: ["no-new-privileges:true", "seccomp=../seccomp/decoder.json"]
     volumes:
       - sock_general:/run/decoder
-      - scratch_general_dev:/scratch
+      - scratch_general_dev:/scratch-general
     cpus: ${WORKER_CPUS:-2}
     mem_limit: ${WORKER_MEM:-4g}
     memswap_limit: ${WORKER_MEM:-4g}

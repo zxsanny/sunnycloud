@@ -1,5 +1,6 @@
-//! AZ-3654 AC-5, AZ-3664 AC-6, AZ-3662 AC-5 and AZ-3665 AC-5: every operation of the first-run flow (F1), the sign-in
-//! flow (F2), the share-link flow (F11) and the account-deletion flow (F13) has a production caller, and the abuse limiter is built once. The search covers the non-test sources of the workspace;
+//! AZ-3654 AC-5, AZ-3664 AC-6, AZ-3662 AC-5, AZ-3665 AC-5 and AZ-3661 AC-5: every operation of the first-run flow (F1),
+//! the sign-in flow (F2), the share-link flow (F11), the account-deletion flow (F13) and the media flow (F10) has a
+//! production caller, and the abuse limiter is built once. The search covers the non-test sources of the workspace;
 //! a caller that exists only in a test (a `tests` directory or `tests.rs`) does not count.
 
 use std::fs;
@@ -168,6 +169,57 @@ const DELETION: [(&str, &str, &str); 6] = [
     ),
 ];
 
+/// The media flow (F10, second half): the worker route stores outputs through 08, 02's listing and 11's routes read the
+/// derived state and files through 03, 12 schedules the derived janitor, and the supervisor's `main` builds the slot loop
+/// with the real API client and the real decoder client.
+const MEDIA: [(&str, &str, &str); 9] = [
+    (
+        "WorkerJobs::accept_output (internal route)",
+        ".accept_output(",
+        "components/11_http_api/src/registry/worker",
+    ),
+    (
+        "DerivedStore::accept_output (from WorkerJobs)",
+        ".accept_output(",
+        "components/08_media_jobs/src",
+    ),
+    (
+        "ThumbnailStateSource::states (02 listing)",
+        ".states(",
+        "components/02_tree/src",
+    ),
+    (
+        "ThumbnailStateSource::states (11 route)",
+        ".states(",
+        "components/11_http_api/src/registry/media",
+    ),
+    (
+        "DerivedOpener::open_derived (thumbnail and transcode routes)",
+        ".open_derived(",
+        "components/11_http_api/src/registry/media",
+    ),
+    (
+        "DerivedOpener::open_derived_for (share thumbnail)",
+        ".open_derived_for(",
+        "components/11_http_api/src/registry/sharing",
+    ),
+    (
+        "DownloadService::open_blob_content (thumbnail and transcode routes)",
+        ".open_blob_content(",
+        "components/11_http_api/src/registry/media",
+    ),
+    (
+        "DerivedJanitor on the scheduler",
+        "DerivedJanitor::new(",
+        "server/src/root",
+    ),
+    (
+        "the supervisor's slot loop with the real API client",
+        "WorkerApiClient::new(",
+        "worker/src",
+    ),
+];
+
 fn production_sources(dir: &Path, found: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).unwrap_or_else(|error| panic!("read {}: {error}", dir.display()))
     {
@@ -239,6 +291,35 @@ fn every_operation_of_the_account_deletion_flow_has_a_production_caller() {
 
     // Assert
     assert!(missing.is_empty(), "no production caller for {missing:?}");
+}
+
+#[test]
+fn every_operation_of_the_media_flow_has_a_production_caller() {
+    // Arrange and Act
+    let missing = missing_callers(&MEDIA);
+
+    // Assert
+    assert!(missing.is_empty(), "no production caller for {missing:?}");
+}
+
+#[test]
+fn the_supervisor_main_runs_the_worker_and_the_worker_builds_slot_loops_over_real_decoder_slots() {
+    // Arrange
+    let worker = Path::new(env!("CARGO_MANIFEST_DIR")).join("../worker/src");
+    let read = |name: &str| {
+        fs::read_to_string(worker.join(name)).unwrap_or_else(|error| panic!("read {name}: {error}"))
+    };
+
+    // Act
+    let (main, compose) = (read("main.rs"), read("compose.rs"));
+
+    // Assert
+    assert!(
+        main.contains("sunnycloud_worker::execute("),
+        "main does not start the worker"
+    );
+    assert!(compose.contains("SlotLoop::new("), "no slot loop is built");
+    assert!(compose.contains("Slot::new("), "no decoder slot is built");
 }
 
 #[test]

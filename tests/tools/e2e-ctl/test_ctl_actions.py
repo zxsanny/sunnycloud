@@ -160,6 +160,45 @@ class ActionsTest(unittest.TestCase):
         # Assert
         self.assertEqual(result, {"values": ["client_kind", "ip"]})
 
+    def test_db_probe_media_queries_return_their_named_counts(self):
+        # Arrange
+        runner = lambda args: (0, "1,0,3,1,0,2\n", "")
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=runner)
+
+        # Act
+        jobs = actions.db_probe({"query": "media_jobs"})
+
+        # Assert
+        self.assertEqual(jobs, {"queued": 1, "running": 0, "derived": 3, "skipped_compliant": 1, "obsolete": 0, "dead": 2})
+
+    def test_inspect_reports_a_container_and_lists_a_scratch_volume_and_refuses_the_rest(self):
+        # Arrange
+        def runner(args):
+            self.docker.calls.append(args)
+            if "ps" in args:
+                return 0, "container-1\n", ""
+            if "inspect" in args and "{{.Config.Image}}" in args:
+                return 0, "postgres:18\n", ""
+            if "inspect" in args:
+                return 0, "running|2026-11-24T14:07:27Z|0|healthy\n", ""
+            return 0, "job-a\njob-b\n", ""
+
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=runner)
+
+        # Act
+        state = actions.inspect({"service": "decoder-interactive"})
+        scratch = actions.inspect({"scratch": "general"})
+        with self.assertRaises(ctl_actions.ActionError) as db:
+            actions.inspect({"service": "db"})
+        with self.assertRaises(ctl_actions.ActionError) as lane:
+            actions.inspect({"scratch": "../etc"})
+
+        # Assert
+        self.assertEqual(state, {"status": "running", "started_at": "2026-11-24T14:07:27Z", "restart_count": 0, "health": "healthy"})
+        self.assertEqual(scratch, {"entries": ["job-a", "job-b"]})
+        self.assertEqual((db.exception.status, lane.exception.status), (400, 400))
+        self.assertIn("proj_scratch_general:/s:ro", self.docker.calls[-1])
+
     def test_process_kill_kills_or_starts_only_the_api_and_the_worker(self):
         # Arrange
         actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=self.docker)
@@ -167,13 +206,17 @@ class ActionsTest(unittest.TestCase):
         # Act
         actions.process_kill({"service": "api", "op": "kill"})
         actions.process_kill({"service": "worker", "op": "start"})
+        actions.process_kill({"service": "decoder-general", "op": "pause"})
         with self.assertRaises(ctl_actions.ActionError):
             actions.process_kill({"service": "db", "op": "kill"})
+        with self.assertRaises(ctl_actions.ActionError):
+            actions.process_kill({"service": "decoder-general", "op": "kill"})
 
         # Assert
         self.assertEqual([c[-4:] for c in self.docker.calls[:1]], [["kill", "-s", "KILL", "api"]])
         self.assertEqual(self.docker.calls[1][-2:], ["start", "worker"])
-        self.assertEqual(len(self.docker.calls), 2)
+        self.assertEqual(self.docker.calls[2][-2:], ["pause", "decoder-general"])
+        self.assertEqual(len(self.docker.calls), 3)
 
     def test_db_restore_runs_the_reset_script_only_for_the_golden_snapshot(self):
         # Arrange

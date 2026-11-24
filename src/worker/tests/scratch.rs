@@ -52,7 +52,7 @@ fn tree_has_the_documented_modes_and_no_world_bits() {
 
     // Assert
     let mode = |path: &Path| fs::metadata(path).expect("metadata").mode() & 0o7777;
-    assert_eq!(mode(job.path()), 0o750);
+    assert_eq!(mode(job.path()), 0o770);
     assert_eq!(mode(&job.path().join("in")), 0o750);
     assert_eq!(mode(&job.path().join("out")), 0o770);
     assert_eq!(mode(&job.source_path()), 0o440);
