@@ -5,6 +5,7 @@ answering `not_implemented` in `e2e_ctl.py`.
     internal-http        one HTTP request from the host to a backend listener of a service of the stack
     db-outage            stop or start the database container
     db-restore           restore the database to the golden snapshot (`tests/run.sh reset`: api and worker restart)
+    process-kill         SIGKILL the api or the worker, or start it again (a crash and its restart)
     db-probe             one of a fixed set of read-only count queries on the database (no free-form SQL)
     exec-operator        run `sunnycloud admin ...`, `doctor` or `key-check` inside the api container
     interrupted-upgrade  revert the latest migrations, or apply the pending ones, with the product's own `migrate`
@@ -31,11 +32,22 @@ PROBES = {
                      "(SELECT count(*) FROM quota), (SELECT count(*) FROM account_feeds)"),
     # The security events the sign-in and session rules write.
     "audit_events": (("sign_in", "abuse_trip", "refresh_reuse", "session_revoked", "share_created", "share_revoked",
-                      "share_accessed"),
+                      "share_accessed", "account_deleted"),
                      "SELECT count(*) FILTER (WHERE event = 'sign_in'), count(*) FILTER (WHERE event = 'abuse_trip'), "
                      "count(*) FILTER (WHERE event = 'refresh_reuse'), count(*) FILTER (WHERE event = 'session_revoked'), "
                      "count(*) FILTER (WHERE event = 'share_created'), count(*) FILTER (WHERE event = 'share_revoked'), "
-                     "count(*) FILTER (WHERE event = 'share_accessed') FROM audit_log"),
+                     "count(*) FILTER (WHERE event = 'share_accessed'), count(*) FILTER (WHERE event = 'account_deleted') "
+                     "FROM audit_log"),
+    # Rows per table that an account's data lives in: after an account is erased none of them keeps a row of it.
+    "table_rows": (("accounts", "identities", "sessions", "device_tokens", "nodes", "revisions", "blobs", "blob_gc",
+                    "upload_sessions", "share_links", "jobs", "derived", "quota", "account_feeds", "login_codes"),
+                   "SELECT (SELECT count(*) FROM accounts), (SELECT count(*) FROM identities), (SELECT count(*) FROM sessions), "
+                   "(SELECT count(*) FROM device_tokens), (SELECT count(*) FROM nodes), (SELECT count(*) FROM revisions), "
+                   "(SELECT count(*) FROM blobs), (SELECT count(*) FROM blob_gc), (SELECT count(*) FROM upload_sessions), "
+                   "(SELECT count(*) FROM share_links), (SELECT count(*) FROM jobs), (SELECT count(*) FROM derived), "
+                   "(SELECT count(*) FROM quota), (SELECT count(*) FROM account_feeds), (SELECT count(*) FROM login_codes)"),
+    "account_states": (("active", "deleting"),
+                       "SELECT count(*) FILTER (WHERE state = 'active'), count(*) FILTER (WHERE state = 'deleting') FROM accounts"),
     # What a share link row stores: the column names show a token hash and no token.
     "share_link_columns": (LIST,
                            "SELECT coalesce(string_agg(column_name, ',' ORDER BY column_name), '') "
@@ -46,6 +58,7 @@ PROBES = {
                           "SELECT coalesce(string_agg(k, ',' ORDER BY k), '') FROM (SELECT DISTINCT jsonb_object_keys(detail) AS k "
                           "FROM audit_log WHERE detail IS NOT NULL AND jsonb_typeof(detail) = 'object') s"),
 }
+KILLABLE = frozenset({"api", "worker"})
 HEADER_NAMES = frozenset({"authorization", "cookie", "content-type", "x-sunnycloud-client", "x-forwarded-for", "x-worker-id"})
 BODY_LIMIT = 4096
 REQUEST_TIMEOUT_SECONDS = 10
@@ -96,6 +109,7 @@ class Actions:
             "internal-http": self.internal_http,
             "db-outage": self.db_outage,
             "db-probe": self.db_probe,
+            "process-kill": self.process_kill,
             "db-restore": self.db_restore,
             "exec-operator": self.exec_operator,
             "interrupted-upgrade": self.interrupted_upgrade,
@@ -163,6 +177,16 @@ class Actions:
                 return {"db": "healthy"}
             self._sleep(POLL_SECONDS)
         raise ActionError(504, "db_not_healthy", f"the database was not healthy within {DB_HEALTHY_TIMEOUT_SECONDS} s")
+
+    def process_kill(self, params):
+        service, op = params.get("service"), params.get("op")
+        if service not in KILLABLE or op not in ("kill", "start"):
+            raise ActionError(400, "bad_request", f"service is one of {sorted(KILLABLE)}, op is `kill` or `start`")
+        if op == "kill":
+            self._checked(self._compose("kill", "-s", "KILL", service))
+        else:
+            self._checked(self._compose("start", service))
+        return {"service": service, "op": op}
 
     def db_probe(self, params):
         probe = PROBES.get(params.get("query"))

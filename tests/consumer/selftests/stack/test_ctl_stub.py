@@ -21,7 +21,7 @@ def audit_lines(path):
 
 
 # Actions with an implementation refuse the empty body `{}` this test sends; the others say `not_implemented`.
-IMPLEMENTED = {"internal-http", "db-outage", "db-probe", "db-restore", "exec-operator", "interrupted-upgrade"}
+IMPLEMENTED = {"internal-http", "db-outage", "db-probe", "db-restore", "process-kill", "exec-operator", "interrupted-upgrade"}
 
 
 def test_every_action_with_the_token_answers_a_typed_error_and_one_audit_line_each(ctl):

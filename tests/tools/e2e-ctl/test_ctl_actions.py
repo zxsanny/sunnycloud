@@ -160,6 +160,21 @@ class ActionsTest(unittest.TestCase):
         # Assert
         self.assertEqual(result, {"values": ["client_kind", "ip"]})
 
+    def test_process_kill_kills_or_starts_only_the_api_and_the_worker(self):
+        # Arrange
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=self.docker)
+
+        # Act
+        actions.process_kill({"service": "api", "op": "kill"})
+        actions.process_kill({"service": "worker", "op": "start"})
+        with self.assertRaises(ctl_actions.ActionError):
+            actions.process_kill({"service": "db", "op": "kill"})
+
+        # Assert
+        self.assertEqual([c[-4:] for c in self.docker.calls[:1]], [["kill", "-s", "KILL", "api"]])
+        self.assertEqual(self.docker.calls[1][-2:], ["start", "worker"])
+        self.assertEqual(len(self.docker.calls), 2)
+
     def test_db_restore_runs_the_reset_script_only_for_the_golden_snapshot(self):
         # Arrange
         actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, "/x/run.sh", run=self.docker)
