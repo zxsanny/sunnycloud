@@ -1,5 +1,5 @@
-//! AZ-3654 AC-5 and AZ-3664 AC-6: every operation of the first-run flow (F1) and of the sign-in flow (F2) has a
-//! production caller, and the abuse limiter is built once. The search covers the non-test sources of the workspace;
+//! AZ-3654 AC-5, AZ-3664 AC-6 and AZ-3662 AC-5: every operation of the first-run flow (F1), the sign-in flow (F2) and
+//! the share-link flow (F11) has a production caller, and the abuse limiter is built once. The search covers the non-test sources of the workspace;
 //! a caller that exists only in a test (a `tests` directory or `tests.rs`) does not count.
 
 use std::fs;
@@ -94,6 +94,45 @@ const SIGN_IN: [(&str, &str, &str); 10] = [
     ("the hook list of 12", "AccountHooks", "server/src/root"),
 ];
 
+/// The share-link flow (F11): the owner routes and the public routes of 11 call 06 and the download service of 03.
+const SHARE_LINKS: [(&str, &str, &str); 7] = [
+    (
+        "ShareService::create",
+        ".create(",
+        "components/11_http_api/src/registry/sharing",
+    ),
+    (
+        "ShareService::list",
+        ".list(",
+        "components/11_http_api/src/registry/sharing",
+    ),
+    (
+        "ShareService::revoke",
+        ".revoke(",
+        "components/11_http_api/src/registry/sharing",
+    ),
+    (
+        "PublicShareService::open",
+        ".open(",
+        "components/11_http_api/src/registry/sharing",
+    ),
+    (
+        "PublicShareService::verify_password",
+        ".verify_password(",
+        "components/11_http_api/src/registry/sharing",
+    ),
+    (
+        "PublicShareService::authorize_content",
+        ".authorize_content(",
+        "components/11_http_api/src/registry/sharing",
+    ),
+    (
+        "DownloadService from the public content route",
+        ".open_revision_content(",
+        "components/11_http_api/src/registry/sharing",
+    ),
+];
+
 fn production_sources(dir: &Path, found: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).unwrap_or_else(|error| panic!("read {}: {error}", dir.display()))
     {
@@ -144,6 +183,15 @@ fn every_operation_of_the_first_run_flow_has_a_production_caller() {
 fn every_operation_of_the_sign_in_flow_has_a_production_caller() {
     // Arrange and Act
     let missing = missing_callers(&SIGN_IN);
+
+    // Assert
+    assert!(missing.is_empty(), "no production caller for {missing:?}");
+}
+
+#[test]
+fn every_operation_of_the_share_link_flow_has_a_production_caller() {
+    // Arrange and Act
+    let missing = missing_callers(&SHARE_LINKS);
 
     // Assert
     assert!(missing.is_empty(), "no production caller for {missing:?}");

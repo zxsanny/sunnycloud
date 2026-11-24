@@ -30,10 +30,16 @@ PROBES = {
                      "SELECT (SELECT count(*) FROM accounts), (SELECT count(*) FROM identities), "
                      "(SELECT count(*) FROM quota), (SELECT count(*) FROM account_feeds)"),
     # The security events the sign-in and session rules write.
-    "audit_events": (("sign_in", "abuse_trip", "refresh_reuse", "session_revoked"),
+    "audit_events": (("sign_in", "abuse_trip", "refresh_reuse", "session_revoked", "share_created", "share_revoked",
+                      "share_accessed"),
                      "SELECT count(*) FILTER (WHERE event = 'sign_in'), count(*) FILTER (WHERE event = 'abuse_trip'), "
-                     "count(*) FILTER (WHERE event = 'refresh_reuse'), count(*) FILTER (WHERE event = 'session_revoked') "
-                     "FROM audit_log"),
+                     "count(*) FILTER (WHERE event = 'refresh_reuse'), count(*) FILTER (WHERE event = 'session_revoked'), "
+                     "count(*) FILTER (WHERE event = 'share_created'), count(*) FILTER (WHERE event = 'share_revoked'), "
+                     "count(*) FILTER (WHERE event = 'share_accessed') FROM audit_log"),
+    # What a share link row stores: the column names show a token hash and no token.
+    "share_link_columns": (LIST,
+                           "SELECT coalesce(string_agg(column_name, ',' ORDER BY column_name), '') "
+                           "FROM information_schema.columns WHERE table_name = 'share_links'"),
     # The distinct keys of the detail of those events: the audit log holds ids, codes and integers, so a key that
     # names a secret or a person would show here.
     "audit_detail_keys": (LIST,

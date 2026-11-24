@@ -8,6 +8,7 @@ import json
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -106,10 +107,11 @@ class Browser:
         self._opener = urllib.request.build_opener(_NoRedirect, urllib.request.HTTPCookieProcessor(self.jar))
 
     def request(self, url, method="GET", body=None, headers=None):
-        data = json.dumps(body).encode() if body is not None else None
+        """`body` is bytes (sent as is, octet-stream) or a JSON-able value."""
+        data = body if isinstance(body, bytes) else json.dumps(body).encode() if body is not None else None
         request = urllib.request.Request(url, data=data, method=method, headers=headers or {})
-        if data is not None:
-            request.add_header("Content-Type", "application/json")
+        if data is not None and "Content-Type" not in request.headers:
+            request.add_header("Content-Type", "application/octet-stream" if isinstance(body, bytes) else "application/json")
         try:
             with self._opener.open(request, timeout=15) as answer:
                 return answer.status, dict(answer.headers), answer.read().decode("utf-8", "replace")
@@ -235,3 +237,83 @@ def idp_fault(fault):
                                      data=json.dumps({"fault": fault}).encode(), method="POST")
     with urllib.request.urlopen(request, timeout=10) as answer:
         assert answer.status == 200
+
+
+PUBLIC_ORIGIN = "https://sunnycloud.test"
+
+
+class Drive:
+    """The files of a signed-in browser: folders, small uploads, edits, renames, moves, deletes. A cookie-authenticated
+    write proves its origin (CSRF), so every call that changes something sends the public origin."""
+
+    def __init__(self, browser):
+        self.browser = browser
+
+    def call(self, path, method="GET", body=None, headers=None):
+        sent = dict(headers or {})
+        if method != "GET":
+            sent.setdefault("Origin", PUBLIC_ORIGIN)
+        return self.browser.api(path, method, body, sent)
+
+    def ok(self, expected, path, method="GET", body=None, headers=None):
+        status, answer = self.call(path, method, body, headers)
+        assert status in (expected if isinstance(expected, tuple) else (expected,)), f"{method} {path}: {status} {answer}"
+        return answer
+
+    def root(self):
+        return self.ok(200, "/api/v1/nodes/root")["node_id"]
+
+    def folder(self, parent_id, name):
+        return self.ok(201, "/api/v1/nodes", "POST", {"parent_id": parent_id, "name": name})["node_id"]
+
+    def upload(self, parent_id, name, data, base_revision=None):
+        """A whole small file: staged, then committed. `base_revision` makes it an edit of that file."""
+        import uuid
+
+        from blake3 import blake3
+
+        assert len(data) <= 2 * 1024 * 1024, "a small upload is one block of at most 2 MiB"
+        staged = str(uuid.uuid4())
+        # The hash of the one block (BLAKE3), in hex: the server checks the bytes against it.
+        self.ok(200, f"/api/v1/staged-uploads/{staged}", "PUT", data, {"X-Blake3": blake3(data).hexdigest()})
+        entry = {"staged_key": staged, "parent_id": parent_id, "name": name}
+        if base_revision:
+            entry["base_revision"] = base_revision
+        answer = self.ok(200, "/api/v1/commits:batch", "POST", {"commit_id": str(uuid.uuid4()), "entries": [entry]})
+        result = answer["entries"][0]
+        assert result["status"] == "committed", result
+        return {"node_id": result["node_id"], "revision_id": result["revision_id"]}
+
+    def rename(self, node_id, name):
+        return self.ok(200, f"/api/v1/nodes/{node_id}", "PATCH", {"name": name})
+
+    def move(self, node_id, parent_id):
+        return self.ok(200, f"/api/v1/nodes/{node_id}", "PATCH", {"parent_id": parent_id})
+
+    def delete(self, node_id):
+        self.ok(204, f"/api/v1/nodes/{node_id}", "DELETE")
+
+
+def device_token(browser):
+    """A desktop client's bearer: the grant of RFC 8628, approved by the signed-in `browser`. Returns the access token."""
+    anonymous = Browser()
+    status, grant = anonymous.api("/api/v1/device-grants", "POST", {"device_name": "e2e-desktop", "platform": "linux"})
+    assert status == 200, grant
+    drive = Drive(browser)
+    info = drive.ok(200, f"/api/v1/device-grants?user_code={urllib.parse.quote(grant['user_code'])}")
+    drive.ok(204, f"/api/v1/device-grants/{info['grant_id']}", "PATCH", {"decision": "approve"})
+    status, token = anonymous.api("/api/v1/device-tokens", "POST", {"device_code": grant["device_code"]})
+    assert status == 200, token
+    return token["access_token"]
+
+
+VOLATILE_HEADERS = {"date", "x-request-id", "request-id", "server-timing", "set-cookie"}
+
+
+def refusal_shape(status, headers, text):
+    """What a refused request looks like to a caller, without what changes per request (id, date)."""
+    body = json.loads(text) if text.strip().startswith("{") else text
+    if isinstance(body, dict):
+        body.pop("request_id", None)
+    kept = {k.lower(): v for k, v in headers.items() if k.lower() not in VOLATILE_HEADERS and k.lower() != "content-length"}
+    return status, kept, body
