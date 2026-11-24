@@ -8,6 +8,7 @@ use sunnycloud_http_api::vault_document as build_document;
 use crate::audit_commands;
 use crate::command_config;
 use crate::commands::{AdminCommand, AuditCommand, Command, ScrubCommand, UserCommand};
+use crate::dev_seed_commands;
 use crate::doctor_command;
 use crate::error::CliError;
 use crate::exit::Exit;
@@ -23,7 +24,8 @@ use crate::scrub_commands;
 use crate::serve;
 use crate::user_commands;
 
-/// The binary's handler. Each command task replaces its `NotImplemented` arm with a call into its own module.
+/// The binary's handler: every command calls into its own module. The match has no catch-all arm, so a command added
+/// to the tree without a handler does not compile.
 pub struct Commands;
 
 impl Handler for Commands {
@@ -99,6 +101,9 @@ impl Handler for Commands {
                         },
                 } => audit_commands::export(since, &call).await,
                 Command::Admin {
+                    command: AdminCommand::DevSeed,
+                } => dev_seed_commands::run(call.services).await,
+                Command::Admin {
                     command: AdminCommand::GcRun,
                 } => maintenance_commands::gc_run(call.services).await,
                 Command::Admin {
@@ -110,7 +115,6 @@ impl Handler for Commands {
                 Command::Scrub {
                     command: ScrubCommand::Status,
                 } => scrub_commands::status(call.services).await,
-                other => Err(CliError::NotImplemented(other.route())),
             }
         })
     }

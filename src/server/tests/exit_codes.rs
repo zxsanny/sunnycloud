@@ -50,19 +50,6 @@ fn outcome_classes_and_failures_map_to_the_documented_codes() {
     );
 }
 
-#[test]
-fn an_unfinished_command_fails_instead_of_pretending() {
-    let result = Harness::new().real_handler().run(&["admin", "dev-seed"]);
-
-    assert_eq!(result.exit, 2);
-    assert!(
-        result.stderr.contains("not implemented"),
-        "{}",
-        result.stderr
-    );
-    assert_eq!(result.stdout, "");
-}
-
 fn parse_one_object(stdout: &str) -> serde_json::Map<String, Value> {
     assert_eq!(stdout.lines().count(), 1, "one line: {stdout:?}");
     assert!(stdout.ends_with('\n'));

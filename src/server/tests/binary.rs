@@ -55,12 +55,3 @@ fn a_destructive_command_without_yes_on_a_closed_stdin_exits_3() {
     assert_eq!(output.status.code(), Some(3));
     assert!(text(&output.stderr).contains("--yes"));
 }
-
-#[test]
-fn a_command_whose_task_has_not_landed_fails_loudly() {
-    let output = sunnycloud(&["admin", "dev-seed"]);
-
-    assert_eq!(output.status.code(), Some(2));
-    assert!(text(&output.stderr).contains("not implemented"));
-    assert!(output.stdout.is_empty());
-}

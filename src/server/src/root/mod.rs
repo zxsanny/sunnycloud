@@ -11,6 +11,7 @@ mod base;
 mod domain;
 mod lists;
 mod media;
+mod seed;
 mod storage;
 #[cfg(feature = "vault")]
 mod vault;
@@ -54,6 +55,7 @@ pub fn register(builder: ContextBuilder, clock: Arc<dyn Clock>) -> ContextBuilde
     let builder = storage::register(builder);
     let builder = domain::register(builder);
     let builder = media::register(builder);
+    let builder = seed::register(builder);
     #[cfg(feature = "vault")]
     let builder = vault::register(builder);
     lists::register(builder)

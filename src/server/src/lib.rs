@@ -10,6 +10,8 @@ mod command_config;
 pub mod commands;
 mod context;
 mod database_check;
+mod dev_seed_commands;
+mod dev_seed_login;
 mod dispatch;
 mod doctor_command;
 mod epoch_check;

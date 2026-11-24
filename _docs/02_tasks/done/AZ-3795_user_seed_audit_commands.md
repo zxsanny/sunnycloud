@@ -112,4 +112,4 @@ The owner-effect parts (quota visible at `GET /accounts/me/quota`, U purged to 0
 | `DevSeed`'s production refusal has no variant name in 07 | E-17 owner | open | Low |
 | The format of `--since` is not stated (`--at` is RFC 3339 UTC; contract open point 7) | E-22 owner | open | Low |
 | 12 §2 names `QuotaAdmin` for `set-quota`, while 12 §3 and 07 name `AdminService::set_quota`; this task calls `AdminService` (one call, audit by 07) | E-22 owner | resolved | Low |
-| AC-4 `admin dev-seed`: `ProviderLogin` has no development implementation until mock-idp exists (AZ-3822 concern) | E-31 owner | open; owner decision 2026-11-17: wait for mock-idp, then add an HTTP `ProviderLogin` and compose the seed's ports | Medium |
+| AC-4 `admin dev-seed`: `ProviderLogin` has no development implementation until mock-idp exists (AZ-3822 concern) | E-31 owner | resolved 2026-11-24: HTTP `ProviderLogin` at the mock IdP, seed ports composed in `root/seed.rs` (batch 113) | Medium |
