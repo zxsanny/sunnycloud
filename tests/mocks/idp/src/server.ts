@@ -6,11 +6,11 @@ export interface RunningIdp {
   stop(): void;
 }
 
-/** Binds 127.0.0.1 only; there is deliberately no way to choose another address. */
+/** Binds 127.0.0.1 unless the config names another address (the isolated test network of the compose stack). */
 export async function startMockIdp(config: MockConfig): Promise<RunningIdp> {
   let handle: ((request: Request) => Promise<Response>) | null = null;
   const server = Bun.serve({
-    hostname: "127.0.0.1",
+    hostname: config.bindHost ?? "127.0.0.1",
     port: config.port,
     fetch: (request) => (handle ? handle(request) : new Response("starting\n", { status: 503 })),
   });

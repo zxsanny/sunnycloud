@@ -1,11 +1,13 @@
 # Black-box test stack (project sunnycloud-e2e), driven by tests/run.sh; do not call it directly: the
 # secrets directory, the results directory and the e2e-ctl gateway come from the script.
 #
-# Skeleton scope (AZ-3742): the `core` profile starts the database and the consumer only. The SUT
-# (proxy, api, worker, decoders), mock-idp, the WAN shaper and the other profiles join with the epics that make
-# them healthy (E-22, E-20, E-19, E-31); services whose sources do not exist yet are not declared.
+# Scope: the `core` profile starts the database, the SUT (Caddy, api test image, worker, the two decoders), the mock
+# identity provider and the consumer. One-shot steps (`migrate`, `keycheck`) are run by tests/run.sh between the
+# database and the rest, so the golden snapshot holds a migrated, key-checked database. Not declared yet: the WAN
+# shaper (needs NET_ADMIN; timing tests run on the reference host), mock-update-server and the other profiles.
 # Canonical service and network names are used (proxy, backend, worker), not the worker-supervisor /
-# proxy-net / backend-net spelling of tests/environment.md.
+# proxy-net / backend-net spelling of tests/environment.md. The names `sunnycloud.test` and `idp.test` resolve on
+# client-net (Caddy and the mock identity provider); the API reaches `idp.test` on backend.
 name: sunnycloud-e2e
 
 secrets:
@@ -13,6 +15,11 @@ secrets:
   db_api_url: { file: "${E2E_SECRETS_DIR}/db_api_url" }
   db_migrator_url: { file: "${E2E_SECRETS_DIR}/db_migrator_url" }
   ctl_token: { file: "${E2E_SECRETS_DIR}/ctl_token" }
+  master_key: { file: "${E2E_SECRETS_DIR}/master_key" }
+  master_key_file: { file: "${E2E_SECRETS_DIR}/master_key_file" }
+  worker_api_token: { file: "${E2E_SECRETS_DIR}/worker_api_token" }
+  share_grant_key: { file: "${E2E_SECRETS_DIR}/share_grant_key" }
+  provider_oidc_client_secret: { file: "${E2E_SECRETS_DIR}/provider_oidc_client_secret" }
 
 networks:
   client-net: {}
@@ -23,6 +30,66 @@ networks:
 
 volumes:
   pgdata: {}
+  blobs: {}
+  caddy_data: {}
+  caddy_config: {}
+  sock_interactive: {}
+  sock_general: {}
+  scratch_interactive:
+    driver_opts: { type: tmpfs, device: tmpfs, o: "size=1g" }
+  scratch_general: {}
+
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  init: true
+
+# The settings of the test installation. Durations are short so that retention, leases and sessions can be
+# exercised in seconds (testing.md: durations come from config).
+x-sunnycloud-env: &sunnycloud-env
+  SUNNYCLOUD_ENVIRONMENT: development
+  SUNNYCLOUD_ALLOW_PLAIN_HTTP_DEV: "true"
+  SUNNYCLOUD_PUBLIC_URL: https://sunnycloud.test
+  SUNNYCLOUD_OIDC_ISSUER: http://idp.test:9000
+  SUNNYCLOUD_OIDC_CLIENT_ID: sunnycloud-e2e
+  SUNNYCLOUD_PROVIDER_OIDC_CLIENT_SECRET_FILE: /run/secrets/provider_oidc_client_secret
+  SUNNYCLOUD_BLOB_ROOT: /var/lib/sunnycloud/blobs
+  SUNNYCLOUD_LOG: json
+  SUNNYCLOUD_RETENTION: 30s
+  SUNNYCLOUD_TOMBSTONE_HORIZON: 60s
+  SUNNYCLOUD_DEVICE_CODE_TTL: 20s
+  SUNNYCLOUD_JOB_LEASE: 10s
+  SUNNYCLOUD_UPLOAD_SESSION_TTL: 60s
+  SUNNYCLOUD_ORPHAN_SWEEP_AGE: 120s
+  SUNNYCLOUD_SHARE_DEFAULT_TTL: 30s
+  SUNNYCLOUD_SHARE_MAX_TTL: 60s
+  SUNNYCLOUD_REFRESH_REUSE_GRACE: 5s
+  SUNNYCLOUD_PROVIDER_TIMEOUT: 2s
+  SUNNYCLOUD_DECODER_STALL_KILL: 5s
+  SUNNYCLOUD_PHOTO_JOB_TIMEOUT: 10s
+  SUNNYCLOUD_VIDEO_JOB_TIMEOUT: 60s
+  SUNNYCLOUD_SCRUB_INTERVAL: 10s
+
+# The test image: the same build as the release image plus the clock control (features test-clock).
+x-api-image: &api-image
+  image: sunnycloud-api:e2e-test
+  build:
+    context: ..
+    dockerfile: deploy/docker/api.Dockerfile
+    args:
+      FEATURES: test-clock
+      TEST_CLOCK: "true"
+      VERSION: e2e
+      REVISION: ${REVISION:-e2e}
+
+x-decoder-image: &decoder-image
+  build:
+    context: ..
+    dockerfile: deploy/docker/decoder.Dockerfile
+    args:
+      VERSION: e2e
+      REVISION: ${REVISION:-e2e}
+  image: sunnycloud-decoder:e2e
 
 services:
   db:
@@ -56,14 +123,211 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     tmpfs: [/tmp]
+    secrets: [ctl_token]
     environment:
       E2E_RESULTS_DIR: /results
       E2E_PROFILE: ${E2E_PROFILE:-core}
       SEED_FAIL: ${SEED_FAIL:-0}
-    secrets: [ctl_token]
+      E2E_BASE_URL: https://sunnycloud.test
+      E2E_IDP_URL: http://idp.test:9000
+      SSL_CERT_FILE: /certs/root.pem
+      REQUESTS_CA_BUNDLE: /certs/root.pem
     volumes:
       - ../e2e-results:/results
+      - ../e2e-results/certs:/certs:ro
       - ./tools/e2e-ctl/actions.json:/spec/e2e-ctl-actions.json:ro
     networks: [client-net, ctl-net]
     depends_on:
       db: { condition: service_healthy }
+      caddy: { condition: service_healthy }
+      mock-idp: { condition: service_healthy }
+
+  # One-shot steps, run by tests/run.sh before the long-running services.
+  # A named volume is root-owned and the services run as 10001 (api), 10002 (worker) and 10003 (decoders): this step
+  # gives the blob volume to the api and opens the socket and scratch volumes (sticky, world-writable) to the three.
+  volumes-init:
+    image: postgres:18-trixie@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
+    profiles: [core]
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["sh", "-c", "chown 10001:10001 /v/blobs && chmod 1777 /v/sock-interactive /v/sock-general /v/scratch-general"]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - blobs:/v/blobs
+      - sock_interactive:/v/sock-interactive
+      - sock_general:/v/sock-general
+      - scratch_general:/v/scratch-general
+
+  migrate:
+    <<: [*api-image, *hardened]
+    profiles: [core]
+    command: ["migrate"]
+    restart: "no"
+    environment: *sunnycloud-env
+    secrets: [db_migrator_url, provider_oidc_client_secret]
+    networks: [backend]
+    depends_on:
+      db: { condition: service_healthy }
+
+  keycheck:
+    <<: [*api-image, *hardened]
+    profiles: [core]
+    command: ["admin", "keycheck-init"]
+    restart: "no"
+    environment: *sunnycloud-env
+    secrets: [master_key, master_key_file, db_api_url, worker_api_token, share_grant_key, provider_oidc_client_secret]
+    volumes:
+      - blobs:/var/lib/sunnycloud/blobs
+    networks: [backend]
+    depends_on:
+      db: { condition: service_healthy }
+
+  api:
+    <<: [*api-image, *hardened]
+    profiles: [core]
+    read_only: true
+    tmpfs: [/tmp]
+    environment: *sunnycloud-env
+    secrets: [master_key, master_key_file, db_api_url, worker_api_token, share_grant_key, provider_oidc_client_secret]
+    volumes:
+      - blobs:/var/lib/sunnycloud/blobs
+    networks: [proxy, backend]
+    stop_grace_period: 120s
+    depends_on:
+      db: { condition: service_healthy }
+      mock-idp: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "sunnycloud", "healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  worker:
+    <<: *hardened
+    build:
+      context: ..
+      dockerfile: deploy/docker/worker.Dockerfile
+      args:
+        FEATURES: test-clock
+        TEST_CLOCK: "true"
+        VERSION: e2e
+        REVISION: ${REVISION:-e2e}
+    image: sunnycloud-worker:e2e-test
+    profiles: [core]
+    # The decoder socket is mode 0660 owned by the decoder uid and its group; the worker reaches it as a member of that group.
+    group_add: ["10003"]
+    environment:
+      <<: *sunnycloud-env
+      SUNNYCLOUD_DECODER_GID: "10003"
+      SUNNYCLOUD_WORKER_SOCK_INTERACTIVE: /run/decoder-interactive/decoder.sock
+      SUNNYCLOUD_WORKER_SOCK_GENERAL: /run/decoder-general/decoder.sock
+      SUNNYCLOUD_WORKER_SCRATCH_INTERACTIVE: /scratch-interactive
+      SUNNYCLOUD_WORKER_SCRATCH_GENERAL: /scratch-general
+    secrets: [worker_api_token]
+    volumes:
+      - sock_interactive:/run/decoder-interactive
+      - sock_general:/run/decoder-general
+      - scratch_interactive:/scratch-interactive
+      - scratch_general:/scratch-general
+    networks: [backend]
+    mem_limit: 512m
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "sunnycloud-worker", "healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  decoder-interactive:
+    <<: [*decoder-image, *hardened]
+    profiles: [core]
+    network_mode: none
+    read_only: true
+    user: "10003:10003"
+    security_opt: ["no-new-privileges:true", "seccomp=../deploy/seccomp/decoder.json"]
+    volumes:
+      - sock_interactive:/run/decoder
+      - scratch_interactive:/scratch
+    cpus: 2
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "decoder-runner", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  decoder-general:
+    <<: [*decoder-image, *hardened]
+    profiles: [core]
+    network_mode: none
+    read_only: true
+    user: "10003:10003"
+    security_opt: ["no-new-privileges:true", "seccomp=../deploy/seccomp/decoder.json"]
+    volumes:
+      - sock_general:/run/decoder
+      - scratch_general:/scratch
+    cpus: ${WORKER_CPUS:-2}
+    mem_limit: ${WORKER_MEM:-4g}
+    memswap_limit: ${WORKER_MEM:-4g}
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "decoder-runner", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # The mock identity provider approves anyone: it sits on the two isolated test networks and is never published.
+  mock-idp:
+    build: ./mocks/idp
+    image: sunnycloud-e2e-mock-idp:local
+    profiles: [core]
+    <<: *hardened
+    read_only: true
+    environment:
+      MOCK_IDP_BIND_HOST: 0.0.0.0
+      MOCK_IDP_PORT: "9000"
+      MOCK_IDP_ISSUER: http://idp.test:9000
+      MOCK_IDP_CLIENT_ID: sunnycloud-e2e
+      MOCK_IDP_CLIENT_SECRET_FILE: /run/secrets/provider_oidc_client_secret
+      MOCK_IDP_REDIRECT_URIS: https://sunnycloud.test/api/v1/auth/providers/oidc/callback
+      MOCK_IDP_USERS: '{"alice":{"sub":"mock-alice","email":"alice@e2e.test","emailVerified":true,"name":"Alice Admin"},"bob":{"sub":"mock-bob","email":"bob@e2e.test","emailVerified":true,"name":"Bob Builder"},"dev-seed-admin":{"sub":"dev-seed-admin","email":"admin@seed.test","emailVerified":true,"name":"Seed Admin"},"dev-seed-user-1":{"sub":"dev-seed-user-1","email":"u1@seed.test","emailVerified":true,"name":"Seed One"},"dev-seed-user-2":{"sub":"dev-seed-user-2","email":"u2@seed.test","emailVerified":true,"name":"Seed Two"}}'
+    secrets: [provider_oidc_client_secret]
+    networks:
+      client-net: { aliases: [idp.test] }
+      backend: { aliases: [idp.test] }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/.well-known/openid-configuration"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # The dev Caddyfile is the release configuration with the host name taken from PUBLIC_HOST; AZ-4021 replaces it
+  # with the release Caddyfile and the test stack then mounts that one.
+  caddy:
+    image: caddy:2@sha256:4fcafa98afd1c2e642e353e3c5cf9ddbe892fcee14bc990e7ba2c5b78e51f9cf
+    profiles: [core]
+    environment:
+      PUBLIC_HOST: sunnycloud.test
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ../deploy/compose/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      client-net: { aliases: [sunnycloud.test] }
+      proxy: {}
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 3s
+      timeout: 3s
+      retries: 20

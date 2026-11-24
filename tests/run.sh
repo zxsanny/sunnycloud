@@ -30,14 +30,15 @@ usage: tests/run.sh --profile <name> [--keep]
        tests/run.sh --help
 
 profiles: ${KNOWN_PROFILES// /, }
-  core   starts the database and the consumer, runs the harness self-tests (the only profile with services yet)
+  core   starts the database, the system under test (Caddy, api, worker, decoders), the mock identity provider and the
+         consumer, runs the harness self-tests and the stack checks (the only profile with services yet)
   the others have no services yet and refuse to run ("not available yet"): they never report a pass
 
   --keep   leave the stack up after the run (needed for 'reset'); remove it with 'down'
   reset    stop the database, restore its volume from the golden snapshot taken after 'up', start it (< ${RESET_BUDGET_SECONDS} s)
   down     tear down the stack, the ctl stub and the generated secrets
 
-environment: SEED_FAIL=1 adds one failing self-test (proves that a FAIL fails the run); E2E_CTL_PORT (default 8088)
+environment: E2E_KEEP_ON_FAILURE=1 leaves the stack up when the run fails (read the logs, then 'down'); SEED_FAIL=1 adds one failing self-test (proves that a FAIL fails the run); E2E_CTL_PORT (default 8088)
 results: e2e-results/report.csv, metrics.json, not-run.csv, ctl-audit.log
 USAGE
 }
@@ -87,6 +88,7 @@ cmd_reset() {
   copy_volume "$GOLDEN_VOLUME" "$PGDATA_VOLUME"
   dc start db
   wait_db_healthy
+  dc restart api worker
   elapsed=$((SECONDS - started))
   log "reset finished in ${elapsed} s (budget ${RESET_BUDGET_SECONDS} s)"
   (( elapsed < RESET_BUDGET_SECONDS )) || die "reset took ${elapsed} s, budget is ${RESET_BUDGET_SECONDS} s"
@@ -117,6 +119,14 @@ teardown() {
 
 cmd_down() { teardown; }
 
+export_root_certificate() { # Caddy's internal CA root: the consumer trusts it (SSL_CERT_FILE) and nothing else
+  local out="$RESULTS/certs"
+  mkdir -p "$out"
+  dc cp caddy:/data/caddy/pki/authorities/local/root.crt "$out/root.pem"
+  [[ -s "$out/root.pem" ]] || die "Caddy has not written its root certificate"
+  log "exported Caddy's root certificate to $out/root.pem"
+}
+
 generate_secrets() { # one secrets directory per run; world-readable files because the containers use different uids
   local dir
   dir="$(mktemp -d "${TMPDIR:-/tmp}/sunnycloud-e2e-secrets.XXXXXX")"
@@ -124,7 +134,12 @@ generate_secrets() { # one secrets directory per run; world-readable files becau
     openssl rand -hex 24 > "$dir/postgres_password"
     printf 'postgres://sunnycloud_migrator:%s@db:5432/sunnycloud' "$(openssl rand -hex 24)" > "$dir/db_migrator_url"
     printf 'postgres://sunnycloud:%s@db:5432/sunnycloud' "$(openssl rand -hex 24)" > "$dir/db_api_url"
-    openssl rand -hex 32 > "$dir/ctl_token" )
+    openssl rand -hex 32 > "$dir/ctl_token"
+    openssl rand -out "$dir/master_key" 32
+    openssl rand -hex 32 > "$dir/share_grant_key"
+    printf %s /run/secrets/master_key > "$dir/master_key_file"
+    openssl rand -hex 24 > "$dir/worker_api_token"
+    openssl rand -hex 24 > "$dir/provider_oidc_client_secret" )
   printf '%s' "$dir"
 }
 
@@ -150,14 +165,21 @@ run_core() {
   export E2E_SECRETS_DIR E2E_PROFILE=core E2E_UID="$(id -u)" E2E_GID="$(id -g)"
   printf 'E2E_SECRETS_DIR=%q\n' "$E2E_SECRETS_DIR" > "$STATE_FILE"
   log "generated secrets in $E2E_SECRETS_DIR (deleted at teardown)"
-  trap 'if [[ "${KEEP_STACK:-0}" != 1 ]]; then teardown; else log "stack kept up; remove with: tests/run.sh down"; fi' EXIT
+  trap 'status=$?; if [[ "${KEEP_STACK:-0}" == 1 || ( "${E2E_KEEP_ON_FAILURE:-0}" == 1 && $status -ne 0 ) ]]; then log "stack kept up; remove with: tests/run.sh down"; else teardown; fi' EXIT
 
-  log "building the consumer image"
-  dc build consumer
+  log "building the images (api and worker test images, decoder, mock identity provider, consumer)"
+  dc build api worker decoder-interactive mock-idp consumer
   log "starting the database (role init script runs on the empty data directory)"
   dc up -d db
   wait_db_healthy
+  dc run --rm --no-deps volumes-init
+  log "schema step and key check (one-shot; the golden snapshot holds the result)"
+  dc run --rm --no-deps migrate
+  dc run --rm --no-deps keycheck
   take_golden_snapshot
+  log "starting the system under test: mock identity provider, api, worker, decoders, Caddy"
+  dc up -d --wait mock-idp api worker decoder-interactive decoder-general caddy
+  export_root_certificate
 
   log "creating the consumer container so that the ctl-net gateway exists"
   dc up --no-start consumer

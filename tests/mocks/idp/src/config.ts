@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 export interface MockUser {
   sub: string;
   email: string;
@@ -6,8 +8,10 @@ export interface MockUser {
 }
 
 export interface MockConfig {
-  /** 0 picks a free port. The listener is always 127.0.0.1: there is no host setting. */
+  /** 0 picks a free port. */
   port: number;
+  /** The listener address: 127.0.0.1 unless `MOCK_IDP_BIND_HOST` says otherwise. The mock approves anyone, so only an isolated container network may set it. */
+  bindHost?: string;
   /** Defaults to http://127.0.0.1:<bound port>. The server's `oidc_issuer` must equal it exactly. */
   issuer?: string;
   clientId: string;
@@ -40,8 +44,10 @@ export function defaultConfig(overrides: Partial<MockConfig> = {}): MockConfig {
   };
 }
 
+/** `NAME` from the environment, or the content of the file `NAME_FILE` names (a container secret), trimmed of line ends. */
 function required(env: Record<string, string | undefined>, name: string): string {
-  const value = env[name];
+  const file = env[`${name}_FILE`];
+  const value = file ? readFileSync(file, "utf8").replace(/[\r\n]+$/, "") : env[name];
   if (value === undefined || value === "") throw new Error(`${name} is required`);
   return value;
 }
@@ -53,6 +59,7 @@ export function configFromEnv(env: Record<string, string | undefined>): MockConf
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("MOCK_IDP_PORT is not a port");
   return defaultConfig({
     port,
+    bindHost: env.MOCK_IDP_BIND_HOST || undefined,
     issuer: env.MOCK_IDP_ISSUER,
     clientId: env.MOCK_IDP_CLIENT_ID ?? "sunnycloud-acceptance",
     clientSecret: required(env, "MOCK_IDP_CLIENT_SECRET"),

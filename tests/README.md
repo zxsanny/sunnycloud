@@ -1,4 +1,4 @@
-# Black-box test harness (skeleton, AZ-3742)
+# Black-box test harness (AZ-3742; the system under test joined with E-31)
 
 Design: `_docs/02_document/tests/environment.md`. This directory holds the shared entry command, the test compose file, the
 Python consumer with its CSV reporter, and the `e2e-ctl` stub. Pipeline tasks and the E-31 scenarios plug into it.
@@ -24,13 +24,20 @@ Exit codes: 0 all good, 1 a FAIL or a setup error, 2 usage, 3 profile not availa
 | Piece | What |
 |-------|------|
 | `db` | `postgres:18-trixie` by digest, on `backend` only, role script `deploy/postgres/initdb.d/10-roles.sh` mounted read-only |
+| `volumes-init` | one-shot: gives the blob volume to the api uid and opens the socket and scratch volumes to the api, worker and decoder uids |
+| `migrate`, `keycheck` | one-shots of the api test image (`migrate`, `admin keycheck-init`), run before the golden snapshot is taken, so a reset restores a migrated, key-checked database |
+| `mock-idp` | `tests/mocks/idp` as a container; `idp.test:9000` on `client-net` and `backend`; approves anyone, never published |
+| `api`, `worker`, `decoder-interactive`, `decoder-general` | the SUT: the api test image (feature `test-clock`), the worker test image and the hardened decoder image with its seccomp profile, as in `deploy/compose/compose.dev.yml` |
+| `caddy` | TLS 1.3 and HTTP/2 in front of the api (`sunnycloud.test` on `client-net`), with `deploy/compose/Caddyfile.dev` until AZ-4021 provides the release file; its internal CA root is exported to `e2e-results/certs/root.pem`, which the consumer trusts |
 | `consumer` | Python 3.13 image, on `client-net` and `ctl-net` only (no route to `backend`/`proxy`), read-only rootfs, no capabilities |
 | `e2e-ctl` | host process (not a container) bound to the `ctl-net` gateway, started by `run.sh` |
 
-Secrets (`postgres_password`, the two role URLs, the ctl token) are generated per run into a temp directory and deleted at
+Secrets (`postgres_password`, the two role URLs, the master key and the file that names it, the worker token, the share grant key, the mock identity provider's client secret, the ctl token) are generated per run into a temp directory and deleted at
 teardown. Service and network names follow the canonical names (`proxy`, `backend`, service `worker`), not the
-`worker-supervisor` / `proxy-net` / `backend-net` spelling of `environment.md`. The SUT, mocks and shaper are not declared
-yet; they join the compose file with the epics that make them healthy.
+`worker-supervisor` / `proxy-net` / `backend-net` spelling of `environment.md`. The WAN shaper (needs `NET_ADMIN`; the timing tests run on the reference host), `mock-update-server` and the profiles
+other than `core` are not declared yet.
+
+`E2E_KEEP_ON_FAILURE=1 tests/run.sh --profile core` leaves the stack up when the run fails, so the container logs can be read; remove it with `tests/run.sh down`. The first run builds the api, worker and decoder images (the decoder builds ffmpeg and libheif from source) and takes a long time; later runs use the layer cache.
 
 ## Reports (`e2e-results/`, gitignored)
 
@@ -67,8 +74,9 @@ test needs is not part of the profile / build yet".
   `E2E_RESULTS_DIR` set).
 - `stack/`: the consumer cannot resolve `db` nor open TCP to the database address; every `e2e-ctl` action answers
   `not_implemented` with one audit line each; no token is refused and audited.
-- `test_not_run_sentinel.py`: one test marked `NOT-RUN(NO-SERVICE)`; it proves the rule on every run and shows that the
-  skeleton does not cover the SUT.
+- `stack/test_sut_edge.py`: the front door: `server-info` through Caddy over the exported root certificate, TLS 1.3, the
+  mock identity provider's issuer, and that no backend service name resolves from the consumer.
+- `test_not_run_sentinel.py`: one test marked `NOT-RUN(NO-SERVICE)`; it proves the NOT-RUN rule on every run.
 - `test_seeded_failure.py`: collected only with `SEED_FAIL=1`.
 - `tools/e2e-ctl/test_e2e_ctl.py`: stub unit tests, run by `run.sh` on the host (`python3 -m unittest -v` in that directory).
 

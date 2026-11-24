@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { defaultConfig } from "../src/config.ts";
+import { configFromEnv, defaultConfig } from "../src/config.ts";
 import { sha256Base64url } from "../src/jwt.ts";
 import { startMockIdp, type RunningIdp } from "../src/server.ts";
 
@@ -213,5 +216,32 @@ describe("user selection", () => {
 
     // Assert
     expect(response.status).toBe(400);
+  });
+});
+
+describe("listener address", () => {
+  const env = { MOCK_IDP_CLIENT_SECRET: "s", MOCK_IDP_REDIRECT_URIS: REDIRECT };
+
+  test("is loopback unless the environment names another address", () => {
+    // Act
+    const plain = configFromEnv(env);
+    const opened = configFromEnv({ ...env, MOCK_IDP_BIND_HOST: "0.0.0.0" });
+
+    // Assert
+    expect([plain.bindHost, opened.bindHost]).toEqual([undefined, "0.0.0.0"]);
+  });
+
+  test("reads the client secret from a secret file when MOCK_IDP_CLIENT_SECRET_FILE is set", () => {
+    // Arrange
+    const dir = mkdtempSync(join(tmpdir(), "idp-secret-"));
+    const file = join(dir, "secret");
+    writeFileSync(file, "from-file\n");
+
+    // Act
+    const config = configFromEnv({ MOCK_IDP_CLIENT_SECRET_FILE: file, MOCK_IDP_REDIRECT_URIS: REDIRECT });
+
+    // Assert
+    expect(config.clientSecret).toBe("from-file");
+    rmSync(dir, { recursive: true });
   });
 });

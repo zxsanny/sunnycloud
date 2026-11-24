@@ -1,6 +1,6 @@
 import pytest
 
 
-@pytest.mark.not_run("NO-SERVICE", "the api service is not part of the core profile yet")
-def test_api_health_needs_the_api_service():
+@pytest.mark.not_run("NO-SERVICE", "synthetic: proves that a NOT-RUN test is reported as NOT-RUN and never as a pass")
+def test_a_not_run_test_is_never_a_pass():
     raise AssertionError("must not run: the not_run marker has to skip this test")
