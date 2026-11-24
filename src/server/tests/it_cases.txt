@@ -1,0 +1,44 @@
+# The IT-12 cases of `_docs/02_document/components/12_operator_cli/tests.md` and the cargo tests of `sunnycloud-server`
+# that run each one at the CLI boundary (AZ-3813, run by scripts/ci/check-it-suite.sh with IT_SUITE_PACKAGE=sunnycloud-server
+# in the job `cli-suite`). One line: case id, test target, then test-name prefixes; a case may take several lines.
+# The parts of a case that need the Compose stack, the real api container or another task's pipeline are not run here:
+# `it12_coverage_map.md` (beside this file) assigns every expected result to exactly one place.
+IT-12-1   cli_suite every_command_exits_0 every_command_exits_2 doctor_exits_ usage_errors_ the_four_destructive_
+IT-12-1   exit_codes outcome_classes json_ usage_and_configuration findings_are_a_result
+IT-12-1   confirmation non_tty_without_yes a_tty_prompt
+IT-12-2   identity_commands setup_token_ create_makes_one_call reset_prints an_unexpected_failure
+IT-12-2   serve_setup_token a_fresh_install a_restart_prints an_install_with_an_account json_mode
+IT-12-3   identity_commands promote_and_demote invite_create_list revoking_an_unknown
+IT-12-3   user_commands user_list_ set_quota delete_ deleting_ an_unknown_account an_unexpected_deletion
+IT-12-4   maintenance_commands a_restore_prints beyond_retention a_bad_time dry_run a_real_restore
+IT-12-5   maintenance_commands epoch_bump_ a_bump_error
+IT-12-6   serve_start a_database_newer a_missing_master_key a_31_byte a_pending_migration a_volume_with_blobs the_schema_owner_url
+IT-12-6   config_binary serve_
+IT-12-7   serve_start start_steps_are_logged
+IT-12-7   composition_root hook_list_follows cleanup_list_is serve_builds_every_component_once
+IT-12-7   composition_scheduling every_registered_janitor readiness_list_is
+IT-12-8   serve_stop sigint_runs sigterm_runs the_pool_closes_last
+IT-12-8   sigint sigint_triggers
+IT-12-9   janitor_scheduler a_cycle_three_times failing_and_panicking cycles_start_200_ms no_cycle_starts stop_waits
+IT-12-9   gc_command gc_run_prints
+IT-12-10  migrate a_fresh_database text_mode two_concurrent an_edited_checksum a_future_version an_unsuccessful_row status_works revert_without_yes migrate_needs_no_master_key
+IT-12-11  migrate_interrupted a_failing_migration migrate_killed
+IT-12-12  key_commands key_check_ keycheck_init_ no_key_material
+IT-12-13  key_commands rewrap_ a_keyring_refusal
+IT-12-13  rewrap_sigint sigint_stops
+IT-12-14  scrub_commands full_with_a_rate exit_is_0 a_progress_line status_prints a_status_with_no_run a_rate_of_zero a_run_checks_the_key_ring
+IT-12-14  scrub_sigint sigint_stops
+IT-12-15  doctor_command levels_map json_carries pre_flight_ a_tagged_subset options_reach no_registered_checks
+IT-12-15  doctor_findings a_ an_ configuration_problems each_revision quota_drift
+IT-12-15  doctor_preflight pre_flight_lists
+IT-12-16  gc_command gc_run_prints
+IT-12-16  media_commands requeue_ an_invalid_kind stats_print a_failing_owner
+IT-12-17  audit_export export_prints a_since_that_is_not_utc
+IT-12-17  dev_seed_commands a_development_run the_production_refusal an_unexpected_failure
+IT-12-18  local_commands openapi_ version_ the_build_stamps
+IT-12-18  cli_suite lazy::migrate_succeeds lazy::openapi_succeeds
+IT-12-18  config_binary migrate_needs_no_provider
+IT-12-19  cli_suite each_token_is
+IT-12-19  secret_once text_mode json_mode a_refusal the_secret_type
+IT-12-19  scrub_sigint sigint_stops
+IT-12-19  rewrap_sigint sigint_stops

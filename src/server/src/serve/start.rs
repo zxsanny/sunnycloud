@@ -239,4 +239,32 @@ mod tests {
         assert_eq!(error.code(), "wrong_role");
         assert!(detail(error).contains("database role check"));
     }
+
+    #[test]
+    fn an_unreachable_database_is_service_unavailable_and_any_other_failure_passes_through() {
+        // Arrange
+        let unavailable = CliError::Build {
+            service: "the API database pool",
+            source: Box::new(DbError::Unavailable),
+        };
+        let usage = CliError::Usage("not a build failure".to_owned());
+
+        // Act
+        let (unavailable, usage) = (database_refusal(unavailable), database_refusal(usage));
+
+        // Assert
+        assert_eq!(unavailable.code(), ErrorCode::ServiceUnavailable.as_str());
+        assert!(detail(unavailable).contains("database unavailable"));
+        assert!(matches!(usage, CliError::Usage(_)));
+    }
+
+    #[test]
+    fn a_listener_that_cannot_start_refuses_with_the_http_cause() {
+        // Act
+        let error = http_refusal(HttpServerError::InvalidConfig("no listener".to_owned()));
+
+        // Assert
+        assert_eq!(error.code(), ErrorCode::Internal.as_str());
+        assert!(detail(error).contains("no listener"));
+    }
 }

@@ -70,7 +70,7 @@ The database tests seed their files only in temporary directories and create and
 
 ## PR gate: `.github/workflows/ci.yml` and its scripts (AZ-3761)
 
-The workflow only checks out, caches and calls these scripts, each under `watchdog.sh`. Jobs: `rust-lint`, `rust-test`, `pipelines-large`, `http-api-suite`, `pg18-migrations`, `supply-chain`, `image-build`, `images`, `decoder-suite`, `vault-core`, `mobile`; triggers: pull request to `dev`, push to `dev`.
+The workflow only checks out, caches and calls these scripts, each under `watchdog.sh`. Jobs: `rust-lint`, `rust-test`, `pipelines-large`, `http-api-suite`, `cli-suite`, `pg18-migrations`, `supply-chain`, `image-build`, `images`, `decoder-suite`, `vault-core`, `mobile`; triggers: pull request to `dev`, push to `dev`.
 
 | Script | Job | What it does |
 |--------|-----|--------------|
@@ -82,6 +82,7 @@ The workflow only checks out, caches and calls these scripts, each under `watchd
 | `run-one-test.sh CMD...` | `pipelines-large` | runs one `cargo test ... -- --ignored --exact NAME` (the 1 GiB download and worker ACs, release mode), passes its output through, and fails unless exactly one test passed: a name that matches nothing would otherwise exit 0 with `0 passed` |
 | `check-migrations.sh` | `pg18-migrations` | see above |
 | `check-it-suite.sh` | `http-api-suite` | runs IT-11-1..20 of `components/11_http_api/tests.md` through `it_suite.py` and the id-to-test map `src/components/11_http_api/tests/it_cases.txt`; prints each case with result and duration; fails on a case with no test, a prefix that selects nothing, an unknown id, a failing run or a case over its max execution time |
+| `check-it-suite.sh` (with `IT_SUITE_SPEC`, `IT_SUITE_CASES`, `IT_SUITE_PACKAGE`) | `cli-suite` | the same runner for IT-12-1..19 of `components/12_operator_cli/tests.md` and `src/server/tests/it_cases.txt` over package `sunnycloud-server` (AZ-3813); the parts of a case that need the Compose stack are assigned in `src/server/tests/it12_coverage_map.md` and not run here |
 | `check-pinning.sh [ROOT]` | `supply-chain` | `uses:` = 40-hex SHA + `# vX.Y.Z`, images by digest, default `permissions: contents: read`, no fork checkout under `pull_request_target` |
 | `check-licence.sh` | `supply-chain` | `LICENSE` matches `licence.sha256`; `COPYING.iOS` checked once it exists |
 | `audit.sh` | `supply-chain` | validates the dated ignores in `src/deny.toml` (`added`, `expires`, `why`; not expired; `added` at most 90 days old), passes the same ids to `cargo audit --deny warnings`, runs `cargo deny check advisories bans licenses sources`. `DENY_TOML` and `AUDIT_TODAY` override the file and the date |

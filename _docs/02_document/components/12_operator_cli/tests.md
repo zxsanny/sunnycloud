@@ -311,6 +311,7 @@ Harness `H2` (Compose `core` stack, test image): services `db`, `migrate`, `api`
 **Setup procedure**:
 1. Start the `core` stack by digest; the `migrate` step runs once; bootstrap with the setup token; take the golden snapshot (pgdata tar and XFS image reflink).
 2. Per test: `tests/run.sh reset` (under 60 s) for group X tests; each CLI test creates its own accounts via `admin create` and invites.
+3. CI at the CLI boundary (AZ-3813): `scripts/ci/check-it-suite.sh` (job `cli-suite`, `IT_SUITE_PACKAGE=sunnycloud-server`) runs every IT-12 case with the tests that `src/server/tests/it_cases.txt` lists for it, with recording owner ports and a real PostgreSQL 18 database of the test's own, and reports each id with result, test count and duration. A case with no line, a prefix that selects no test, or a case over its **Max execution time** fails the job. `src/server/tests/it12_coverage_map.md` assigns every expected result to this job, a command task, a pipeline, an owner task or E-31, and `cli_suite.rs` checks the map against this file.
 
 **Teardown procedure**:
 1. Reset the clock offset to 0; remove marker or key edits made by the test; restore the golden snapshot; leak check of blob bytes and row counts.

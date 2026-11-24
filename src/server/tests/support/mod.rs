@@ -20,6 +20,63 @@ use sunnycloud_server::{
 };
 use tokio_util::sync::CancellationToken;
 
+/// The command table of `operator_command_surface.md`: minimal valid arguments and the route each logs under.
+pub const COMMANDS: &[(&str, &str)] = &[
+    ("serve", "/cli/serve"),
+    ("migrate", "/cli/migrate"),
+    ("migrate run", "/cli/migrate"),
+    ("migrate status", "/cli/migrate-status"),
+    ("migrate revert --steps 2 --yes", "/cli/migrate-revert"),
+    ("admin setup-token", "/cli/admin-setup-token"),
+    ("admin create", "/cli/admin-create"),
+    ("admin reset alice", "/cli/admin-reset"),
+    ("admin promote alice", "/cli/admin-promote"),
+    ("admin demote alice", "/cli/admin-demote"),
+    (
+        "admin invite --admin alice create --note n",
+        "/cli/admin-invite-create",
+    ),
+    ("admin invite --admin alice list", "/cli/admin-invite-list"),
+    (
+        "admin invite --admin alice revoke inv-1",
+        "/cli/admin-invite-revoke",
+    ),
+    ("admin user list", "/cli/admin-user-list"),
+    (
+        "admin user set-quota alice 10GiB",
+        "/cli/admin-user-set-quota",
+    ),
+    ("admin user delete alice --yes", "/cli/admin-user-delete"),
+    ("admin dev-seed", "/cli/admin-dev-seed"),
+    (
+        "admin audit export --since 2026-01-01T00:00:00Z",
+        "/cli/admin-audit-export",
+    ),
+    ("admin epoch-bump --yes", "/cli/admin-epoch-bump"),
+    (
+        "admin restore --account alice --path /a/b.txt --at 2026-01-01T00:00:00Z --dry-run",
+        "/cli/admin-restore",
+    ),
+    ("admin gc-run", "/cli/admin-gc-run"),
+    ("key-check", "/cli/key-check"),
+    ("admin keycheck-init", "/cli/admin-keycheck-init"),
+    ("admin rewrap --from-key-id 1 --yes", "/cli/admin-rewrap"),
+    ("scrub run --full --rate 50", "/cli/scrub-run"),
+    ("scrub status", "/cli/scrub-status"),
+    (
+        "admin media-requeue --account alice --kind thumbnail",
+        "/cli/admin-media-requeue",
+    ),
+    ("admin media-stats", "/cli/admin-media-stats"),
+    (
+        "doctor --pre-flight --backup-interval 24h --attest-backup",
+        "/cli/doctor",
+    ),
+    ("healthcheck", "/cli/healthcheck"),
+    ("openapi", "/cli/openapi"),
+    ("version", "/cli/version"),
+];
+
 pub fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }

@@ -51,6 +51,7 @@ fn spawn(setup: &Setup, args: &[&str]) -> Child {
     Command::new(env!("CARGO_BIN_EXE_sunnycloud"))
         .args(args)
         .env_clear()
+        .envs(std::env::var("LLVM_PROFILE_FILE").map(|path| ("LLVM_PROFILE_FILE", path)))
         .envs(&setup.env)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

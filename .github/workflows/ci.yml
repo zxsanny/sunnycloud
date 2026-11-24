@@ -215,6 +215,44 @@ jobs:
       - name: IT-11-1 to IT-11-20 with their max execution times and the missing-case check
         run: scripts/ci/watchdog.sh --name http-api-suite -- scripts/ci/check-it-suite.sh
 
+  # AZ-3813: the IT-12 cases of components/12_operator_cli/tests.md at the CLI boundary, each with its result, duration
+  # and budget. The tests use recording owner ports and a real PostgreSQL 18 database of their own (migrate, doctor).
+  cli-suite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18-trixie@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      IT_SUITE_SPEC: ${{ github.workspace }}/_docs/02_document/components/12_operator_cli/tests.md
+      IT_SUITE_CASES: ${{ github.workspace }}/src/server/tests/it_cases.txt
+      IT_SUITE_PACKAGE: sunnycloud-server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: scripts/ci/watchdog.sh --name setup-rust -- scripts/ci/setup-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src
+          key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
+          cache-on-failure: true
+      - name: IT-12-1 to IT-12-19 with their max execution times and the missing-case check
+        env:
+          WATCHDOG_STALL: 600
+        run: scripts/ci/watchdog.sh --name cli-suite -- scripts/ci/check-it-suite.sh
+
   pg18-migrations:
     runs-on: ubuntu-24.04
     timeout-minutes: 25

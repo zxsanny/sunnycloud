@@ -12,3 +12,11 @@ components/11_http_api/src/problem.rs
 components/11_http_api/src/port_error
 components/11_http_api/src/content
 components/11_http_api/src 75
+
+# 12 operator_cli (AZ-3813 AC-6): the exit-code mapping, the confirmation guard, the secret writer (the one-time
+# secret type and the output writer) and the `serve` start-up order, each at 90%.
+server/src/exit.rs
+server/src/guard.rs
+server/src/secret.rs
+server/src/output.rs
+server/src/serve/start.rs

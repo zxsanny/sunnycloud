@@ -6,6 +6,7 @@ fn sunnycloud(args: &[&str]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_sunnycloud"));
     command.args(args);
     command.env_clear();
+    command.envs(std::env::var("LLVM_PROFILE_FILE").map(|path| ("LLVM_PROFILE_FILE", path)));
     command.output().expect("the binary starts")
 }
 
