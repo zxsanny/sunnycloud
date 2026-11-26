@@ -29,9 +29,9 @@ Then the job fails with `Retry` and is queued again with its backoff
 - **D2a, applied**: leg (i), the fetch 5xx, comes from the real API through the listed fault injector "Bit flip at rest"
   (`bit-flip`, to implement in ctl): one byte of the input blob's first chunk flipped while the supervisor is stopped.
   Assert the API's 5xx on the input route, do not move the test clock, and run it in its own module.
-- **D2b, open** (OPERATOR_TODO D2): leg (c) cannot happen with the real API (exact `Content-Length` by contract, and hyper
-  trims a longer body). Recommended: NOT-RUN on the stack with a pointer to `src/worker/tests/api_input.rs:175`, and
-  09 tests.md (c) reworded to the client-side case. Only leg (c) waits for the answer.
+- **D2b, decided 2026-11-26 (operator: waive the stack leg)**: leg (c) cannot happen with the real API (exact
+  `Content-Length` by contract, and hyper trims a longer body). On the stack it is NOT-RUN with a pointer to
+  `src/worker/tests/api_input.rs:175`; 09 tests.md (c) now reads as the client-side case.
 
 The other legs need harness work only: (a) a ctl action that edits a job row's hash (a write, so a new fault-injector
 row), (b) a supervisor started with another photo limit, (e) a small scratch mount for one run.
@@ -41,4 +41,4 @@ The worker crate's tests already cover every IT-09-7 leg against a local peer: `
 
 ## Constraints
 
-- The real API, queue and PostgreSQL in every case; leg (c) as D2b decides.
+- The real API, queue and PostgreSQL in every case; leg (c) is waived on the stack (D2b).

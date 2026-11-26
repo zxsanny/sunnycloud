@@ -327,5 +327,17 @@ class WorkerActionsTest(unittest.TestCase):
         self.assertEqual((latest, none), ({"decoder_ok": 0}, {"decoder_ok": -1}))
 
 
+    def test_db_probe_job_lanes_lists_each_job_with_its_lane(self):
+        # Arrange
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name,
+                                      run=lambda args: (0, "j1:image,j2:video\n", ""))
+
+        # Act
+        lanes = actions.db_probe({"query": "job_lanes"})
+
+        # Assert
+        self.assertEqual(lanes, {"values": ["j1:image", "j2:video"]})
+
+
 if __name__ == "__main__":
     unittest.main()

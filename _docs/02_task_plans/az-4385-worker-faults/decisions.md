@@ -38,5 +38,5 @@ Notes for D2a from the second opinion, checked here: assert the API's 5xx for th
 
 **Recommendation**: A, decided by the simpler option (no new test-only behaviour in the API image; the behaviour is the client's and its test exists).
 **Second opinion**: waive (c) on H2 with a pointer to `api_input.rs:175` and reword tests.md (c); for (i) use the bit-flip fault: agrees (it also showed that a test hold could not produce (c) either, because hyper truncates what it adds).
-**Outcome**: waiting: OPERATOR_TODO D2.
+**Outcome**: asked 2026-11-26, answer: A (operator, "Waive the stack leg"). The waiver is tied to `worker_job_protocol.md:54`: a contract change that lets input stream without a declared length reopens it.
 **Flagged**: no

@@ -46,6 +46,16 @@ PROBES = {
     # no supervisor has reported yet.
     "worker_status_latest": (("decoder_ok",),
                              "SELECT coalesce((SELECT decoder_ok::int FROM worker_status ORDER BY seen_at DESC LIMIT 1), -1)"),
+    # When the latest report came (epoch ms; -1 before any): a supervisor that stopped reporting leaves it standing.
+    "worker_status_seen_ms": (("seen_ms",),
+                              "SELECT coalesce((SELECT (extract(epoch FROM seen_at) * 1000)::bigint FROM worker_status "
+                              "ORDER BY seen_at DESC LIMIT 1), -1)"),
+    # `<job id>:<lane>` of every job in creation order: the lane of each job FD saw (its record names jobs by id).
+    "job_lanes": (LIST, "SELECT coalesce(string_agg(id::text || ':' || lane, ',' ORDER BY created_at), '') FROM jobs"),
+    # The lease expiry of the running job (epoch ms; -1 when none runs): each heartbeat moves it forward.
+    "running_lease_ms": (("lease_ms",),
+                         "SELECT coalesce((SELECT (extract(epoch FROM available_at) * 1000)::bigint FROM jobs "
+                         "WHERE status = 'running' ORDER BY created_at LIMIT 1), -1)"),
     "account_states": (("active", "deleting"),
                        "SELECT count(*) FILTER (WHERE state = 'active'), count(*) FILTER (WHERE state = 'deleting') FROM accounts"),
     # What a share link row stores: the column names show a token hash and no token.

@@ -73,7 +73,7 @@ Harness `H2`: Compose test stack (profile `core`, test clock on) with real Postg
 ### IT-09-7: Input fetch verification and limits
 **Summary**: the fetch hashes while streaming and refuses mismatches and oversize input before the decoder sees it.
 **Traces to**: AC-72, AC-25
-**Input data**: (a) job whose `content_hash` differs from the stored revision (harness edits the job row); (b) 2 MiB photo with `worker_max_input_photo=1MiB`; (c) a body that grows past its `Content-Length`; (d) a clean photo; (e) input larger than free `statvfs` space of the scratch mount (small tmpfs).
+**Input data**: (a) job whose `content_hash` differs from the stored revision (harness edits the job row); (b) 2 MiB photo with `worker_max_input_photo=1MiB`; (c) a body with no declared length that grows past the input limit (client side; on the stack waived by decision D2b, 2026-11-26: the API always declares an exact `Content-Length`, contract `08_media_jobs/worker_job_protocol.md`); (d) a clean photo; (e) input larger than free `statvfs` space of the scratch mount (small tmpfs).
 **Expected result**: (a) `HashMismatch`, `fail(Retry)`, FD saw 0 requests, scratch removed; (b) refused from the declared length before the first byte is written (scratch `source` size 0), `fail(Permanent)` `TooLarge`; (c) stream aborted at the limit; (d) `Content-Length`-exact `source`, mode 0440, group `decoder_gid`, BLAKE3 per 2 MiB block rolled up equals `content_hash`; (e) job refused before download; the failure disposition is not specified (gap G-09-2), the test asserts only that nothing is posted and the job is not left `running`.
 **Max execution time**: 30 s
 **Dependencies**: API, FD

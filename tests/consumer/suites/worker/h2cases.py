@@ -5,6 +5,7 @@ that one FD, in order).
 FD's outputs are protocol traffic: a 1x1 WebP and a bare MP4 `ftyp` box pass the API's sniffer
 (`components/08_media_jobs/src/sniff.rs` reads the first 32 bytes) and claim no media outcome."""
 import base64
+import json
 import time
 
 import mediakit
@@ -74,3 +75,30 @@ def run_file(media, lanes, name, fd_script, fixture=CLIP, ended=2, wanted=None):
 
 def requests_of(record, kind):
     return [line for line in record if line["kind"] == kind]
+
+
+# A clip whose transcode FD holds for HOLD_MS, sending `Alive` meanwhile (the silence watchdog stays quiet), every
+# attempt alike; its poster is posted at once. A transcode, not a render: H2's photo timeout is 5 s, the video one 60 s.
+HOLD_MS = 12_000
+HELD_TRANSCODE = {"probe": {"default": {"probe": video_probe(bitrate=12_000_000)}},
+                  "render_still": {"default": postable_image()},
+                  "transcode": {"default": {"over_time": {"delay_ms": HOLD_MS, "alive_every_ms": 500,
+                                                          "answer": postable_transcode()}}}}
+
+
+def wait_for_request(fd, kind, seconds=JOBS_SECONDS):
+    """FD's requests of `kind` once there is one, or the empty list after `seconds`."""
+    deadline = time.monotonic() + seconds
+    while not requests_of(fd.record(), kind) and time.monotonic() < deadline:
+        time.sleep(POLL_SECONDS)
+    return requests_of(fd.record(), kind)
+
+
+def readiness_item(ctl, name):
+    """The status of one `/readyz` item ("ok", "failing"), or None while the worker has no listener. With the
+    interactive slot gated out (`run_file`) the overall status is 503 throughout, so a case reads the item it means."""
+    status, body = ctl.worker_ops("/readyz")
+    if not status:
+        return None
+    return {check["name"]: check["status"] for check in json.loads(body)["checks"]}.get(name)
+
