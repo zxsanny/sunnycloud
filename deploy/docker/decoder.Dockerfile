@@ -79,7 +79,7 @@ RUN mkdir ffmpeg && tar -xJf ffmpeg.tar.xz --strip-components=1 -C ffmpeg \
 RUN rm -rf /opt/media/include /opt/media/lib/pkgconfig /opt/media/lib/cmake /opt/media/lib/*.a /opt/media/lib/*.la \
     /opt/media/share/man /opt/media/share/doc /opt/media/share/ffmpeg /opt/media/share/locale /opt/media/share/gtk-doc
 
-FROM rust:1.97.1-trixie@sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f AS chef
+FROM rust:1.99.1-trixie@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07 AS chef
 # RUSTUP_TOOLCHAIN overrides src/rust-toolchain.toml, whose extra components and targets are not in the image
 ENV RUSTUP_TOOLCHAIN=1.97.1 \
     SQLX_OFFLINE=true
