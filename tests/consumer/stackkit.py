@@ -47,6 +47,15 @@ class Ctl:
         except urllib.error.HTTPError as error:
             return error.code, json.loads(error.read())
 
+    def try_call(self, action, **params):
+        """`(status, body)` of one action, without failing the test on a refusal (for a case that expects one)."""
+        return self._post(action, params)
+
+    def restart_worker(self):
+        """SIGKILL of the supervisor, then its start (it reads its settings and token again)."""
+        self.call("process-kill", service="worker", op="kill")
+        self.call("process-kill", service="worker", op="start")
+
     def call(self, action, **params):
         status, body = self._post(action, params)
         if status != 200:

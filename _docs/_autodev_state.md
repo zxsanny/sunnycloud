@@ -9,7 +9,7 @@ status: in_progress
 sub_step:
   phase: 2
   name: batch-loop
-  detail: "batch 129 done (AZ-4383 H2 profile + ctl, AZ-4382 FD). Next: cumulative review 127-129 (due), then AZ-4384 (needs a 09 fix: idle decoder connection end not detected, see its spec), AZ-4385, AZ-3878. Env: dev DB sunnycloud-pg18 (127.0.0.1:57432), CARGO_INCREMENTAL=0, PATH needs $HOME/.bun/bin; CI Ubuntu 24.04, host 26.04."
+  detail: "batch 130 in progress: cumulative review 127-129 done (report, fixes committed); AZ-4384 part 1 committed (idle decoder connection check, proving test). Next: AZ-4384 stack cases IT-09-1, 3, 5, 8, 15 on h2 (ctl: scratch pre-fill, worker image inspection), then AZ-4385, AZ-3878. Env: dev DB sunnycloud-pg18 (127.0.0.1:57432), CARGO_INCREMENTAL=0; CI Ubuntu 24.04, host 26.04."
 retry_count: 0
 tracker: jira
 loop: 1

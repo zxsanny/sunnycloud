@@ -5,9 +5,9 @@ A lane's FD reads `/results/fd/<lane>/script.json` when it starts and appends ev
 last record and has e2e-ctl put FD in place of that lane's real decoder; `stop` puts the real decoder back. FD is for
 fault and protocol cases only, never for a case that claims a media outcome.
 
-Both restart the supervisor by default (SIGKILL, then start), so it starts on the swapped socket: it does not notice
-an idle decoder connection that ends (found in batch 129; IT-09-15, AZ-4384), so without the restart it would keep a
-dead connection. A case about the reconnect itself passes `restart_worker=False`.
+Both restart the supervisor by default (SIGKILL, then start), so it starts on the swapped socket at once and the case
+does not wait out its reconnect backoff (1 s doubling to 30 s). A case about the reconnect itself (IT-09-15) passes
+`restart_worker=False`.
 """
 import json
 import os
@@ -46,8 +46,7 @@ class FakeDecoderLane:
             self._restart_worker()
 
     def _restart_worker(self):
-        self.ctl.call("process-kill", service="worker", op="kill")
-        self.ctl.call("process-kill", service="worker", op="start")
+        self.ctl.restart_worker()
 
     def record(self):
         """The record lines so far; a last line FD is still writing is left for the next read."""
@@ -71,7 +70,7 @@ class FakeDecoderLane:
 
     def log_tail(self):
         """FD's stderr (a script it refused, a socket it could not bind), for a failure message."""
-        status, body = self.ctl._post("inspect", {"logs": self.service})
+        status, body = self.ctl.try_call("inspect", logs=self.service)
         return body.get("result", {}).get("log_tail", "") if status == 200 else f"(no log: {status} {body})"
 
 

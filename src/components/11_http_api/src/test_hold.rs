@@ -194,6 +194,14 @@ impl WorkerHold {
         matches!(*self.state(), Phase::Taken { job_id, .. } if job_id == job)
     }
 
+    /// Back to idle if `job` still holds the hold; checked and reset under one lock, so an arm made meanwhile stays.
+    fn let_go(&self, job: Uuid) {
+        let mut state = self.state();
+        if matches!(*state, Phase::Taken { job_id, .. } if job_id == job) {
+            *state = Phase::Idle;
+        }
+    }
+
     /// Waits until the hold of `job` is released, or until the limit; at the limit the hold is dropped.
     async fn wait(self: Arc<Self>, job: Uuid) {
         let deadline = tokio::time::Instant::now() + self.limit;
@@ -206,9 +214,7 @@ impl WorkerHold {
                 return;
             }
             if tokio::time::timeout_at(deadline, released).await.is_err() {
-                if self.holds(job) {
-                    *self.state() = Phase::Idle;
-                }
+                self.let_go(job);
                 return;
             }
         }
@@ -227,6 +233,15 @@ struct Metered {
     pending: Option<Bytes>,
     wait: Option<Wait>,
     released: bool,
+}
+
+/// A stream that ends before its release (the supervisor was killed mid-transfer, the handler refused the request
+/// before it read the body, the body was shorter than the hold's bytes) lets the hold go, so its status shows nothing
+/// held and the next arm is not refused.
+impl Drop for Metered {
+    fn drop(&mut self) {
+        self.hold.let_go(self.job_id);
+    }
 }
 
 impl Stream for Metered {
@@ -289,7 +304,8 @@ fn request_id(routes: &Routes, request_id: Option<Extension<CorrelationId>>) -> 
     )
 }
 
-/// `{route: "input" | "output", kind?: "thumb" | "preview" | "transcode", after_bytes}`.
+/// `{route: "input" | "output", kind?: "thumb" | "preview" | "transcode", after_bytes}`; a kind only with `output`
+/// (the input stream has none, so such a hold could never be taken).
 fn hold_request(body: &Value) -> Option<HoldRequest> {
     let route = match body.get("route")?.as_str()? {
         "input" => HoldRoute::Input,
@@ -303,6 +319,9 @@ fn hold_request(body: &Value) -> Option<HoldRequest> {
             _ => return None,
         },
     };
+    if route == HoldRoute::Input && kind.is_some() {
+        return None;
+    }
     let after_bytes = body.get("after_bytes")?.as_u64()?;
     Some(HoldRequest {
         route,

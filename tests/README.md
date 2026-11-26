@@ -26,8 +26,8 @@ grace 3 s). The profile of a kept stack is in `e2e-results/.stack-state`, so `re
 `fd-general` (compose profile `fd`, never started by `up`). A suite takes a lane with `fdkit.FakeDecoderLane(ctl, lane)`:
 `start(script)` writes `e2e-results/fd/<lane>/script.json`, removes the last `record.jsonl` and has e2e-ctl stop the real
 decoder and start FD on its socket and scratch volumes; `record()` / `wait_for(kinds, seconds)` read what FD received
-(a timeout adds FD's log); `stop()` puts the real decoder back. Both restart the supervisor unless `restart_worker=False`:
-it does not notice an idle decoder connection that ends (IT-09-15, AZ-4384). FD is for fault and protocol cases only,
+(a timeout adds FD's log); `stop()` puts the real decoder back. Both restart the supervisor unless `restart_worker=False`, so a case does not
+wait out the reconnect backoff (1 s to 30 s); IT-09-15 itself passes `False`. FD is for fault and protocol cases only,
 never for a media outcome.
 `suites/worker/test_fake_decoder_stack.py` (AZ-4382 AC-3) runs under `h2` and is skipped under `core`.
 

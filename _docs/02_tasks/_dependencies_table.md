@@ -220,7 +220,7 @@ Recommended execution order (topological; ties by key). Test-epic refs (E-31) ar
 | AZ-4381 | worker_transfer_hold | 3 | AZ-3831, AZ-3843, AZ-4334 | AZ-3644 |
 | AZ-4382 | fake_decoder_service | 5 | AZ-3852, AZ-3871 | AZ-3639 |
 | AZ-4383 | h2_stack_profile_ctl | 3 | AZ-3661, AZ-3874 | AZ-3639 |
-| AZ-4384 | worker_suite_gate_decisions | 3 | AZ-4382, AZ-4383 | AZ-3639 |
+| AZ-4384 | worker_suite_gate_decisions | 5 | AZ-4382, AZ-4383 | AZ-3639 |
 | AZ-4385 | worker_suite_faults_slots | 5 | AZ-4382, AZ-4383 | AZ-3639 |
 | AZ-3879 | worker_perf_security_acceptance | 3 | AZ-3878, AZ-4384, AZ-4385 | AZ-3639 |
 | AZ-3881 | gate_s2_100k_files_spike | 3 | AZ-3652 | AZ-3625 |

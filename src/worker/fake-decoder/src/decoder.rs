@@ -171,7 +171,8 @@ pub struct FakeDecoder {
 }
 
 impl FakeDecoder {
-    /// Listens at `socket` with [`Script::default`] until the test scripts otherwise. Needs a Tokio runtime.
+    /// Listens at `socket` with [`Script::default`] until the test scripts otherwise. Needs a Tokio runtime; for
+    /// in-process tests only: it panics when the socket cannot be bound ([`FakeDecoder::serve`] returns the error).
     pub fn start(socket: &Path) -> Self {
         Self::serve(Config::new(socket)).expect("the fake decoder binds its socket")
     }
@@ -292,6 +293,12 @@ impl FakeDecoder {
     /// The most job requests that were being answered at the same moment.
     pub fn most_in_flight(&self) -> usize {
         self.shared.most_in_flight.load(Ordering::SeqCst)
+    }
+
+    /// The outage of the `outage` answer, now: every connection and the listener close, and FD binds again after
+    /// `refuse` (connects are refused meanwhile).
+    pub fn outage(&self, refuse: Duration) {
+        self.shared.outage(refuse);
     }
 
     pub fn idle(&self) -> bool {

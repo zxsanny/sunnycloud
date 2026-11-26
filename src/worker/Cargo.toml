@@ -31,7 +31,7 @@ http-body = "1"
 # worker's own build identical in both cases.
 reqwest = { workspace = true, features = ["rustls-no-provider"] }
 rustls = { workspace = true }
-rustix = { version = "1.1", features = ["fs", "system"] }
+rustix = { version = "1.1", features = ["fs", "net", "system"] }
 serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

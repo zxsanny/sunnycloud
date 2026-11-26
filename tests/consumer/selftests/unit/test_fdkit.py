@@ -15,9 +15,13 @@ class RecordingCtl:
         self.calls.append((action, params))
         return {}
 
-    def _post(self, action, params):
+    def try_call(self, action, **params):
         self.calls.append((action, params))
         return 200, {"result": {"log_tail": "fake-decoder: cannot read the script: Permission denied"}}
+
+    def restart_worker(self):
+        self.call("process-kill", service="worker", op="kill")
+        self.call("process-kill", service="worker", op="start")
 
 
 @pytest.fixture

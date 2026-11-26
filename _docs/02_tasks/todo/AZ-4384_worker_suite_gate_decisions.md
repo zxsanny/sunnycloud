@@ -3,7 +3,7 @@
 **Task**: AZ-4384_worker_suite_gate_decisions
 **Name**: Worker suite, gate and decisions (H2)
 **Description**: AZ-3878's AC-1 and AC-3 against the real API worker listener and PostgreSQL on the stack, with FD for the gate and scripted decoder answers
-**Complexity**: 3 points
+**Complexity**: 5 points (re-estimated in batch 130: the idle-connection fix in 09 and two ctl additions for IT-09-1)
 **Dependencies**: AZ-4382_fake_decoder_service, AZ-4383_h2_stack_profile_ctl
 **Component**: 09_worker_supervisor
 **Tracker**: AZ-4384
@@ -48,3 +48,9 @@ So AC-1's IT-09-15 leg needs a product change in 09, not only the test: the slot
 (for example by reading it between jobs, so an EOF marks the slot as connecting) and then follow the existing reconnect
 backoff (1 s to 30 s, `src/worker/src/compose.rs`). Until then `fdkit` restarts the supervisor on every FD swap
 (`restart_worker=True`); the IT-09-15 case passes `restart_worker=False`. Re-estimate the points when this task starts.
+
+Done in batch 130 (part of this task): `DecoderConn::check_idle` peeks at the socket without blocking at the start of
+each slot round (`slot_loop/mod.rs` `idle_checked`); an end of stream or any byte while idle closes the connection, and
+the round reconnects and gates before it claims. Proving test `tests/slot_loop_reconnect.rs` (fails before the fix with
+`DecoderUnreachable` on the second job); `tests/decoder_idle.rs` covers the check itself. The stack leg of IT-09-15 is
+still to write.

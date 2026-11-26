@@ -83,6 +83,25 @@ fn other(lane: Lane) -> Lane {
     }
 }
 
+/// The kept connection, unless it ended while the slot was idle (the runner exited or restarted, or sent bytes out
+/// of sequence): then `None`, and the round reconnects and gates first, so no claim goes out on a dead connection.
+fn idle_checked(mut gated: GatedConn) -> Option<GatedConn> {
+    if !gated.conn.is_open() {
+        // Closed by the last job (an unhealthy decoder): the reconnect is already due, nothing ended while idle.
+        return None;
+    }
+    match gated.conn.check_idle() {
+        Ok(()) => Some(gated),
+        Err(error) => {
+            log_warn!(
+                "decoder connection ended while idle; reconnecting",
+                err = &error
+            );
+            None
+        }
+    }
+}
+
 /// One decoder slot's job loop. Jobs run one at a time, so a slot never holds two.
 pub struct SlotLoop {
     api: Arc<WorkerApiClient>,
@@ -152,8 +171,8 @@ impl SlotLoop {
         if self.shutdown.is_draining() {
             return SlotStep::Drained;
         }
-        let mut gated = match self.gated.take() {
-            Some(gated) if gated.conn.is_open() => gated,
+        let mut gated = match self.gated.take().map(idle_checked) {
+            Some(Some(gated)) => gated,
             _ => tokio::select! {
                 biased;
                 () = self.shutdown.draining() => return SlotStep::Drained,

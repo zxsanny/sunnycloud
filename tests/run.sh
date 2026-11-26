@@ -240,7 +240,7 @@ run_core() {
       chmod 0777 "$lane_dir"
       # A default ACL on the checkout (other::---) gives new files no access for other uids: FD (uid 10003) could not
       # read the consumer's script, nor the consumer FD's record. The lane folders follow plain modes instead.
-      if command -v getfacl >/dev/null && getfacl -p "$lane_dir" | grep -q '^default:'; then setfacl -k -b "$lane_dir"; fi
+      if command -v getfacl >/dev/null && grep -q '^default:' < <(getfacl -p "$lane_dir"); then setfacl -k -b "$lane_dir"; fi
     done
   fi
   log "media fixtures for the media suites ($RESULTS/media)"

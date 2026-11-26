@@ -52,6 +52,9 @@ enum Frame {
     Invalid(String),
 }
 
+/// The decoder side of the shared framing (a 4-byte big-endian length, then at most `MAX_PAYLOAD` bytes, parsed by
+/// the shared `parse_request`). The shared `FrameReader` reads replies, the client's side, over a synchronous
+/// `Read`; FD reads requests on an async stream, so only the length check is repeated here.
 async fn read_frame(stream: &mut OwnedReadHalf) -> Frame {
     let mut prefix = [0u8; 4];
     if let Err(error) = stream.read_exact(&mut prefix).await {

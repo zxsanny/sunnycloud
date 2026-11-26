@@ -7,6 +7,7 @@ pub mod api;
 
 use std::fs;
 use std::os::unix::fs::MetadataExt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -77,6 +78,8 @@ pub fn loop_config() -> LoopConfig {
 
 pub struct Rig {
     pub decoder: FakeDecoder,
+    /// The decoder socket the slot connects to.
+    pub socket: PathBuf,
     pub slot_loop: SlotLoop,
     pub jobs: Arc<JobMetrics>,
     pub decoder_metrics: Arc<DecoderMetrics>,
@@ -101,6 +104,7 @@ impl Rig {
         let sockets = tempfile::tempdir().expect("socket folder");
         let socket = sockets.path().join("decoder.sock");
         let decoder = FakeDecoder::start(&socket);
+        let socket_path = socket.clone();
         let scratch = tempfile::tempdir().expect("scratch root");
         let gid = fs::metadata(scratch.path()).expect("metadata").gid();
         let metrics = Arc::new(
@@ -142,6 +146,7 @@ impl Rig {
         );
         Self {
             decoder,
+            socket: socket_path,
             slot_loop,
             jobs,
             decoder_metrics,

@@ -35,7 +35,7 @@ def wait_healthy(ctl, service, seconds=WORKER_READY_SECONDS):
 
 def refused(ctl, action, params):
     """The status of a call that must be refused, read without failing the test on it."""
-    status, body = ctl._post(action, params)
+    status, body = ctl.try_call(action, **params)
     return status, body.get("error", {}).get("code")
 
 
@@ -91,10 +91,8 @@ def test_a_killed_decoder_runner_ends_its_container_and_its_restart_leaves_the_w
     finally:
         stack_ctl.start_decoder("decoder-interactive")  # the suites after this one need the decoder back
         healthy = wait_healthy(stack_ctl, "decoder-interactive")
-        # The supervisor does not notice that its idle connection ended (IT-09-15, AZ-4384): restart it, so the suites
-        # after this one do not inherit a dead connection.
-        stack_ctl.call("process-kill", service="worker", op="kill")
-        stack_ctl.call("process-kill", service="worker", op="start")
+        # Restart the supervisor, so the suites after this one do not wait for its reconnect backoff (up to 30 s).
+        stack_ctl.restart_worker()
     ready_again = stack_ctl.wait_worker_readyz(200, WORKER_READY_SECONDS)
     restarted = stack_ctl.call("inspect", service="decoder-interactive")
     bad_op = refused(stack_ctl, "process-kill", {"service": "decoder-interactive", "op": "restart"})
@@ -118,8 +116,7 @@ def test_a_worker_token_rotation_keeps_the_worker_until_the_old_token_is_dropped
         refused_old = stack_ctl.wait_worker_readyz(503, WORKER_READY_SECONDS)
     finally:
         # The worker reads the token file again at its start: with either outcome above it is then consistent with the api.
-        stack_ctl.call("process-kill", service="worker", op="kill")
-        stack_ctl.call("process-kill", service="worker", op="start")
+        stack_ctl.restart_worker()
     ready_with_new = stack_ctl.wait_worker_readyz(200, WORKER_READY_SECONDS)
     bad_stage = refused(stack_ctl, "process-kill", {"service": "api", "op": "restart", "worker_token": "swap"})
 

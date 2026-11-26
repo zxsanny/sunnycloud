@@ -8,6 +8,8 @@ use media_shared::decoder_protocol::{
     ViolationKind, WriteError, write_message,
 };
 use media_shared::policy::{Plan, Probe};
+use rustix::io::Errno;
+use rustix::net::{RecvFlags, recv};
 use tokio::net::UnixStream;
 
 use super::error::CallError;
@@ -139,6 +141,27 @@ impl DecoderConn {
 
     pub fn is_open(&self) -> bool {
         self.live.is_some()
+    }
+
+    /// Checks, without blocking, that the connection can still take a job; call it only while no job runs. The
+    /// runner sends nothing then, so the end of the stream (the runner exited or was restarted) and any byte at
+    /// all (out of sequence) both close the connection, and the slot reconnects and gates the new one (IT-09-15).
+    /// The check peeks at the socket itself: the reactor's readiness may not have seen the close yet.
+    pub fn check_idle(&mut self) -> Result<(), CallError> {
+        let live = self.live.as_ref().ok_or(CallError::Disconnected)?;
+        let mut byte = [0u8; 1];
+        let ended = match recv(
+            &live.stream,
+            &mut byte[..],
+            RecvFlags::PEEK | RecvFlags::DONTWAIT,
+        ) {
+            Err(errno) if errno == Errno::AGAIN || errno == Errno::INTR => return Ok(()),
+            Ok((0, _)) => CallError::Closed,
+            Ok(_) => out_of_sequence(),
+            Err(errno) => CallError::Io(errno.into()),
+        };
+        self.live = None;
+        Err(ended)
     }
 
     /// Drops the connection. The runner sees the stream close and stops the job; later calls fail with

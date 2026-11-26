@@ -32,14 +32,16 @@ tokio-util = { workspace = true }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 uuid = { workspace = true }
 # The `Stream` trait of the test image's worker transfer hold (`test_hold`); already in the lock through `contracts`.
-futures-core = { version = "0.3", default-features = false }
+# The worker hold's stream wrapper (`test_hold`, feature `test-clock` only).
+futures-core = { version = "0.3", default-features = false, optional = true }
 
 [features]
 # Adds the `OffsetClock` handle to `ApiServices`, the clock-offset route on the internal listener and the
 # `:9091` test-clock listener.
-test-clock = ["sc_clock/test-clock"]
+test-clock = ["sc_clock/test-clock", "dep:futures-core"]
 
 [dev-dependencies]
+futures-core = { version = "0.3", default-features = false }
 # The device-login end-to-end test (AZ-4231 AC-4): the real client against these routes behind a test TLS
 # terminator. A server crate may dev-depend on a client crate; the reverse is refused by the crate-graph check.
 sync-core = { path = "../../sync-core", features = ["test-support"] }

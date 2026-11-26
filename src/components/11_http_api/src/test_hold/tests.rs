@@ -167,6 +167,80 @@ async fn a_hold_nobody_releases_lets_go_at_its_limit() {
     assert_eq!(hold.status(), HoldStatus::default());
 }
 
+#[tokio::test]
+async fn a_stream_dropped_while_it_is_held_lets_the_hold_go() {
+    // Arrange: the supervisor is killed mid-fetch, so the server drops the body while it waits.
+    let hold = armed(HoldRoute::Input, None, 5);
+    let (source, _) = body(&[20]);
+    let mut stream = hold.wrap(HoldRoute::Input, None, Uuid::from_u128(5), source);
+    let first = next(&mut stream).await;
+    let reading = tokio::spawn(async move { next(&mut stream).await });
+    wait_held(&hold).await;
+
+    // Act
+    reading.abort();
+    assert!(reading.await.is_err_and(|error| error.is_cancelled()));
+
+    // Assert
+    assert_eq!(first.map(|chunk| chunk.len()), Some(5));
+    assert_eq!(hold.status(), HoldStatus::default());
+    assert!(hold.arm(HoldRequest {
+        route: HoldRoute::Input,
+        kind: None,
+        after_bytes: 1,
+    }));
+}
+
+#[test]
+fn a_stream_dropped_before_it_was_read_lets_the_hold_go() {
+    // Arrange: the handler took the hold, then refused the request before it read the body.
+    let hold = armed(HoldRoute::Output, Some("thumb"), 5);
+    let (source, _) = body(&[20]);
+    let stream = hold.wrap(HoldRoute::Output, Some("thumb"), Uuid::from_u128(6), source);
+    assert!(hold.status().job_id.is_some(), "the hold is taken");
+
+    // Act
+    drop(stream);
+
+    // Assert
+    assert_eq!(hold.status(), HoldStatus::default());
+}
+
+#[test]
+fn dropping_a_finished_stream_leaves_a_new_arm_in_place() {
+    // Arrange
+    let hold = armed(HoldRoute::Input, None, 5);
+    let (source, _) = body(&[20]);
+    let stream = hold.wrap(HoldRoute::Input, None, Uuid::from_u128(7), source);
+    hold.release();
+    assert!(hold.arm(HoldRequest {
+        route: HoldRoute::Output,
+        kind: None,
+        after_bytes: 1,
+    }));
+
+    // Act
+    drop(stream);
+
+    // Assert
+    assert!(
+        hold.status().armed,
+        "the stream of the old hold does not clear the new one"
+    );
+}
+
+#[test]
+fn an_input_hold_with_a_kind_is_refused() {
+    // Act
+    let request = hold_request(&json!({"route": "input", "kind": "thumb", "after_bytes": 5}));
+
+    // Assert
+    assert!(
+        request.is_none(),
+        "an input stream has no kind, so the hold could never be taken"
+    );
+}
+
 #[test]
 fn a_hold_request_names_a_route_an_optional_kind_and_its_bytes() {
     // Arrange

@@ -91,10 +91,10 @@ Sources: E-00 § Interface specification (authoritative), `architecture.md`, `ca
 > See ADR 009_sandboxed-media-pipeline-with-api-only-workers (queue SQL lives here, in the API)
 
 ### Component: 09_worker_supervisor
-- **Epic**: AZ-3639 (E-20) · **Directory**: `src/worker/` (binary `sunnycloud-worker`)
+- **Epic**: AZ-3639 (E-20) · **Directory**: `src/worker/` (binary `sunnycloud-worker`); test support `src/worker/fake-decoder/` (crate `sunnycloud-fake-decoder`, lib + binary `fake-decoder`: FD of harness H2, a dev-dependency of the worker's tests and a service of the Compose test stack; never in a release image)
 - **Public API**: none (binary; `src/main.rs`) · **Internal**: everything in the directory
 - **Owns**: `src/worker/**`
-- **Imports from**: `media-shared` (types, `policy`, `decoder_protocol` client side); helpers config, error, clock, ids_hashing. Never `contracts`, `sc_db`, `sqlx` or any component crate (crate-graph test)
+- **Imports from**: `media-shared` (types, `policy`, `decoder_protocol` client side; FD uses the decoder side: `parse_request`, `write_message` of responses); helpers config, error, clock, ids_hashing. Never `contracts`, `sc_db`, `sqlx` or any component crate, the decoder's included (crate-graph test; FD sets up its socket itself)
 - **Consumed by**: none (it calls 08's routes behind 11 over HTTP and the decoder socket)
 > See ADR 009_sandboxed-media-pipeline-with-api-only-workers, ADR 010_cpu-first-transcoding-with-opt-in-gpu, ADR 001_rust-for-server-workers-and-desktop
 
@@ -108,7 +108,7 @@ Sources: E-00 § Interface specification (authoritative), `architecture.md`, `ca
 
 ### Component: 11_http_api
 - **Epic**: AZ-3644 (E-21) · **Directory**: `src/components/11_http_api/` (library `sunnycloud-http-api`, proposed)
-- **Public API**: `src/components/11_http_api/src/lib.rs` (`HttpServer`, `ApiServices`, `HttpConfig`, `ServerInfo`, the route registry used by `openapi`) · **Internal**: listeners, routes, middleware, error mapper
+- **Public API**: `src/components/11_http_api/src/lib.rs` (`HttpServer`, `ApiServices`, `HttpConfig`, `ServerInfo`, the route registry used by `openapi`; with feature `test-clock` only: `test_hold`, the one-shot worker transfer hold of the `:9091` test listener) · **Internal**: listeners, routes, middleware, error mapper
 - **Owns**: `src/components/11_http_api/**`
 - **Imports from**: `contracts`; helpers config, error, clock, audit, ids_hashing, ratelimit, observability. No `sc_db`, no `sqlx`, no component crate. Ports used: every service in `ApiServices` (01, 02, 03, 05, 06, 07, 08, 20) and the `ReadinessCheck` list
 - **Consumed by**: 12 (crate); clients 13, 16, 17, 18 and the supervisor 09 at runtime over HTTP
