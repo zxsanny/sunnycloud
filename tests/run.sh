@@ -42,10 +42,20 @@ profiles: ${KNOWN_PROFILES// /, }
   reset    stop api, worker and the database, restore the database and blob volumes from the golden snapshot taken after 'up', start them (< ${RESET_BUDGET_SECONDS} s)
   down     tear down the stack, the ctl stub and the generated secrets
 
-environment: E2E_PYTEST_ARGS narrows the consumer run (e.g. "suites/media"); E2E_KEEP_ON_FAILURE=1 leaves the stack up when the run fails (read the logs, then 'down'); SEED_FAIL=1 adds one failing self-test (proves that a FAIL fails the run); E2E_CTL_PORT (default 8088)
+environment: E2E_PYTEST_ARGS narrows the consumer run (e.g. "suites/media"); E2E_API_VARIANT=release runs the release api image (with E2E_PYTEST_ARGS="suites/http_api"); E2E_KEEP_ON_FAILURE=1 leaves the stack up when the run fails (read the logs, then 'down'); SEED_FAIL=1 adds one failing self-test (proves that a FAIL fails the run); E2E_CTL_PORT (default 8088)
 results: e2e-results/report.csv, metrics.json, not-run.csv, ctl-audit.log
 USAGE
 }
+
+# The api image of the stack: `test` (feature test-clock, the default) or `release` (no feature; the suites that move
+# the test clock cannot run on it, so narrow the run with E2E_PYTEST_ARGS, e.g. "suites/http_api").
+E2E_API_VARIANT="${E2E_API_VARIANT:-test}"
+case "$E2E_API_VARIANT" in
+  test) export E2E_API_FEATURES=test-clock E2E_API_TEST_CLOCK=true ;;
+  release) export E2E_API_FEATURES="" E2E_API_TEST_CLOCK=false ;;
+  *) printf 'E2E_API_VARIANT is test or release, not %s\n' "$E2E_API_VARIANT" >&2; exit 2 ;;
+esac
+export E2E_API_VARIANT
 
 dc() { docker compose -p "$PROJECT" -f "$COMPOSE_FILE" --profile core "$@"; }
 
@@ -139,7 +149,7 @@ cmd_rerun() {
   gateway="$(docker network inspect -f '{{(index .IPAM.Config 0).Gateway}}' "${PROJECT}_ctl-net")"
   db_addr="$(docker inspect -f "{{(index .NetworkSettings.Networks \"${PROJECT}_backend\").IPAddress}}" "$(db_container)")"
   dc rm --force consumer
-  dc run --rm --no-deps -T -e "E2E_CTL_URL=http://$gateway:$CTL_PORT" -e "E2E_DB_ADDR=$db_addr" consumer pytest -v --tb=short -p e2e_report "$@" || rc=$?
+  dc run --rm --no-deps -T -e "E2E_CTL_URL=http://$gateway:$CTL_PORT" -e "E2E_DB_ADDR=$db_addr" -e "E2E_API_VARIANT=$E2E_API_VARIANT" consumer pytest -v --tb=short -p e2e_report "$@" || rc=$?
   [[ -f "$RESULTS/report.csv" ]] && cat "$RESULTS/report.csv"
   return "$rc"
 }
@@ -234,7 +244,7 @@ run_core() {
   dc rm --force consumer
   # E2E_PYTEST_ARGS narrows a run (for example "suites/media"); empty runs everything.
   # shellcheck disable=SC2086
-  dc run --rm --no-deps -T -e "E2E_CTL_URL=http://$gateway:$CTL_PORT" -e "E2E_DB_ADDR=$db_addr" consumer \
+  dc run --rm --no-deps -T -e "E2E_CTL_URL=http://$gateway:$CTL_PORT" -e "E2E_DB_ADDR=$db_addr" -e "E2E_API_VARIANT=$E2E_API_VARIANT" consumer \
     pytest -v --tb=short -p e2e_report ${E2E_PYTEST_ARGS:-} || rc=$?
   log "consumer exit code: $rc"
 

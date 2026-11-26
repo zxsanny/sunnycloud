@@ -78,13 +78,14 @@ x-sunnycloud-env: &sunnycloud-env
 
 # The test image: the same build as the release image plus the clock control (features test-clock).
 x-api-image: &api-image
-  image: sunnycloud-api:e2e-test
+  # E2E_API_VARIANT=release (tests/run.sh) builds the release image instead: no feature, no clock control (AZ-3835 AC-2).
+  image: sunnycloud-api:e2e-${E2E_API_VARIANT:-test}
   build:
     context: ..
     dockerfile: deploy/docker/api.Dockerfile
     args:
-      FEATURES: test-clock
-      TEST_CLOCK: "true"
+      FEATURES: ${E2E_API_FEATURES-test-clock}
+      TEST_CLOCK: ${E2E_API_TEST_CLOCK:-true}
       VERSION: e2e
       REVISION: ${REVISION:-e2e}
 

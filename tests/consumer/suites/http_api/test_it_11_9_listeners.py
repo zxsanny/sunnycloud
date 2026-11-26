@@ -1,5 +1,7 @@
-"""IT-11-9 (components/11_http_api/tests.md), Mode R on the test image: which route lives on which listener (AC-79)."""
+"""IT-11-9 (components/11_http_api/tests.md), Mode R: which route lives on which listener (AC-79), on the test image and
+on the release image (`E2E_API_VARIANT=release tests/run.sh --profile core` with `E2E_PYTEST_ARGS=suites/http_api`)."""
 import json
+import os
 
 from stackkit import edge, problem_without_request_id
 
@@ -14,6 +16,8 @@ WORKER_ROUTES = [
     ("PUT", "/api/v1/worker-jobs/status", json.dumps({"decoder_ok": True, "image_age_days": 0})),
 ]
 UNKNOWN = "/api/v1/no-such-route-it-11-9"
+# The api image this run carries (tests/run.sh passes it on).
+VARIANT = os.environ.get("E2E_API_VARIANT", "test")
 NOT_WORKER_CREDENTIALS = {
     "none": {},
     "cookie": {"Cookie": "sc_session=not-a-worker"},
@@ -105,7 +109,7 @@ def test_ops_paths_answer_on_the_ops_listener_only(stack_ctl):
     assert through_caddy == {p: 404 for p in paths}
 
 
-def test_test_image_serves_the_clock_endpoints_on_9091_and_8081(stack_ctl):
+def test_the_clock_endpoints_are_served_by_the_test_image_only(stack_ctl):
     # Arrange
     # Advancing by 0 s reads the offset and moves nothing for the tests that follow.
     advance = json.dumps({"advance_seconds": 0})
@@ -115,8 +119,12 @@ def test_test_image_serves_the_clock_endpoints_on_9091_and_8081(stack_ctl):
     read = stack_ctl.internal(8081, "/internal/v1/test/clock-offset", auth="worker")
 
     # Assert
-    assert posted["status"] == 200 and "offset_seconds" in json.loads(posted["body"]), posted
-    assert read["status"] == 200 and json.loads(read["body"]) == json.loads(posted["body"]), read
+    if VARIANT == "test":
+        assert posted["status"] == 200 and "offset_seconds" in json.loads(posted["body"]), posted
+        assert read["status"] == 200 and json.loads(read["body"]) == json.loads(posted["body"]), read
+    else:
+        assert posted == {"connection": "refused"}, f"the release image listens on :9091: {posted}"
+        assert read["status"] == 404, read
 
 
 def test_clock_endpoints_are_not_on_the_public_listener_or_through_caddy(stack_ctl):

@@ -95,8 +95,13 @@ install_pg_client() {
   echo "deb [signed-by=$keyring] https://apt.postgresql.org/pub/repos/apt $codename-pgdg main" > "$work/pgdg.list"
   as_root install -m 0644 "$work/pgdg.list" /etc/apt/sources.list.d/pgdg.list
   rm -rf "$work"
-  as_root apt-get update
-  as_root env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+  # Only the PGDG index: a full `apt-get update` also refreshes the runner's Ubuntu mirror, which hung silently past
+  # the watchdog's 120 s twice (CI runs 45165398422 and 45169525185). The client's other dependencies (libssl, zlib,
+  # readline, lz4, zstd) are part of the runner image already.
+  local apt_net=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+  as_root apt-get "${apt_net[@]}" update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/pgdg.list \
+    -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0
+  as_root env DEBIAN_FRONTEND=noninteractive apt-get "${apt_net[@]}" install --yes --no-install-recommends \
     "postgresql-client-18=$PG_CLIENT_VERSION" "libpq5=$PG_CLIENT_VERSION"
 }
 
