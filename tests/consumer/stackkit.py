@@ -15,6 +15,13 @@ from pathlib import Path
 import pytest
 
 READY_POLL_SECONDS = 1.0
+DECODER_SERVICES = ("decoder-interactive", "decoder-general")
+WORKER_OPS_PORT = 9090
+WORKER_OPS_PATHS = ("/healthz", "/readyz", "/metrics")
+WORKER_POLL_SECONDS = 0.5
+# The api restarts of a worker token rotation (e2e-ctl `process-kill`): `next` adds a second accepted token,
+# `drop-old` leaves only the new one, so a worker that still holds the old token gets 403 until it restarts.
+WORKER_TOKEN_STAGES = ("next", "drop-old")
 
 
 def required_env(name):
@@ -46,9 +53,10 @@ class Ctl:
             pytest.fail(f"e2e-ctl {action} {params}: {status} {json.dumps(body)[:400]}", pytrace=False)
         return body["result"]
 
-    def internal(self, port, path, method="GET", auth="none", headers=None, body=None):
-        """One request to the api on `port`; the answer is `{"connection": "refused"}` or status, headers and body."""
-        params = {"port": port, "path": path, "method": method, "auth": auth}
+    def internal(self, port, path, method="GET", auth="none", headers=None, body=None, service="api"):
+        """One request to `service` (the api, or the worker's ops port) on `port`; the answer is
+        `{"connection": "refused"}` or status, headers and body."""
+        params = {"service": service, "port": port, "path": path, "method": method, "auth": auth}
         if headers:
             params["headers"] = headers
         if body is not None:
@@ -66,6 +74,65 @@ class Ctl:
             return 0, {}
         return answer["status"], json.loads(answer["body"])
 
+    def worker_ops(self, path):
+        """`(status, body text)` of one GET on the worker's ops port; `(0, "")` while the worker container has no
+        address or refuses the connection (stopped, restarting)."""
+        if path not in WORKER_OPS_PATHS:
+            raise ValueError(f"path is one of {WORKER_OPS_PATHS}, not {path!r}")
+        status, body = self._post("internal-http", {"service": "worker", "port": WORKER_OPS_PORT, "path": path})
+        if status == 409:
+            return 0, ""
+        assert status == 200, f"internal-http: {status} {body}"
+        answer = body["result"]
+        if answer["connection"] != "open":
+            return 0, ""
+        return answer["status"], answer["body"]
+
+    def wait_worker_readyz(self, expected, seconds):
+        """Polls the worker's `/readyz` until it answers `expected` (0 while it has no listener); returns the last
+        status, so the caller asserts on it."""
+        deadline = time.monotonic() + seconds
+        while True:
+            status, _ = self.worker_ops("/readyz")
+            if status == expected or time.monotonic() > deadline:
+                return status
+            time.sleep(WORKER_POLL_SECONDS)
+
+    def worker_metrics(self):
+        """The samples of the worker's `/metrics`, keyed by name with labels
+        (`sunnycloud_worker_selfcheck_ok{slot="interactive"}`)."""
+        status, text = self.worker_ops("/metrics")
+        assert status == 200, f"worker /metrics: {status}"
+        return parse_metrics(text)
+
+    def timing_settings(self, service):
+        """The timing settings (`SUNNYCLOUD_JOB_LEASE`, ...) the api's or the worker's container was started with;
+        `None` for one left unset."""
+        if service not in ("api", "worker"):
+            raise ValueError(f"service is api or worker, not {service!r}")
+        return self.call("inspect", settings=service)["settings"]
+
+    def decoder_processes(self, service):
+        """The processes in a decoder container (`docker top` on the host): `[{"pid", "comm", "args"}]`."""
+        _check_decoder(service)
+        return self.call("inspect", processes=service)["processes"]
+
+    def kill_decoder(self, service):
+        """SIGKILL of a decoder: its runner ends as in a crash; `start_decoder` is the restart."""
+        _check_decoder(service)
+        return self.call("process-kill", service=service, op="kill")
+
+    def start_decoder(self, service):
+        _check_decoder(service)
+        return self.call("process-kill", service=service, op="start")
+
+    def rotate_worker_token(self, stage):
+        """Restarts the api with the worker token rotated (`WORKER_TOKEN_STAGES`) and waits until it is healthy. No
+        token reaches the consumer."""
+        if stage not in WORKER_TOKEN_STAGES:
+            raise ValueError(f"stage is one of {WORKER_TOKEN_STAGES}, not {stage!r}")
+        return self.call("process-kill", service="api", op="restart", worker_token=stage)
+
     def wait_ready(self, seconds):
         deadline = time.monotonic() + seconds
         while True:
@@ -73,6 +140,24 @@ class Ctl:
             if status == 200 or time.monotonic() >= deadline:
                 return status, body
             time.sleep(READY_POLL_SECONDS)
+
+
+def _check_decoder(service):
+    if service not in DECODER_SERVICES:
+        raise ValueError(f"service is one of {DECODER_SERVICES}, not {service!r}")
+
+
+def parse_metrics(text):
+    """Prometheus text format to `{sample name with labels: value}`; comment lines are skipped."""
+    samples = {}
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        name, _, value = line.rpartition(" ")
+        if not name:
+            raise ValueError(f"not a metrics sample line: {line!r}")
+        samples[name] = float(value)
+    return samples
 
 
 def edge(path, method="GET", data=None, headers=None):

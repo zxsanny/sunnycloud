@@ -55,7 +55,7 @@ async fn only_nvenc_on_with_a_passed_probe_sends_the_nvenc_plan() {
         // Arrange
         let (_api, mut rig) = transcode_rig(nvenc, probe_ok).await;
         rig.decoder
-            .transcodes([Answer::Transcode(compliant_probe(60_000))]);
+            .transcodes([Answer::transcode(compliant_probe(60_000))]);
 
         // Act
         let end = rig.run_one().await;
@@ -76,7 +76,7 @@ async fn failed_nvenc_encode_is_rerun_once_on_the_cpu_and_the_job_succeeds() {
     let (api, mut rig) = transcode_rig(true, true).await;
     rig.decoder.transcodes([
         Answer::Error(DecodeError::EncoderFailed { exit_code: 1 }),
-        Answer::Transcode(compliant_probe(60_000)),
+        Answer::transcode(compliant_probe(60_000)),
     ]);
 
     // Act

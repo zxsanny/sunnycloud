@@ -15,10 +15,7 @@ async fn photo(entry: Entry) -> (ScriptedApi, Rig) {
     api.enqueue(entry);
     let rig = Rig::new(&api, SlotName::Interactive, WORKER);
     rig.decoder.probes([Answer::Probe(photo_probe())]);
-    rig.decoder.stills_fall_back_to(Answer::Image {
-        width: 1440,
-        height: 1080,
-    });
+    rig.decoder.stills_fall_back_to(Answer::image(1440, 1080));
     (api, rig)
 }
 

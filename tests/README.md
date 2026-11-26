@@ -7,6 +7,7 @@ Python consumer with its CSV reporter, and the `e2e-ctl` stub. Pipeline tasks an
 
     tests/run.sh --profile core            # start db + consumer, run the self-tests, tear everything down
     tests/run.sh --profile core --keep     # same, but leave the stack up
+    tests/run.sh --profile h2              # the core stack with the worker-suite timings (harness H2)
     tests/run.sh reset                     # restore the database and blob volumes to the golden snapshot (stack must be up)
     tests/run.sh down                      # tear down a kept stack
     SEED_FAIL=1 tests/run.sh --profile core   # adds one failing self-test; the run must exit non-zero
@@ -14,8 +15,21 @@ Python consumer with its CSV reporter, and the `e2e-ctl` stub. Pipeline tasks an
 
 Needs on the host: Docker with Compose, `openssl`, `python3`. The `core` run takes about 30 s.
 
-Profiles: `core`, `web`, `desktop`, `android-emu`, `perf`, `lan`, `gpu`. Only `core` has services yet; the others exit 3 with
-"not available yet" (never a pass). An unknown name prints the usage and exits 2.
+Profiles: `core`, `h2`, `web`, `desktop`, `android-emu`, `perf`, `lan`, `gpu`. `core` and `h2` have services; the others exit 3
+with "not available yet" (never a pass). An unknown name prints the usage and exits 2. `h2` is harness H2 of the worker
+tests (`_docs/02_document/components/09_worker_supervisor/tests.md`): the `core` services with `tests/compose.h2.yml` merged
+over them (job lease 6 s, claim poll 100 ms, status 1 s, decoder silence 1 s, cancel grace 500 ms, photo timeout 5 s, shutdown
+grace 3 s). The profile of a kept stack is in `e2e-results/.stack-state`, so `reset`, `rerun` and `down` use its files.
+`selftests/stack/test_worker_harness.py` checks under either profile that the api and the worker run with its timings.
+`h2` also declares FD, the scripted fake decoder (`src/worker/fake-decoder`, image target `fake-decoder` of
+`deploy/docker/worker.Dockerfile`; script and record formats in the crate's module doc), as services `fd-interactive` and
+`fd-general` (compose profile `fd`, never started by `up`). A suite takes a lane with `fdkit.FakeDecoderLane(ctl, lane)`:
+`start(script)` writes `e2e-results/fd/<lane>/script.json`, removes the last `record.jsonl` and has e2e-ctl stop the real
+decoder and start FD on its socket and scratch volumes; `record()` / `wait_for(kinds, seconds)` read what FD received
+(a timeout adds FD's log); `stop()` puts the real decoder back. Both restart the supervisor unless `restart_worker=False`:
+it does not notice an idle decoder connection that ends (IT-09-15, AZ-4384). FD is for fault and protocol cases only,
+never for a media outcome.
+`suites/worker/test_fake_decoder_stack.py` (AZ-4382 AC-3) runs under `h2` and is skipped under `core`.
 
 Exit codes: 0 all good, 1 a FAIL or a setup error, 2 usage, 3 profile not available yet.
 
@@ -111,10 +125,15 @@ before the dump told to resync. PT-12-1 and PT-12-2 are NOT-RUN(HW-REF).
 
 `tests/tools/e2e-ctl/e2e_ctl.py`, Python stdlib only. `POST /v1/actions/<name>` with `Authorization: Bearer <token>` and a
 JSON body of parameters. Implemented (`ctl_actions.py`): `internal-http` (one HTTP request to a listener of the api on the
-backend network; `auth: "worker"` adds the worker bearer, which never leaves ctl), `db-outage` (`op` `stop` or `start`,
+backend network, or to the worker's ops port `:9090` with `service: "worker"`; `auth: "worker"` adds the worker bearer on
+the api's listeners only, and it never leaves ctl), `db-outage` (`op` `stop` or `start`,
 start waits for a healthy database), `interrupted-upgrade` (`op` `revert` with `steps`, or `apply`, through the product's
-own `migrate`), `process-kill` (`kill` or `start` of the api or the worker, `pause` or `unpause` of a decoder), `inspect` (a
-container's state, start time and restart count, its log tail, the top-level names in a decoder scratch volume, a secret
+own `migrate`), `process-kill` (`kill` or `start` of the api, the worker or a decoder, whose runner is the container's main process;
+`pause` or `unpause` of a decoder; `fake` or `real` of a decoder (h2: FD in its place, or the decoder back); `restart` of the api, waiting for it to be healthy, with `worker_token: "next"` (a second
+accepted token in `worker_api_token_next`) or `"drop-old"` (the next or a fresh token becomes the only one: a worker still
+holding the old one gets 403 until it restarts); the secret files are rewritten in place and no token is returned),
+`inspect` (a container's state, start time and restart count, its log tail, a decoder's processes listed by `docker top`,
+the timing settings the api or the worker was started with, the top-level names in a decoder scratch volume, a secret
 scan that returns only counts, or the api role's DDL rights and whether it holds a migrator secret), `db-probe` (fixed
 queries, among them the media jobs and derived rows), `db-restore` (the golden snapshot, or a named `pg_dump` and its
 load), `exec-operator` (an operator command in the api container, in a one-off api container while `serve` is down, or

@@ -24,10 +24,7 @@ fn script_photos(harness: &Harness) {
     for decoder in [&harness.interactive, &harness.general] {
         decoder
             .probes_fall_back_to(Answer::Probe(photo_probe()))
-            .stills_fall_back_to(Answer::Image {
-                width: 320,
-                height: 240,
-            });
+            .stills_fall_back_to(Answer::image(320, 240));
     }
 }
 
@@ -150,18 +147,12 @@ async fn ac4_sigterm_stops_claims_finishes_the_short_job_and_cancels_and_release
     harness
         .general
         .probes_fall_back_to(Answer::Probe(compliant_probe(60_000)))
-        .stills_fall_back_to(Answer::Image {
-            width: 320,
-            height: 240,
-        })
+        .stills_fall_back_to(Answer::image(320, 240))
         .delay(Duration::from_secs(30));
     harness
         .interactive
         .probes_fall_back_to(Answer::Probe(photo_probe()))
-        .stills_fall_back_to(Answer::Image {
-            width: 320,
-            height: 240,
-        })
+        .stills_fall_back_to(Answer::image(320, 240))
         .delay(Duration::from_millis(100));
     harness.api.enqueue(Entry::new(1, JobKind::Poster));
     let running = harness.start();

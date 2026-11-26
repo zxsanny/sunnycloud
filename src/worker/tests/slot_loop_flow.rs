@@ -27,10 +27,7 @@ async fn interactive_rig() -> (ScriptedApi, Rig) {
 }
 
 fn image() -> Answer {
-    Answer::Image {
-        width: 1440,
-        height: 1080,
-    }
+    Answer::image(1440, 1080)
 }
 
 #[tokio::test]
@@ -133,7 +130,7 @@ async fn index_at_end_clip_is_remuxed_and_posted_as_transcode() {
     api.enqueue(Entry::new(1, JobKind::Transcode));
     rig.decoder.probes([Answer::Probe(remux_probe())]);
     rig.decoder
-        .transcodes([Answer::Transcode(compliant_probe(60_000))]);
+        .transcodes([Answer::transcode(compliant_probe(60_000))]);
 
     // Act
     let end = rig.run_one().await;
@@ -160,7 +157,7 @@ async fn non_compliant_clip_is_transcoded_on_the_cpu_and_posted_as_transcode() {
     api.enqueue(Entry::new(1, JobKind::Transcode));
     rig.decoder.probes([Answer::Probe(transcode_probe())]);
     rig.decoder
-        .transcodes([Answer::Transcode(compliant_probe(60_000))]);
+        .transcodes([Answer::transcode(compliant_probe(60_000))]);
 
     // Act
     let end = rig.run_one().await;
@@ -216,7 +213,7 @@ async fn photo_requests_carry_the_photo_limits_and_video_requests_the_video_limi
     ]);
     rig.decoder.stills([image(), image()]);
     rig.decoder
-        .transcodes([Answer::Transcode(compliant_probe(60_000))]);
+        .transcodes([Answer::transcode(compliant_probe(60_000))]);
 
     // Act: the general slot starts with the video lane, so the video job runs first.
     rig.run_one().await;

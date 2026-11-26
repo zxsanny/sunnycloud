@@ -91,7 +91,9 @@ async fn a_silent_decoder_is_cancelled_then_the_slot_stops_claiming_and_the_job_
 #[tokio::test]
 async fn a_decoder_that_only_sends_alive_is_cancelled_at_the_wall_limit_with_the_same_outcome() {
     // Arrange
-    let answer = Answer::AliveOnly(Duration::from_millis(50));
+    let answer = Answer::AliveOnly {
+        every: Duration::from_millis(50),
+    };
     let (api, mut rig) = photo_rig(10_000, 100, 600, answer).await;
 
     // Act
@@ -115,16 +117,7 @@ async fn a_decoder_that_only_sends_alive_is_cancelled_at_the_wall_limit_with_the
 #[tokio::test]
 async fn a_decoder_that_answers_inside_the_silence_timeout_is_left_alone() {
     // Arrange
-    let (api, mut rig) = photo_rig(
-        400,
-        100,
-        60_000,
-        Answer::Image {
-            width: 1440,
-            height: 1080,
-        },
-    )
-    .await;
+    let (api, mut rig) = photo_rig(400, 100, 60_000, Answer::image(1440, 1080)).await;
     rig.decoder.delay(Duration::from_millis(150));
 
     // Act
@@ -140,16 +133,7 @@ async fn a_decoder_that_answers_inside_the_silence_timeout_is_left_alone() {
 #[tokio::test]
 async fn a_hostile_frame_fails_the_job_and_the_slot_claims_again_only_after_the_gate_passes() {
     // Arrange
-    let (api, mut rig) = photo_rig(
-        20_000,
-        5_000,
-        60_000,
-        Answer::Image {
-            width: 1440,
-            height: 1080,
-        },
-    )
-    .await;
+    let (api, mut rig) = photo_rig(20_000, 5_000, 60_000, Answer::image(1440, 1080)).await;
     rig.decoder.stills([Answer::Garbage(vec![0xFF; 4])]);
     api.enqueue(Entry::new(2, JobKind::Stills));
 

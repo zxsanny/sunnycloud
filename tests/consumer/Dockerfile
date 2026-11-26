@@ -12,7 +12,7 @@ COPY requirements.txt ./
 RUN pip install --verbose -r requirements.txt
 
 COPY e2e_report.py ./plugin/
-COPY pytest.ini conftest.py stackkit.py mediakit.py ./
+COPY pytest.ini conftest.py stackkit.py mediakit.py fdkit.py ./
 COPY selftests ./selftests
 COPY suites ./suites
 # The host's umask (007 here) would leave the copied files unreadable for the unprivileged user below.

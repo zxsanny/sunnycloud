@@ -7,8 +7,8 @@ use media_shared::decoder_protocol::{DecodeError, LimitKind, Request};
 use media_shared::policy::{Encoder, Plan};
 use media_shared::types::{Disposition, FailureReport, JobKind};
 use slot_support::{
-    Answer, Entry, Rig, ScriptedApi, calls, compliant_probe, json, loop_config, photo_probe,
-    remux_probe, transcode_probe,
+    Answer, Entry, Output, Rig, ScriptedApi, calls, compliant_probe, json, loop_config,
+    photo_probe, remux_probe, transcode_probe,
 };
 use sunnycloud_worker::{JobEnd, KindConfig, SlotName};
 
@@ -54,7 +54,7 @@ async fn stalled_encode_is_rerun_once_on_a_cleared_out_directory_with_the_cpu_en
     let (api, mut rig) = transcode_rig().await;
     rig.decoder.transcodes([
         Answer::Error(DecodeError::Stalled),
-        Answer::Transcode(compliant_probe(60_000)),
+        Answer::transcode(compliant_probe(60_000)),
     ]);
 
     // Act
@@ -109,7 +109,7 @@ async fn failed_encoder_is_rerun_once_with_the_cpu_encoder() {
     let (_api, mut rig) = transcode_rig().await;
     rig.decoder.transcodes([
         Answer::Error(DecodeError::EncoderFailed { exit_code: 1 }),
-        Answer::Transcode(compliant_probe(60_000)),
+        Answer::transcode(compliant_probe(60_000)),
     ]);
 
     // Act
@@ -154,7 +154,7 @@ async fn failed_remux_is_rerun_once_as_a_cpu_transcode_on_a_cleared_out_director
     rig.decoder.probes([Answer::Probe(remux_probe())]);
     rig.decoder.transcodes([
         Answer::Error(DecodeError::Stalled),
-        Answer::Transcode(compliant_probe(60_000)),
+        Answer::transcode(compliant_probe(60_000)),
     ]);
 
     // Act
@@ -203,10 +203,7 @@ async fn second_failure_of_a_remux_rerun_fails_permanent() {
 async fn stalled_render_is_rerun_once_and_the_rerun_budget_is_per_claim() {
     // Arrange
     let (api, mut rig) = photo_rig().await;
-    let image = || Answer::Image {
-        width: 1440,
-        height: 1080,
-    };
+    let image = || Answer::image(1440, 1080);
     rig.decoder.stills([
         Answer::Error(DecodeError::Stalled),
         image(),
@@ -229,7 +226,7 @@ async fn non_compliant_output_fails_permanent_without_a_rerun_or_a_post() {
     // Arrange
     let (api, mut rig) = transcode_rig().await;
     rig.decoder
-        .transcodes([Answer::Transcode(transcode_probe())]);
+        .transcodes([Answer::transcode(transcode_probe())]);
 
     // Act
     let end = rig.run_one().await;
@@ -276,10 +273,7 @@ async fn socket_closed_mid_job_fails_retry_and_the_slot_reconnects_for_the_next_
     // Arrange
     let (api, mut rig) = photo_rig().await;
     api.enqueue(Entry::new(2, JobKind::Stills));
-    let image = || Answer::Image {
-        width: 1440,
-        height: 1080,
-    };
+    let image = || Answer::image(1440, 1080);
     rig.decoder.stills([Answer::Hang, image(), image()]);
     rig.decoder
         .probes([Answer::Probe(photo_probe()), Answer::Probe(photo_probe())]);
@@ -354,7 +348,15 @@ async fn input_that_cannot_fit_the_scratch_mount_fails_permanent_before_any_fetc
 
 #[tokio::test]
 async fn output_the_decoder_never_wrote_fails_permanent_as_output_rejected() {
-    for answer in [Answer::ImageWithoutFile, Answer::ImageAsSymlink] {
+    let symlink = Output::Symlink {
+        target: "/etc/hostname".into(),
+    };
+    for output in [Output::Absent, symlink] {
+        let answer = Answer::Image {
+            width: 320,
+            height: 240,
+            output,
+        };
         // Arrange
         let (api, mut rig) = photo_rig().await;
         rig.decoder.stills_fall_back_to(answer.clone());
@@ -386,10 +388,7 @@ async fn the_api_rejecting_an_output_fails_permanent_and_an_api_error_fails_retr
         api.enqueue(Entry::new(1, JobKind::Stills).output_status("preview", status));
         let mut rig = Rig::new(&api, SlotName::Interactive, WORKER);
         rig.decoder.probes([Answer::Probe(photo_probe())]);
-        rig.decoder.stills_fall_back_to(Answer::Image {
-            width: 1440,
-            height: 1080,
-        });
+        rig.decoder.stills_fall_back_to(Answer::image(1440, 1080));
 
         // Act
         let end = rig.run_one().await;

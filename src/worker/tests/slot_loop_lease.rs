@@ -19,10 +19,7 @@ async fn photo_rig(entry: Entry, render_delay: Duration) -> (ScriptedApi, Rig) {
     api.enqueue(entry);
     let rig = Rig::with_config(&api, SlotName::Interactive, WORKER, loop_config());
     rig.decoder.probes([Answer::Probe(photo_probe())]);
-    rig.decoder.stills_fall_back_to(Answer::Image {
-        width: 1440,
-        height: 1080,
-    });
+    rig.decoder.stills_fall_back_to(Answer::image(1440, 1080));
     rig.decoder.delay(render_delay);
     (api, rig)
 }

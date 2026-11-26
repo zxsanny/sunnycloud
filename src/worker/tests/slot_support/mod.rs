@@ -1,10 +1,9 @@
-//! A slot loop wired to a scripted API listener and a fake decoder on a real socket, plus the probes and
-//! call-log helpers the slot loop tests share.
+//! A slot loop wired to a scripted API listener and the fake decoder (`sunnycloud-fake-decoder`, the same FD the
+//! test stack runs) on a real socket, plus the probes and call-log helpers the slot loop tests share.
 
 #![allow(dead_code, unused_imports)]
 
 pub mod api;
-pub mod decoder;
 
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -12,11 +11,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub use api::{Entry, ScriptedApi};
-pub use decoder::{Answer, FakeDecoder};
 use media_shared::decoder_protocol::Limits;
 use media_shared::policy::{AudioStream, MediaKind, Probe, VideoStream};
 use sc_observability::{BuildInfo, Metrics};
 use serde_json::Value;
+pub use sunnycloud_fake_decoder::{Answer, FakeDecoder, Output};
 use sunnycloud_worker::{
     ApiAccess, ApiConfig, Backoff, DecoderMetrics, JobEnd, JobMetrics, KindConfig, LoopConfig,
     ScratchRoot, Shutdown, Slot, SlotConfig, SlotLoop, SlotName, SlotStep, WorkerApiClient,

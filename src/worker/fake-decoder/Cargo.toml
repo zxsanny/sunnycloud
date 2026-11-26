@@ -1,0 +1,29 @@
+[package]
+name = "sunnycloud-fake-decoder"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "sunnycloud_fake_decoder"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fake-decoder"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+media-shared = { path = "../../media-shared" }
+rustix = { version = "1.1", features = ["fs"] }
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "signal", "sync", "time"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -2,16 +2,17 @@
 the call and returns a JSON-able dict, or raises `ActionError` for a refused or failed call. The others keep
 answering `not_implemented` in `e2e_ctl.py`.
 
-    internal-http        one HTTP request from the host to a backend listener of a service of the stack
+    internal-http        one HTTP request from the host to a backend listener of the api, or to the worker's ops port
     db-outage            stop or start the database container
     db-restore           restore the database to the golden snapshot (`tests/run.sh reset`: api and worker restart), or
                          take a named `pg_dump` of it and load that dump back (a backup and its restore, the api stopped)
-    process-kill         SIGKILL the api or the worker, or start it again (a crash and its restart)
+    process-kill         SIGKILL the api, the worker or a decoder (its runner), or start it again (a crash and its restart);
+                         pause a decoder; restart the api, optionally rotating the worker token
     db-probe             one of a fixed set of read-only count queries on the database (no free-form SQL)
     exec-operator        run `sunnycloud admin ...`, `doctor`, `key-check` or `scrub` inside the api container (or in a one-off
                          api container while `serve` is down), or `migrate ...` in a one-off `migrate` container;
                          optionally watching the api's listening sockets
-    inspect              a container's state or its recent log, a decoder scratch volume, a secret scan (given tokens and the master key in
+    inspect              a container's state or its recent log, a decoder's processes, a decoder scratch volume, a secret scan (given tokens and the master key in
                          every SUT log, the audit rows and host `ps`) or the api's database role (DDL, migrator secret)
     interrupted-upgrade  revert the latest migrations, or apply the pending ones, with the product's own `migrate`
 """
@@ -24,8 +25,13 @@ import threading
 import time
 from pathlib import Path
 
-HTTP_SERVICES = frozenset({"api"})
-HTTP_PORTS = frozenset({8080, 8081, 9090, 9091})
+from ctl_errors import ActionError
+from ctl_probes import LIST, PROBES
+from ctl_worker import DECODERS, TOKEN_STAGES, WORKER_TOKEN_SECRET, WorkerSuiteActions
+
+# The listeners `internal-http` may reach, per service: the api's four, the worker's ops port (`/healthz`, `/readyz`,
+# `/metrics`).
+HTTP_PORTS = {"api": frozenset({8080, 8081, 9090, 9091}), "worker": frozenset({9090})}
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "DELETE", "HEAD"})
 OPERATOR_COMMANDS = frozenset({"admin", "doctor", "key-check", "scrub"})
 MIGRATE_COMMANDS = frozenset({"migrate"})
@@ -49,82 +55,16 @@ DUMP_NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789-")
 # The dump's path inside the database container: one per call (a file another uid left there cannot be overwritten),
 # removed as root after use.
 DUMP_IN_DB = "/tmp/e2e-{name}-{serial}.dump"
-# The fixed queries of `db-probe`: each returns one row of integers, named by the keys, or (kind `list`) one text of
-# comma-separated values.
-LIST = "list"
-PROBES = {
-    # The rows an account has after sign-in: the account, its identity and the rows the lifecycle hooks create.
-    "account_rows": (("accounts", "identities", "quota", "account_feeds"),
-                     "SELECT (SELECT count(*) FROM accounts), (SELECT count(*) FROM identities), "
-                     "(SELECT count(*) FROM quota), (SELECT count(*) FROM account_feeds)"),
-    # The security events the sign-in and session rules write.
-    "audit_events": (("sign_in", "abuse_trip", "refresh_reuse", "session_revoked", "share_created", "share_revoked",
-                      "share_accessed", "account_deleted"),
-                     "SELECT count(*) FILTER (WHERE event = 'sign_in'), count(*) FILTER (WHERE event = 'abuse_trip'), "
-                     "count(*) FILTER (WHERE event = 'refresh_reuse'), count(*) FILTER (WHERE event = 'session_revoked'), "
-                     "count(*) FILTER (WHERE event = 'share_created'), count(*) FILTER (WHERE event = 'share_revoked'), "
-                     "count(*) FILTER (WHERE event = 'share_accessed'), count(*) FILTER (WHERE event = 'account_deleted') "
-                     "FROM audit_log"),
-    # Rows per table that an account's data lives in: after an account is erased none of them keeps a row of it.
-    "table_rows": (("accounts", "identities", "sessions", "device_tokens", "nodes", "revisions", "blobs", "blob_gc",
-                    "upload_sessions", "share_links", "jobs", "derived", "quota", "account_feeds", "login_codes"),
-                   "SELECT (SELECT count(*) FROM accounts), (SELECT count(*) FROM identities), (SELECT count(*) FROM sessions), "
-                   "(SELECT count(*) FROM device_tokens), (SELECT count(*) FROM nodes), (SELECT count(*) FROM revisions), "
-                   "(SELECT count(*) FROM blobs), (SELECT count(*) FROM blob_gc), (SELECT count(*) FROM upload_sessions), "
-                   "(SELECT count(*) FROM share_links), (SELECT count(*) FROM jobs), (SELECT count(*) FROM derived), "
-                   "(SELECT count(*) FROM quota), (SELECT count(*) FROM account_feeds), (SELECT count(*) FROM login_codes)"),
-    # The media pipeline (AZ-3661): job states and outcomes, derived rows by kind, blobs that nothing refers to (neither a
-    # revision nor a derived row: a surplus derived blob), and the supervisor's own status rows.
-    "media_jobs": (("queued", "running", "derived", "skipped_compliant", "obsolete", "dead"),
-                   "SELECT count(*) FILTER (WHERE status = 'queued'), count(*) FILTER (WHERE status = 'running'), "
-                   "count(*) FILTER (WHERE status = 'succeeded' AND outcome = 'derived'), "
-                   "count(*) FILTER (WHERE status = 'succeeded' AND outcome = 'skipped_compliant'), "
-                   "count(*) FILTER (WHERE status = 'succeeded' AND outcome = 'obsolete'), "
-                   "count(*) FILTER (WHERE status = 'dead') FROM jobs"),
-    "job_attempts": (("most",), "SELECT coalesce(max(attempts), 0) FROM jobs"),
-    "derived_rows": (("thumb", "preview", "transcode", "total"),
-                     "SELECT count(*) FILTER (WHERE kind = 'thumb'), count(*) FILTER (WHERE kind = 'preview'), "
-                     "count(*) FILTER (WHERE kind = 'transcode'), count(*) FROM derived"),
-    "blob_refs": (("blobs", "committed", "unreferenced"),
-                  "SELECT count(*), count(*) FILTER (WHERE state = 'committed'), count(*) FILTER (WHERE state = 'committed' AND "
-                  "NOT EXISTS (SELECT 1 FROM revisions r WHERE r.blob_id = blobs.id) AND "
-                  "NOT EXISTS (SELECT 1 FROM derived d WHERE d.blob_id = blobs.id)) FROM blobs"),
-    "worker_status": (("workers", "decoder_ok"),
-                      "SELECT count(*), count(*) FILTER (WHERE decoder_ok) FROM worker_status"),
-    "account_states": (("active", "deleting"),
-                       "SELECT count(*) FILTER (WHERE state = 'active'), count(*) FILTER (WHERE state = 'deleting') FROM accounts"),
-    # What a share link row stores: the column names show a token hash and no token.
-    "share_link_columns": (LIST,
-                           "SELECT coalesce(string_agg(column_name, ',' ORDER BY column_name), '') "
-                           "FROM information_schema.columns WHERE table_name = 'share_links'"),
-    # The distinct keys of the detail of those events: the audit log holds ids, codes and integers, so a key that
-    # names a secret or a person would show here.
-    "audit_detail_keys": (LIST,
-                          "SELECT coalesce(string_agg(k, ',' ORDER BY k), '') FROM (SELECT DISTINCT jsonb_object_keys(detail) AS k "
-                          "FROM audit_log WHERE detail IS NOT NULL AND jsonb_typeof(detail) = 'object') s"),
-    # What a destructive operator command changes besides rows: the applied migrations and the feed epochs (AZ-3815 AC-6).
-    "schema_and_epochs": (("migrations_applied", "epoch_sum", "epoch_max"),
-                          "SELECT (SELECT count(*) FROM _sqlx_migrations WHERE success), "
-                          "(SELECT coalesce(sum(epoch), 0) FROM account_feeds), (SELECT coalesce(max(epoch), 0) FROM account_feeds)"),
-}
 KILLABLE = frozenset({"api", "worker"})
-PAUSABLE = frozenset({"decoder-interactive", "decoder-general"})
-INSPECTABLE = frozenset({"api", "worker", "decoder-interactive", "decoder-general"})
+INSPECTABLE = frozenset({"api", "worker", "decoder-interactive", "decoder-general", "fd-interactive", "fd-general"})
 SCRATCH_LANES = frozenset({"interactive", "general"})
 HEADER_NAMES = frozenset({"authorization", "cookie", "content-type", "x-sunnycloud-client", "x-forwarded-for", "x-worker-id"})
 BODY_LIMIT = 4096
 REQUEST_TIMEOUT_SECONDS = 10
 COMMAND_TIMEOUT_SECONDS = 180
 DB_HEALTHY_TIMEOUT_SECONDS = 120
+API_HEALTHY_TIMEOUT_SECONDS = 120
 POLL_SECONDS = 1.0
-WORKER_TOKEN_SECRET = "worker_api_token"
-
-
-class ActionError(Exception):
-    def __init__(self, status, code, message):
-        super().__init__(message)
-        self.status = status
-        self.code = code
 
 
 def run_command(args, timeout=COMMAND_TIMEOUT_SECONDS, input=None):
@@ -197,11 +137,12 @@ def send_request(address, method, path, headers, body):
         connection.close()
 
 
-class Actions:
-    def __init__(self, project, compose_file, secrets_dir, reset_script="", run=run_command, request=send_request,
+class Actions(WorkerSuiteActions):
+    def __init__(self, project, compose_files, secrets_dir, reset_script="", run=run_command, request=send_request,
                  sleep=time.sleep):
+        """`compose_files`: the stack's compose file, or the list of them (a harness profile merges an override)."""
         self.project = project
-        self.compose_file = str(compose_file)
+        self.compose_files = [str(compose_files)] if isinstance(compose_files, (str, Path)) else [str(f) for f in compose_files]
         self.reset_script = str(reset_script)
         self.secrets_dir = Path(secrets_dir)
         self._run = run
@@ -223,7 +164,10 @@ class Actions:
         }
 
     def _compose(self, *args):
-        return ["docker", "compose", "-p", self.project, "-f", self.compose_file, "--profile", "core", *args]
+        """Profile `fd` too: the fake decoder services of the h2 file are then known to `ps`, `logs` and `stop` (a stack
+        without them is unaffected; every command names its services)."""
+        files = [arg for name in self.compose_files for arg in ("-f", name)]
+        return ["docker", "compose", "-p", self.project, *files, "--profile", "core", "--profile", "fd", *args]
 
     def _checked(self, args):
         code, out, err = self._run(args)
@@ -231,8 +175,9 @@ class Actions:
             raise ActionError(500, "command_failed", f"{' '.join(args[:6])}... exited {code}: {err.strip()[-400:]}")
         return out
 
-    def _container(self, service):
-        container = self._checked(self._compose("ps", "-q", service)).strip()
+    def _container(self, service, stopped_too=False):
+        """The service's container id; `stopped_too` also finds one that has exited (its state is what `inspect` reports)."""
+        container = self._checked(self._compose("ps", *(["-a"] if stopped_too else []), "-q", service)).strip()
         if not container:
             raise ActionError(409, "service_not_running", f"service {service} has no container")
         return container
@@ -249,14 +194,17 @@ class Actions:
     def internal_http(self, params):
         service, port = params.get("service", "api"), params.get("port")
         method, path = params.get("method", "GET"), params.get("path", "")
-        if service not in HTTP_SERVICES or port not in HTTP_PORTS or method not in HTTP_METHODS or not str(path).startswith("/"):
-            raise ActionError(400, "bad_request", f"service {HTTP_SERVICES}, port {sorted(HTTP_PORTS)}, a method and a path are required")
+        if port not in HTTP_PORTS.get(service, ()) or method not in HTTP_METHODS or not str(path).startswith("/"):
+            allowed = {name: sorted(ports) for name, ports in HTTP_PORTS.items()}
+            raise ActionError(400, "bad_request", f"a service and its port {allowed}, a method and a path are required")
         headers = {}
         for name, value in (params.get("headers") or {}).items():
             if name.lower() not in HEADER_NAMES or not isinstance(value, str):
                 raise ActionError(400, "bad_request", f"header {name!r} is not allowed")
             headers[name] = value
         if params.get("auth") == "worker":
+            if service != "api":
+                raise ActionError(400, "bad_request", "auth `worker` is for the api's listeners")
             token = (self.secrets_dir / WORKER_TOKEN_SECRET).read_text(encoding="utf-8").strip()
             headers["Authorization"] = f"Bearer {token}"
         elif params.get("auth") not in (None, "none"):
@@ -276,33 +224,62 @@ class Actions:
         if op != "start":
             raise ActionError(400, "bad_request", "op is `stop` or `start`")
         self._checked(self._compose("start", "db"))
-        container = self._container("db")
-        deadline = time.monotonic() + DB_HEALTHY_TIMEOUT_SECONDS
+        self._wait_healthy("db", DB_HEALTHY_TIMEOUT_SECONDS)
+        return {"db": "healthy"}
+
+    def _wait_healthy(self, service, seconds):
+        container = self._container(service)
+        deadline = time.monotonic() + seconds
         template = "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}"
         while time.monotonic() < deadline:
             if self._checked(["docker", "inspect", "-f", template, container]).strip() == "healthy":
-                return {"db": "healthy"}
+                return
             self._sleep(POLL_SECONDS)
-        raise ActionError(504, "db_not_healthy", f"the database was not healthy within {DB_HEALTHY_TIMEOUT_SECONDS} s")
+        raise ActionError(504, f"{service}_not_healthy", f"{service} was not healthy within {seconds} s")
 
     def process_kill(self, params):
-        """`kill` (SIGKILL) or `start` an api or worker; `pause` or `unpause` a decoder (the container is frozen, so a job
-        that is being decoded stays in the decoder and the supervisor waits: a deterministic "during decoding")."""
+        """`kill` (SIGKILL) or `start` the api, the worker or a decoder. A decoder's runner is its container's main process
+        (under docker-init), so the kill ends the runner as a crash does, and `start` is the restart of the service manager.
+        `pause` or `unpause` a decoder (the container is frozen, so a job that is being decoded stays in the decoder and
+        the supervisor waits: a deterministic "during decoding"). `restart` the api (SIGTERM, then start, then wait for
+        it to be healthy), with `worker_token` one of `TOKEN_STAGES` to rotate the worker token first; no token is ever
+        returned. `fake` or `real` puts the fake decoder in a decoder's place, or the decoder back (`swap_decoder`)."""
         service, op = params.get("service"), params.get("op")
-        if not ((service in KILLABLE and op in ("kill", "start")) or (service in PAUSABLE and op in ("pause", "unpause"))):
-            raise ActionError(400, "bad_request", f"`kill` or `start` for {sorted(KILLABLE)}, `pause` or `unpause` for {sorted(PAUSABLE)}")
+        stage = params.get("worker_token")
+        allowed = ((service in KILLABLE | DECODERS and op in ("kill", "start") and stage is None)
+                   or (service in DECODERS and op in ("pause", "unpause", "fake", "real") and stage is None)
+                   or (service == "api" and op == "restart" and (stage is None or stage in TOKEN_STAGES)))
+        if not allowed:
+            raise ActionError(400, "bad_request", f"`kill` or `start` for {sorted(KILLABLE | DECODERS)}, `pause`, "
+                                                  f"`unpause`, `fake` or `real` for {sorted(DECODERS)}, `restart` for api with an optional "
+                                                  f"worker_token of {sorted(TOKEN_STAGES)}")
         if op == "kill":
             self._checked(self._compose("kill", "-s", "KILL", service))
+        elif op in ("fake", "real"):
+            self.swap_decoder(service, op)
+        elif op == "restart":
+            if stage is not None:
+                self._rotate_worker_token(stage)
+            self._checked(self._compose("restart", service))
+            self._wait_healthy(service, API_HEALTHY_TIMEOUT_SECONDS)
         else:
             self._checked(self._compose(op, service))
-        return {"service": service, "op": op}
+        result = {"service": service, "op": op}
+        if stage is not None:
+            result["worker_token"] = stage
+        return result
 
     def inspect(self, params):
         """`{"service"}`: the container's state, start time and restart count (a hostile-class decoder exit shows as a new
         start time). `{"scratch": "interactive"|"general"}`: the top-level names in that decoder scratch volume, listed
-        by a throwaway container with the volume read-only (the isolation check of AC-71: nothing left after a job)."""
+        by a throwaway container with the volume read-only (the isolation check of AC-71: nothing left after a job).
+        `{"processes": <decoder>}`: the decoder container's processes; `{"settings": "api"|"worker"}`: its timing settings."""
         if params.get("secret_scan") is not None:
             return self.secret_scan(params["secret_scan"])
+        if params.get("processes") is not None:
+            return self.decoder_processes(params["processes"])
+        if params.get("settings") is not None:
+            return self.timing_settings(params["settings"])
         if params.get("logs") is not None:
             if params["logs"] not in INSPECTABLE:
                 raise ActionError(400, "bad_request", f"logs is one of {sorted(INSPECTABLE)}")
@@ -324,7 +301,8 @@ class Actions:
         if service not in INSPECTABLE:
             raise ActionError(400, "bad_request", f"service is one of {sorted(INSPECTABLE)}")
         template = "{{.State.Status}}|{{.State.StartedAt}}|{{.RestartCount}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}"
-        status, started_at, restarts, health = self._checked(["docker", "inspect", "-f", template, self._container(service)]).strip().split("|")
+        status, started_at, restarts, health = self._checked(
+            ["docker", "inspect", "-f", template, self._container(service, stopped_too=True)]).strip().split("|")
         return {"status": status, "started_at": started_at, "restart_count": int(restarts), "health": health}
 
     def db_probe(self, params):

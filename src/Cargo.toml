@@ -27,6 +27,7 @@ members = [
     "components/testkit",
     "server",
     "worker",
+    "worker/fake-decoder",
     "decoder",
     "sync-core",
     "sync-core-proto",

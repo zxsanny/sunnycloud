@@ -1,3 +1,6 @@
+//! Hostile peers on a real socket, for the decoder client tests: a peer that answers the first request of every
+//! connection with raw bytes, a listener that closes every connection at once, and the hostile replies of IT-09-13.
+
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

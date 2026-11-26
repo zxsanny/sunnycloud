@@ -4195,6 +4195,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunnycloud-fake-decoder"
+version = "0.1.0"
+dependencies = [
+ "media-shared",
+ "rustix 1.1.6",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "sunnycloud-http-api"
 version = "0.1.0"
 dependencies = [
@@ -4523,6 +4536,7 @@ dependencies = [
  "sc_observability",
  "serde",
  "serde_json",
+ "sunnycloud-fake-decoder",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",

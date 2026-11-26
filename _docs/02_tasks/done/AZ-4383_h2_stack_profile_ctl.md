@@ -32,8 +32,12 @@ The stack runs the worker with its own media settings (`tests/compose.test.yml`:
 
 **AC-1: The H2 profile carries the H2 values**
 Given the stack started with the H2 profile
-When the settings are read from the worker's and the API's start-up line
-Then each value equals 09 tests.md H2
+When the settings are read from the worker's and the API's container configuration (`inspect`), and both are healthy
+Then each value equals 09 tests.md H2, on the binary that reads the key
+
+(Implementation note, batch 129: neither binary logs its settings at start-up, and the log schema is closed. A binary
+refuses to start on an unknown `SUNNYCLOUD_*` name or a value it cannot bind, and ignores a table key it does not read,
+so the container configuration of a healthy service, checked per reading binary, is what it runs with.)
 
 **AC-2: Each new ctl action works and refuses what is not allowed**
 Given the stack

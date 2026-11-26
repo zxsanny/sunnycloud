@@ -3,10 +3,9 @@
 
 #![allow(dead_code, unused_imports)]
 
-mod hostile;
 mod runner;
 
-pub use hostile::{AcceptAndClose, HostilePeer, frame, hostile_cases};
+pub use sunnycloud_fake_decoder::hostile::{AcceptAndClose, HostilePeer, frame, hostile_cases};
 
 use media_shared::decoder_protocol::ViolationKind;
 

@@ -25,10 +25,7 @@ async fn drain(slot_loop: &mut SlotLoop) -> usize {
 
 fn script(rig: &Rig, probe: Answer) {
     rig.decoder.probes_fall_back_to(probe);
-    rig.decoder.stills_fall_back_to(Answer::Image {
-        width: 1440,
-        height: 1080,
-    });
+    rig.decoder.stills_fall_back_to(Answer::image(1440, 1080));
     rig.decoder.delay(RENDER_TIME);
 }
 

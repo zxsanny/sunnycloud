@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Entry command of the black-box harness. See tests/README.md.
-#   tests/run.sh --profile <core|web|desktop|android-emu|perf|lan|gpu> [--keep]
+#   tests/run.sh --profile <core|h2|web|desktop|android-emu|perf|lan|gpu> [--keep]
 #   tests/run.sh reset      restore the database volume to the golden snapshot (stack kept with --keep)
 #   tests/run.sh down       tear down a stack left up by --keep
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT/tests/compose.test.yml"
+H2_COMPOSE_FILE="$ROOT/tests/compose.h2.yml"
 RESULTS="$ROOT/e2e-results"
 STATE_FILE="$RESULTS/.stack-state"
 PROJECT="sunnycloud-e2e"
@@ -18,8 +19,11 @@ CONSUMER_IMAGE="sunnycloud-e2e-consumer:local"
 CTL_PORT="${E2E_CTL_PORT:-8088}"
 READY_TIMEOUT_SECONDS=120
 RESET_BUDGET_SECONDS=60
-KNOWN_PROFILES="core web desktop android-emu perf lan gpu"
-SERVICES_YET="core"
+KNOWN_PROFILES="core h2 web desktop android-emu perf lan gpu"
+SERVICES_YET="core h2"
+# The harness profile of the stack that is up: `core`, or `h2` (the core services with compose.h2.yml merged over them).
+# Written to the state file at start, so reset, rerun, down and the e2e-ctl stub use the same compose files.
+HARNESS_PROFILE="core"
 
 log() { printf '[run.sh %s] %s\n' "$(date +%T)" "$*"; }
 die() { printf '[run.sh %s] ERROR: %s\n' "$(date +%T)" "$*" >&2; exit 1; }
@@ -34,7 +38,9 @@ usage: tests/run.sh --profile <name> [--keep]
 
 profiles: ${KNOWN_PROFILES// /, }
   core   starts the database, the system under test (Caddy, api, worker, decoders), the mock identity provider and the
-         consumer, runs the harness self-tests and the stack checks (the only profile with services yet)
+         consumer, runs the harness self-tests and the stack checks
+  h2     the core stack with the worker-suite timings of harness H2 (tests/compose.h2.yml: job lease 6 s, claim poll
+         100 ms, status 1 s, decoder silence 1 s, cancel grace 500 ms, photo timeout 5 s, shutdown grace 3 s)
   the others have no services yet and refuse to run ("not available yet"): they never report a pass
 
   --keep   leave the stack up after the run (needed for 'reset'); remove it with 'down'
@@ -57,13 +63,24 @@ case "$E2E_API_VARIANT" in
 esac
 export E2E_API_VARIANT
 
-dc() { docker compose -p "$PROJECT" -f "$COMPOSE_FILE" --profile core "$@"; }
+compose_files() { # the -f arguments of the harness profile
+  printf -- '-f\n%s\n' "$COMPOSE_FILE"
+  if [[ "$HARNESS_PROFILE" == h2 ]]; then printf -- '-f\n%s\n' "$H2_COMPOSE_FILE"; fi
+}
+
+dc() { # h2 also enables compose profile `fd` (the fake decoder services), so build and down reach them
+  local files=() line profiles=(--profile core)
+  while IFS= read -r line; do files+=("$line"); done < <(compose_files)
+  if [[ "$HARNESS_PROFILE" == h2 ]]; then profiles+=(--profile fd); fi
+  docker compose -p "$PROJECT" "${files[@]}" "${profiles[@]}" "$@"
+}
 
 load_state() {
   [[ -f "$STATE_FILE" ]] || die "no stack is up (no $STATE_FILE); start one with: tests/run.sh --profile core --keep"
   # shellcheck source=/dev/null
   source "$STATE_FILE"
   export E2E_SECRETS_DIR
+  HARNESS_PROFILE="${E2E_HARNESS_PROFILE:-core}"
 }
 
 db_container() { dc ps -a -q db; }
@@ -117,6 +134,7 @@ teardown() {
     # shellcheck source=/dev/null
     source "$STATE_FILE"
     export E2E_SECRETS_DIR
+    HARNESS_PROFILE="${E2E_HARNESS_PROFILE:-core}"
   else
     log "teardown: no state file, nothing to remove"
     return 0
@@ -143,7 +161,9 @@ cmd_down() { teardown; }
 # Rebuilds the consumer image and runs pytest (the given arguments) against the kept stack: no stack start, no teardown.
 cmd_rerun() {
   load_state
-  export E2E_PROFILE=core E2E_UID="$(id -u)" E2E_GID="$(id -g)"
+  E2E_UID="$(id -u)"
+  E2E_GID="$(id -g)"
+  export E2E_PROFILE="$HARNESS_PROFILE" E2E_UID E2E_GID
   local gateway db_addr rc=0
   dc build consumer
   gateway="$(docker network inspect -f '{{(index .IPAM.Config 0).Gateway}}' "${PROJECT}_ctl-net")"
@@ -174,6 +194,7 @@ generate_secrets() { # one secrets directory per run; world-readable files becau
     openssl rand -hex 32 > "$dir/share_grant_key"
     printf %s /run/secrets/master_key > "$dir/master_key_file"
     openssl rand -hex 24 > "$dir/worker_api_token"
+    : > "$dir/worker_api_token_next" # empty: absent for the api until a rotation (e2e-ctl process-kill)
     openssl rand -hex 24 > "$dir/provider_oidc_client_secret" )
   printf '%s' "$dir"
 }
@@ -197,16 +218,31 @@ run_core() {
   ( cd "$ROOT/tests/tools/e2e-ctl" && python3 -B -m unittest -v )
 
   E2E_SECRETS_DIR="$(generate_secrets)"
-  export E2E_SECRETS_DIR E2E_PROFILE=core E2E_UID="$(id -u)" E2E_GID="$(id -g)"
+  E2E_UID="$(id -u)"
+  E2E_GID="$(id -g)"
+  export E2E_SECRETS_DIR E2E_PROFILE="$HARNESS_PROFILE" E2E_UID E2E_GID
   E2E_BUILD_TIMESTAMP="$(git -C "$ROOT" log -1 --format=%ct)"
   E2E_BUILD_DATE="$(date -u -d "@$E2E_BUILD_TIMESTAMP" +%Y%m%d)"
   export E2E_BUILD_TIMESTAMP E2E_BUILD_DATE
-  printf 'E2E_SECRETS_DIR=%q\n' "$E2E_SECRETS_DIR" > "$STATE_FILE"
+  printf 'E2E_SECRETS_DIR=%q\nE2E_HARNESS_PROFILE=%q\n' "$E2E_SECRETS_DIR" "$HARNESS_PROFILE" > "$STATE_FILE"
   log "generated secrets in $E2E_SECRETS_DIR (deleted at teardown)"
   trap 'status=$?; if [[ "${KEEP_STACK:-0}" == 1 || ( "${E2E_KEEP_ON_FAILURE:-0}" == 1 && $status -ne 0 ) ]]; then log "stack kept up; remove with: tests/run.sh down"; else teardown; fi' EXIT
 
   log "building the images (api and worker test images, decoder, mock identity provider, consumer)"
   dc build api worker decoder-interactive mock-idp consumer
+  if [[ "$HARNESS_PROFILE" == h2 ]]; then
+    log "h2: building the fake decoder FD; its script and record folders are $RESULTS/fd/<lane> (written by uid 10003)"
+    dc build fd-interactive
+    rm -rf "$RESULTS/fd"
+    local lane_dir
+    for lane_dir in "$RESULTS/fd/interactive" "$RESULTS/fd/general"; do
+      mkdir -p "$lane_dir"
+      chmod 0777 "$lane_dir"
+      # A default ACL on the checkout (other::---) gives new files no access for other uids: FD (uid 10003) could not
+      # read the consumer's script, nor the consumer FD's record. The lane folders follow plain modes instead.
+      if command -v getfacl >/dev/null && getfacl -p "$lane_dir" | grep -q '^default:'; then setfacl -k -b "$lane_dir"; fi
+    done
+  fi
   log "media fixtures for the media suites ($RESULTS/media)"
   command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null || die "ffmpeg and ffprobe are required on the host (media fixtures)"
   python3 -B "$ROOT/tests/tools/gen_media.py" "$RESULTS/media"
@@ -227,9 +263,13 @@ run_core() {
   gateway="$(docker network inspect -f '{{(index .IPAM.Config 0).Gateway}}' "${PROJECT}_ctl-net")"
   log "ctl-net gateway: $gateway"
   log "starting e2e-ctl on $gateway:$CTL_PORT"
+  local ctl_files=() line
+  while IFS= read -r line; do
+    if [[ "$line" == -f ]]; then ctl_files+=(--compose-file); else ctl_files+=("$line"); fi
+  done < <(compose_files)
   nohup setsid python3 -B "$ROOT/tests/tools/e2e-ctl/e2e_ctl.py" --bind "$gateway" --port "$CTL_PORT" \
     --token-file "$E2E_SECRETS_DIR/ctl_token" --audit-log "$RESULTS/ctl-audit.log" \
-    --project "$PROJECT" --compose-file "$COMPOSE_FILE" --secrets-dir "$E2E_SECRETS_DIR" --reset-script "$ROOT/tests/run.sh" >> "$RESULTS/e2e-ctl.log" 2>&1 &
+    --project "$PROJECT" "${ctl_files[@]}" --secrets-dir "$E2E_SECRETS_DIR" --reset-script "$ROOT/tests/run.sh" >> "$RESULTS/e2e-ctl.log" 2>&1 &
   printf 'E2E_CTL_PID=%q\n' "$!" >> "$STATE_FILE"
   wait_tcp "$gateway" "$CTL_PORT"
   log "e2e-ctl stub is listening"
@@ -276,6 +316,7 @@ main() {
         printf 'profile %s is not available yet: no services are defined for it in this build of the harness\n' "$profile" >&2
         exit 3
       fi
+      HARNESS_PROFILE="$profile"
       run_core "$keep"
       ;;
     *) usage >&2; exit 2 ;;

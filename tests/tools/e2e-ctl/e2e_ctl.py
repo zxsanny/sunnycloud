@@ -130,7 +130,7 @@ def main(argv=None):
     parser.add_argument("--audit-log", required=True)
     parser.add_argument("--actions-file", default=str(Path(__file__).with_name("actions.json")))
     parser.add_argument("--project", required=True, help="the compose project of the stack")
-    parser.add_argument("--compose-file", required=True)
+    parser.add_argument("--compose-file", required=True, action="append", help="the compose file; repeat it for a profile override")
     parser.add_argument("--reset-script", required=True, help="tests/run.sh: `reset` restores the golden snapshot")
     parser.add_argument("--secrets-dir", required=True, help="the generated secrets (the worker token never leaves ctl)")
     args = parser.parse_args(argv)

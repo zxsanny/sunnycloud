@@ -51,16 +51,10 @@ async fn scripted_run() -> (ScriptedApi, Rig) {
             Answer::Probe(photo_probe()),
             Answer::Probe(photo_probe()),
         ])
-        .transcodes([Answer::Transcode(compliant_probe(60_000))])
+        .transcodes([Answer::transcode(compliant_probe(60_000))])
         .stills([
-            Answer::Image {
-                width: 1440,
-                height: 1080,
-            },
-            Answer::Image {
-                width: 320,
-                height: 240,
-            },
+            Answer::image(1440, 1080),
+            Answer::image(320, 240),
             Answer::Error(DecodeError::LimitExceeded {
                 limit: LimitKind::Memory,
             }),

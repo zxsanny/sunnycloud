@@ -18,6 +18,8 @@ secrets:
   master_key: { file: "${E2E_SECRETS_DIR}/master_key" }
   master_key_file: { file: "${E2E_SECRETS_DIR}/master_key_file" }
   worker_api_token: { file: "${E2E_SECRETS_DIR}/worker_api_token" }
+  # Empty (absent for the api) until e2e-ctl `process-kill` restarts the api for a worker token rotation.
+  worker_api_token_next: { file: "${E2E_SECRETS_DIR}/worker_api_token_next" }
   share_grant_key: { file: "${E2E_SECRETS_DIR}/share_grant_key" }
   provider_oidc_client_secret: { file: "${E2E_SECRETS_DIR}/provider_oidc_client_secret" }
 
@@ -200,7 +202,7 @@ services:
     read_only: true
     tmpfs: [/tmp]
     environment: *sunnycloud-env
-    secrets: [master_key, master_key_file, db_api_url, worker_api_token, share_grant_key, provider_oidc_client_secret]
+    secrets: [master_key, master_key_file, db_api_url, worker_api_token, worker_api_token_next, share_grant_key, provider_oidc_client_secret]
     volumes:
       - blobs:/var/lib/sunnycloud/blobs
     networks: [proxy, backend]

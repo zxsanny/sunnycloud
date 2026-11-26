@@ -313,7 +313,7 @@ class ActionsTest(unittest.TestCase):
         self.assertEqual((db.exception.status, lane.exception.status), (400, 400))
         self.assertIn("proj_scratch_general:/s:ro", self.docker.calls[-1])
 
-    def test_process_kill_kills_or_starts_only_the_api_and_the_worker(self):
+    def test_process_kill_kills_or_starts_the_api_the_worker_and_a_decoder_and_pauses_only_a_decoder(self):
         # Arrange
         actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=self.docker)
 
@@ -321,16 +321,18 @@ class ActionsTest(unittest.TestCase):
         actions.process_kill({"service": "api", "op": "kill"})
         actions.process_kill({"service": "worker", "op": "start"})
         actions.process_kill({"service": "decoder-general", "op": "pause"})
-        with self.assertRaises(ctl_actions.ActionError):
-            actions.process_kill({"service": "db", "op": "kill"})
-        with self.assertRaises(ctl_actions.ActionError):
-            actions.process_kill({"service": "decoder-general", "op": "kill"})
+        actions.process_kill({"service": "decoder-interactive", "op": "kill"})
+        for refused in ({"service": "db", "op": "kill"}, {"service": "worker", "op": "pause"},
+                        {"service": "decoder-general", "op": "restart"}):
+            with self.assertRaises(ctl_actions.ActionError):
+                actions.process_kill(refused)
 
         # Assert
         self.assertEqual([c[-4:] for c in self.docker.calls[:1]], [["kill", "-s", "KILL", "api"]])
         self.assertEqual(self.docker.calls[1][-2:], ["start", "worker"])
         self.assertEqual(self.docker.calls[2][-2:], ["pause", "decoder-general"])
-        self.assertEqual(len(self.docker.calls), 3)
+        self.assertEqual(self.docker.calls[3][-4:], ["kill", "-s", "KILL", "decoder-interactive"])
+        self.assertEqual(len(self.docker.calls), 4)
 
     def test_db_restore_runs_the_reset_script_only_for_the_golden_snapshot(self):
         # Arrange

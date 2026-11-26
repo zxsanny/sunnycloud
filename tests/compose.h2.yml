@@ -1,0 +1,55 @@
+# Harness H2 of the worker suite (_docs/02_document/components/09_worker_supervisor/tests.md): the `core` stack with
+# the H2 timings. `tests/run.sh --profile h2` merges this file over compose.test.yml; every other setting stays as in
+# `core`. Each key is set on the service whose binary reads it (a table key the binary does not read is ignored, so a
+# key on the wrong service would silently keep its default); job_lease is set on both so `docker inspect` of the
+# worker does not show the core value. The file also declares FD, the scripted fake decoder (below).
+x-fake-decoder: &fake-decoder
+  build:
+    context: ..
+    dockerfile: deploy/docker/worker.Dockerfile
+    target: fake-decoder
+  image: sunnycloud-fake-decoder:e2e
+  profiles: [fd]
+  # The real decoders' isolation: no network (the socket volume is the only channel), read-only root, no capability.
+  network_mode: none
+  read_only: true
+  user: "10003:10003"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  init: true
+  restart: "no"
+
+services:
+  api:
+    environment:
+      SUNNYCLOUD_JOB_LEASE: 6s
+      SUNNYCLOUD_WORKER_STATUS_INTERVAL: 1s
+  worker:
+    environment:
+      SUNNYCLOUD_JOB_LEASE: 6s
+      SUNNYCLOUD_WORKER_CLAIM_POLL_INTERVAL: 100ms
+      SUNNYCLOUD_WORKER_STATUS_INTERVAL: 1s
+      SUNNYCLOUD_DECODER_SILENCE_TIMEOUT: 1s
+      SUNNYCLOUD_DECODER_CANCEL_GRACE: 500ms
+      SUNNYCLOUD_PHOTO_JOB_TIMEOUT: 5s
+      SUNNYCLOUD_WORKER_SHUTDOWN_GRACE: 3s
+
+  # FD, the scripted fake decoder (AZ-4382), stands in for the real decoder of one lane in the fault and protocol cases
+  # (never in a case that claims a media outcome). e2e-ctl `process-kill` op `fake` on a decoder stops it and starts its
+  # FD on the same socket and scratch volumes; op `real` swaps back. Profile `fd`: `up` of the stack never starts one.
+  # Script and record: e2e-results/fd/<lane>/script.json and record.jsonl (the consumer's /results/fd/<lane>/).
+  fd-interactive:
+    <<: *fake-decoder
+    command: ["--socket", "/run/decoder/decoder.sock", "--script", "/fd/script.json", "--record", "/fd/record.jsonl"]
+    volumes:
+      - sock_interactive:/run/decoder
+      - scratch_interactive:/scratch-interactive
+      - ../e2e-results/fd/interactive:/fd
+
+  fd-general:
+    <<: *fake-decoder
+    command: ["--socket", "/run/decoder/decoder.sock", "--script", "/fd/script.json", "--record", "/fd/record.jsonl"]
+    volumes:
+      - sock_general:/run/decoder
+      - scratch_general:/scratch-general
+      - ../e2e-results/fd/general:/fd

@@ -41,6 +41,7 @@ uuid = { workspace = true, features = ["v4"] }
 [dev-dependencies]
 decoder-runner = { path = "../decoder" }
 rustix = { version = "1.1", features = ["fs", "process"] }
+sunnycloud-fake-decoder = { path = "fake-decoder" }
 tempfile = "3"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tokio = { workspace = true, features = ["macros"] }
