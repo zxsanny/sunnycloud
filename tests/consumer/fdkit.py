@@ -16,6 +16,10 @@ from pathlib import Path
 
 LANES = {"interactive": "decoder-interactive", "general": "decoder-general"}
 POLL_SECONDS = 0.2
+# A `self_check` with one failed item: the supervisor's gate refuses the slot, so it claims nothing on that lane.
+FAILED_SELF_CHECK = [{"name": "no_network", "ok": False}]
+# The record kinds of job requests (the others are `hello`, `self_check`, `cancel` and FD's own events).
+JOB_REQUESTS = frozenset({"probe", "render_still", "transcode"})
 
 
 class FakeDecoderLane:
@@ -72,6 +76,11 @@ class FakeDecoderLane:
         """FD's stderr (a script it refused, a socket it could not bind), for a failure message."""
         status, body = self.ctl.try_call("inspect", logs=self.service)
         return body.get("result", {}).get("log_tail", "") if status == 200 else f"(no log: {status} {body})"
+
+
+def job_requests(fd):
+    """The job requests in a lane's record."""
+    return [line for line in fd.record() if line["kind"] in JOB_REQUESTS]
 
 
 def contains_in_order(seen, wanted):

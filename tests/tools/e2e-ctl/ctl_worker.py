@@ -17,13 +17,24 @@ TIMING_SETTINGS = ("SUNNYCLOUD_JOB_LEASE", "SUNNYCLOUD_WORKER_CLAIM_POLL_INTERVA
                    "SUNNYCLOUD_DECODER_SILENCE_TIMEOUT", "SUNNYCLOUD_DECODER_CANCEL_GRACE", "SUNNYCLOUD_PHOTO_JOB_TIMEOUT",
                    "SUNNYCLOUD_WORKER_SHUTDOWN_GRACE")
 SETTINGS_SERVICES = frozenset({"api", "worker"})
+# `scratch-fill`: the volume of each lane, and the owner of what a supervisor that died leaves behind (its uid and the
+# decoder group): the sweep at its next start must be able to remove it.
+SCRATCH_VOLUMES = {"interactive": "scratch_interactive", "general": "scratch_general"}
+LEFTOVER_OWNER = "10002:10003"
+MAX_LEFTOVER_TREES = 10
+LEFTOVER_SCRIPT = ('set -eu; i=0; while [ "$i" -lt "$1" ]; do d="/s/leftover-$i"; mkdir -p "$d/in" "$d/out"; '
+                   'printf x > "$d/in/input"; printf y > "$d/out/result.webp"; i=$((i + 1)); done; printf z > /s/stray.tmp')
+# `inspect {"container"}`: the services whose container contents may be listed, and the media tools looked for.
+CONTAINER_SERVICES = frozenset({"worker"})
+MEDIA_TOOLS = frozenset({"ffmpeg", "ffprobe", "vips", "vipsheader", "vipsthumbnail"})
 # The fake decoder (FD) service of each decoder lane: compose.h2.yml, profile `fd`.
 FAKE_DECODERS = {"decoder-interactive": "fd-interactive", "decoder-general": "fd-general"}
 DECODER_HEALTHY_TIMEOUT_SECONDS = 60
 
 
 class WorkerSuiteActions:
-    """Uses `_checked`, `_compose`, `_container`, `_wait_healthy` and `secrets_dir` of the class it is mixed into."""
+    """Uses `_checked`, `_compose`, `_container`, `_wait_healthy`, `project` and `secrets_dir` of the class it is mixed
+    into."""
 
     def decoder_processes(self, service):
         """The processes of a decoder container, listed by `docker top` on the host (nothing runs inside the container,
@@ -77,3 +88,35 @@ class WorkerSuiteActions:
         self._checked(self._compose("stop", fake))
         self._checked(self._compose("start", service))
         self._wait_healthy(service, DECODER_HEALTHY_TIMEOUT_SECONDS)
+
+    def scratch_fill(self, params):
+        """`{"lane", "trees"}`: `trees` job trees (`leftover-N/in/input`, `out/result.webp`) and a stray file written into
+        the lane's scratch volume by a throwaway container, owned as a supervisor that died leaves them (IT-09-1)."""
+        lane, trees = params.get("lane"), params.get("trees", 2)
+        if lane not in SCRATCH_VOLUMES or type(trees) is not int or not 1 <= trees <= MAX_LEFTOVER_TREES:
+            raise ActionError(400, "bad_request", f"lane is one of {sorted(SCRATCH_VOLUMES)}, trees 1 to {MAX_LEFTOVER_TREES}")
+        self._checked(["docker", "run", "--rm", "--network", "none", "--user", LEFTOVER_OWNER,
+                       "-v", f"{self.project}_{SCRATCH_VOLUMES[lane]}:/s", "--entrypoint", "sh", self._helper_image(),
+                       "-c", LEFTOVER_SCRIPT, "sh", str(trees)])
+        return {"lane": lane, "trees": trees, "stray": 1}
+
+    def container_facts(self, service):
+        """What the service's container holds (IT-09-1, ST-09-2): its environment variable names (never values), the
+        secrets mounted under /run/secrets, every mount destination, and the paths of the media tools in its file
+        system (listed from `docker export`, so a tool anywhere in the image is found)."""
+        if service not in CONTAINER_SERVICES:
+            raise ActionError(400, "bad_request", f"container is one of {sorted(CONTAINER_SERVICES)}")
+        container = self._container(service)
+        env = json.loads(self._checked(["docker", "inspect", "-f", "{{json .Config.Env}}", container]) or "[]")
+        mounts = json.loads(self._checked(["docker", "inspect", "-f", "{{json .Mounts}}", container]) or "[]")
+        destinations = sorted(m.get("Destination", "") for m in mounts)
+        listing = self._checked(["bash", "-c", 'set -o pipefail; docker export "$1" | tar -t', "bash", container])
+        tools = sorted(path for path in listing.split("\n") if path.rstrip("/").rsplit("/", 1)[-1] in MEDIA_TOOLS)
+        return {"env_names": sorted(entry.split("=", 1)[0] for entry in env),
+                "secrets": sorted(d.rsplit("/", 1)[1] for d in destinations if d.startswith("/run/secrets/")),
+                "mounts": destinations, "media_tools": tools}
+
+    def _helper_image(self):
+        """The database image, the one throwaway helper containers run (it has a shell; nothing is pulled)."""
+        return self._checked(["docker", "inspect", "-f", "{{.Config.Image}}", self._container("db")]).strip()
+

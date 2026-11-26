@@ -15,6 +15,7 @@ answering `not_implemented` in `e2e_ctl.py`.
     inspect              a container's state or its recent log, a decoder's processes, a decoder scratch volume, a secret scan (given tokens and the master key in
                          every SUT log, the audit rows and host `ps`) or the api's database role (DDL, migrator secret)
     interrupted-upgrade  revert the latest migrations, or apply the pending ones, with the product's own `migrate`
+    scratch-fill         leftover job trees and a stray file in a decoder scratch volume, as a supervisor that died leaves them
 """
 import base64
 import http.client
@@ -160,6 +161,7 @@ class Actions(WorkerSuiteActions):
             "db-restore": self.db_restore,
             "exec-operator": self.exec_operator,
             "interrupted-upgrade": self.interrupted_upgrade,
+            "scratch-fill": self.scratch_fill,
 
         }
 
@@ -280,6 +282,8 @@ class Actions(WorkerSuiteActions):
             return self.decoder_processes(params["processes"])
         if params.get("settings") is not None:
             return self.timing_settings(params["settings"])
+        if params.get("container") is not None:
+            return self.container_facts(params["container"])
         if params.get("logs") is not None:
             if params["logs"] not in INSPECTABLE:
                 raise ActionError(400, "bad_request", f"logs is one of {sorted(INSPECTABLE)}")

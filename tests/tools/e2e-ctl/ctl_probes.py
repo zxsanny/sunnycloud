@@ -42,6 +42,10 @@ PROBES = {
                   "NOT EXISTS (SELECT 1 FROM derived d WHERE d.blob_id = blobs.id)) FROM blobs"),
     "worker_status": (("workers", "decoder_ok"),
                       "SELECT count(*), count(*) FILTER (WHERE decoder_ok) FROM worker_status"),
+    # The latest report only: a restarted supervisor reports under a new id, and the rows of the earlier ones stay. -1 when
+    # no supervisor has reported yet.
+    "worker_status_latest": (("decoder_ok",),
+                             "SELECT coalesce((SELECT decoder_ok::int FROM worker_status ORDER BY seen_at DESC LIMIT 1), -1)"),
     "account_states": (("active", "deleting"),
                        "SELECT count(*) FILTER (WHERE state = 'active'), count(*) FILTER (WHERE state = 'deleting') FROM accounts"),
     # What a share link row stores: the column names show a token hash and no token.

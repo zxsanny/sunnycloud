@@ -33,6 +33,11 @@ class FakeDocker:
             return 0, self.top, ""
         if "inspect" in args and "Networks" in args[args.index("-f") + 1]:
             return 0, "172.30.0.9\n", ""
+        if args[0] == "bash":
+            return 0, "usr/local/bin/sunnycloud-worker\nusr/bin/\nopt/media/bin/ffmpeg\n", ""
+        if "inspect" in args and "{{json .Mounts}}" in args:
+            return 0, json.dumps([{"Destination": "/run/secrets/worker_api_token"},
+                                  {"Destination": "/run/decoder-interactive"}]) + "\n", ""
         if "inspect" in args and "{{json .Config.Env}}" in args:
             return 0, json.dumps(["PATH=/usr/bin", "SUNNYCLOUD_JOB_LEASE=6s", "SUNNYCLOUD_WORKER_STATUS_INTERVAL=1s",
                                   "SUNNYCLOUD_WORKER_API_TOKEN=must-never-be-returned"]) + "\n", ""
@@ -260,6 +265,66 @@ class WorkerActionsTest(unittest.TestCase):
         # Assert
         self.assertEqual(raised.exception.status, 400)
         self.assertEqual(self.docker.calls, [])
+
+
+    def test_scratch_fill_writes_leftovers_as_the_supervisor_into_the_lanes_volume(self):
+        # Act
+        result = self.actions.scratch_fill({"lane": "general", "trees": 3})
+
+        # Assert
+        run = self.docker.calls[-1]
+        self.assertEqual(run[:7], ["docker", "run", "--rm", "--network", "none", "--user", "10002:10003"])
+        self.assertIn("proj_scratch_general:/s", run)
+        self.assertEqual(run[-1], "3")
+        self.assertEqual(result, {"lane": "general", "trees": 3, "stray": 1})
+
+    def test_scratch_fill_refuses_an_unknown_lane_and_a_count_out_of_range_without_a_container(self):
+        # Arrange
+        refused = [{"lane": "blobs"}, {"lane": "general", "trees": 0}, {"lane": "general", "trees": 11},
+                   {"lane": "general", "trees": True}, {"lane": "general", "trees": "2"}]
+
+        # Act
+        statuses = []
+        for params in refused:
+            with self.assertRaises(ctl_actions.ActionError) as raised:
+                self.actions.scratch_fill(params)
+            statuses.append(raised.exception.status)
+
+        # Assert
+        self.assertEqual(statuses, [400] * len(refused))
+        self.assertEqual(self.docker.calls, [])
+
+    def test_inspect_container_reports_names_secrets_mounts_and_media_tools_never_a_value(self):
+        # Act
+        facts = self.actions.inspect({"container": "worker"})
+
+        # Assert
+        self.assertIn("SUNNYCLOUD_WORKER_API_TOKEN", facts["env_names"])
+        self.assertNotIn("must-never-be-returned", json.dumps(facts))
+        self.assertEqual(facts["secrets"], ["worker_api_token"])
+        self.assertEqual(facts["mounts"], ["/run/decoder-interactive", "/run/secrets/worker_api_token"])
+        self.assertEqual(facts["media_tools"], ["opt/media/bin/ffmpeg"])
+
+    def test_inspect_container_refuses_a_service_it_does_not_list(self):
+        # Act
+        with self.assertRaises(ctl_actions.ActionError) as raised:
+            self.actions.inspect({"container": "api"})
+
+        # Assert
+        self.assertEqual(raised.exception.status, 400)
+        self.assertEqual(self.docker.calls, [])
+
+
+    def test_db_probe_worker_status_latest_reads_the_newest_report_and_minus_one_before_any(self):
+        # Arrange
+        answers = iter(["0\n", "-1\n"])
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=lambda args: (0, next(answers), ""))
+
+        # Act
+        latest, none = (actions.db_probe({"query": "worker_status_latest"}) for _ in range(2))
+
+        # Assert
+        self.assertEqual((latest, none), ({"decoder_ok": 0}, {"decoder_ok": -1}))
 
 
 if __name__ == "__main__":

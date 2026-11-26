@@ -30,6 +30,8 @@ def ctl(monkeypatch, tmp_path):
     lambda c: c.start_decoder("decoder"),
     lambda c: c.rotate_worker_token("swap"),
     lambda c: c.timing_settings("db"),
+    lambda c: c.scratch_fill("blobs"),
+    lambda c: c.container_facts("api"),
 ])
 def test_a_helper_refuses_an_argument_outside_its_list_before_calling_ctl(ctl, call):
     # Act
@@ -94,6 +96,15 @@ def test_rotate_worker_token_restarts_the_api_with_the_stage(ctl, stage):
 
     # Assert
     assert ctl.posts == [("process-kill", {"service": "api", "op": "restart", "worker_token": stage})]
+
+
+def test_scratch_fill_and_container_facts_call_their_actions(ctl):
+    # Act
+    ctl.scratch_fill("general", trees=3)
+    ctl.container_facts()
+
+    # Assert
+    assert ctl.posts == [("scratch-fill", {"lane": "general", "trees": 3}), ("inspect", {"container": "worker"})]
 
 
 def test_timing_settings_asks_inspect_for_the_service(ctl):

@@ -203,6 +203,7 @@ Calibration step before every AC-2 run: `iperf3` at the same RTT and 4 streams g
 | Interrupted upgrade | `docker kill` of the new api during migration, restart | AC-65 (rolls back, refuses to start until re-run) |
 | Daemon suspend (desktop VMs) | Harness agent sends `SIGSTOP`/`SIGCONT` to the daemon (Windows: suspend and resume the process) | AC-16 (FT-P-82) |
 | Watch limit (LIN-VM) | Harness agent sets `fs.inotify.max_user_watches` before the daemon starts and restores it after the test | AC-15 (NFT-RES-40) |
+| Scratch leftovers | Before a supervisor start: job trees and a stray file written into a decoder scratch volume by a throwaway container as the supervisor's uid and the decoder group, as a supervisor that died leaves them (`scratch-fill`) | AC-25 |
 
 ## Hardware-dependency classification
 

@@ -3,13 +3,7 @@ supervisor starts, completes `hello` and `self_check` with it, the record shows 
 after (fdkit restarts the supervisor on each swap).
 
 Harness H2 only (`tests/run.sh --profile h2`): the `core` stack has no FD service."""
-import os
-
-import pytest
-
 from fdkit import FakeDecoderLane
-
-pytestmark = pytest.mark.skipif(os.environ.get("E2E_PROFILE") != "h2", reason="FD runs in harness H2: tests/run.sh --profile h2")
 
 GATE_SECONDS = 30
 WORKER_READY_SECONDS = 90

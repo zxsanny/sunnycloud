@@ -97,3 +97,12 @@ def test_wait_for_raises_with_the_record_when_the_kinds_do_not_show(lane, monkey
     with pytest.raises(AssertionError, match="self_check.*Permission denied"):
         lane.wait_for(["hello", "self_check"], 0.05)
     assert lane.ctl.calls[-1] == ("inspect", {"logs": "fd-general"})
+
+
+def test_job_requests_keeps_only_the_job_kinds_of_a_record(lane):
+    # Arrange
+    lane.record_path.write_text('{"kind":"hello"}\n{"kind":"self_check"}\n{"kind":"probe"}\n{"kind":"cancel"}\n'
+                                '{"kind":"render_still"}\n', encoding="utf-8")
+
+    # Act and Assert
+    assert [line["kind"] for line in fdkit.job_requests(lane)] == ["probe", "render_still"]

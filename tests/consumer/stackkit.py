@@ -121,6 +121,18 @@ class Ctl:
             raise ValueError(f"service is api or worker, not {service!r}")
         return self.call("inspect", settings=service)["settings"]
 
+    def scratch_fill(self, lane, trees=2):
+        """Leftover job trees and a stray file in a decoder lane's scratch volume, as a supervisor that died leaves them."""
+        if lane not in ("interactive", "general"):
+            raise ValueError(f"lane is interactive or general, not {lane!r}")
+        return self.call("scratch-fill", lane=lane, trees=trees)
+
+    def container_facts(self, service="worker"):
+        """`{"env_names", "secrets", "mounts", "media_tools"}` of a container (names only, never a value)."""
+        if service != "worker":
+            raise ValueError(f"service is worker, not {service!r}")
+        return self.call("inspect", container=service)
+
     def decoder_processes(self, service):
         """The processes in a decoder container (`docker top` on the host): `[{"pid", "comm", "args"}]`."""
         _check_decoder(service)

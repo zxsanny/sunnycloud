@@ -22,6 +22,7 @@
     "db-outage",
     "interrupted-upgrade",
     "daemon-suspend",
-    "watch-limit"
+    "watch-limit",
+    "scratch-fill"
   ]
 }
