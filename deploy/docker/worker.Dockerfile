@@ -36,7 +36,7 @@ RUN cargo chef cook --release --locked --recipe-path /build/recipe.json -p sunny
 COPY src/ ./
 RUN cargo build --release --locked -p sunnycloud-fake-decoder
 
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:08476c244888bfb425bae1ae4dd7c17f093e972aab8426883d97f3c6f280f7c1 AS fake-decoder
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:29ee70762214fe8190cea04ef1c0a84a8365879e047ce8f911ae5a5ab2355fa2 AS fake-decoder
 LABEL org.sunnycloud.variant="fake-decoder"
 COPY --from=fake-decoder-builder /build/src/target/release/fake-decoder /usr/local/bin/fake-decoder
 # The decoder's uid and group: the socket is 0660, and the supervisor reaches it as a member of that group.
@@ -45,7 +45,7 @@ ENTRYPOINT ["fake-decoder"]
 STOPSIGNAL SIGTERM
 
 # The release image is the last stage, so a build without --target gives it and never the test variant.
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:08476c244888bfb425bae1ae4dd7c17f093e972aab8426883d97f3c6f280f7c1 AS release
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:29ee70762214fe8190cea04ef1c0a84a8365879e047ce8f911ae5a5ab2355fa2 AS release
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
 ARG TEST_CLOCK=false
