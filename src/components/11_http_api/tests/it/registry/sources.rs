@@ -8,9 +8,9 @@ const ROUTER_ENTRY_POINTS: [&str; 5] = [
     ".nest_service(",
     "Router::merge",
 ];
-/// `test_clock.rs` builds the one router of the `:9091` test-clock listener, which is outside the registry and the
-/// OpenAPI document (`api_v1_surface.md`) and compiled only with feature `test-clock`.
-const ALLOWED: [&str; 2] = ["registry/mount.rs", "test_clock.rs"];
+/// `test_clock.rs` and `test_hold.rs` build the routers of the `:9091` test listener, which is outside the registry
+/// and the OpenAPI document (`api_v1_surface.md`) and compiled only with feature `test-clock`.
+const ALLOWED: [&str; 3] = ["registry/mount.rs", "test_clock.rs", "test_hold.rs"];
 
 fn rust_files(dir: &Path, found: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).expect("source directory is readable") {

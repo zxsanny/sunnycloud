@@ -198,5 +198,7 @@ fn mounted(
     route(filter).with_state(Arc::new(Worker {
         jobs: Arc::clone(&context.services.worker_jobs),
         clock: Arc::clone(&context.services.clock),
+        #[cfg(feature = "test-clock")]
+        hold: Arc::clone(&context.services.worker_hold),
     }))
 }

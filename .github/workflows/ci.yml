@@ -135,7 +135,16 @@ jobs:
         run: >-
           ../scripts/ci/watchdog.sh --name rust-test-test-clock -- cargo test --locked -p sunnycloud-server
           --features test-clock --test test_clock_serve --test pipeline_gc_retention --test api_services --test composition_root
-          --test pipeline_media_wire --test pipeline_media_outputs
+          --test pipeline_media_wire --test pipeline_media_outputs --test pipeline_worker_hold
+      # AZ-4381: the worker transfer hold of the test image; its module and unit tests exist only with `test-clock`.
+      - name: API unit tests with the test-clock feature
+        if: matrix.shard == 'features'
+        working-directory: src
+        env:
+          WATCHDOG_STALL: 600
+        run: >-
+          ../scripts/ci/watchdog.sh --name rust-test-http-api-test-clock -- cargo test --locked -p sunnycloud-http-api
+          --features test-clock --lib test_hold
 
   # The gate on the lcov files of the 6 parts: line coverage 75% overall, 90% on the critical paths. No Rust needed.
   coverage:

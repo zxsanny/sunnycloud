@@ -43,4 +43,4 @@
 
 **Second opinion**: differs. It proposed A, which the session had not drafted. The session had leaned to B. The difference: A lands the post kill by construction and changes no image, network path or supervisor in the release. B adds a moving service and leaves the post leg timing-dependent. The session now recommends A, deciding on priority 3 (the simpler option that extends an existing mechanism), with automation equal across the options.
 
-**Answer**: open (OPERATOR_TODO D1).
+**Answer**: A, a one-shot hold on the API test image's `:9091` listener (operator, 2026-11-26: "Hold in API test image").

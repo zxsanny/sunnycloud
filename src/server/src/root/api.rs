@@ -63,5 +63,7 @@ pub async fn api_services(services: &ServiceContext) -> Result<ApiServices, CliE
         clock: services.get::<dyn Clock>().await?,
         #[cfg(feature = "test-clock")]
         offset_clock: services.get::<sc_clock::OffsetClock>().await?,
+        #[cfg(feature = "test-clock")]
+        worker_hold: std::sync::Arc::default(),
     })
 }

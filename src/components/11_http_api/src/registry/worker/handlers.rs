@@ -72,7 +72,12 @@ pub(super) async fn open_input(
         .open_input(job.job_id, &caller.worker_id)
         .await
         .map_err(refused(&caller))?;
-    let mut response = Response::new(content::stream(input.body, caller.request_id));
+    let body = input.body;
+    #[cfg(feature = "test-clock")]
+    let body = worker
+        .hold
+        .wrap(crate::test_hold::HoldRoute::Input, None, job.job_id, body);
+    let mut response = Response::new(content::stream(body, caller.request_id));
     let headers = response.headers_mut();
     headers.insert(
         header::CONTENT_TYPE,
@@ -97,16 +102,17 @@ pub(super) async fn put_output(
     let length = number::<u64>(&parts.headers, "content-length", &caller)?
         .ok_or_else(|| ApiProblem::code(ErrorCode::LengthRequired, caller.request_id))?;
     let meta = output_meta(&parts.headers, &caller)?;
+    let body = byte_stream(body);
+    #[cfg(feature = "test-clock")]
+    let body = worker.hold.wrap(
+        crate::test_hold::HoldRoute::Output,
+        job.kind.as_deref(),
+        job.job_id,
+        body,
+    );
     let outcome = worker
         .jobs
-        .accept_output(
-            job.job_id,
-            &caller.worker_id,
-            kind,
-            meta,
-            byte_stream(body),
-            length,
-        )
+        .accept_output(job.job_id, &caller.worker_id, kind, meta, body, length)
         .await
         .map_err(refused(&caller))?;
     Ok(match outcome {

@@ -144,6 +144,8 @@ pub fn stub_services(script: &Script, metrics: Arc<Metrics>) -> ApiServices {
         clock: Arc::new(sc_clock::SystemClock::new()),
         #[cfg(feature = "test-clock")]
         offset_clock,
+        #[cfg(feature = "test-clock")]
+        worker_hold: Arc::default(),
     }
 }
 

@@ -10,7 +10,7 @@
 set -euo pipefail
 
 tag="[check-release-symbols]"
-markers=(OffsetClock sc_clock6offset)
+markers=(OffsetClock sc_clock6offset WorkerHold)
 work="$(mktemp -d)"
 container=""
 cleanup() {

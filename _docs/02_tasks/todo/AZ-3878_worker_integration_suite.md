@@ -4,11 +4,28 @@
 **Name**: Worker integration suite (H2)
 **Description**: Run the supervisor's test cases against the real API worker listener and PostgreSQL in the test stack, with a scripted fake decoder on the real socket for faults and the real decoder for every media outcome, including SIGKILL of the supervisor at fetch, decode and post
 **Complexity**: 5 points
-**Dependencies**: AZ-3868_worker_crate_skeleton, AZ-3869_worker_api_client, AZ-3870_worker_scratch, AZ-3871_worker_decoder_client, AZ-3872_worker_slot_loop, AZ-3873_worker_heartbeat_watchdog, AZ-3874_worker_status_shutdown_main, AZ-3875_worker_offset_clock_poll, AZ-3876_worker_policy_step, AZ-3852_decoder_protocol_module, AZ-3853_decoder_runner_socket_loop, AZ-3855_decoder_containment_kill_all, AZ-3856_decoder_safe_open_watchdog, AZ-3857_decoder_image_executor, AZ-3858_decoder_probe, AZ-3860_decoder_video_executor, AZ-3861_decoder_hello_self_check, AZ-3863_decoder_media_build_stages, AZ-3840_job_queue, AZ-3842_derived_store_accept_input, AZ-3843_worker_auth_jobs_facade, AZ-3831_internal_router_test_clock, AZ-3789_composition_root, AZ-3791_serve_start_stop; notes: E-31/c05 (test epic E-31, decomposed at greenfield Step 9); E-31/c07 (test epic E-31, decomposed at greenfield Step 9); E-31/c09 (test epic E-31, decomposed at greenfield Step 9); E-31/c10 (test epic E-31, decomposed at greenfield Step 9); E-31/c20 (test epic E-31, decomposed at greenfield Step 9); E-31/c21 (test epic E-31, decomposed at greenfield Step 9)
+**Dependencies**: AZ-4381_worker_transfer_hold, AZ-4383_h2_stack_profile_ctl, AZ-3868_worker_crate_skeleton, AZ-3869_worker_api_client, AZ-3870_worker_scratch, AZ-3871_worker_decoder_client, AZ-3872_worker_slot_loop, AZ-3873_worker_heartbeat_watchdog, AZ-3874_worker_status_shutdown_main, AZ-3875_worker_offset_clock_poll, AZ-3876_worker_policy_step, AZ-3852_decoder_protocol_module, AZ-3853_decoder_runner_socket_loop, AZ-3855_decoder_containment_kill_all, AZ-3856_decoder_safe_open_watchdog, AZ-3857_decoder_image_executor, AZ-3858_decoder_probe, AZ-3860_decoder_video_executor, AZ-3861_decoder_hello_self_check, AZ-3863_decoder_media_build_stages, AZ-3840_job_queue, AZ-3842_derived_store_accept_input, AZ-3843_worker_auth_jobs_facade, AZ-3831_internal_router_test_clock, AZ-3789_composition_root, AZ-3791_serve_start_stop; notes: E-31/c05 (test epic E-31, decomposed at greenfield Step 9); E-31/c07 (test epic E-31, decomposed at greenfield Step 9); E-31/c09 (test epic E-31, decomposed at greenfield Step 9); E-31/c10 (test epic E-31, decomposed at greenfield Step 9); E-31/c20 (test epic E-31, decomposed at greenfield Step 9); E-31/c21 (test epic E-31, decomposed at greenfield Step 9)
 **Component**: 09_worker_supervisor
 **Tracker**: AZ-3878
 **Epic**: AZ-3639 (E-20)
 **Ref**: E-20/c11
+
+## Split (2026-11-26)
+
+This task was larger than its 5 points. It keeps AC-2 (job flows with the real decoder), AC-6 (kill at each step) and AC-7 (shutdown, status and test clock). The rest moved:
+
+- AZ-4381: the transfer hold that AC-6 uses (decision D1: a one-shot hold on the API test image's `:9091`, `_docs/02_task_plans/az-3878-worker-suite/decisions.md`).
+- AZ-4382: FD as a stack service.
+- AZ-4383: the H2 profile and the ctl actions.
+- AZ-4384: AC-1 and AC-3.
+- AZ-4385: AC-4 and AC-5.
+
+AC-1, AC-3, AC-4 and AC-5 below are kept for reference and are proven in those tasks. AC-6's kills use AZ-4381:
+- arm the hold;
+- wait until it holds;
+- SIGKILL the supervisor;
+- release the hold;
+- move the test clock past the lease only after the kill.
 
 ## Dependencies
 

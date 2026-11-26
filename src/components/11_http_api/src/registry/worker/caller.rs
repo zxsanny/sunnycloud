@@ -19,6 +19,8 @@ const KIND_PARAM: &str = "kind";
 pub(super) struct Worker {
     pub(super) jobs: Arc<dyn WorkerJobs>,
     pub(super) clock: Arc<dyn Clock>,
+    #[cfg(feature = "test-clock")]
+    pub(super) hold: Arc<crate::test_hold::WorkerHold>,
 }
 
 /// The authenticated worker's call: its `X-Worker-Id`, passed through to the port, and the request id.

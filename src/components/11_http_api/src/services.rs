@@ -47,4 +47,7 @@ pub struct ApiServices {
     /// The same clock as `clock`, kept as the concrete type the test-clock routes advance.
     #[cfg(feature = "test-clock")]
     pub offset_clock: Arc<sc_clock::OffsetClock>,
+    /// The one-shot worker transfer hold of the test image (AZ-4381), shared by the worker routes and `:9091`.
+    #[cfg(feature = "test-clock")]
+    pub worker_hold: Arc<crate::test_hold::WorkerHold>,
 }

@@ -149,9 +149,14 @@ impl HttpServer {
         #[cfg(feature = "test-clock")]
         let test_clock = {
             let (listener, addr) = bind(Listener::TestClock, self.config.test_clock_addr).await?;
-            let app = self
-                .middleware
-                .wrap(test_clock::router(Arc::clone(&self.services.offset_clock)));
+            let app = self.middleware.wrap(
+                test_clock::router(Arc::clone(&self.services.offset_clock)).merge(
+                    crate::test_hold::router(
+                        Arc::clone(&self.services.worker_hold),
+                        Arc::clone(&self.services.offset_clock),
+                    ),
+                ),
+            );
             TestClockListener {
                 listener,
                 addr,

@@ -216,8 +216,13 @@ Recommended execution order (topological; ties by key). Test-epic refs (E-31) ar
 | AZ-3875 | worker_offset_clock_poll | 2 | AZ-3874, AZ-3867, AZ-3869, AZ-3765 | AZ-3639 |
 | AZ-3877 | worker_nvenc_preference | 1 | AZ-3876, AZ-3872 | AZ-3639 |
 | AZ-3661 | pipeline_media_derived_outputs | 5 | AZ-3741, AZ-3830, AZ-3789, AZ-3791, AZ-3792, AZ-3842, AZ-3844, AZ-3845, AZ-3846, AZ-3718, AZ-3755, AZ-3726, AZ-3729, AZ-3869, AZ-3870, AZ-3871, AZ-3872, AZ-3873, AZ-3874, AZ-3876, AZ-3877, AZ-3853, AZ-3855, AZ-3856, AZ-3857, AZ-3858, AZ-3859, AZ-3860, AZ-3863, AZ-3864, AZ-3660, AZ-3652 | AZ-3647 |
-| AZ-3878 | worker_integration_suite | 5 | AZ-3868, AZ-3869, AZ-3870, AZ-3871, AZ-3872, AZ-3873, AZ-3874, AZ-3875, AZ-3876, AZ-3852, AZ-3853, AZ-3855, AZ-3856, AZ-3857, AZ-3858, AZ-3860, AZ-3861, AZ-3863, AZ-3840, AZ-3842, AZ-3843, AZ-3831, AZ-3789, AZ-3791 | AZ-3639 |
-| AZ-3879 | worker_perf_security_acceptance | 3 | AZ-3878 | AZ-3639 |
+| AZ-3878 | worker_integration_suite | 5 | AZ-4381, AZ-4383, AZ-3868, AZ-3869, AZ-3870, AZ-3871, AZ-3872, AZ-3873, AZ-3874, AZ-3875, AZ-3876, AZ-3852, AZ-3853, AZ-3855, AZ-3856, AZ-3857, AZ-3858, AZ-3860, AZ-3861, AZ-3863, AZ-3840, AZ-3842, AZ-3843, AZ-3831, AZ-3789, AZ-3791 | AZ-3639 |
+| AZ-4381 | worker_transfer_hold | 3 | AZ-3831, AZ-3843, AZ-4334 | AZ-3644 |
+| AZ-4382 | fake_decoder_service | 5 | AZ-3852, AZ-3871 | AZ-3639 |
+| AZ-4383 | h2_stack_profile_ctl | 3 | AZ-3661, AZ-3874 | AZ-3639 |
+| AZ-4384 | worker_suite_gate_decisions | 3 | AZ-4382, AZ-4383 | AZ-3639 |
+| AZ-4385 | worker_suite_faults_slots | 5 | AZ-4382, AZ-4383 | AZ-3639 |
+| AZ-3879 | worker_perf_security_acceptance | 3 | AZ-3878, AZ-4384, AZ-4385 | AZ-3639 |
 | AZ-3881 | gate_s2_100k_files_spike | 3 | AZ-3652 | AZ-3625 |
 | AZ-3882 | settings_cold_start_spike | 2 | AZ-3652 | AZ-3628 |
 | AZ-3883 | windows_logon_task_spike | 2 | AZ-3652 | AZ-3625 |
