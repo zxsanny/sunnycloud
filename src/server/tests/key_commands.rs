@@ -11,9 +11,9 @@ use std::time::Duration;
 
 use contracts::{KeyError, MasterKeyring};
 use key_support::{Scripted, as_service};
-use sc_config::{ConfigSources, load_keys};
+use sc_config::ConfigSources;
 use serde_json::Value;
-use sunnycloud_server::{CliError, CliSettings, ConfigCheck, ServeSettings};
+use sunnycloud_server::CliSettings;
 use support::{Captured, Harness, locked};
 use uuid::Uuid;
 
@@ -39,7 +39,7 @@ fn run(keyring: &Arc<Scripted>, args: &[&str]) -> Captured {
     harness(keyring).run(args)
 }
 
-/// A `ServeSettings` whose `master_key_file` is a file holding `key`.
+/// Configuration sources whose `master_key_file` is a file holding `key`.
 fn with_key_file(harness: Harness, key: &[u8]) -> Harness {
     let mut setup = config_support::Setup::valid(0);
     let path = setup.dir.join("master.key");
@@ -48,18 +48,18 @@ fn with_key_file(harness: Harness, key: &[u8]) -> Harness {
     with_settings(harness, setup)
 }
 
-/// A `ServeSettings` loaded from `setup`, which stays alive (and its files with it) as long as the harness.
+/// The configuration sources of `setup`, which stays alive (and its files with it) as long as the harness: the
+/// command binds its own keys from them, as the real wiring does.
 fn with_settings(harness: Harness, setup: config_support::Setup) -> Harness {
-    let sources = ConfigSources {
+    let sources = Arc::new(ConfigSources {
         env: setup.env.clone().into_iter().collect(),
         ..ConfigSources::default()
-    };
+    });
     let setup = Arc::new(setup);
-    harness.service::<ServeSettings, _, _>(move |_| {
+    harness.service::<ConfigSources, _, _>(move |_| {
         let _alive = Arc::clone(&setup);
-        let loaded = load_keys::<ServeSettings>(&sources, &ConfigCheck::Server.keys())
-            .map_err(CliError::from);
-        async move { loaded }
+        let sources = Arc::clone(&sources);
+        async move { Ok(sources) }
     })
 }
 

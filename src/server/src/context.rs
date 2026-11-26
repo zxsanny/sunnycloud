@@ -86,6 +86,21 @@ impl ServiceContext {
         names
     }
 
+    /// Gives the context `T` before anything asked for it, in place of its builder: for a value known only once
+    /// the command is parsed (the settings its keys bind). A `T` already built or being built is not replaced.
+    pub fn provide<T>(&self, value: Arc<T>) -> Result<(), CliError>
+    where
+        T: ?Sized + Send + Sync + 'static,
+    {
+        let slot = self
+            .slots
+            .get(&TypeId::of::<T>())
+            .ok_or(CliError::NotRegistered(type_name::<T>()))?;
+        slot.built
+            .set(Arc::new(value) as Built)
+            .map_err(|_| CliError::AlreadyBuilt(type_name::<T>()))
+    }
+
     /// The service `T`, built on first use.
     pub async fn get<T>(&self) -> Result<Arc<T>, CliError>
     where

@@ -10,13 +10,16 @@
 use std::ffi::OsString;
 use std::future::Future;
 use std::io::{self, Cursor, Write};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use sc_clock::SystemClock;
+use sc_config::{ConfigSources, load_keys};
 use sc_observability::LineSink;
 use sunnycloud_server::{
-    BoxFuture, Call, CliEnv, CliError, CliSettings, Commands, ContextBuilder, Handler, Outcome,
-    ServiceContext, Terminal, execute,
+    BoxFuture, Call, CliEnv, CliError, CliSettings, Commands, ConfigCheck, ContextBuilder, Handler,
+    Outcome, ServeSettings, ServiceContext, Terminal, execute,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -175,7 +178,11 @@ pub struct Captured {
     pub calls: Vec<String>,
 }
 
+static NEXT_DIR: AtomicUsize = AtomicUsize::new(0);
+
 pub struct Harness {
+    /// The secrets folder of [`Harness::real_handler`], removed after the run.
+    config_dir: Option<PathBuf>,
     port: Arc<RecordingPort>,
     builder: ContextBuilder,
     handler: Arc<dyn Handler>,
@@ -190,6 +197,7 @@ impl Harness {
     pub fn new() -> Self {
         let port = Arc::new(RecordingPort::new(answer(|| Ok(Outcome::success()))));
         Self {
+            config_dir: None,
             port,
             builder: ServiceContext::builder(),
             handler: Arc::new(PortHandler),
@@ -209,9 +217,57 @@ impl Harness {
         self
     }
 
-    /// The real binary's handler.
-    pub fn real_handler(self) -> Self {
+    /// The real binary's handler, with the configuration sources and the settings slot the real wiring registers.
+    /// The sources hold what the keyring and invite commands bind (`ConfigCheck::Services`): a database URL and a
+    /// master key file (secret files under a fresh folder), a public URL and a blob root. A test that needs other
+    /// values registers its own `ConfigSources` after this call.
+    pub fn real_handler(mut self) -> Self {
+        let dir = std::env::temp_dir().join(format!(
+            "sc-harness-{}-{}",
+            std::process::id(),
+            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir is writable");
+        std::fs::write(
+            dir.join("db_api_url"),
+            "postgres://api@127.0.0.1:9/sunnycloud",
+        )
+        .expect("secret file is writable");
+        std::fs::write(
+            dir.join("master_key_file"),
+            dir.join("master.key").display().to_string(),
+        )
+        .expect("secret file is writable");
+        let sources = Arc::new(ConfigSources {
+            env: [
+                (
+                    "SUNNYCLOUD_PUBLIC_URL",
+                    "https://cloud.example.org".to_owned(),
+                ),
+                (
+                    "SUNNYCLOUD_BLOB_ROOT",
+                    dir.join("blobs").display().to_string(),
+                ),
+            ]
+            .into_iter()
+            .map(|(key, value)| (key.to_owned(), value))
+            .collect(),
+            secrets_dir: dir.clone(),
+            ..ConfigSources::default()
+        });
+        self.config_dir = Some(dir);
         self.handler(Arc::new(Commands))
+            .service::<ConfigSources, _, _>(move |_| {
+                let sources = Arc::clone(&sources);
+                async move { Ok(sources) }
+            })
+            .service::<ServeSettings, _, _>(|services| async move {
+                let sources = services.get::<ConfigSources>().await?;
+                Ok(load_keys::<ServeSettings>(
+                    &sources,
+                    &ConfigCheck::Server.keys(),
+                )?)
+            })
     }
 
     pub fn settings(mut self, settings: CliSettings) -> Self {
@@ -281,6 +337,9 @@ impl Harness {
             .map(OsString::from)
             .collect();
         let exit = execute(argv, &env);
+        if let Some(dir) = &self.config_dir {
+            std::fs::remove_dir_all(dir).expect("the harness secrets folder is removable");
+        }
         Captured {
             exit,
             stdout: stdout.text(),

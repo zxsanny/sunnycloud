@@ -44,7 +44,7 @@ mod wiring;
 
 use std::ffi::OsString;
 
-pub use command_config::{ConfigCheck, ServeSettings};
+pub use command_config::{ConfigCheck, KeyGroup, ServeSettings};
 pub use context::{ContextBuilder, ServiceContext};
 pub use dispatch::Commands;
 pub use doctor_command::{CheckFinding, CheckSelection, findings_value, report, run_checks};

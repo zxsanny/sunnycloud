@@ -145,13 +145,20 @@ pub(super) fn register(builder: ContextBuilder) -> ContextBuilder {
                 services.get::<Admin>().await?.deletion.clone();
             Ok(deletion)
         })
+        // Its own builder, so the operator commands of 01 build no sign-in service (which needs a provider).
+        .register::<IdentityInvites, _, _>(|services| async move {
+            let base = Base::get(&services).await?;
+            let config = IdentityConfig::from_settings(&base.settings);
+            Ok(Arc::new(IdentityInvites::new(
+                base.db, base.clock, &config, base.audit,
+            )))
+        })
         .register::<dyn OperatorIdentityOps, _, _>(|services| async move {
-            let ops: Arc<dyn OperatorIdentityOps> =
-                services.get::<Identity>().await?.invites.clone();
+            let ops: Arc<dyn OperatorIdentityOps> = services.get::<IdentityInvites>().await?;
             Ok(ops)
         })
         .register::<dyn InviteService, _, _>(|services| async move {
-            let invites: Arc<dyn InviteService> = services.get::<Identity>().await?.invites.clone();
+            let invites: Arc<dyn InviteService> = services.get::<IdentityInvites>().await?;
             Ok(invites)
         })
         .register::<dyn EpochAdmin, _, _>(|services| async move {
@@ -229,7 +236,7 @@ async fn identity(services: &ServiceContext) -> Result<Identity, CliError> {
             limiter,
             audit.clone(),
         )),
-        invites: Arc::new(IdentityInvites::new(db.clone(), clock, &config, audit)),
+        invites: services.get::<IdentityInvites>().await?,
         maintenance: Arc::new(IdentityMaintenance::new(db)),
         config,
     })

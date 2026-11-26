@@ -7,3 +7,5 @@ project: AZ (AZAION)
 id_prefix: AZ-
 label: sunnycloud
 confirmed_by_owner: 2026-11-04 (sunnycloud epics are filed in project AZ; every issue carries the `sunnycloud` label and the summary prefix `[sunnycloud]`)
+mcp_server: atlassian-azaion
+statuses: To Do, In Progress, In Testing, Done (transition id 32 moves to In Testing)

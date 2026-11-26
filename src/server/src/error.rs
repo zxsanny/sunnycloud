@@ -28,6 +28,9 @@ pub enum CliError {
     NotImplemented(&'static str),
     #[error("service `{0}` is not registered in the context")]
     NotRegistered(&'static str),
+    /// A value was provided after its service had been built.
+    #[error("service `{0}` was built before the command provided it")]
+    AlreadyBuilt(&'static str),
     /// A builder of the composition root failed; the command stops with the builder's own error.
     #[error("cannot build {service}: {source}")]
     Build {
@@ -45,6 +48,7 @@ impl CliError {
             CliError::Domain(_)
             | CliError::NotImplemented(_)
             | CliError::NotRegistered(_)
+            | CliError::AlreadyBuilt(_)
             | CliError::Build { .. } => Exit::Failed,
         }
     }
@@ -55,9 +59,10 @@ impl CliError {
             CliError::Usage(_) | CliError::Config(_) => ErrorCode::InvalidRequest.as_str(),
             CliError::Domain(error) => error.code().as_str(),
             CliError::Operator { code, .. } => code,
-            CliError::NotImplemented(_) | CliError::NotRegistered(_) | CliError::Build { .. } => {
-                ErrorCode::Internal.as_str()
-            }
+            CliError::NotImplemented(_)
+            | CliError::NotRegistered(_)
+            | CliError::AlreadyBuilt(_)
+            | CliError::Build { .. } => ErrorCode::Internal.as_str(),
         }
     }
 }

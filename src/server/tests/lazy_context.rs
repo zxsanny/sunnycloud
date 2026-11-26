@@ -115,3 +115,39 @@ async fn an_unregistered_service_is_an_error_and_a_failed_build_is_retried() {
     assert!(context.get::<Database>().await.is_ok());
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
 }
+
+#[tokio::test]
+async fn a_provided_value_is_served_and_its_builder_never_runs() {
+    // Arrange
+    let builds = Arc::new(AtomicUsize::new(0));
+    let context = counting_context(&builds);
+    let provided = Arc::new(Database);
+
+    // Act
+    context
+        .provide(Arc::clone(&provided))
+        .expect("provided before any build");
+    let served = context.get::<Database>().await.expect("served");
+
+    // Assert
+    assert!(Arc::ptr_eq(&provided, &served));
+    assert_eq!(builds.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn a_value_is_not_provided_over_a_built_service_or_for_an_unregistered_one() {
+    // Arrange
+    let builds = Arc::new(AtomicUsize::new(0));
+    let context = counting_context(&builds);
+    let built = context.get::<Database>().await.expect("built");
+
+    // Act
+    let late = context.provide(Arc::new(Database));
+    let unregistered = context.provide(Arc::new(String::from("not a service")));
+
+    // Assert
+    assert!(matches!(late, Err(CliError::AlreadyBuilt(_))));
+    assert!(matches!(unregistered, Err(CliError::NotRegistered(_))));
+    let again = context.get::<Database>().await.expect("still built");
+    assert!(Arc::ptr_eq(&built, &again));
+}

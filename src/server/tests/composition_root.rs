@@ -8,7 +8,7 @@ mod root_support;
 use std::any::type_name;
 use std::sync::Arc;
 
-use contracts::{MediaAdmin, Scrubber};
+use contracts::{InviteService, MediaAdmin, OperatorIdentityOps, Scrubber};
 use media_api::MediaAdminService;
 use sc_ratelimit::AbuseLimiter;
 use sunnycloud_blobstore::MasterKeyring;
@@ -202,6 +202,33 @@ async fn key_check_builds_the_keyring_and_nothing_of_another_component() {
     ];
     expected.sort_unstable();
     assert_eq!(root.services.built(), expected);
+    root.finish().await;
+}
+
+#[tokio::test]
+async fn the_operator_identity_commands_build_the_invites_without_sign_in() {
+    // Arrange
+    let root = Root::new().await;
+
+    // Act
+    let ops = root
+        .services
+        .get::<dyn OperatorIdentityOps>()
+        .await
+        .expect("01's operator port");
+    let invites = root
+        .services
+        .get::<dyn InviteService>()
+        .await
+        .expect("01's invite port");
+
+    // Assert
+    let built = root.services.built();
+    assert!(!built.contains(&type_name::<Identity>()));
+    assert!(!built.contains(&type_name::<AbuseLimiter>()));
+    assert_eq!(address(&ops), address(&invites));
+    let identity = root.services.get::<Identity>().await.expect("01");
+    assert_eq!(address(&identity.invites), address(&ops));
     root.finish().await;
 }
 

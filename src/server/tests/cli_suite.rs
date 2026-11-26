@@ -683,11 +683,8 @@ mod lazy {
         db.drop_db().await;
     }
 
-    /// KNOWN FAILURE (leftover `2026-11-24_az-3813-lazy-config.md`): every service of the composition root reads
-    /// `ServeSettings`, which binds and validates every key of the server, so `admin setup-token` refuses with
-    /// "providers, share_grant_key, blob_root, worker_api_token, master_key_file: required setting is missing".
+    /// The invite commands bind the database and identity keys only, and build 01's invites without sign-in.
     #[tokio::test]
-    #[ignore = "AZ-3813 AC-5 fails today: admin setup-token needs the whole server config (leftover 2026-11-24_az-3813-lazy-config.md)"]
     async fn setup_token_succeeds_with_no_provider_and_no_worker_token() {
         // Arrange
         let db = TestDb::clone_template().await;
@@ -705,16 +702,19 @@ mod lazy {
         db.drop_db().await;
     }
 
-    /// KNOWN FAILURE, same cause: `key-check` builds the keyring from `ServeSettings`.
+    /// The keyring commands bind the database and blobstore keys only.
     #[tokio::test]
-    #[ignore = "AZ-3813 AC-5 fails today: key-check needs the whole server config (leftover 2026-11-24_az-3813-lazy-config.md)"]
     async fn key_check_succeeds_with_no_provider_and_no_worker_token() {
         // Arrange
         let db = TestDb::clone_template().await;
         let mut setup = Setup::empty();
         setup.secret("db_api_url", db.config().db_api_url.expose());
-        setup.secret("master_key_file", &"k".repeat(32));
-        setup.set("BLOB_ROOT", &setup.dir.join("blobs").display().to_string());
+        let key_file = setup.dir.join("master.key");
+        std::fs::write(&key_file, [7u8; 32]).expect("the key file is writable");
+        setup.secret("master_key_file", &key_file.display().to_string());
+        let blob_root = setup.dir.join("blobs");
+        std::fs::create_dir_all(&blob_root).expect("the blob volume exists");
+        setup.set("BLOB_ROOT", &blob_root.display().to_string());
 
         // Act
         let out = tokio::task::spawn_blocking(move || run(&setup, &["key-check"]))

@@ -72,8 +72,8 @@ Status: `pass` (a test in the proof column passes in the job); `known failure` (
 | IT-12-18 | `openapi` is byte-identical on every run and equals the served document; `version` | command AZ-3811 | pass | `tests/local_commands.rs::openapi_is_valid_json_equal_to_the_document_the_server_serves` |
 | IT-12-18 | `healthcheck` exits 0 on a ready answer and non-zero otherwise | command AZ-3811 | pass | `src/healthcheck.rs::not_ready_answer_is_non_zero` |
 | IT-12-18 | `migrate` and `openapi` need no unrelated configuration | suite | pass | `tests/cli_suite.rs::migrate_succeeds_with_only_the_migrator_url` |
-| IT-12-18 | `admin setup-token` with no provider and no worker token | suite | known failure | `tests/cli_suite.rs::setup_token_succeeds_with_no_provider_and_no_worker_token` (leftover `2026-11-24_az-3813-lazy-config.md`) |
-| IT-12-18 | `key-check` with no provider and no worker token | suite | known failure | `tests/cli_suite.rs::key_check_succeeds_with_no_provider_and_no_worker_token` (leftover `2026-11-24_az-3813-lazy-config.md`) |
+| IT-12-18 | `admin setup-token` with no provider and no worker token | suite | pass | `tests/cli_suite.rs::setup_token_succeeds_with_no_provider_and_no_worker_token` |
+| IT-12-18 | `key-check` with no provider and no worker token | suite | pass | `tests/cli_suite.rs::key_check_succeeds_with_no_provider_and_no_worker_token` |
 | IT-12-19 | a token is on stdout once and nowhere else, across four commands | suite | pass | `tests/cli_suite.rs::each_token_is_on_its_own_stdout_once_and_in_no_stderr_log_or_other_commands_output` |
 | IT-12-19 | SIGINT during `admin rewrap`: no new batch, stops within 5 s, exit 130 recorded | command AZ-3797 | pass | `tests/rewrap_sigint.rs::sigint_stops_after_the_running_batch_and_starts_no_new_one` |
 | IT-12-19 | SIGINT during `scrub run`: `finish_run` once, stops within 5 s, exit 130 recorded | command AZ-3798 | pass | `tests/scrub_sigint.rs::sigint_stops_after_the_running_step_and_closes_the_run_once` |

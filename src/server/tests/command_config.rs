@@ -3,11 +3,14 @@
 
 mod config_support;
 
+use std::collections::BTreeSet;
+use std::path::Path;
+
 use clap::Parser;
 use config_support::{PLANTED, Setup};
 use sc_config::{ApiSettings, ConfigError, ConfigSources, load_keys};
 use sunnycloud_server::commands::Cli;
-use sunnycloud_server::{ConfigCheck, ServeSettings};
+use sunnycloud_server::{ConfigCheck, KeyGroup, ServeSettings};
 
 fn check_of(args: &[&str]) -> ConfigCheck {
     let argv = std::iter::once("sunnycloud").chain(args.iter().copied());
@@ -39,19 +42,49 @@ fn problem_keys(error: &ConfigError) -> Vec<String> {
 }
 
 #[test]
-fn only_serve_and_the_migrate_commands_ask_anything_of_configuration() {
+fn each_command_asks_only_for_the_keys_of_what_it_builds() {
+    // Arrange
+    let keyring = ConfigCheck::Services(&[KeyGroup::Database, KeyGroup::Blobstore]);
+    let invites = ConfigCheck::Services(&[KeyGroup::Database, KeyGroup::Identity]);
+
     // Act
     let unrestricted = [
         &["version"][..],
         &["openapi"],
         &["healthcheck"],
-        &["key-check"],
-        &["admin", "setup-token"],
+        &["admin", "promote", "00000000-0000-0000-0000-000000000001"],
+    ]
+    .map(check_of);
+    let keyring_commands = [
+        &["key-check"][..],
+        &["admin", "keycheck-init"],
+        &["admin", "rewrap", "--from-key-id", "1", "--yes"],
+    ]
+    .map(check_of);
+    let invite_commands = [
+        &["admin", "setup-token"][..],
+        &["admin", "create"],
+        &["admin", "reset", "00000000-0000-0000-0000-000000000001"],
+        &[
+            "admin",
+            "invite",
+            "--admin",
+            "00000000-0000-0000-0000-000000000001",
+            "list",
+        ],
     ]
     .map(check_of);
 
     // Assert
     assert!(unrestricted.iter().all(|c| *c == ConfigCheck::Unrestricted));
+    assert!(
+        keyring_commands.iter().all(|c| *c == keyring),
+        "{keyring_commands:?}"
+    );
+    assert!(
+        invite_commands.iter().all(|c| *c == invites),
+        "{invite_commands:?}"
+    );
     assert_eq!(check_of(&["migrate"]), ConfigCheck::MigratorUrl);
     assert_eq!(check_of(&["migrate", "run"]), ConfigCheck::MigratorUrl);
     assert_eq!(
@@ -63,6 +96,57 @@ fn only_serve_and_the_migrate_commands_ask_anything_of_configuration() {
         ConfigCheck::AnyDatabaseUrl
     );
     assert_eq!(check_of(&["serve"]), ConfigCheck::Server);
+}
+
+/// The table keys an owner's configuration source reads: every `settings.<key>` in the file.
+fn keys_read_by(source: &str) -> BTreeSet<String> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(source);
+    let text = std::fs::read_to_string(&path).expect("the owner's configuration source");
+    let mut keys = BTreeSet::new();
+    for (start, _) in text.match_indices("settings.") {
+        let key: String = text[start + "settings.".len()..]
+            .chars()
+            .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
+            .collect();
+        if !key.is_empty() {
+            keys.insert(key);
+        }
+    }
+    keys
+}
+
+#[test]
+fn each_key_group_lists_exactly_the_keys_its_owner_reads() {
+    // Arrange: the migrator secret is helper 07's, but the API role never connects with it.
+    let cases = [
+        (
+            KeyGroup::Database,
+            "../shared/db/src/config.rs",
+            &["db_migrator_url"][..],
+        ),
+        (
+            KeyGroup::Blobstore,
+            "../components/04_blobstore/src/config.rs",
+            &[],
+        ),
+        (
+            KeyGroup::Identity,
+            "../components/01_identity/src/config.rs",
+            &[],
+        ),
+    ];
+
+    for (group, source, not_bound) in cases {
+        // Act
+        let mut read = keys_read_by(source);
+        for key in not_bound {
+            read.remove(*key);
+        }
+        let listed: BTreeSet<String> = group.keys().iter().map(|key| (*key).to_owned()).collect();
+
+        // Assert
+        assert_eq!(listed, read, "{group:?} against {source}");
+    }
 }
 
 #[test]

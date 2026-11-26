@@ -3,7 +3,7 @@
 **Component**: 12_operator_cli
 **Producer task**: B08-02_cli_skeleton (E-22/c02) for the streams, the `--json` envelope, the exit codes and the confirmation rule; each command row is implemented by the task named in its row
 **Consumer tasks**: this batch: E-22/c03, E-22/c04, E-22/c05, E-22/c07..c13, E-22/c14a, E-22/c15, E-22/c16, E-22/c17; other batches: the E-22 pipelines p01..p14 (they run the commands), E-31 system tests (FT-P-64, FT-P-65, FT-P-78, FT-N-25, FT-N-39, FT-N-46, FT-P-69, FT-P-71, FT-P-72, NFT-RES-13, NFT-RES-14, NFT-RES-37 and others), E-00/c08 (`e2e-ctl exec-operator`), E-00 Compose and deployment docs (`migrate` step, `healthcheck`)
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: draft (freezes when the open points below are answered)
 **Last Updated**: 2026-11-08
 
@@ -142,10 +142,11 @@ Each command passes the table keys it reads to `sc_config::load_keys`: a key out
 - `serve` binds every key `sunnycloud` reads, all secrets included, and runs every owner's start validation inside the load (identity, tree, transfer, feed, sharing, admin, quota, blobstore, media). Loader problems and owner problems, and every missing secret, come in one refusal before any database connection or listener. Database, HTTP and vault have no start validation to call yet.
 - `migrate` and `migrate run` bind the `db_*` keys except `db_api_url`, plus `environment`, and require `db_migrator_url`; its absence exits 3 naming the key, before any connection. No provider, worker token, master key or `public_url` is needed.
 - `version`, `openapi` and `healthcheck` use no section. The skeleton itself reads only `environment`, `log`, `log_level` and `cli_confirm_required`.
-- Every other command (including `key-check` and `admin setup-token`) is unrestricted here: the documents do not name the keys their builders read (`MasterKeyring::new` also takes a database handle and an audit writer), so each command task binds its own keys with `load_keys`.
+- `key-check`, `admin keycheck-init` and `admin rewrap` bind `environment`, the `db_*` keys of the API role (every `db_*` key but `db_migrator_url`) and every key 04's `BlobstoreConfig` reads; `admin setup-token`, `admin create`, `admin reset` and `admin invite ...` bind `environment`, the same database keys and every key 01's `IdentityConfig` reads (AZ-3813 AC-5, IT-12-18). The owners' start validation runs on those keys only, and 01's rule that a sign-in provider is configured binds `serve` alone: no other command signs anyone in. So none of them needs a provider, `worker_api_token` or `share_grant_key`; `key-check` needs no `public_url` and the invite commands need no `blob_root` or master key. The lists are `KeyGroup` in `command_config.rs`; a test compares each with the keys its owner's `from_settings` reads. The invite commands build 01's invites without its sign-in service.
+- Every other command that builds services is unrestricted here: it binds every key, as `serve` does, without the refusal up front.
 - A refusal is exit 3 and lists every problem. A secret key that is refused shows `(value ***)`; a value never appears.
 
-Open points added by AZ-3790: 8. Whether `migrate revert` needs `db_migrator_url` (DDL) and which role `migrate status` uses first is not stated; both are unrestricted for now. 9. The keys read by `key-check`, `admin setup-token` and the other commands are not stated (the builders of E-22/c03 decide).
+Open points added by AZ-3790: 8. Whether `migrate revert` needs `db_migrator_url` (DDL) and which role `migrate status` uses first is not stated; both are unrestricted for now. 9. The keys read by `key-check`, `admin setup-token` and the other commands are not stated (the builders of E-22/c03 decide). Resolved for the keyring and invite commands by AZ-3813 (above); still open for the rest.
 
 ## Local commands (AZ-3811)
 
@@ -163,3 +164,4 @@ Open points added by AZ-3811: 10. The probe timeout of `healthcheck` is not stat
 | 1.1.0 | 2026-11-06 | Records the skeleton's proposed readings of open points 1, 2, 4 and the confirmation and log-line behaviour | AZ-3788 |
 | 1.2.0 | 2026-11-07 | Records configuration binding per command (`load_keys`) and the `serve` start validation | AZ-3790 |
 | 1.3.0 | 2026-11-08 | Records the `healthcheck`, `openapi` and `version` behaviour | AZ-3811 |
+| 1.4.0 | 2026-11-26 | Keyring and invite commands bind only their owners' keys; the provider rule binds `serve` alone | AZ-3813 |
