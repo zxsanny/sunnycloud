@@ -221,8 +221,10 @@ Recommended execution order (topological; ties by key). Test-epic refs (E-31) ar
 | AZ-4382 | fake_decoder_service | 5 | AZ-3852, AZ-3871 | AZ-3639 |
 | AZ-4383 | h2_stack_profile_ctl | 3 | AZ-3661, AZ-3874 | AZ-3639 |
 | AZ-4384 | worker_suite_gate_decisions | 5 | AZ-4382, AZ-4383 | AZ-3639 |
-| AZ-4385 | worker_suite_faults_slots | 5 | AZ-4382, AZ-4383 | AZ-3639 |
-| AZ-3879 | worker_perf_security_acceptance | 3 | AZ-3878, AZ-4384, AZ-4385 | AZ-3639 |
+| AZ-4385 | worker_suite_faults_slots | 5 | AZ-4382, AZ-4383, AZ-4384 | AZ-3639 |
+| AZ-4386 | worker_suite_slots_lease | 3 | AZ-4382, AZ-4383, AZ-4384 | AZ-3639 |
+| AZ-4387 | worker_suite_input_fetch | 3 | AZ-4382, AZ-4383, AZ-4384 | AZ-3639 |
+| AZ-3879 | worker_perf_security_acceptance | 3 | AZ-3878, AZ-4384, AZ-4385, AZ-4386, AZ-4387 | AZ-3639 |
 | AZ-3881 | gate_s2_100k_files_spike | 3 | AZ-3652 | AZ-3625 |
 | AZ-3882 | settings_cold_start_spike | 2 | AZ-3652 | AZ-3628 |
 | AZ-3883 | windows_logon_task_spike | 2 | AZ-3652 | AZ-3625 |

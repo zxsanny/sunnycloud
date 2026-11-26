@@ -18,7 +18,7 @@ This task was larger than its 5 points. It keeps AC-2 (job flows with the real d
 - AZ-4382: FD as a stack service.
 - AZ-4383: the H2 profile and the ctl actions.
 - AZ-4384: AC-1 and AC-3.
-- AZ-4385: AC-4 and AC-5.
+- AZ-4385: AC-4 (decoder faults: IT-09-6 (a) to (h), IT-09-11, IT-09-12, IT-09-13); AZ-4386: AC-5 (IT-09-9) and IT-09-10; AZ-4387: IT-09-7 and IT-09-6 (i) (split in batch 131).
 
 AC-1, AC-3, AC-4 and AC-5 below are kept for reference and are proven in those tasks. AC-6's kills use AZ-4381:
 - arm the hold;

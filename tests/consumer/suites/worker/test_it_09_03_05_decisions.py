@@ -3,26 +3,8 @@ transcode policy to the probe FD reports, and a non-compliant decoder output fai
 
 Every job of a clip goes through FD on the general lane: the interactive slot is gated out, so it claims nothing. FD's
 probes are scripted, so these cases check decisions and protocol traffic, never a media outcome."""
-import time
 
-import mediakit
-from fdkit import FAILED_SELF_CHECK
-
-GATE_SECONDS = 30
-JOBS_SECONDS = 60
-POLL_SECONDS = 0.25
-CLIP = "clip-compliant-front.mp4"
-
-
-def video_stream(width, height, bitrate):
-    return {"codec": "h264", "profile": "high", "width": width, "height": height, "rotation": None, "bitrate": bitrate,
-            "pix_fmt": "yuv420p", "primaries": "bt709", "transfer": "bt709", "matrix": "bt709"}
-
-
-def video_probe(duration_ms=60_000, width=1920, height=1080, bitrate=5_000_000, moov_first=True):
-    """A clip every compliance axis holds for, unless an argument says otherwise (the worker tests' probes)."""
-    return {"kind": "video", "container": "mov,mp4,m4a,3gp,3g2,mj2", "moov_first": moov_first,
-            "video": video_stream(width, height, bitrate), "audio": {"codec": "aac"}, "duration_ms": duration_ms}
+from h2cases import run_file, video_probe
 
 
 def script(probe, transcode=None):
@@ -32,24 +14,9 @@ def script(probe, transcode=None):
             "transcode": {"default": transcode or {"error": "corrupt"}}}
 
 
-def terminal(jobs):
-    return sum(jobs[key] for key in ("derived", "skipped_compliant", "obsolete", "dead"))
-
-
 def run_clip(stack_ctl, media, lanes, name, fd_script):
-    """Gates the interactive slot out, puts FD with `fd_script` on the general lane, commits one clip and waits until
-    both of its jobs ended; returns FD's record and the job counts before and after."""
-    lanes("interactive", {"self_check": FAILED_SELF_CHECK}, restart_worker=False)
-    fd = lanes("general", fd_script)
-    fd.wait_for(["hello", "self_check"], GATE_SECONDS)
-    before = media.jobs()
-    media.commit(f"{name}.mp4", mediakit.with_marker(media.fixture(CLIP), name))
-    deadline = time.monotonic() + JOBS_SECONDS
-    while True:
-        after = media.jobs()
-        if terminal(after) - terminal(before) >= 2 or time.monotonic() > deadline:
-            return fd.record(), before, after
-        time.sleep(POLL_SECONDS)
+    _, record, before, after = run_file(media, lanes, name, fd_script)
+    return record, before, after
 
 
 def requests_of(record, kind):
