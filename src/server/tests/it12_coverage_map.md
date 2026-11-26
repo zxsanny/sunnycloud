@@ -1,22 +1,22 @@
 # IT-12 coverage map (AZ-3813 AC-7)
 
-Every expected result of IT-12-1..19 (`_docs/02_document/components/12_operator_cli/tests.md`) is assigned to exactly one place. `cli_suite.rs` checks this file against the spec: every case has rows, no part is listed twice, every place is one of the allowed kinds, and every test named in a `tests/...::fn` proof exists.
+Every expected result of IT-12-1..19 (`_docs/02_document/components/12_operator_cli/tests.md`) is assigned to exactly one place. `cli_suite` (`cli_suite/coverage_map.rs`) checks this file against the spec: every case has rows, no part is listed twice, every place is one of the allowed kinds, and every test named in a `tests/...::fn` proof exists.
 
-Places: `suite` (a test of `cli_suite.rs`); `command AZ-nnnn` (the test file of that command task, run by the CI job `cli-suite` through `it_cases.txt`); `pipeline AZ-nnnn` (a pipeline task on the Compose stack); `owner <task>` (the owning component's own tests); `E-31` (system tests on the Compose stack).
+Places: `suite` (a test of the `cli_suite` binary, `cli_suite/`); `command AZ-nnnn` (the test file of that command task, run by the CI job `cli-suite` through `it_cases.txt`); `pipeline AZ-nnnn` (a pipeline task on the Compose stack); `owner <task>` (the owning component's own tests); `E-31` (system tests on the Compose stack).
 Status: `pass` (a test in the proof column passes in the job); `known failure` (a test exists, is `#[ignore]`d with its reason, and a leftover records it); `blocked` (the test cannot exist yet, a leftover or task names what is missing); `elsewhere` (not run in this job; the place runs it).
 
 | Case | Part | Place | Status | Proof |
 |------|------|-------|--------|-------|
-| IT-12-1 | exit codes, usage errors, `--json` envelope for every command of the contract | suite | pass | `tests/cli_suite.rs::every_command_exits_0_on_success_and_prints_one_envelope_with_json` |
-| IT-12-1 | owner refusal exits 2 with the owner's code | suite | pass | `tests/cli_suite.rs::every_command_exits_2_on_an_owner_refusal_with_the_owners_code_in_the_envelope` |
-| IT-12-1 | doctor levels 0, 1 and 2 | suite | pass | `tests/cli_suite.rs::doctor_exits_0_for_ok_1_for_warnings_and_2_for_a_failure_and_json_names_the_level` |
-| IT-12-1 | usage errors and missing arguments exit 3, no call | suite | pass | `tests/cli_suite.rs::usage_errors_exit_3_with_no_business_call_and_nothing_on_stdout_even_with_json` |
-| IT-12-1 | missing confirmation exits 3, no call; with `--yes` one call | suite | pass | `tests/cli_suite.rs::the_four_destructive_commands_need_yes_on_a_non_tty_and_change_nothing_without_it` |
+| IT-12-1 | exit codes, usage errors, `--json` envelope for every command of the contract | suite | pass | `tests/cli_suite/exit_rules.rs::every_command_exits_0_on_success_and_prints_one_envelope_with_json` |
+| IT-12-1 | owner refusal exits 2 with the owner's code | suite | pass | `tests/cli_suite/exit_rules.rs::every_command_exits_2_on_an_owner_refusal_with_the_owners_code_in_the_envelope` |
+| IT-12-1 | doctor levels 0, 1 and 2 | suite | pass | `tests/cli_suite/exit_rules.rs::doctor_exits_0_for_ok_1_for_warnings_and_2_for_a_failure_and_json_names_the_level` |
+| IT-12-1 | usage errors and missing arguments exit 3, no call | suite | pass | `tests/cli_suite/exit_rules.rs::usage_errors_exit_3_with_no_business_call_and_nothing_on_stdout_even_with_json` |
+| IT-12-1 | missing confirmation exits 3, no call; with `--yes` one call | suite | pass | `tests/cli_suite/exit_rules.rs::the_four_destructive_commands_need_yes_on_a_non_tty_and_change_nothing_without_it` |
 | IT-12-1 | text to stdout, diagnostics to stderr | command AZ-3788 | pass | `tests/exit_codes.rs::json_refusal_carries_the_owner_code_and_diagnostics_stay_on_stderr` |
 | IT-12-1 | the same rules on the running stack through `e2e-ctl exec-operator` | E-31 | elsewhere | AT-12-1 install check, FT-P-64, FT-P-65 |
 | IT-12-2 | setup token printed once with a hint; refused after an account exists | command AZ-3794 | pass | `tests/identity_commands.rs::setup_token_prints_the_token_once_with_the_hint_on_each_run` |
 | IT-12-2 | `create` and `reset` print an invite once; `reset` of an unknown account exits 2 | command AZ-3794 | pass | `tests/identity_commands.rs::reset_prints_a_fresh_invite_once_and_maps_the_refusals` |
-| IT-12-2 | no token in stderr, log lines or another command's output | suite | pass | `tests/cli_suite.rs::each_token_is_on_its_own_stdout_once_and_in_no_stderr_log_or_other_commands_output` |
+| IT-12-2 | no token in stderr, log lines or another command's output | suite | pass | `tests/cli_suite/secret_channel.rs::each_token_is_on_its_own_stdout_once_and_in_no_stderr_log_or_other_commands_output` |
 | IT-12-2 | `serve` prints the setup token of a fresh install and stores only its hash | pipeline AZ-3654 | pass | `tests/serve_setup_token.rs::a_fresh_install_prints_one_setup_token_and_stores_only_its_hash` |
 | IT-12-2 | old setup token refused; only the SHA-256 stored; sessions revoked after `reset` | pipeline AZ-3654 | elsewhere | AZ-3654 AC-2 and AC-4 (E-22/p01) |
 | IT-12-2 | invite expiry with the test clock | owner E-15 | elsewhere | `--ttl` was dropped (contract open point 6); `invite_ttl` is the owner's config |
@@ -71,9 +71,9 @@ Status: `pass` (a test in the proof column passes in the job); `known failure` (
 | IT-12-17 | one `admin_action` event per mutating command, actor `Operator` | owner E-17/c03 | elsewhere | E-17/c03, E-17/c08; E-31 |
 | IT-12-18 | `openapi` is byte-identical on every run and equals the served document; `version` | command AZ-3811 | pass | `tests/local_commands.rs::openapi_is_valid_json_equal_to_the_document_the_server_serves` |
 | IT-12-18 | `healthcheck` exits 0 on a ready answer and non-zero otherwise | command AZ-3811 | pass | `src/healthcheck.rs::not_ready_answer_is_non_zero` |
-| IT-12-18 | `migrate` and `openapi` need no unrelated configuration | suite | pass | `tests/cli_suite.rs::migrate_succeeds_with_only_the_migrator_url` |
-| IT-12-18 | `admin setup-token` with no provider and no worker token | suite | pass | `tests/cli_suite.rs::setup_token_succeeds_with_no_provider_and_no_worker_token` |
-| IT-12-18 | `key-check` with no provider and no worker token | suite | pass | `tests/cli_suite.rs::key_check_succeeds_with_no_provider_and_no_worker_token` |
-| IT-12-19 | a token is on stdout once and nowhere else, across four commands | suite | pass | `tests/cli_suite.rs::each_token_is_on_its_own_stdout_once_and_in_no_stderr_log_or_other_commands_output` |
+| IT-12-18 | `migrate` and `openapi` need no unrelated configuration | suite | pass | `tests/cli_suite/lazy.rs::migrate_succeeds_with_only_the_migrator_url` |
+| IT-12-18 | `admin setup-token` with no provider and no worker token | suite | pass | `tests/cli_suite/lazy.rs::setup_token_succeeds_with_no_provider_and_no_worker_token` |
+| IT-12-18 | `key-check` with no provider and no worker token | suite | pass | `tests/cli_suite/lazy.rs::key_check_succeeds_with_no_provider_and_no_worker_token` |
+| IT-12-19 | a token is on stdout once and nowhere else, across four commands | suite | pass | `tests/cli_suite/secret_channel.rs::each_token_is_on_its_own_stdout_once_and_in_no_stderr_log_or_other_commands_output` |
 | IT-12-19 | SIGINT during `admin rewrap`: no new batch, stops within 5 s, exit 130 recorded | command AZ-3797 | pass | `tests/rewrap_sigint.rs::sigint_stops_after_the_running_batch_and_starts_no_new_one` |
 | IT-12-19 | SIGINT during `scrub run`: `finish_run` once, stops within 5 s, exit 130 recorded | command AZ-3798 | pass | `tests/scrub_sigint.rs::sigint_stops_after_the_running_step_and_closes_the_run_once` |

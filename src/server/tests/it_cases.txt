@@ -3,7 +3,7 @@
 # in the job `cli-suite`). One line: case id, test target, then test-name prefixes; a case may take several lines.
 # The parts of a case that need the Compose stack, the real api container or another task's pipeline are not run here:
 # `it12_coverage_map.md` (beside this file) assigns every expected result to exactly one place.
-IT-12-1   cli_suite every_command_exits_0 every_command_exits_2 doctor_exits_ usage_errors_ the_four_destructive_
+IT-12-1   cli_suite exit_rules::every_command_exits_0 exit_rules::every_command_exits_2 exit_rules::doctor_exits_ exit_rules::usage_errors_ exit_rules::the_four_destructive_
 IT-12-1   exit_codes outcome_classes json_ usage_and_configuration findings_are_a_result
 IT-12-1   confirmation non_tty_without_yes a_tty_prompt
 IT-12-2   identity_commands setup_token_ create_makes_one_call reset_prints an_unexpected_failure
@@ -38,7 +38,7 @@ IT-12-17  dev_seed_commands a_development_run the_production_refusal an_unexpect
 IT-12-18  local_commands openapi_ version_ the_build_stamps
 IT-12-18  cli_suite lazy::migrate_succeeds lazy::openapi_succeeds
 IT-12-18  config_binary migrate_needs_no_provider
-IT-12-19  cli_suite each_token_is
+IT-12-19  cli_suite secret_channel::each_token_is
 IT-12-19  secret_once text_mode json_mode a_refusal the_secret_type
 IT-12-19  scrub_sigint sigint_stops
 IT-12-19  rewrap_sigint sigint_stops

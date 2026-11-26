@@ -235,6 +235,8 @@ export class UploadQueue {
       });
     }
     const worker = this.worker;
+    // A failed start is logged and fails the active transfers in the `ready.catch` above; this
+    // chain only keeps that same rejection from surfacing a second time as unhandled.
     void this.ready?.then(() => worker.postMessage(message)).catch(() => undefined);
   }
 

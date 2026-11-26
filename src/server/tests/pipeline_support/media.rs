@@ -26,6 +26,32 @@ pub fn jpeg_bytes(size: usize, seed: u64) -> Vec<u8> {
     bytes
 }
 
+/// A 1x1 lossless WebP, the one output the worker posts.
+const WEBP: [u8; 34] = [
+    0x52, 0x49, 0x46, 0x46, 0x1a, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c,
+    0x0d, 0x00, 0x00, 0x00, 0x2f, 0x00, 0x00, 0x00, 0x10, 0x07, 0x10, 0x11, 0x11, 0x88, 0x88, 0xfe,
+    0x07, 0x00,
+];
+
+/// The worker's `PUT outputs/{kind}` of a 1x1 WebP for `job`.
+pub fn post_output(pipeline: &Pipeline, job: Uuid, kind: &str) -> u16 {
+    let headers = [
+        ("X-Worker-Id", "w1".to_owned()),
+        ("Content-Type", "image/webp".to_owned()),
+        ("X-Width", "1".to_owned()),
+        ("X-Height", "1".to_owned()),
+    ];
+    call(
+        pipeline.stack.ports.internal,
+        "PUT",
+        &format!("/api/v1/worker-jobs/{job}/outputs/{kind}"),
+        WORKER_TOKEN,
+        &headers,
+        &WEBP,
+    )
+    .status
+}
+
 /// A job row: status, attempts, outcome, priority and last error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobRow {
