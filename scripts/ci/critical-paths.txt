@@ -20,3 +20,8 @@ server/src/guard.rs
 server/src/secret.rs
 server/src/output.rs
 server/src/serve/start.rs
+
+# 08 media_jobs (AZ-3847 AC-5, part): worker authentication at 90%. accept_output (derived_store.rs) and claim
+# (job_repo.rs) are not listed yet: this gate's JSON summary counts the library's unit-test build as a second copy of
+# each line, so whole-file figures for 08 read about half the merged line coverage (leftover 2026-11-26_az-3847-ac5).
+components/08_media_jobs/src/worker_auth.rs

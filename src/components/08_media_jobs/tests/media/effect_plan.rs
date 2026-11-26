@@ -2,6 +2,7 @@
 //! and the statements one entry costs.
 
 use contracts::{Begin, CommitEffect, EntryOutcome, EntryResult, PublishOutcome, PublishedEntry};
+use media_api::JobPlanner;
 use sc_db::Scope;
 use sqlx::{AssertSqlSafe, Connection};
 
@@ -207,6 +208,9 @@ async fn a_photo_entry_costs_two_indexed_probes_and_one_insert() {
     let queued_plan = plan_of(&q, &statements[1], &published).await;
     assert!(derived_plan.contains("derived_pkey"), "{derived_plan}");
     assert!(queued_plan.contains("jobs_queued_idx"), "{queued_plan}");
+    // IT-08-3: the queued count stops at a bound parameter, threshold + 1 (6 for threshold 5), not a full count.
+    assert!(statements[1].contains("LIMIT $2"), "{}", statements[1]);
+    assert_eq!(JobPlanner::new(1, 5).count_limit(), 6);
     q.finish().await;
 }
 

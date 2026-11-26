@@ -155,6 +155,168 @@ impl Media {
             ],
         )
     }
+
+    /// `hlg_mp4` stream copied with the index first, so that HDR is all it misses (DS-35).
+    pub fn hlg_faststart_mp4(&self) -> Vec<u8> {
+        std::fs::write(self.path("hlg-end.mp4"), self.hlg_mp4()).expect("write clip");
+        let input = self.text("hlg-end.mp4");
+        self.ffmpeg(
+            &["-i", &input],
+            "hlg-fast.mp4",
+            &["-c", "copy", "-movflags", "+faststart"],
+        )
+    }
+
+    /// DS-07 (`test-data.md`) at 3 s: H.264 High 1920x1080 at about 5.5 Mbit/s, BT.709, AAC,
+    /// index first.
+    pub fn compliant_mp4(&self) -> Vec<u8> {
+        self.ds07_like(
+            "ds07.mp4",
+            "1920x1080",
+            &ds07_video("high", "yuv420p"),
+            "aac",
+            true,
+        )
+    }
+
+    /// DS-07 with the index at the end (DS-35).
+    pub fn index_at_end_mp4(&self) -> Vec<u8> {
+        let video = ds07_video("high", "yuv420p");
+        self.ds07_like("ds07-end.mp4", "1920x1080", &video, "aac", false)
+    }
+
+    /// DS-07 at `width` x `height` (DS-35: 1920x1088, and the portrait 1080x1920 control).
+    pub fn sized_mp4(&self, width: u32, height: u32) -> Vec<u8> {
+        let video = ds07_video("high", "yuv420p");
+        let name = format!("ds07-{width}x{height}.mp4");
+        self.ds07_like(&name, &format!("{width}x{height}"), &video, "aac", true)
+    }
+
+    /// DS-07 at a constant `kbps`: x264 CBR with filler (`nal-hrd=cbr`) and a 1 Mbit buffer, so
+    /// the stream average of the 3 s clip lands just under `kbps` (10,469 for 10,500 on ffmpeg 8).
+    pub fn cbr_mp4(&self, kbps: u32) -> Vec<u8> {
+        let rate = format!("{kbps}k");
+        let video: [&str; 18] = [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-profile:v",
+            "high",
+            "-pix_fmt",
+            "yuv420p",
+            "-b:v",
+            &rate,
+            "-minrate",
+            &rate,
+            "-maxrate",
+            &rate,
+            "-bufsize",
+            "1000k",
+            "-x264-params",
+            "nal-hrd=cbr",
+        ];
+        let name = format!("ds07-{kbps}k.mp4");
+        self.ds07_like(&name, "1920x1080", &video, "aac", true)
+    }
+
+    /// DS-07 in the High 10 profile (DS-35).
+    pub fn high10_mp4(&self) -> Vec<u8> {
+        let video = ds07_video("high10", "yuv420p10le");
+        self.ds07_like("ds07-high10.mp4", "1920x1080", &video, "aac", true)
+    }
+
+    /// DS-07 as 8-bit HEVC, profile Main (DS-35).
+    pub fn hevc_mp4(&self) -> Vec<u8> {
+        let video = [
+            "-c:v",
+            "libx265",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-b:v",
+            "6M",
+            "-maxrate",
+            "8M",
+            "-bufsize",
+            "12M",
+            "-x265-params",
+            "log-level=error",
+        ];
+        self.ds07_like("ds07-hevc.mp4", "1920x1080", &video, "aac", true)
+    }
+
+    /// DS-07 with MP3 audio (DS-35).
+    pub fn mp3_mp4(&self) -> Vec<u8> {
+        let video = ds07_video("high", "yuv420p");
+        self.ds07_like("ds07-mp3.mp4", "1920x1080", &video, "libmp3lame", true)
+    }
+
+    /// 3 s at 25 fps of the moving test pattern at `size` (`WxH`) with a 440 Hz tone, encoded with
+    /// `video` and `audio` (128 kbit/s); the index is first when `faststart`. BT.709 is tagged on
+    /// the frames, because ffmpeg 8 takes the encoder's colour tags from them and drops
+    /// `-color_trc`, and as encoder options as well.
+    fn ds07_like(
+        &self,
+        name: &str,
+        size: &str,
+        video: &[&str],
+        audio: &str,
+        faststart: bool,
+    ) -> Vec<u8> {
+        let source = format!("testsrc2=d=3:s={size}:r=25");
+        let mut rest = vec![
+            "-vf",
+            "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-colorspace",
+            "bt709",
+        ];
+        rest.extend_from_slice(video);
+        rest.extend_from_slice(&["-c:a", audio, "-b:a", "128k"]);
+        if faststart {
+            rest.extend_from_slice(&["-movflags", "+faststart"]);
+        }
+        self.ffmpeg(
+            &[
+                "-f",
+                "lavfi",
+                "-i",
+                &source,
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=3",
+            ],
+            name,
+            &rest,
+        )
+    }
+}
+
+/// The video options of the DS-07 recipe (`test-data.md`) with a fast preset: libx264 at
+/// 6 Mbit/s, capped at 8, in `profile` and `pix_fmt`.
+fn ds07_video(profile: &'static str, pix_fmt: &'static str) -> [&'static str; 14] {
+    [
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-profile:v",
+        profile,
+        "-pix_fmt",
+        pix_fmt,
+        "-b:v",
+        "6M",
+        "-maxrate",
+        "8M",
+        "-bufsize",
+        "12M",
+    ]
 }
 
 /// The mean of all pixel values of an image file, as printed by `vips avg`.

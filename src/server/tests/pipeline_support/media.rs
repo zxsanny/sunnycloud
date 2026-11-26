@@ -4,6 +4,7 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -27,7 +28,7 @@ pub fn jpeg_bytes(size: usize, seed: u64) -> Vec<u8> {
 }
 
 /// A 1x1 lossless WebP, the one output the worker posts.
-const WEBP: [u8; 34] = [
+pub const WEBP: [u8; 34] = [
     0x52, 0x49, 0x46, 0x46, 0x1a, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c,
     0x0d, 0x00, 0x00, 0x00, 0x2f, 0x00, 0x00, 0x00, 0x10, 0x07, 0x10, 0x11, 0x11, 0x88, 0x88, 0xfe,
     0x07, 0x00,
@@ -50,6 +51,14 @@ pub fn post_output(pipeline: &Pipeline, job: Uuid, kind: &str) -> u16 {
         &WEBP,
     )
     .status
+}
+
+/// An MP4 small file: an `ftyp` box (brand `isom`, so 03 sniffs `video/mp4`) then `size - 32` bytes of `seed`'s stream.
+pub fn mp4_bytes(size: usize, seed: u64) -> Vec<u8> {
+    let head = b"\x00\x00\x00\x20ftypisom\x00\x00\x02\x00isomiso2avc1mp41";
+    let mut bytes = super::content(seed, size);
+    bytes[..head.len()].copy_from_slice(head);
+    bytes
 }
 
 /// A job row: status, attempts, outcome, priority and last error.
@@ -103,6 +112,48 @@ impl Pipeline {
     pub fn claim_image(&self, worker: &str) -> Response {
         let path = "/api/v1/worker-jobs/claims";
         self.worker_call(WORKER_TOKEN, worker, "POST", path, r#"{"lane":"image"}"#)
+    }
+
+    /// `POST /api/v1/worker-jobs/claims` of `lane` as worker `worker`.
+    pub fn claim(&self, worker: &str, lane: &str) -> Response {
+        let body = format!(r#"{{"lane":"{lane}"}}"#);
+        self.worker_call(
+            WORKER_TOKEN,
+            worker,
+            "POST",
+            "/api/v1/worker-jobs/claims",
+            &body,
+        )
+    }
+
+    /// `PUT /api/v1/worker-jobs/{job}/outputs/{kind}` of `bytes` labelled `media_type`, with `X-Width` and
+    /// `X-Height` when `size` is given.
+    pub fn put_output_as(
+        &self,
+        worker: &str,
+        job: Uuid,
+        kind: &str,
+        media_type: &str,
+        bytes: &[u8],
+        size: Option<(u32, u32)>,
+    ) -> Response {
+        let mut headers = vec![
+            ("Content-Type", media_type.to_owned()),
+            ("X-Worker-Id", worker.to_owned()),
+        ];
+        if let Some((width, height)) = size {
+            headers.push(("X-Width", width.to_string()));
+            headers.push(("X-Height", height.to_string()));
+        }
+        let path = format!("/api/v1/worker-jobs/{job}/outputs/{kind}");
+        call(
+            self.stack.ports.internal,
+            "PUT",
+            &path,
+            WORKER_TOKEN,
+            &headers,
+            bytes,
+        )
     }
 
     /// `PUT /api/v1/worker-jobs/{job}/lease` as worker `worker`.
@@ -267,6 +318,101 @@ impl Pipeline {
         });
         assert_eq!(output.status.code(), Some(0), "{envelope}");
         envelope["data"].clone()
+    }
+}
+
+/// The `(status, code)` of a problem answer; an empty code when the body has none.
+pub fn problem_code(answer: &Response) -> (u16, String) {
+    let body: Value = serde_json::from_slice(&answer.body).unwrap_or(Value::Null);
+    let code = body["code"].as_str().unwrap_or_default().to_owned();
+    (answer.status, code)
+}
+
+/// Files under `root`, recursively; 0 when it does not exist yet.
+pub fn volume_files(root: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return 0;
+    };
+    entries
+        .map(|entry| entry.expect("a directory entry").path())
+        .map(|path| {
+            if path.is_dir() {
+                volume_files(&path)
+            } else {
+                1
+            }
+        })
+        .sum()
+}
+
+/// A derived row of the account: `(kind, media_type, width, height, blob_id)`.
+pub type DerivedRow = (String, String, Option<i32>, Option<i32>, Uuid);
+
+impl Pipeline {
+    /// Commits `bytes` as `name` under `folder` through 03 as the device; `(node, revision)`.
+    pub fn commit_file(&self, folder: Uuid, name: &str, bytes: &[u8]) -> (Uuid, Uuid) {
+        let committed = self.commit_as(&self.device, folder, name, bytes, None);
+        assert_eq!(committed["status"], "committed", "{committed}");
+        (
+            super::uuid_of(&committed, "node_id"),
+            super::uuid_of(&committed, "revision_id"),
+        )
+    }
+
+    /// The job id of a 200 claim of `lane` that has `kind`; claims until one does.
+    pub fn claim_kind(&self, worker: &str, lane: &str, kind: &str) -> Uuid {
+        for _ in 0..4 {
+            let answer = self.claim(worker, lane);
+            assert_eq!(answer.status, 200, "{answer:?}");
+            let body = answer.json();
+            if body["kind"] == kind {
+                return super::uuid_of(&body, "job_id");
+            }
+        }
+        panic!("no {kind} job in the {lane} lane");
+    }
+
+    /// The account's derived rows, by kind then age.
+    pub async fn derived_rows(&self) -> Vec<DerivedRow> {
+        let mut admin = self.stack.root.db.admin().await;
+        let rows = sqlx::query_as(
+            "SELECT kind, media_type, width, height, blob_id FROM derived WHERE account_id = $1 \
+             ORDER BY kind, created_at",
+        )
+        .bind(self.account.id)
+        .fetch_all(&mut admin)
+        .await
+        .expect("read the derived rows");
+        admin.close().await.expect("close admin connection");
+        rows
+    }
+
+    /// One number from `sql`, whose one parameter is the account id.
+    pub async fn account_number(&self, sql: &'static str) -> i64 {
+        let mut admin = self.stack.root.db.admin().await;
+        let number = sqlx::query_scalar(sql)
+            .bind(self.account.id)
+            .fetch_one(&mut admin)
+            .await
+            .unwrap_or_else(|error| panic!("{sql}: {error}"));
+        admin.close().await.expect("close admin connection");
+        number
+    }
+
+    /// The account's blobs that neither a revision nor a derived row references.
+    pub async fn surplus_blobs(&self) -> Vec<Uuid> {
+        let mut admin = self.stack.root.db.admin().await;
+        let blobs = sqlx::query_scalar(
+            "SELECT b.id FROM blobs b WHERE b.account_id = $1 \
+             AND NOT EXISTS (SELECT 1 FROM derived d WHERE d.blob_id = b.id) \
+             AND NOT EXISTS (SELECT 1 FROM revisions r WHERE r.blob_id = b.id)",
+        )
+        .bind(self.account.id)
+        .fetch_all(&mut admin)
+        .await
+        .expect("read the surplus blobs");
+        admin.close().await.expect("close admin connection");
+        blobs
     }
 }
 

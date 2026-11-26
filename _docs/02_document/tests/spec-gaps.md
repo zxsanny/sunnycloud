@@ -29,7 +29,7 @@ Resolve during: **decompose** = settle in the task spec/contract; **implement** 
 | 17_android_app | `BackupCore::set_server(url) -> ServerCheck` (https, reachability, `server-info`, AC-54) | IT-17-6 | 6 |
 | 17_android_app | `BackupStatus.location_redacted: bool` | IT-17-10 | 6 |
 | 13_sync_core | `on_rotated` persist failure: retry once, then `TokenRejected`, app signs out | IT-13-9 | 7 |
-| 08_media_jobs | G-08-1: `claim` skips and marks dead expired-lease jobs with exhausted attempts | IT-08-19 (BLOCKED), AT-08-2 | 8 |
+| 08_media_jobs | G-08-1: `claim` skips and marks dead expired-lease jobs with exhausted attempts | IT-08-19 (resolved by AZ-3840 AC-7), AT-08-2 | 8 |
 | 08_media_jobs | G-08-2: 10 Mbit/s is decimal 10,000,000 bit/s, inclusive | IT-08-17 | 8 |
 | 09_worker_supervisor | G-09-2: input too large for scratch -> `input_too_large` (permanent) | IT-09-7 | 9 |
 | 09_worker_supervisor | G-09-3: output failing safe-open -> `output_rejected` (permanent) | IT-09-12 | 9 |

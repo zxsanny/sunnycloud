@@ -170,11 +170,11 @@ Harness `H1`: Rust integration binary with real PostgreSQL 18 (roles `sunnycloud
 **Max execution time**: 1 s
 **Dependencies**: none (pure)
 
-### IT-08-19: Claim of an exhausted job with an expired lease (BLOCKED)
+### IT-08-19: Claim of an exhausted job with an expired lease
 **Summary**: whether `claim` may take a `running` row whose lease expired and whose `attempts` already equals `job_attempts` before `JobReaper` marks it `dead`.
 **Traces to**: AC-45
 **Input data**: job claimed 3 times with the lease expiring each time; the reaper is paused; a fourth `claim`.
-**Expected result**: BLOCKED. The description says the reaper marks "expired lease and exhausted attempts" rows `dead` but the `claim` statement does not state it excludes them, so the fourth attempt may run. Required: the claim predicate must exclude rows with `attempts >= job_attempts` (expected result then: `None`, row `dead` after the next reap).
+**Expected result**: the fourth `claim` returns `None` and the row is `dead` at once: the claim statement marks an exhausted row it meets `dead` in place instead of handing it out, and returns the next eligible job if there is one (G-08-1, resolved by AZ-3840 AC-7; `queue_claim.rs` `an_exhausted_job_with_an_expired_lease_is_not_handed_out_and_is_marked_dead`, `the_claim_closes_an_exhausted_job_it_meets_and_still_returns_the_next_job`).
 **Max execution time**: 5 s
 **Dependencies**: PostgreSQL
 
@@ -341,7 +341,7 @@ Full variants with kills at fetch, decode and post: sys NFT-RES-36.
 
 ## Spec gaps found
 
-- G-08-1 (BLOCKED, IT-08-19): `claim` eligibility for expired-lease rows whose attempts are exhausted.
+- G-08-1: resolved (AZ-3840 AC-7): `claim` never hands out an expired-lease row whose attempts are exhausted; it marks it `dead` in the same statement (IT-08-19).
 - G-08-2: whether "10 Mbit/s" is 10,000,000 bit/s (decimal) and whether the bound is inclusive.
 - G-08-3: resolved 2026-11-07: foreign and unknown ids are omitted from the `thumbnail-states` answer; a body over 1,000 ids is 422 `batch_too_large`.
 - G-08-4: resolved 2026-11-07: `Range` on `GET input` is ignored (always 200, full body).

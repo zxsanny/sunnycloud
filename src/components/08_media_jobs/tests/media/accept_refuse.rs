@@ -145,6 +145,39 @@ async fn oversized_mistyped_wrong_kind_and_out_of_bound_outputs_are_refused_and_
 }
 
 #[tokio::test]
+async fn a_body_longer_or_shorter_than_its_declared_length_is_refused_and_nothing_is_kept() {
+    // Arrange: IT-08-11 (a)'s lying length at the port; on the wire HTTP frames the body by `Content-Length`.
+    let a = with_cap().await;
+    let stills = a.claimed(JobKind::Stills, 22).await;
+    let output = webp_of(4 * 1024);
+    let declared = u64::try_from(output.len()).expect("a length");
+
+    // Act
+    let mut answers = Vec::new();
+    for length in [declared - 100, declared + 100] {
+        let claimed_webp = meta("image/webp", Some(320), Some(240));
+        let answer = a
+            .store
+            .accept_output(
+                stills,
+                WORKER,
+                DerivedKind::Thumb,
+                claimed_webp,
+                body(output.clone()),
+                length,
+            )
+            .await;
+        answers.push(label(&answer));
+    }
+
+    // Assert
+    assert_eq!(answers, ["OutputTooLarge", "OutputTooLarge"]);
+    assert!(a.derived(22).await.is_empty());
+    assert_untouched(&a, &[stills]).await;
+    a.finish().await;
+}
+
+#[tokio::test]
 async fn an_expired_lease_and_another_worker_are_lease_lost() {
     // Arrange
     let a = with_cap().await;

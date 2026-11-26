@@ -135,6 +135,7 @@ jobs:
         run: >-
           ../scripts/ci/watchdog.sh --name rust-test-test-clock -- cargo test --locked -p sunnycloud-server
           --features test-clock --test test_clock_serve --test pipeline_gc_retention --test api_services --test composition_root
+          --test pipeline_media_wire --test pipeline_media_outputs
 
   # The gate on the lcov files of the 6 parts: line coverage 75% overall, 90% on the critical paths. No Rust needed.
   coverage:

@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use media_api::Priority;
 use media_shared::types::{JobKind, Lane};
@@ -15,6 +15,8 @@ use uuid::Uuid;
 use crate::queue_support::{ATTEMPTS, LEASE, Queue, micros};
 
 const SECOND: Duration = Duration::from_secs(1);
+/// IT-08-5: the longest one claim call may take while 20 claimers run.
+const CLAIM_BOUND: Duration = Duration::from_millis(200);
 
 #[tokio::test]
 async fn the_interactive_job_comes_first_then_bulk_in_due_order_and_lanes_stay_apart() {
@@ -123,15 +125,23 @@ async fn twenty_concurrent_claimers_take_500_jobs_exactly_once() {
             let worker = format!("worker-{claimer}");
             start.wait().await;
             let mut taken = Vec::new();
-            while let Some(job) = queue.claim(Lane::Image, &worker).await.expect("claim") {
+            let mut slowest = Duration::ZERO;
+            loop {
+                let started = Instant::now();
+                let job = queue.claim(Lane::Image, &worker).await.expect("claim");
+                slowest = slowest.max(started.elapsed());
+                let Some(job) = job else { break };
                 taken.push((job.job_id, worker.clone(), job.attempt));
             }
-            taken
+            (taken, slowest)
         });
     }
     let mut claimed = Vec::new();
-    while let Some(taken) = claimers.join_next().await {
-        claimed.extend(taken.expect("claimer task"));
+    let mut slowest = Duration::ZERO;
+    while let Some(finished) = claimers.join_next().await {
+        let (taken, longest) = finished.expect("claimer task");
+        claimed.extend(taken);
+        slowest = slowest.max(longest);
     }
 
     // Assert
@@ -146,6 +156,8 @@ async fn twenty_concurrent_claimers_take_500_jobs_exactly_once() {
     );
     let holders = q.count("SELECT count(DISTINCT leased_by) FROM jobs").await;
     assert!((1..=20).contains(&holders));
+    // IT-08-5: claims skip locked rows instead of waiting for each other.
+    assert!(slowest <= CLAIM_BOUND, "a claim took {slowest:?}");
     q.finish().await;
 }
 
