@@ -369,4 +369,17 @@ impl Client {
             other => panic!("expected a response, got {other:?}"),
         }
     }
+
+    /// The response to a job request (probe, render, transcode). The runner sends `Alive` and `Progress` events while
+    /// a job runs, so a job that outlasts the alive interval on a loaded host answers after one; they are skipped.
+    pub fn expect_job_response(&mut self, within: Duration) -> Response {
+        let deadline = Instant::now() + within;
+        loop {
+            match self.recv(deadline.saturating_duration_since(Instant::now())) {
+                Received::Reply(Reply::Response(response)) => return response,
+                Received::Reply(Reply::Event(_)) => {}
+                other => panic!("expected a job response, got {other:?}"),
+            }
+        }
+    }
 }

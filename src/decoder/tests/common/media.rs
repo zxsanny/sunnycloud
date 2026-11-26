@@ -337,7 +337,7 @@ pub fn render(client: &mut Client, job: &Path, max_edge: u32, limits: Limits) ->
         params_version: 1,
         limits,
     });
-    client.expect_response(WAIT)
+    client.expect_job_response(WAIT)
 }
 
 pub fn render_at(client: &mut Client, job: &Path, max_edge: u32, poster_at_ms: u64) -> Response {
@@ -348,7 +348,7 @@ pub fn render_at(client: &mut Client, job: &Path, max_edge: u32, poster_at_ms: u
         params_version: 1,
         limits: limits(),
     });
-    client.expect_response(WAIT)
+    client.expect_job_response(WAIT)
 }
 
 /// What a supervisor sends for a video job under the documented ceilings (the runner clamps).
@@ -406,7 +406,7 @@ pub fn probe(client: &mut Client, job: &Path) -> Response {
     client.send(Request::Probe {
         job_dir: job.to_str().expect("utf8").into(),
     });
-    client.expect_response(WAIT)
+    client.expect_job_response(WAIT)
 }
 
 pub fn image_result(response: Response) -> ImageResult {

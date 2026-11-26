@@ -40,6 +40,7 @@ const WORKSPACE_PACKAGES: &[(&str, &str)] = &[
     ("sunnycloud-testkit", "components/testkit"),
     ("sunnycloud-server", "server"),
     ("sunnycloud-worker", "worker"),
+    ("sunnycloud-fake-decoder", "worker/fake-decoder"),
     ("decoder-runner", "decoder"),
     ("sync-core", "sync-core"),
     ("sync-core-proto", "sync-core-proto"),
