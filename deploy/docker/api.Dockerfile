@@ -28,7 +28,7 @@ RUN cargo chef cook --release --locked --recipe-path /build/recipe.json -p sunny
 COPY src/ ./
 RUN cargo build --release --locked -p sunnycloud-server --features "${FEATURES:-}"
 
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:08476c244888bfb425bae1ae4dd7c17f093e972aab8426883d97f3c6f280f7c1
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:29ee70762214fe8190cea04ef1c0a84a8365879e047ce8f911ae5a5ab2355fa2
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
 ARG TEST_CLOCK=false
