@@ -134,6 +134,120 @@ class ActionsTest(unittest.TestCase):
                 self.assertEqual(raised.exception.status, 400)
         self.assertEqual(self.docker.calls, [])
 
+    def test_exec_operator_runs_migrate_commands_in_a_one_off_migrate_container_only(self):
+        # Arrange
+        runner = lambda args: (self.docker.calls.append(args) or (3, "", "confirmation required\n"))
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=runner)
+
+        # Act
+        result = actions.exec_operator({"service": "migrate", "args": ["migrate", "revert"]})
+        with self.assertRaises(ctl_actions.ActionError) as raised:
+            actions.exec_operator({"service": "migrate", "args": ["admin", "setup-token"]})
+
+        # Assert
+        self.assertEqual(result["exit_code"], 3)
+        self.assertEqual(self.docker.calls[0][-7:], ["run", "--rm", "--no-deps", "-T", "migrate", "migrate", "revert"])
+        self.assertEqual(raised.exception.status, 400)
+
+    def test_db_restore_dumps_to_the_host_and_loads_only_a_known_dump(self):
+        # Arrange
+        def runner(args):
+            self.docker.calls.append(args)
+            if args[:2] == ["docker", "cp"] and ":" in args[2]:
+                Path(args[3]).write_bytes(b"PGDMP")
+            if "ps" in args:
+                return 0, "container-1\n", ""
+            return 0, "", ""
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=runner)
+
+        # Act
+        dumped = actions.db_restore({"op": "dump", "name": "ds22"})
+        loaded = actions.db_restore({"op": "load", "name": "ds22"})
+        with self.assertRaises(ctl_actions.ActionError) as missing:
+            actions.db_restore({"op": "load", "name": "other"})
+        with self.assertRaises(ctl_actions.ActionError) as bad:
+            actions.db_restore({"op": "load", "name": "../x"})
+
+        # Assert
+        self.assertEqual((dumped, loaded), ({"dumped": "ds22", "bytes": 5}, {"loaded": "ds22"}))
+        restore = next(call for call in self.docker.calls if "pg_restore" in call)
+        self.assertIn("--clean", restore)
+        self.assertEqual((missing.exception.status, bad.exception.status), (404, 400))
+
+    def test_listening_ports_reads_the_listen_rows_of_proc_net_tcp(self):
+        # Arrange
+        text = ("  sl  local_address rem_address   st\n"
+                "   0: 00000000:1F90 00000000:0000 0A 00000000:00000000\n"
+                "   1: 0100007F:2382 00000000:0000 0A 00000000:00000000\n"
+                "   2: 0100007F:2382 0100007F:D431 01 00000000:00000000\n"
+                "   0: 00000000000000000000000000000000:1F91 00000000000000000000000000000000:0000 0A 0\n")
+
+        # Act
+        ports = ctl_actions.listening_ports(text)
+
+        # Assert
+        self.assertEqual(ports, {8080, 9090, 8081})
+
+    def test_secret_scan_returns_counts_only_and_never_a_needle(self):
+        # Arrange
+        key = bytes(range(32))
+        (Path(self.tmp.name) / "master_key").write_bytes(key)
+        token = "tok_" + "a" * 20
+        outputs = {"logs": f"line {token}\nkey {key.hex()}\n", "psql": f'{{"detail": "{token}"}}\n', "ps": "sunnycloud serve\n"}
+
+        def runner(args):
+            self.docker.calls.append(args)
+            if "ps" in args and "-q" in args:
+                return 0, "container-1\n", ""
+            if "logs" in args:
+                return 0, outputs["logs"], ""
+            if "psql" in args:
+                return 0, outputs["psql"], ""
+            return 0, outputs["ps"], ""
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=runner)
+
+        # Act
+        result = actions.inspect({"secret_scan": {"tokens": [token]}})
+        with self.assertRaises(ctl_actions.ActionError) as short:
+            actions.inspect({"secret_scan": {"tokens": ["short"]}})
+
+        # Assert
+        counts = result["counts"]
+        self.assertEqual((counts["logs"]["token_0"], counts["audit"]["token_0"], counts["ps"]["token_0"]), (1, 1, 0))
+        self.assertEqual(counts["logs"]["master_key_hex"], 1)
+        self.assertNotIn(token, json.dumps(result))
+        self.assertNotIn(key.hex(), json.dumps(result))
+        self.assertEqual(short.exception.status, 400)
+        logs_call = next(call for call in self.docker.calls if "logs" in call)
+        self.assertNotIn("consumer", logs_call)
+
+    def test_db_role_check_feeds_the_url_on_stdin_and_reports_the_sqlstate(self):
+        # Arrange
+        url = "postgres://api:secret-pw@db:5432/sunnycloud"
+        (Path(self.tmp.name) / "db_api_url").write_text(url + "\n", encoding="utf-8")
+        seen = []
+
+        def runner(args, input=None):
+            seen.append((args, input))
+            if "psql" in " ".join(args):
+                return 1, "", "ERROR:  42501: must be owner of table audit_log\n"
+            if "Env" in " ".join(args):
+                return 0, '["SUNNYCLOUD_PUBLIC_URL=https://x", "PATH=/bin"]', ""
+            if "Mounts" in " ".join(args):
+                return 0, '[{"Destination": "/run/secrets/db_api_url"}, {"Destination": "/var/lib/sunnycloud/blobs"}]', ""
+            return 0, "container-1\n", ""
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=runner)
+
+        # Act
+        result = actions.inspect({"db_role": "api"})
+
+        # Assert
+        self.assertEqual(result["statements"]["drop_table"], {"result": "denied", "sqlstate": "42501"})
+        self.assertEqual(result["api_secrets"], ["db_api_url"])
+        self.assertEqual(result["migrator_names"], [])
+        psql_calls = [(args, given) for args, given in seen if "psql" in " ".join(args)]
+        self.assertTrue(psql_calls and all(url not in " ".join(args) and given == url + "\n" for args, given in psql_calls))
+
     def test_db_probe_returns_the_counts_of_a_fixed_query_and_refuses_any_other(self):
         # Arrange
         runner = lambda args: (self.docker.calls.append(args) or (0, "2,2,2,2\n", ""))

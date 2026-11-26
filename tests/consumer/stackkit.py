@@ -229,6 +229,23 @@ def restore_and_wait(ctl):
     budget.reset()
 
 
+WORKER_OK_SECONDS = 75
+
+
+def wait_worker_ok(ctl, seconds=WORKER_OK_SECONDS):
+    """Waits for the media worker's status report to say its decoders passed the gate. The worker reports every
+    `worker_status_interval` (30 s) and its first report after a start comes before the gate, so `doctor` fails
+    `media_worker` for up to one interval after every worker start (a reset restarts it)."""
+    deadline = time.monotonic() + seconds
+    while True:
+        status = ctl.call("db-probe", query="worker_status")
+        if status["workers"] >= 1 and status["decoder_ok"] == status["workers"]:
+            return status
+        if time.monotonic() > deadline:
+            raise AssertionError(f"the worker did not report healthy decoders within {seconds} s: {status}")
+        time.sleep(1)
+
+
 def advance_clock(ctl, seconds):
     """Moves the server's test clock (the `:9091` listener of the test image) and returns the new offset."""
     answer = ctl.internal(9091, "/test/clock", method="POST", headers={"Content-Type": "application/json"},

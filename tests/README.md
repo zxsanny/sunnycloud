@@ -96,6 +96,14 @@ in a decoder, starts it again, moves the test clock past the 10 s lease and coun
 no unreferenced blob after the derived janitor, empty scratch volumes. NOT-RUN: a hostile-class decoder exit (needs the
 decoder test image), and the supervisor kill during the input fetch and during the output post (no hold on those phases).
 The files come from `tests/tools/gen_media.py`, which `run.sh` runs with the host's `ffmpeg` into `e2e-results/media`.
+`suites/operator_cli/` (AZ-3815): AT-12-1 (`doctor --pre-flight` prints the provider's redirect URI, the first admin,
+`doctor` exit 0), ST-12-1 (each one-time token once on its creating stdout, never in a stderr, a SUT log, an audit row or
+host `ps`; the master key nowhere), ST-12-2 (`admin user delete`, `rewrap`, `epoch-bump`, `migrate revert` without `--yes`
+exit 3 and change no row, migration or epoch), ST-12-3 (`doctor` and `scrub run --full` open no listening socket in the
+api's network namespace) and ST-12-4 (the api role is refused `DROP TABLE` and `CREATE TABLE`, the api holds no migrator
+secret). `test_restore_drill.py` is AT-12-2: a dump, an epoch bump, the dump loaded under a stopped api, `serve` refusing
+with the bump named, `doctor` failing on the epoch, the bump, `scrub run --full`, `doctor`, ready, and a device cursor of
+before the dump told to resync. PT-12-1 and PT-12-2 are NOT-RUN(HW-REF).
 `tests/run.sh rerun <pytest args>` runs the consumer against a kept stack without starting or stopping it; a change in
 `tests/tools/e2e-ctl/` needs a new stack (the ctl process is started once).
 
@@ -106,8 +114,11 @@ JSON body of parameters. Implemented (`ctl_actions.py`): `internal-http` (one HT
 backend network; `auth: "worker"` adds the worker bearer, which never leaves ctl), `db-outage` (`op` `stop` or `start`,
 start waits for a healthy database), `interrupted-upgrade` (`op` `revert` with `steps`, or `apply`, through the product's
 own `migrate`), `process-kill` (`kill` or `start` of the api or the worker, `pause` or `unpause` of a decoder), `inspect` (a
-container's state, start time and restart count, or the top-level names in a decoder scratch volume), `db-probe` (fixed
-queries, among them the media jobs and derived rows). The audit line names the action and status, never the body.
+container's state, start time and restart count, its log tail, the top-level names in a decoder scratch volume, a secret
+scan that returns only counts, or the api role's DDL rights and whether it holds a migrator secret), `db-probe` (fixed
+queries, among them the media jobs and derived rows), `db-restore` (the golden snapshot, or a named `pg_dump` and its
+load), `exec-operator` (an operator command in the api container, in a one-off api container while `serve` is down, or
+`migrate ...` in a one-off `migrate` container; optionally sampling the api's listening sockets while it runs). The audit line names the action and status, never the body.
 Typed JSON errors `{"error": {"code", "message", "action"}}`: `not_implemented` (501) for every other action in `actions.json`,
 `unauthorized` (401) without or with a wrong token, `unknown_action` / `not_found` (404), `method_not_allowed` (405). The
 audit line is written before the response. A wildcard bind address is refused.

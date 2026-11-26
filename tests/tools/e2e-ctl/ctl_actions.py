@@ -4,24 +4,51 @@ answering `not_implemented` in `e2e_ctl.py`.
 
     internal-http        one HTTP request from the host to a backend listener of a service of the stack
     db-outage            stop or start the database container
-    db-restore           restore the database to the golden snapshot (`tests/run.sh reset`: api and worker restart)
+    db-restore           restore the database to the golden snapshot (`tests/run.sh reset`: api and worker restart), or
+                         take a named `pg_dump` of it and load that dump back (a backup and its restore, the api stopped)
     process-kill         SIGKILL the api or the worker, or start it again (a crash and its restart)
     db-probe             one of a fixed set of read-only count queries on the database (no free-form SQL)
-    exec-operator        run `sunnycloud admin ...`, `doctor` or `key-check` inside the api container
+    exec-operator        run `sunnycloud admin ...`, `doctor`, `key-check` or `scrub` inside the api container (or in a one-off
+                         api container while `serve` is down), or `migrate ...` in a one-off `migrate` container;
+                         optionally watching the api's listening sockets
+    inspect              a container's state or its recent log, a decoder scratch volume, a secret scan (given tokens and the master key in
+                         every SUT log, the audit rows and host `ps`) or the api's database role (DDL, migrator secret)
     interrupted-upgrade  revert the latest migrations, or apply the pending ones, with the product's own `migrate`
 """
+import base64
 import http.client
 import ipaddress
 import json
 import subprocess
+import threading
 import time
 from pathlib import Path
 
 HTTP_SERVICES = frozenset({"api"})
 HTTP_PORTS = frozenset({8080, 8081, 9090, 9091})
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "DELETE", "HEAD"})
-OPERATOR_COMMANDS = frozenset({"admin", "doctor", "key-check"})
+OPERATOR_COMMANDS = frozenset({"admin", "doctor", "key-check", "scrub"})
+MIGRATE_COMMANDS = frozenset({"migrate"})
+# A listening socket in /proc/net/tcp{,6}: state 0A.
+LISTEN_STATE = "0A"
+LISTEN_SAMPLE_SECONDS = 0.05
+MASTER_KEY_SECRET = "master_key"
+API_URL_SECRET = "db_api_url"
+MIGRATOR_URL_SECRET = "db_migrator_url"
+TOKEN_MIN_LENGTH = 16
+# The services whose logs `secret-scan` reads: the SUT and its dependencies, not the consumer (its pytest output is the
+# test's own, not the product's).
+LOG_SERVICES = ("api", "worker", "decoder-interactive", "decoder-general", "caddy", "db", "mock-idp", "migrate", "keycheck")
+# The DDL the api role must not run; inside a transaction that is rolled back, so an allowed statement changes nothing.
+ROLE_STATEMENTS = {
+    "drop_table": "BEGIN; DROP TABLE audit_log; ROLLBACK;",
+    "create_table": "BEGIN; CREATE TABLE e2e_role_probe (x int); ROLLBACK;",
+}
 GOLDEN = "golden"
+DUMP_NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789-")
+# The dump's path inside the database container: one per call (a file another uid left there cannot be overwritten),
+# removed as root after use.
+DUMP_IN_DB = "/tmp/e2e-{name}-{serial}.dump"
 # The fixed queries of `db-probe`: each returns one row of integers, named by the keys, or (kind `list`) one text of
 # comma-separated values.
 LIST = "list"
@@ -75,6 +102,10 @@ PROBES = {
     "audit_detail_keys": (LIST,
                           "SELECT coalesce(string_agg(k, ',' ORDER BY k), '') FROM (SELECT DISTINCT jsonb_object_keys(detail) AS k "
                           "FROM audit_log WHERE detail IS NOT NULL AND jsonb_typeof(detail) = 'object') s"),
+    # What a destructive operator command changes besides rows: the applied migrations and the feed epochs (AZ-3815 AC-6).
+    "schema_and_epochs": (("migrations_applied", "epoch_sum", "epoch_max"),
+                          "SELECT (SELECT count(*) FROM _sqlx_migrations WHERE success), "
+                          "(SELECT coalesce(sum(epoch), 0) FROM account_feeds), (SELECT coalesce(max(epoch), 0) FROM account_feeds)"),
 }
 KILLABLE = frozenset({"api", "worker"})
 PAUSABLE = frozenset({"decoder-interactive", "decoder-general"})
@@ -96,9 +127,61 @@ class ActionError(Exception):
         self.code = code
 
 
-def run_command(args, timeout=COMMAND_TIMEOUT_SECONDS):
-    done = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout, check=False)
+def run_command(args, timeout=COMMAND_TIMEOUT_SECONDS, input=None):
+    """`input`, when given, is the command's stdin (a secret never goes on a command line, where `ps` shows it)."""
+    stdin = None if input is not None else subprocess.DEVNULL
+    done = subprocess.run(args, stdin=stdin, input=input, capture_output=True, text=True, timeout=timeout, check=False)
     return done.returncode, done.stdout, done.stderr
+
+
+def listening_ports(proc_net):
+    """The local ports in state LISTEN of the text of /proc/net/tcp and /proc/net/tcp6."""
+    ports = set()
+    for line in proc_net.splitlines():
+        fields = line.split()
+        if len(fields) > 3 and fields[3] == LISTEN_STATE and ":" in fields[1]:
+            ports.add(int(fields[1].rsplit(":", 1)[1], 16))
+    return ports
+
+
+def watch_listeners(sampler_args, command_args, run=run_command):
+    """Runs `command_args` while a sampler (a throwaway container in the api's network namespace) prints /proc/net/tcp
+    and /proc/net/tcp6 in blocks ended by `---`. Returns the command's result and the ports listening before it
+    started and at any sample while it ran."""
+    sampler = subprocess.Popen(sampler_args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True)
+    try:
+        blocks, current = [], []
+        for line in sampler.stdout:
+            if line.strip() == "---":
+                blocks.append("\n".join(current))
+                break
+            current.append(line)
+        before = listening_ports(blocks[0]) if blocks else None
+        if before is None:
+            raise ActionError(500, "sampler_failed", f"the listener sampler gave no sample: {sampler.stderr.read()[-300:]}")
+        done = {}
+
+        def finish():
+            done["result"] = run(command_args)
+
+        worker = threading.Thread(target=finish)
+        worker.start()
+        during, current = set(), []
+        while worker.is_alive():
+            line = sampler.stdout.readline()
+            if not line:
+                break
+            if line.strip() == "---":
+                during |= listening_ports("\n".join(current))
+                current = []
+            else:
+                current.append(line)
+        worker.join()
+        return done["result"], before, during
+    finally:
+        sampler.kill()
+        sampler.wait()
 
 
 def send_request(address, method, path, headers, body):
@@ -124,6 +207,7 @@ class Actions:
         self._run = run
         self._request = request
         self._sleep = sleep
+        self._serial = 0
 
     def handlers(self):
         return {
@@ -135,6 +219,7 @@ class Actions:
             "db-restore": self.db_restore,
             "exec-operator": self.exec_operator,
             "interrupted-upgrade": self.interrupted_upgrade,
+
         }
 
     def _compose(self, *args):
@@ -216,6 +301,17 @@ class Actions:
         """`{"service"}`: the container's state, start time and restart count (a hostile-class decoder exit shows as a new
         start time). `{"scratch": "interactive"|"general"}`: the top-level names in that decoder scratch volume, listed
         by a throwaway container with the volume read-only (the isolation check of AC-71: nothing left after a job)."""
+        if params.get("secret_scan") is not None:
+            return self.secret_scan(params["secret_scan"])
+        if params.get("logs") is not None:
+            if params["logs"] not in INSPECTABLE:
+                raise ActionError(400, "bad_request", f"logs is one of {sorted(INSPECTABLE)}")
+            text = self._checked(self._compose("logs", "--no-color", "--no-log-prefix", params["logs"]))
+            return {"log_tail": text[-BODY_LIMIT:]}
+        if params.get("db_role") is not None:
+            if params["db_role"] != "api":
+                raise ActionError(400, "bad_request", "db_role is `api`")
+            return self.db_role_check()
         if params.get("scratch") is not None:
             lane = params["scratch"]
             if lane not in SCRATCH_LANES:
@@ -245,18 +341,121 @@ class Actions:
         return dict(zip(keys, (int(v) for v in values)))
 
     def db_restore(self, params):
-        if params.get("snapshot") != GOLDEN:
-            raise ActionError(400, "bad_request", "snapshot is `golden`, the one snapshot the stack takes")
-        self._checked(["bash", self.reset_script, "reset"])
-        return {"restored": GOLDEN}
+        """`{"snapshot": "golden"}`: the golden snapshot (`tests/run.sh reset`). `{"op": "dump", "name"}`: `pg_dump -Fc`
+        of the database, kept on the host next to the run's secrets (deleted at teardown). `{"op": "load", "name"}`:
+        that dump restored over the database with `pg_restore --clean` as the superuser; the caller stops the api
+        first, as an operator restoring a backup does."""
+        op, name = params.get("op"), params.get("name", "")
+        if op is None:
+            if params.get("snapshot") != GOLDEN:
+                raise ActionError(400, "bad_request", "snapshot is `golden`, the one snapshot the stack takes")
+            self._checked(["bash", self.reset_script, "reset"])
+            return {"restored": GOLDEN}
+        if op not in ("dump", "load") or not name or not set(name) <= DUMP_NAME_CHARS:
+            raise ActionError(400, "bad_request", "op is `dump` or `load`, name is lower-case letters, digits and -")
+        dumps = self.secrets_dir / "dumps"
+        host_file = dumps / f"{name}.dump"
+        db = self._container("db")
+        self._serial += 1
+        in_db = DUMP_IN_DB.format(name=name, serial=self._serial)
+        as_root = ("exec", "-T", "-u", "root", "db")
+        if op == "dump":
+            dumps.mkdir(exist_ok=True)
+            self._checked(self._compose("exec", "-T", "db", "pg_dump", "-U", "postgres", "-Fc", "-f", in_db, "sunnycloud"))
+            self._checked(["docker", "cp", f"{db}:{in_db}", str(host_file)])
+            self._checked(self._compose(*as_root, "rm", "-f", in_db))
+            return {"dumped": name, "bytes": host_file.stat().st_size}
+        if not host_file.is_file():
+            raise ActionError(404, "not_found", f"no dump named {name}")
+        self._checked(["docker", "cp", str(host_file), f"{db}:{in_db}"])
+        self._checked(self._compose(*as_root, "chmod", "a+r", in_db))
+        self._checked(self._compose("exec", "-T", "db", "pg_restore", "-U", "postgres", "-d", "sunnycloud", "--clean",
+                                    "--if-exists", "--exit-on-error", "--single-transaction", in_db))
+        self._checked(self._compose(*as_root, "rm", "-f", in_db))
+        return {"loaded": name}
 
     def exec_operator(self, params):
-        args = params.get("args")
-        if not isinstance(args, list) or not args or not all(isinstance(a, str) and a and "\0" not in a for a in args) \
-                or args[0] not in OPERATOR_COMMANDS:
-            raise ActionError(400, "bad_request", f"args is a list of texts starting with one of {sorted(OPERATOR_COMMANDS)}")
-        code, out, err = self._run(self._compose("exec", "-T", "api", "sunnycloud", *args))
-        return {"exit_code": code, "stdout": out[-BODY_LIMIT:], "stderr": err[-BODY_LIMIT:]}
+        """`service` `api` (default): `docker compose exec -T api sunnycloud <args>`, stdin not a TTY and empty. `migrate`:
+        a one-off container of the `migrate` service (the only one holding the migrator secret). With `watch_listeners`
+        (api only) the result adds the api's listening ports before the command and any new one seen while it ran."""
+        args, service = params.get("args"), params.get("service", "api")
+        allowed = {"api": OPERATOR_COMMANDS, "api-oneoff": OPERATOR_COMMANDS, "migrate": MIGRATE_COMMANDS}.get(service)
+        if allowed is None or not isinstance(args, list) or not args \
+                or not all(isinstance(a, str) and a and "\0" not in a for a in args) or args[0] not in allowed:
+            raise ActionError(400, "bad_request", f"args is a list of texts starting with one of {sorted(OPERATOR_COMMANDS)} "
+                                                  f"(service api) or {sorted(MIGRATE_COMMANDS)} (service migrate)")
+        if service in ("migrate", "api-oneoff"):
+            command = self._compose("run", "--rm", "--no-deps", "-T", "migrate" if service == "migrate" else "api", *args)
+        else:
+            command = self._compose("exec", "-T", "api", "sunnycloud", *args)
+        if not params.get("watch_listeners"):
+            code, out, err = self._run(command)
+            return {"exit_code": code, "stdout": out[-BODY_LIMIT:], "stderr": err[-BODY_LIMIT:]}
+        if service != "api":
+            raise ActionError(400, "bad_request", "watch_listeners is for service api")
+        (code, out, err), before, during = watch_listeners(self._sampler_args(), command, self._run)
+        return {"exit_code": code, "stdout": out[-BODY_LIMIT:], "stderr": err[-BODY_LIMIT:],
+                "listening_before": sorted(before), "new_listening": sorted(during - before)}
+
+    def _sampler_args(self):
+        image = self._checked(["docker", "inspect", "-f", "{{.Config.Image}}", self._container("db")]).strip()
+        loop = f"while :; do cat /proc/net/tcp /proc/net/tcp6; echo ---; sleep {LISTEN_SAMPLE_SECONDS}; done"
+        return ["docker", "run", "--rm", "-i", "--network", f"container:{self._container('api')}", "--entrypoint", "sh",
+                image, "-c", loop]
+
+    def _secret(self, name):
+        return (self.secrets_dir / name).read_text(encoding="utf-8").strip()
+
+    def secret_scan(self, params):
+        """How often each given token (and the master key, as hex, base64 and raw text) occurs in the logs of every
+        container of the stack, in the text of every audit row, in the host's `ps` output and in `outputs` (the stdout
+        and stderr the consumer was shown, so the key, which the consumer never holds, is looked for there too). Only counts come back:
+        a needle is never echoed, and the ctl audit line holds no body."""
+        tokens = params.get("tokens") if isinstance(params, dict) else None
+        if not isinstance(tokens, list) or not all(isinstance(t, str) and len(t) >= TOKEN_MIN_LENGTH for t in tokens):
+            raise ActionError(400, "bad_request", f"tokens is a list of texts of at least {TOKEN_MIN_LENGTH} characters")
+        key = (self.secrets_dir / MASTER_KEY_SECRET).read_bytes()
+        needles = {f"token_{i}": t for i, t in enumerate(tokens)}
+        needles.update({"master_key_hex": key.hex(), "master_key_base64": base64.b64encode(key).decode(),
+                        "master_key_base64url": base64.urlsafe_b64encode(key).decode().rstrip("=")})
+        outputs = params.get("outputs", "")
+        if not isinstance(outputs, str):
+            raise ActionError(400, "bad_request", "outputs is the text of what the consumer was shown")
+        places = {
+            "outputs": outputs,
+            "logs": self._checked(self._compose("logs", "--no-color", "--no-log-prefix", *LOG_SERVICES)),
+            "audit": self._checked(self._compose("exec", "-T", "db", "psql", "-U", "postgres", "-d", "sunnycloud", "-At",
+                                                 "-c", "SELECT row_to_json(a)::text FROM audit_log a")),
+            "ps": self._checked(["ps", "-eo", "args"]),
+        }
+        raw_key = key.decode("latin-1")
+        counts = {place: {label: text.count(needle) for label, needle in needles.items()} for place, text in places.items()}
+        for place, text in places.items():
+            counts[place]["master_key_raw"] = text.count(raw_key)
+        return {"counts": counts}
+
+    def db_role_check(self):
+        """Runs each statement of `ROLE_STATEMENTS` with the api's own connection string (handed to psql on stdin, never
+        on a command line) and reports `denied` with the SQLSTATE, or `allowed`; then the names of the api container's
+        environment variables and mounted secrets that mention the migrator."""
+        url = self._secret(API_URL_SECRET)
+        results = {}
+        for label, statement in ROLE_STATEMENTS.items():
+            script = 'read -r url; exec psql "$url" -v ON_ERROR_STOP=1 -v VERBOSITY=verbose -At -c "$1"'
+            code, _, err = self._run(self._compose("exec", "-T", "db", "sh", "-c", script, "sh", statement), input=url + "\n")
+            if code == 0:
+                results[label] = {"result": "allowed"}
+                continue
+            words = err.replace(":", " ").split()
+            sqlstate = next((w for w in words if len(w) == 5 and w.isalnum() and w[:2].isdigit()), "")
+            results[label] = {"result": "denied", "sqlstate": sqlstate}
+        container = self._container("api")
+        env_names = [entry.split("=", 1)[0] for entry in
+                     json.loads(self._checked(["docker", "inspect", "-f", "{{json .Config.Env}}", container]) or "[]")]
+        mounts = json.loads(self._checked(["docker", "inspect", "-f", "{{json .Mounts}}", container]) or "[]")
+        secret_names = sorted(m["Destination"].rsplit("/", 1)[1] for m in mounts if m.get("Destination", "").startswith("/run/secrets/"))
+        migrator = [n for n in env_names + secret_names if "MIGRATOR" in n.upper()]
+        return {"statements": results, "api_secrets": secret_names, "migrator_names": migrator}
 
     def interrupted_upgrade(self, params):
         op = params.get("op")

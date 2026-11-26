@@ -12,6 +12,7 @@
 | 03 transfer | PT-03-1..4 (`tests/perf/`; harness never executed), PT-03-5 download half (`tests/download_memory.rs`, release only) | AZ-3759 |
 | 06 sharing | PT-06-1..3 timing halves (`tests/share_perf/`, print per-metric verdicts and the host line) | AZ-3703, AZ-3704 |
 | 04 blobstore | perf ×4 and `reader_gib` (release-only) | earlier 04 tasks |
+| 12 operator CLI | PT-12-1 (command latencies with DS-29 500 accounts and the DS-11 tree of 100,000 files; api under 1 GiB during `doctor`), PT-12-2 (10 idle minutes, 20 accounts: CPU, queries per janitor cycle, cycle p95, scheduler connections). Not written yet: two `NOT-RUN(HW-REF)` markers in `tests/consumer/suites/operator_cli/test_operator_cli.py`; they need the `perf` profile of `tests/run.sh` and the DS-29/DS-11 generators | AZ-3815 |
 
 ## Replay
 

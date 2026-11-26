@@ -15,7 +15,7 @@ run_gate() { RUN_SYSTEM_ALLOWLIST="${2:-$work/allowlist.txt}" "$ci_dir/check-db-
 expect_pass() {
   local label="$1" root="$2" out
   out="$(run_gate "$root" "${3:-}")" || { echo "$out"; echo "$tag FAILED: $label exited non-zero" >&2; exit 1; }
-  grep -q 'OK: 3 of 3 gates passed' <<<"$out" || { echo "$out"; echo "$tag FAILED: $label did not pass all gates" >&2; exit 1; }
+  grep -q 'OK: 4 of 4 gates passed' <<<"$out" || { echo "$out"; echo "$tag FAILED: $label did not pass all gates" >&2; exit 1; }
 }
 
 # expect_fail LABEL ROOT GATE COUNT: exit 1, only GATE failed, with COUNT violations.
@@ -25,12 +25,12 @@ expect_fail() {
   echo "$out"
   [ "$rc" -eq 1 ] || { echo "$tag FAILED: $label exited $rc, expected 1" >&2; exit 1; }
   grep -q "FAILED: $gate: $count violation(s)" <<<"$out" || { echo "$tag FAILED: $label did not report $count violation(s) of $gate" >&2; exit 1; }
-  grep -q 'FAILED: 1 of 3 gates failed' <<<"$out" || { echo "$tag FAILED: $label failed a gate besides $gate" >&2; exit 1; }
+  grep -q 'FAILED: 1 of 4 gates failed' <<<"$out" || { echo "$tag FAILED: $label failed a gate besides $gate" >&2; exit 1; }
 }
 
 clean="$work/clean"
 mkdir -p "$clean/src/shared/db/src" "$clean/src/components/01_identity/src/repo" "$clean/src/components/02_tree/src" \
-  "$clean/src/components/02_tree/tests" "$clean/src/target/debug"
+  "$clean/src/components/02_tree/tests" "$clean/src/target/debug" "$clean/src/server/src" "$clean/src/server/tests"
 cat >"$clean/src/shared/db/src/scope.rs" <<'RS'
 const SET_ACCOUNT: &str = "SELECT set_config('sunnycloud.account_id', $1, true)";
 const SET_SYSTEM: &str = "SELECT set_config('sunnycloud.scope', 'system', true)";
@@ -48,9 +48,11 @@ RS
 sed -i 's/ and sunnycloud.scope? no: comments count for names././' "$clean/src/components/02_tree/src/lib.rs"
 printf 'async fn t() { sqlx::query("DELETE FROM t").execute(c).await; }\n' >"$clean/src/components/02_tree/tests/it.rs"
 printf 'pub fn x() { sqlx::query("SELECT 1"); db.run_system("t", f); }\n// sunnycloud.scope\n' >"$clean/src/target/debug/seeded.rs"
+printf '// sqlx and blobs/ may be named in a comment\npub fn run() { keyring.load_and_verify(); }\n' >"$clean/src/server/src/key_commands.rs"
+printf 'async fn t() { sqlx::query("SELECT 1"); let p = root.join("blobs/ab"); }\n' >"$clean/src/server/tests/janitor.rs"
 printf '# reviewed\nsrc/components/01_identity/src/repo/sessions.rs   # session by token hash\n' >"$work/allowlist.txt"
 
-echo "$tag the repository passes all three gates"
+echo "$tag the repository passes all four gates"
 "$ci_dir/check-db-gates.sh" "$repo_root" >/dev/null || { echo "$tag FAILED: the repository violates a gate" >&2; "$ci_dir/check-db-gates.sh" "$repo_root" >&2 || true; exit 1; }
 
 echo "$tag a tree with only allowed forms passes"
@@ -99,5 +101,13 @@ expect_fail "query macros" "$t" sql-text 1
 t="$work/sql-in-repo"; cp -r "$clean" "$t"
 printf 'pub const Q: &str = "SELECT id FROM nodes";\n' >"$t/src/components/02_tree/src/node_repo.rs"
 expect_pass "SQL in a *_repo.rs module" "$t"
+
+echo "$tag sqlx or a blobs/ path in the operator CLI fails"
+t="$work/cli-sqlx"; cp -r "$clean" "$t"
+printf 'use sqlx::PgPool;\n' >>"$t/src/server/src/key_commands.rs"
+expect_fail "sqlx in the CLI" "$t" cli-boundary 1
+t="$work/cli-blobs"; cp -r "$clean" "$t"
+printf 'pub fn p(root: &Path) -> PathBuf { root.join("blobs/00") }\n' >>"$t/src/server/src/key_commands.rs"
+expect_fail "a blobs/ path in the CLI" "$t" cli-boundary 1
 
 echo "$tag OK"

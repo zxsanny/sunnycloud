@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Three gates that keep tenant scope and SQL text in their place (sc_db contract, ADR-014, AZ-3782 AC-10):
+# Four gates that keep tenant scope and SQL text in their place (sc_db contract, ADR-014, AZ-3782 AC-10, AZ-3815 AC-7):
 #   1. scope-names:  the tenant and system scope setting names appear in Rust files only under src/shared/db/.
 #   2. run-system:   every file calling run_system is a repository module listed in the reviewed allowlist, and
 #                    every listed file still calls it.
 #   3. sql-text:     no sqlx query entry point and no SQL-looking string literal outside src/shared/db/,
 #                    src/shared/testdb/ (dev-only), a tests/ directory or a repository module.
+#   4. cli-boundary: the operator CLI's own source (src/server/src/) has no sqlx use and no `blobs/` path text: every
+#                    query and every blob file belongs to the owner components behind their ports (ST-12-3).
 # A repository module is a Rust file or directory named repo, repository or repositories, or a file ending in
 # _repo.rs or _repository.rs.
 # usage: check-db-gates.sh [ROOT]   (default: repository root; scans ROOT/src/**/*.rs)
@@ -69,7 +71,7 @@ report() {
   failures=$((failures + 1))
 }
 
-echo "$tag step 1/3: scope setting names only under src/shared/db/"
+echo "$tag step 1/4: scope setting names only under src/shared/db/"
 raw="$(rust_matches 'sunnycloud\.(scope|account_id)' keep-comments)" || exit 2
 scope_hits=""
 while IFS= read -r hit; do
@@ -78,7 +80,7 @@ while IFS= read -r hit; do
 done <<<"$raw"
 report "scope-names" "the scope settings belong to sc_db; call Db::run or Db::run_system instead" "${scope_hits%$'\n'}"
 
-echo "$tag step 2/3: run_system call sites against $allowlist"
+echo "$tag step 2/4: run_system call sites against $allowlist"
 raw="$(rust_matches '(^|[^[:alnum:]_])run_system([^[:alnum:]_]|$)' skip-comments)" || exit 2
 call_files=""
 while IFS= read -r hit; do
@@ -100,7 +102,7 @@ while IFS= read -r entry; do
 done <<<"$listed"
 report "run-system" "add the repository module to $(basename "$allowlist") in review, or drop the entry" "${system_hits%$'\n'}"
 
-echo "$tag step 3/3: SQL text only in sc_db, sc_testdb, tests/ and repository modules"
+echo "$tag step 3/4: SQL text only in sc_db, sc_testdb, tests/ and repository modules"
 # Three shapes: a sqlx query entry point, a string literal that opens with a SQL verb, a line that starts with one
 # (the body of a multi-line literal). Verbs are upper case, so prose such as "Select a file" does not match.
 verbs='SELECT[[:space:]]|INSERT[[:space:]]+INTO[[:space:]]|DELETE[[:space:]]+FROM[[:space:]]|UPDATE[[:space:]]+[A-Za-z_."]+[[:space:]]+SET[[:space:]]|TRUNCATE[[:space:]]|CREATE[[:space:]]+TABLE[[:space:]]|ALTER[[:space:]]+TABLE[[:space:]]|DROP[[:space:]]+TABLE[[:space:]]'
@@ -120,8 +122,17 @@ while IFS= read -r hit; do
 done < <(sort -u <<<"$raw_entry"$'\n'"$raw_literal"$'\n'"$raw_start")
 report "sql-text" "move the query into a repository module (a repo/ or repository/ directory, repo.rs, *_repo.rs)" "${sql_hits%$'\n'}"
 
+echo "$tag step 4/4: no sqlx and no blobs/ path in the operator CLI (src/server/src/)"
+raw="$(rust_matches '(^|[^[:alnum:]_])sqlx([^[:alnum:]_]|$)|blobs/' skip-comments)" || exit 2
+cli_hits=""
+while IFS= read -r hit; do
+  [ -n "$hit" ] || continue
+  case "$(file_of "$hit")" in src/server/src/*) cli_hits+="$hit"$'\n' ;; esac
+done <<<"$raw"
+report "cli-boundary" "the CLI calls owner ports; queries and blob paths belong to the components" "${cli_hits%$'\n'}"
+
 if [ "$failures" -gt 0 ]; then
-  echo "$tag FAILED: $failures of 3 gates failed" >&2
+  echo "$tag FAILED: $failures of 4 gates failed" >&2
   exit 1
 fi
-echo "$tag OK: 3 of 3 gates passed"
+echo "$tag OK: 4 of 4 gates passed"
