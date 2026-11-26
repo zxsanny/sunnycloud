@@ -1,10 +1,12 @@
 //! AZ-3858 AC-1 and AC-2 through the real runner binary: a photo probe is a header read. The
 //! dimensions equal what the harness's own `vipsheader` reads from the file. The latency bounds
-//! of the spec (50 ms for 12 MP, 100 ms for the 900 MP header) are the product numbers and the
-//! cases record what was measured; a shared machine adds the same scheduling delay to every
-//! probe, so the case asserts what a decode would break: a 12 MP or 900 MP probe is no slower than
-//! the probe of a 640x480 picture by more than 150 ms (best of five each). The memory bound is
-//! the spec's: the runner grows by under 50 MiB.
+//! of the spec (50 ms for 12 MP, 100 ms for the 900 MP header) are asserted on the container as
+//! deployed (IT-10-4 in the container suite). Here the runner shares the host's process table:
+//! every process-group check of the guard reads all of it (about 20 ms for a thousand processes),
+//! which adds the same fixed cost to every probe. So this case records the times and asserts what
+//! a decode would break: a 12 MP or 900 MP probe is no slower than the probe of a 640x480 picture
+//! by more than 150 ms (best of five each). The memory bound is the spec's: the runner grows by
+//! under 50 MiB.
 mod common;
 
 use std::fs;

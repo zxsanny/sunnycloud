@@ -28,7 +28,7 @@ No spec has a stub, passthrough or fake standing in for a promised capability. E
 
 - AZ-3945 and AZ-3946 specs are stale: polling replaced by pushed frames (roadmap D5), "Revoked" status dropped by owner decision 2026-11-22. Amend the specs.
 - AZ-3654: `serve` never issues the setup token (AC-5); `admin setup-token` works.
-- AZ-3858: the 50 ms / 100 ms probe bounds are recorded, not asserted (a loaded host measures 250-310 ms).
+- AZ-3858: resolved in batch 126. The 50 ms / 100 ms probe bounds are asserted on the decoder container (IT-10-4, medians 24-28 ms); the host-process overhead was the guard's whole-`/proc` reads, not load.
 - AZ-4024: tested on an in-process mock; token revocation at account deletion is not built.
 - AZ-3937: the account page lacks the email "Verified" mark and last sign-in per provider (server fields missing).
 

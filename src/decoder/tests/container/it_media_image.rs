@@ -1,6 +1,11 @@
 //! IT-10-4 to IT-10-6 on the release image (real libvips 8.18.7, libheif): probe is a header read,
 //! `render_still` applies orientation and strips metadata, the pixel limit is checked before any decode.
 //! Reference dimensions and pictures come from the harness's own host libvips and ffmpeg.
+//!
+//! The probe latency bounds of AZ-3858 AC-1 are asserted here and not in the host-process case:
+//! the guard's process-group checks read the whole process table, a handful of entries in the
+//! container's own pid namespace (as deployed) but about a thousand on a developer host, where
+//! each read costs about 20 ms.
 
 use std::fs;
 use std::time::{Duration, Instant};
@@ -11,9 +16,9 @@ use media_shared::policy::{MediaKind, Probe};
 use crate::common::media::{
     header_of, png_header_only, rotated_heic, run_tool, set_orientation_at,
 };
-use crate::decoder::{Decoder, Flavor, release_image};
+use crate::decoder::{Decoder, Flavor, Job, release_image};
 use crate::host::{RssWatch, peak_rss};
-use crate::peer::{photo_limits, probe, render};
+use crate::peer::{Peer, photo_limits, probe, render};
 use crate::refs::{
     pattern_heic, pattern_jpeg, pattern_png, record, reference_thumbnail, ssim, text, webp_chunks,
     workdir,
@@ -21,6 +26,23 @@ use crate::refs::{
 
 const WAIT: Duration = Duration::from_secs(30);
 const MIB: u64 = 1 << 20;
+const PROBES: usize = 5;
+/// AZ-3858 AC-1: a 12 MP photo probe, and the 30000x30000 header-only PNG.
+const TWELVE_MP_PROBE_BOUND: Duration = Duration::from_millis(50);
+const HUGE_PROBE_BOUND: Duration = Duration::from_millis(100);
+
+/// Sorted times of `PROBES` probes of one job, and the last answer.
+fn timed_probes(peer: &mut Peer, job: &Job) -> (Vec<Duration>, Response) {
+    let mut times = Vec::new();
+    let mut last = None;
+    for _ in 0..PROBES {
+        let started = Instant::now();
+        last = Some(peer.call(probe(job), WAIT));
+        times.push(started.elapsed());
+    }
+    times.sort();
+    (times, last.expect("at least one probe"))
+}
 
 fn dimensions(probed: &Probe) -> (u32, u32) {
     let video = probed
@@ -72,47 +94,49 @@ fn it_10_4_probe_answers_photo_dimensions_from_the_header() {
         let path = work.path().join(file);
         let (width, height) = header_of(&path);
         let job = decoder.job(&fs::read(&path).expect("generated file"));
-        let mut times = Vec::new();
-        let mut last = None;
-        for _ in 0..5 {
-            let started = Instant::now();
-            last = Some(peer.call(probe(&job), WAIT));
-            times.push(started.elapsed());
-        }
-        times.sort();
-        let Some(Response::Probe(answer)) = last else {
-            panic!("{name}: no probe answer")
+        let (times, last) = timed_probes(&mut peer, &job);
+        let Response::Probe(answer) = last else {
+            panic!("{name}: no probe answer: {last:?}")
         };
+        let median = times[PROBES / 2];
+        let budget = if twelve_mp { "bound 50 ms" } else { "no bound" };
+        record(
+            "IT-10-4",
+            &format!(
+                "{name}: {width}x{height}, probe median {median:?}, best {:?} ({budget})",
+                times[0]
+            ),
+        );
         assert_eq!(answer.kind, MediaKind::Photo, "{name}");
         assert_eq!(
             dimensions(&answer),
             (width, height),
             "{name}: equals the manifest"
         );
-        let budget = if twelve_mp {
-            "budget 50 ms"
-        } else {
-            "no budget"
-        };
-        record(
-            "IT-10-4",
-            &format!(
-                "{name}: {width}x{height}, probe median {:?}, best {:?} ({budget})",
-                times[2], times[0]
-            ),
-        );
+        if twelve_mp {
+            assert!(
+                median <= TWELVE_MP_PROBE_BOUND,
+                "{name}: probe median {median:?} over {TWELVE_MP_PROBE_BOUND:?}"
+            );
+        }
     }
     let huge = decoder.job(&png_header_only(30_000, 30_000));
-    let started = Instant::now();
-    let answer = peer.call(probe(&huge), WAIT);
-    let took = started.elapsed();
-    let Response::Probe(huge_probe) = answer else {
-        panic!("huge png: {answer:?}")
+    let (times, last) = timed_probes(&mut peer, &huge);
+    let Response::Probe(huge_probe) = last else {
+        panic!("huge png: {last:?}")
     };
-    assert_eq!(dimensions(&huge_probe), (30_000, 30_000));
+    let median = times[PROBES / 2];
     record(
         "IT-10-4",
-        &format!("png 30000x30000 header only: best of 5 probes {took:?} (budget 100 ms)"),
+        &format!(
+            "png 30000x30000 header only: probe median {median:?}, best {:?} (bound 100 ms)",
+            times[0]
+        ),
+    );
+    assert_eq!(dimensions(&huge_probe), (30_000, 30_000));
+    assert!(
+        median <= HUGE_PROBE_BOUND,
+        "30000x30000 png: probe median {median:?} over {HUGE_PROBE_BOUND:?}"
     );
     let truncated = decoder.job(&jpeg[..100]);
     let answer = peer.call(probe(&truncated), WAIT);
@@ -146,7 +170,7 @@ fn expected(orientation: u8, edge: u32) -> (u32, u32) {
 }
 
 fn check_result(
-    job: &crate::decoder::Job,
+    job: &Job,
     answer: Response,
     want: (u32, u32),
     reference: &std::path::Path,
