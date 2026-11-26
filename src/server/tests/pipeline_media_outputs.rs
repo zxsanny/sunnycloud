@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use pipeline_support::media::{
     WEBP, WORKER_TOKEN, jpeg_bytes, mp4_bytes, problem_code, volume_files,
 };
-use pipeline_support::{Pipeline, gc::Stored, uuid_of};
+use pipeline_support::{Pipeline, gc::Stored, now_micros, uuid_of};
 use sc_ids::{hash_block, rollup};
 use serde_json::json;
 use serve_support::http::call;
@@ -193,12 +193,19 @@ async fn it_08_10_a_repeated_or_raced_output_is_stored_once_and_the_surplus_blob
         "the repeat and the race left {} surplus blobs",
         surplus.len()
     );
-    let due = "SELECT count(*) FROM blob_gc WHERE account_id = $1 AND reason = 'derived_removed' \
-               AND due_at <= now() + interval '1 second'";
+    let queued =
+        "SELECT count(*) FROM blob_gc WHERE account_id = $1 AND reason = 'derived_removed'";
+    let latest_due = "SELECT COALESCE(max((extract(epoch FROM due_at) * 1000000)::bigint), 0) FROM blob_gc \
+                      WHERE account_id = $1 AND reason = 'derived_removed'";
     assert_eq!(
-        usize::try_from(pipeline.account_number(due).await).expect("a count"),
+        usize::try_from(pipeline.account_number(queued).await).expect("a count"),
         surplus.len(),
-        "every surplus blob is queued for GC, due now"
+        "every surplus blob is queued for GC"
+    );
+    let due = pipeline.account_number(latest_due).await;
+    assert!(
+        due <= now_micros() + 1_000_000,
+        "the surplus is due now, not at {due}"
     );
     for blob in &surplus {
         let file = pipeline.blob_file(*blob).exists();

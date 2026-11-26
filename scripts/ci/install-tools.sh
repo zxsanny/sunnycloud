@@ -101,8 +101,11 @@ install_pg_client() {
   local apt_net=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
   as_root apt-get "${apt_net[@]}" update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/pgdg.list \
     -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0
+  # The client binaries are pinned exactly; libpq5 only has to satisfy the client's `libpq5 (>= 18.x)`. Pinning it to
+  # the client's version forced a downgrade (and removed libpq-dev) on runner images that already carry PGDG's
+  # libpq5 19.0, which `--yes` refuses (CI run 45822062152, exit 100). libpq5 stays backward compatible.
   as_root env DEBIAN_FRONTEND=noninteractive apt-get "${apt_net[@]}" install --yes --no-install-recommends \
-    "postgresql-client-18=$PG_CLIENT_VERSION" "libpq5=$PG_CLIENT_VERSION"
+    "postgresql-client-18=$PG_CLIENT_VERSION"
 }
 
 install_tool() {
