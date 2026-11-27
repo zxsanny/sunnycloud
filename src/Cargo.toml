@@ -66,7 +66,7 @@ notify = "=8.2.1"
 tray-icon = "=0.26.1"
 slint = "=1.18.1"
 rfd = "=0.17.2"
-rusqlite = "=0.41.1"
+rusqlite = "=0.43.0"
 reqwest = { version = "=0.13.5", default-features = false }
 wasm-bindgen = "=0.2.130"
 serde = { version = "1", default-features = false, features = ["derive"] }
