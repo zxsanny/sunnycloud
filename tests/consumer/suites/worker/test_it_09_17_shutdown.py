@@ -4,7 +4,7 @@ carries decoder health and the image age.
 FD on both lanes reports a build time 20 days before the clock. The general lane holds a clip's transcode for 8 s; the
 interactive lane renders a photo in about 2 s; a second photo, committed just before the stop, waits queued while
 both slots are busy. Then the
-supervisor gets SIGTERM (e2e-ctl `process-kill` `stop`, SIGKILL only after 10 s): the 1 s job finishes and posts, the
+supervisor gets SIGTERM (e2e-ctl `process-kill` `stop`, SIGKILL only after 10 s): the running photo finishes and posts, the
 8 s job gets `cancel` at the grace and its lease is released, the queued photo is never claimed, and the process exits
 0 before the stop's SIGKILL could land."""
 import time
@@ -40,6 +40,16 @@ INTERACTIVE = {"hello": {"build_timestamp": BUILT},
                "render_still": {"default": over_time(RENDER_MS, postable_image())}}
 
 
+def wait_report(ctl, wanted, seconds=5):
+    """The first status report for which `wanted` holds, or the last one after `seconds`."""
+    deadline = time.monotonic() + seconds
+    while True:
+        report = status_report(ctl)
+        if wanted(report) or time.monotonic() > deadline:
+            return report
+        time.sleep(0.25)
+
+
 def claimed(fds):
     """The jobs FD received requests for, per lane."""
     return [sorted({line["job"] for line in job_requests(fd)}) for fd in fds]
@@ -54,13 +64,16 @@ def test_it_09_17_sigterm_drains_within_the_grace_and_the_status_carries_health_
     rows_before = job_rows(stack_ctl)
     media.commit("it-09-17.mp4", mediakit.with_marker(media.fixture(CLIP), "it-09-17"))
     assert wait_for_request(general, "transcode"), general.record()
-    first = status_report(stack_ctl)
+    # The first report after a start can come before the slots passed their gate (leftover
+    # 2026-11-26_worker-status-first-report): start from the first healthy one.
+    first = wait_report(stack_ctl, lambda report: report["decoder_ok"] == 1)
     second, waited = next_report(stack_ctl, first)
     host_ms = int(time.time() * 1000)
     media.commit("it-09-17-a.jpg", mediakit.with_marker(media.fixture(PHOTO), "it-09-17-a"))
     assert wait_for_request(interactive, "render_still"), interactive.record()
     media.commit("it-09-17-b.jpg", mediakit.with_marker(media.fixture(PHOTO), "it-09-17-b"))
     claimed_before = claimed((interactive, general))
+    at_stop = sorted(r["status"] for r in new_rows(stack_ctl, rows_before).values() if r["kind"] == "stills")
 
     # Act
     stopped = stack_ctl.call("process-kill", service="worker", op="stop")
@@ -72,7 +85,8 @@ def test_it_09_17_sigterm_drains_within_the_grace_and_the_status_carries_health_
     assert [(r["decoder_ok"], r["image_age_days"]) for r in (first, second)] == [(1, BUILD_AGE_DAYS)] * 2, (first, second)
     assert second["seen_ms"] > first["seen_ms"] and waited <= STATUS_INTERVAL_SECONDS * 2, (first, second, waited)
     assert abs(second["seen_ms"] - host_ms) <= CLOCK_SLACK_MS, (second, host_ms)
-    # The drain: exit 0 after the grace and before the stop's SIGKILL.
+    # The drain: a photo was running and one queued when SIGTERM came; exit 0 after the grace, before the SIGKILL.
+    assert at_stop == ["queued", "running"], at_stop
     assert stopped["exit_code"] == 0, stopped
     assert SHUTDOWN_GRACE_SECONDS - 0.5 <= stopped["seconds"] < EXIT_WITHIN_SECONDS, stopped
     # The held transcode is cancelled and given back; the running photo finished; the queued photo was never claimed.

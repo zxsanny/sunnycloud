@@ -2,7 +2,7 @@
 transcode and during the output post leaves a clean end state after its restart.
 
 Each kill lands inside its step by construction. The fetch and the post are parked by the API test image's one-shot
-transfer hold (AZ-4381, decision D1) until the kill; the transcode runs on a decoder held to a fifth of a CPU (e2e-ctl
+transfer hold (AZ-4381, decision D1) until the kill; the transcode runs on a decoder held to half a CPU (e2e-ctl
 `cpu-limit`, decision D4), and the kill comes while its ffmpeg is in the decoder's process list. After the kill the
 killed run's ffmpeg is gone within 2 s (the decoder cancels on the lost socket); the supervisor starts again with both
 decoders frozen, so no slot can pass its gate and claim, and both scratch roots must be empty then (swept at start);
@@ -61,15 +61,28 @@ def stack_whole_again(stack_ctl):
     """Whatever a case leaves (a parked stream, a dead supervisor), the next one starts with both running."""
     yield
     release_hold(stack_ctl)
+    for decoder in DECODERS:
+        if stack_ctl.call("inspect", service=decoder)["status"] == "paused":
+            stack_ctl.call("process-kill", service=decoder, op="unpause")
     if stack_ctl.call("inspect", service="worker")["status"] != "running":
         stack_ctl.call("process-kill", service="worker", op="start")
     assert stack_ctl.wait_worker_readyz(200, READY_SECONDS) == 200
+
+
+# A decoder at rest runs its runner under docker-init and nothing else.
+AT_REST = frozenset({"docker-init", "decoder-runner"})
 
 
 def ffmpegs(ctl):
     """The ffmpeg processes of both decoders: `(decoder, args)`."""
     return [(decoder, p["args"]) for decoder in DECODERS for p in ctl.call("inspect", processes=decoder)["processes"]
             if p["comm"] == "ffmpeg"]
+
+
+def strays(ctl):
+    """Processes in either decoder besides its runner (an ffmpeg, a vips, anything a killed job left)."""
+    return [(decoder, p["comm"]) for decoder in DECODERS for p in ctl.call("inspect", processes=decoder)["processes"]
+            if p["comm"] not in AT_REST]
 
 
 def scratch(ctl):
@@ -87,26 +100,30 @@ def wait_until(read, done, seconds):
 
 def restart_and_retry(ctl, job, rows_before):
     """Starts the supervisor again with both decoders frozen, so no slot can pass its gate and claim: the scratch it
-    swept at start is read then, with the killed job's row. Then the decoders thaw, the clock moves past the lease and
-    every job of the file must succeed. Returns that scratch read, that row and the file's rows at the end."""
-    for decoder in DECODERS:
-        ctl.call("process-kill", service=decoder, op="pause")
+    swept at start is read then, with the killed job's row, and the clock moves past the lease. Then the decoders thaw
+    and every job of the file must succeed. Returns the scratch the kill left, that read, that row and the file's rows."""
+    left = scratch(ctl)
     try:
+        for decoder in DECODERS:
+            ctl.call("process-kill", service=decoder, op="pause")
         ctl.call("process-kill", service="worker", op="start")
         swept = wait_until(lambda: scratch(ctl), lambda seen: seen == {lane: [] for lane in LANES}, 15)
         leased = job_rows(ctl)[job]
+        # Past the killed attempt's lease while no slot can claim: attempt 2 then gets a lease the clock no longer moves.
+        advance_clock(ctl, PAST_THE_LEASE_SECONDS)
     finally:
         for decoder in DECODERS:
             ctl.call("process-kill", service=decoder, op="unpause")
     assert ctl.wait_worker_readyz(200, READY_SECONDS) == 200
-    advance_clock(ctl, PAST_THE_LEASE_SECONDS)
     wait_for_row(ctl, lambda seen, row: seen == job and row["status"] == "succeeded", seconds=JOBS_SECONDS * 2)
     rows = wait_until(lambda: new_rows(ctl, rows_before), lambda seen: all(r["status"] == "succeeded" for r in seen.values()),
                       JOBS_SECONDS)
-    return swept, leased, rows
+    return left, swept, leased, rows
 
 
-def assert_clean_end(ctl, media, job, swept, leased, rows, derived_before, expected):
+def assert_clean_end(ctl, media, job, retried, derived_before, expected):
+    left, swept, leased, rows = retried
+    assert any(left.values()), f"the kill left no job tree to sweep: {left}"
     assert swept == {lane: [] for lane in LANES}, swept
     assert leased["attempts"] == 1, f"the killed job was claimed again before the sweep: {leased}"
     assert all(row["status"] == "succeeded" for row in rows.values()), rows
@@ -116,7 +133,7 @@ def assert_clean_end(ctl, media, job, swept, leased, rows, derived_before, expec
     refs = wait_until(lambda: ctl.call("db-probe", query="blob_refs"), lambda r: r["unreferenced"] == 0, JANITOR_SECONDS)
     assert refs["unreferenced"] == 0, refs
     assert scratch(ctl) == {lane: [] for lane in LANES}
-    assert ffmpegs(ctl) == []
+    assert strays(ctl) == []
 
 
 def test_it_09_14_a_kill_during_the_input_fetch(stack_ctl, media):
@@ -127,14 +144,13 @@ def test_it_09_14_a_kill_during_the_input_fetch(stack_ctl, media):
     # Act
     media.commit("it-09-14-fetch.jpg", mediakit.with_marker(media.fixture(PHOTO), "it-09-14-fetch"))
     held = wait_held(stack_ctl)
+    assert held["held"] and held["bytes"] >= HOLD_AFTER_BYTES, held
     stack_ctl.call("process-kill", service="worker", op="kill")
     release_hold(stack_ctl)
-    swept, leased, rows = restart_and_retry(stack_ctl, held["job_id"], rows_before)
+    retried = restart_and_retry(stack_ctl, held["job_id"], rows_before)
 
     # Assert
-    assert held["held"] and held["bytes"] >= HOLD_AFTER_BYTES, held
-    assert_clean_end(stack_ctl, media, held["job_id"], swept, leased, rows, derived_before,
-                     {"thumb": 1, "preview": 1, "transcode": 0})
+    assert_clean_end(stack_ctl, media, held["job_id"], retried, derived_before, {"thumb": 1, "preview": 1, "transcode": 0})
 
 
 def test_it_09_14_b_kill_during_the_transcode(stack_ctl, media, slow_decoder):
@@ -151,13 +167,12 @@ def test_it_09_14_b_kill_during_the_transcode(stack_ctl, media, slow_decoder):
     cancelled_after = time.monotonic() - killed
     slow_decoder.restore()
     job = next((job for job, row in new_rows(stack_ctl, rows_before).items() if row["kind"] == "transcode"), None)
-    swept, leased, rows = restart_and_retry(stack_ctl, job, rows_before)
+    assert running, "no transcode ffmpeg was seen in the decoder"
+    retried = restart_and_retry(stack_ctl, job, rows_before)
 
     # Assert
-    assert running, "no transcode ffmpeg was seen in the decoder"
     assert left == [] and cancelled_after <= CANCEL_SECONDS, (left, cancelled_after)
-    assert_clean_end(stack_ctl, media, job, swept, leased, rows, derived_before,
-                     {"thumb": 1, "preview": 0, "transcode": 1})
+    assert_clean_end(stack_ctl, media, job, retried, derived_before, {"thumb": 1, "preview": 0, "transcode": 1})
 
 
 def test_it_09_14_c_kill_during_the_output_post(stack_ctl, media):
@@ -168,11 +183,10 @@ def test_it_09_14_c_kill_during_the_output_post(stack_ctl, media):
     # Act
     media.commit("it-09-14-post.jpg", mediakit.with_marker(media.fixture(PHOTO), "it-09-14-post"))
     held = wait_held(stack_ctl)
+    assert held["held"], held
     stack_ctl.call("process-kill", service="worker", op="kill")
     release_hold(stack_ctl)
-    swept, leased, rows = restart_and_retry(stack_ctl, held["job_id"], rows_before)
+    retried = restart_and_retry(stack_ctl, held["job_id"], rows_before)
 
     # Assert
-    assert held["held"], held
-    assert_clean_end(stack_ctl, media, held["job_id"], swept, leased, rows, derived_before,
-                     {"thumb": 1, "preview": 1, "transcode": 0})
+    assert_clean_end(stack_ctl, media, held["job_id"], retried, derived_before, {"thumb": 1, "preview": 1, "transcode": 0})

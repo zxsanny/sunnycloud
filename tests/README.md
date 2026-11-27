@@ -125,11 +125,12 @@ before the dump told to resync. PT-12-1 and PT-12-2 are NOT-RUN(HW-REF).
 
 `tests/tools/e2e-ctl/e2e_ctl.py`, Python stdlib only. `POST /v1/actions/<name>` with `Authorization: Bearer <token>` and a
 JSON body of parameters. Implemented (`ctl_actions.py`): `internal-http` (one HTTP request to a listener of the api on the
-backend network, or to the worker's ops port `:9090` with `service: "worker"`; `auth: "worker"` adds the worker bearer on
+backend network, or to the worker's ops port `:9090` with `service: "worker"`; `lines_with` keeps only the lines of
+the answer holding a text, read whole first, as for a metrics page; `auth: "worker"` adds the worker bearer on
 the api's listeners only, and it never leaves ctl), `db-outage` (`op` `stop` or `start`,
 start waits for a healthy database), `interrupted-upgrade` (`op` `revert` with `steps`, or `apply`, through the product's
 own `migrate`), `process-kill` (`kill` or `start` of the api, the worker or a decoder, whose runner is the container's main process;
-`pause` or `unpause` of a decoder; `fake` or `real` of a decoder (h2: FD in its place, or the decoder back); `restart` of the api, waiting for it to be healthy, with `worker_token: "next"` (a second
+`pause` or `unpause` of a decoder; `fake` or `real` of a decoder (h2: FD in its place, or the decoder back); `stop` of the worker (SIGTERM, then its exit code and how long it took); `restart` of the api, waiting for it to be healthy, with `worker_token: "next"` (a second
 accepted token in `worker_api_token_next`) or `"drop-old"` (the next or a fresh token becomes the only one: a worker still
 holding the old one gets 403 until it restarts); the secret files are rewritten in place and no token is returned),
 `inspect` (a container's state, start time and restart count, its log tail, a decoder's processes listed by `docker top`,

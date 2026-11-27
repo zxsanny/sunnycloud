@@ -18,8 +18,9 @@ import time
 from datetime import datetime
 
 import mediakit
-from h2cases import (CLIP, GATE_SECONDS, POLL_SECONDS, heartbeat_gaps, lease_samples, next_report, photo_probe,
-                     postable_image, postable_transcode, requests_of, status_report, video_probe, wait_for_request)
+from h2cases import (CLIP, GATE_SECONDS, POLL_SECONDS, heartbeat_gaps, job_rows, lease_samples, new_rows, next_report,
+                     photo_probe, postable_image, postable_transcode, requests_of, status_report, video_probe,
+                     wait_for_request, wait_for_row)
 from stackkit import advance_clock
 
 BUILD_AGE_DAYS = 20
@@ -83,11 +84,13 @@ def test_it_09_18_the_test_clock_moves_only_the_image_age_and_no_supervisor_time
     general = lanes("general", GENERAL)
     for fd in (interactive, general):
         fd.wait_for(["hello", "self_check"], GATE_SECONDS)
+    rows_before = job_rows(stack_ctl)
     media.commit("it-09-18.mp4", mediakit.with_marker(media.fixture(CLIP), "it-09-18"))
     held = wait_for_request(general, "transcode")
     assert held, general.record()
     before, _ = next_report(stack_ctl, status_report(stack_ctl))
     kills_before = decoder_kills(stack_ctl)
+    started = stack_ctl.call("inspect", service="worker")["started_at"]
     gaps = heartbeat_gaps(lease_samples(stack_ctl, SAMPLE_SECONDS))
 
     # Act 1: one hour, with the job running.
@@ -98,13 +101,20 @@ def test_it_09_18_the_test_clock_moves_only_the_image_age_and_no_supervisor_time
     after_hour, _ = next_report(stack_ctl, status_report(stack_ctl))
     ready_after_hour, kills_after_hour = ready(stack_ctl), decoder_kills(stack_ctl)
     record = general.record()
+    # The requeued job's second attempt is answered at once: wait for it, so the next advance finds the slot idle.
+    wait_for_row(stack_ctl, lambda job, row: job in new_rows(stack_ctl, rows_before) and row["kind"] == "transcode"
+                 and row["status"] == "succeeded", seconds=EVENT_SECONDS)
 
-    # Act 2: three days, with the supervisor idle.
+    # Act 2: three days, with the supervisor idle; then the interactive FD restarts, so the supervisor writes a log line
+    # (its idle connection ended) after the advance.
+    advanced_at = time.time()
     advance_clock(stack_ctl, THREE_DAYS)
     reached, waited = age_reaching(stack_ctl, BUILD_AGE_DAYS + 3)
     stays, _ = next_report(stack_ctl, reached)
     ready_after_days, kills_after_days = ready(stack_ctl), decoder_kills(stack_ctl)
+    lanes("interactive", INTERACTIVE, restart_worker=False).wait_for(["hello", "self_check"], GATE_SECONDS)
     newest_log, host_now = newest_log_seconds(stack_ctl), time.time()
+    restarts = stack_ctl.call("inspect", service="worker")["started_at"]
 
     # Assert: before any advance.
     assert before["image_age_days"] == BUILD_AGE_DAYS, before
@@ -118,6 +128,8 @@ def test_it_09_18_the_test_clock_moves_only_the_image_age_and_no_supervisor_time
     assert after_hour["image_age_days"] == BUILD_AGE_DAYS, after_hour
     # The three days: the age moves by exactly 3 within one interval and one poll, and stays.
     assert (reached["image_age_days"], stays["image_age_days"]) == (BUILD_AGE_DAYS + 3,) * 2, (reached, stays)
+    assert stays["seen_ms"] > reached["seen_ms"], (reached, stays)
     assert waited <= AGE_SECONDS, waited
     assert (ready_after_days, kills_after_days) == (200, kills_before), (ready_after_days, kills_after_days)
-    assert newest_log <= host_now + LOG_SLACK_SECONDS, (newest_log, host_now)
+    assert advanced_at - LOG_SLACK_SECONDS <= newest_log <= host_now + LOG_SLACK_SECONDS, (advanced_at, newest_log, host_now)
+    assert restarts == started, "the supervisor restarted: its kill counter would read 0 again"

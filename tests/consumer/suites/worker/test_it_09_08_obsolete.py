@@ -7,7 +7,7 @@ import time
 
 import mediakit
 from fdkit import JOB_REQUESTS
-from h2cases import gate_out_both_lanes, job_rows, new_rows
+from h2cases import gate_out_both_lanes, job_rows, new_rows, worker_jobs_total
 from stackkit import advance_clock
 
 JOBS_SECONDS = 60
@@ -21,9 +21,7 @@ def revisions(ctl):
 
 
 def obsolete_count(ctl):
-    samples = ctl.worker_metrics()
-    return sum(value for name, value in samples.items()
-               if name.startswith("sunnycloud_jobs_total{") and 'result="obsolete"' in name)
+    return worker_jobs_total(ctl, "stills", "obsolete")
 
 
 def test_it_09_8_a_revision_gone_before_the_fetch_closes_the_job_as_obsolete(stack_ctl, media, lanes):

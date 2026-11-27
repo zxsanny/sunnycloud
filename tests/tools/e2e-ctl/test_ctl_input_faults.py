@@ -107,6 +107,50 @@ class CheckedStartTest(unittest.TestCase):
         self.assertEqual(docker.starts, 1)
 
 
+class FilteredHttpTest(unittest.TestCase):
+    def test_internal_http_lines_with_reads_the_whole_answer_and_keeps_the_matching_lines(self):
+        # Arrange
+        page = ("# HELP x\n" + "noise 1\n" * 2000 + 'sunnycloud_http_requests_total{route="/in"} 3\n').encode()
+        seen = []
+
+        def request(address, method, path, headers, body, limit=ctl_actions.BODY_LIMIT):
+            seen.append(limit)
+            return 200, {}, page[:limit]
+
+        def docker(args):
+            return (0, "container-1\n", "") if "ps" in args else (0, "172.30.0.9\n", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            actions = ctl_actions.Actions("proj", "/x/compose.yml", tmp, run=docker, request=request)
+
+            # Act
+            result = actions.internal_http({"port": 9090, "path": "/metrics", "lines_with": 'route="/in"'})
+            with self.assertRaises(ctl_actions.ActionError) as refused:
+                actions.internal_http({"port": 9090, "path": "/metrics", "lines_with": ""})
+
+        # Assert
+        self.assertEqual(result["body"], 'sunnycloud_http_requests_total{route="/in"} 3\n')
+        self.assertEqual((seen, refused.exception.status), ([ctl_actions.FILTERED_READ_LIMIT], 400))
+
+    def test_internal_http_lines_with_refuses_a_match_larger_than_the_body_limit(self):
+        # Arrange
+        page = ('m{route="/in"} 1\n' * 1000).encode()
+
+        def docker(args):
+            return (0, "container-1\n", "") if "ps" in args else (0, "172.30.0.9\n", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            actions = ctl_actions.Actions("proj", "/x/compose.yml", tmp, run=docker,
+                                          request=lambda *args, **kwargs: (200, {}, page))
+
+            # Act
+            with self.assertRaises(ctl_actions.ActionError) as raised:
+                actions.internal_http({"port": 9090, "path": "/metrics", "lines_with": 'route="/in"'})
+
+        # Assert
+        self.assertEqual((raised.exception.status, raised.exception.code), (413, "filtered_too_large"))
+
+
 class CpuLimitTest(unittest.TestCase):
     def test_cpu_limit_updates_the_decoders_quota_and_returns_the_one_it_had(self):
         # Arrange
@@ -124,15 +168,17 @@ class CpuLimitTest(unittest.TestCase):
             # Act
             result = actions.cpu_limit({"service": "decoder-general", "cpus": 0.2})
             refused = []
-            for params in ({"service": "worker", "cpus": 1}, {"service": "decoder-general", "cpus": 0},
+            unlimited = actions.cpu_limit({"service": "decoder-general", "cpus": 0})
+            for params in ({"service": "worker", "cpus": 1}, {"service": "decoder-general", "cpus": 0.01},
                            {"service": "decoder-general", "cpus": True}, {"service": "decoder-general", "cpus": "1"}):
                 with self.assertRaises(ctl_actions.ActionError) as raised:
                     actions.cpu_limit(params)
                 refused.append(raised.exception.status)
 
         # Assert
-        self.assertEqual(calls[-1], ["docker", "update", "--cpus", "0.2", "container-1"])
-        self.assertEqual(result["previous_cpus"], 2.0)
+        self.assertIn(["docker", "update", "--cpus", "0.2", "container-1"], calls)
+        self.assertEqual(calls[-1], ["docker", "update", "--cpus", "0", "container-1"])
+        self.assertEqual((result["previous_cpus"], unlimited["cpus"]), (2.0, 0))
         self.assertEqual(refused, [400] * 4)
 
 

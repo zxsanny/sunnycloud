@@ -62,10 +62,12 @@ class Ctl:
             pytest.fail(f"e2e-ctl {action} {params}: {status} {json.dumps(body)[:400]}", pytrace=False)
         return body["result"]
 
-    def internal(self, port, path, method="GET", auth="none", headers=None, body=None, service="api"):
+    def internal(self, port, path, method="GET", auth="none", headers=None, body=None, service="api", lines_with=None):
         """One request to `service` (the api, or the worker's ops port) on `port`; the answer is
-        `{"connection": "refused"}` or status, headers and body."""
+        `{"connection": "refused"}` or status, headers and body (with `lines_with`, only the body's lines holding it)."""
         params = {"service": service, "port": port, "path": path, "method": method, "auth": auth}
+        if lines_with is not None:
+            params["lines_with"] = lines_with
         if headers:
             params["headers"] = headers
         if body is not None:

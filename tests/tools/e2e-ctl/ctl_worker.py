@@ -130,8 +130,9 @@ class WorkerSuiteActions:
         quota it had before (`previous_cpus`, 0 for none), for the case to set back."""
         service, cpus = params.get("service"), params.get("cpus")
         if service not in CPU_LIMITED or isinstance(cpus, bool) or not isinstance(cpus, (int, float)) \
-                or not MIN_CPUS <= cpus <= MAX_CPUS:
-            raise ActionError(400, "bad_request", f"service is one of {sorted(CPU_LIMITED)}, cpus {MIN_CPUS} to {MAX_CPUS}")
+                or not (cpus == 0 or MIN_CPUS <= cpus <= MAX_CPUS):
+            raise ActionError(400, "bad_request", f"service is one of {sorted(CPU_LIMITED)}, cpus 0 (no quota, as "
+                                                  f"`previous_cpus` reports it) or {MIN_CPUS} to {MAX_CPUS}")
         container = self._container(service)
         previous = self._checked(["docker", "inspect", "-f", "{{.HostConfig.NanoCpus}}", container]).strip()
         if not previous.isdigit():

@@ -62,6 +62,9 @@ INSPECTABLE = frozenset({"api", "worker", "decoder-interactive", "decoder-genera
 SCRATCH_LANES = frozenset({"interactive", "general"})
 HEADER_NAMES = frozenset({"authorization", "cookie", "content-type", "x-sunnycloud-client", "x-forwarded-for", "x-worker-id"})
 BODY_LIMIT = 4096
+# `internal-http` with `lines_with` (a metrics page, which outgrows BODY_LIMIT): how much of the answer is read before
+# its lines are filtered.
+FILTERED_READ_LIMIT = 4 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 10
 COMMAND_TIMEOUT_SECONDS = 180
 DB_HEALTHY_TIMEOUT_SECONDS = 120
@@ -126,13 +129,14 @@ def watch_listeners(sampler_args, command_args, run=run_command):
         sampler.wait()
 
 
-def send_request(address, method, path, headers, body):
-    """One request; `None` when the connection is refused or reset (what a closed listener looks like)."""
+def send_request(address, method, path, headers, body, limit=BODY_LIMIT):
+    """One request, the first `limit` bytes of its answer; `None` when the connection is refused or reset (what a
+    closed listener looks like)."""
     connection = http.client.HTTPConnection(address[0], address[1], timeout=REQUEST_TIMEOUT_SECONDS)
     try:
         connection.request(method, path, body=body, headers=headers)
         answer = connection.getresponse()
-        return answer.status, {k.lower(): v for k, v in answer.getheaders()}, answer.read(BODY_LIMIT)
+        return answer.status, {k.lower(): v for k, v in answer.getheaders()}, answer.read(limit)
     except ConnectionError:
         return None
     finally:
@@ -215,12 +219,22 @@ class Actions(WorkerSuiteActions):
             headers["Authorization"] = f"Bearer {token}"
         elif params.get("auth") not in (None, "none"):
             raise ActionError(400, "bad_request", "auth is `none` or `worker`")
+        needle = params.get("lines_with")
+        if not (needle is None or isinstance(needle, str) and needle):
+            raise ActionError(400, "bad_request", "lines_with is a text")
         body = params["body"].encode() if isinstance(params.get("body"), str) else None
-        answer = self._request((self._address(service), port), method, path, headers, body)
+        address = (self._address(service), port)
+        answer = self._request(address, method, path, headers, body) if needle is None else \
+            self._request(address, method, path, headers, body, FILTERED_READ_LIMIT)
         if answer is None:
             return {"connection": "refused"}
         status, answer_headers, answer_body = answer
-        return {"connection": "open", "status": status, "headers": answer_headers, "body": answer_body.decode("utf-8", "replace")}
+        text = answer_body.decode("utf-8", "replace")
+        if needle is not None:  # the whole answer is read and filtered; a cut would shorten a value without a sign
+            text = "".join(line for line in text.splitlines(keepends=True) if needle in line)
+            if len(text) > BODY_LIMIT:
+                raise ActionError(413, "filtered_too_large", f"{len(text)} bytes match; narrow lines_with")
+        return {"connection": "open", "status": status, "headers": answer_headers, "body": text}
 
     def db_outage(self, params):
         op = params.get("op")

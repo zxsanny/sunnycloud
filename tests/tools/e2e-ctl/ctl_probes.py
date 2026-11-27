@@ -63,6 +63,9 @@ PROBES = {
     "job_rows": (LIST, "SELECT coalesce(string_agg(j.id::text || ':' || j.kind || ':' || j.status || ':' || j.attempts || ':' || "
                        "coalesce(j.last_error, '') || ':' || coalesce(r.blob_id::text, ''), ',' ORDER BY j.created_at), '') "
                        "FROM jobs j LEFT JOIN revisions r ON r.id = j.revision_id"),
+    # `<content hash hex>:<kind>` of every derived row in the order it was stored: which output of a job was posted first.
+    "derived_order": (LIST, "SELECT coalesce(string_agg(encode(content_hash, 'hex') || ':' || kind, ',' "
+                            "ORDER BY created_at), '') FROM derived"),
     # The lease expiry of the running job (epoch ms; -1 when none runs): each heartbeat moves it forward.
     "running_lease_ms": (("lease_ms",),
                          "SELECT coalesce((SELECT (extract(epoch FROM available_at) * 1000)::bigint FROM jobs "

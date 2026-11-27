@@ -9,4 +9,7 @@ plugin BOM). On a cold Gradle cache GitHub runners share Maven Central's rate li
 resolving plugin ... Repository Gradle Central Plugin Repository is disabled due to earlier error"). Check that the run
 has no other red job and that the change touched nothing under `src/mobile/` or `scripts/ci/mobile-*`; then the next
 push's run is the re-check (do not change code for it). If it fails twice in a row on the same commit, it is a cache
-problem of the job (cache key, `CACHE_ON_FAILURE`), not a flake: open a task for the job's Gradle cache.
+problem of the job, not a flake. Seen on 2026-11-27 for two pushes in a row: the repository's Actions cache was over
+its 10 GB limit, the `mobile-gradle-*` entry had been evicted, and `actions/cache` saves only after a green job, so it
+never came back (leftover `_docs/_process_leftovers/2026-11-27_mobile-ci-gradle-cache-evicted.md`). Check
+`gh cache list --key mobile-gradle` first.

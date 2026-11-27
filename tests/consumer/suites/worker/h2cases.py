@@ -11,6 +11,7 @@ from datetime import datetime
 
 import mediakit
 from fdkit import FAILED_SELF_CHECK
+from stackkit import parse_metrics
 
 GATE_SECONDS = 30
 JOBS_SECONDS = 60
@@ -244,3 +245,27 @@ def wait_held(ctl, seconds=JOBS_SECONDS):
         if status["held"] or time.monotonic() > deadline:
             return status
         time.sleep(POLL_SECONDS)
+
+
+def api_requests(ctl, route, method):
+    """The api's answers on `route` (a route template) for `method`, by status class (`{"2xx": n}`): its
+    `http_requests_total` series, read from its metrics through ctl's line filter."""
+    answer = ctl.internal(9090, "/metrics", lines_with=f'route="{route}"')
+    assert answer.get("status") == 200, answer
+    counts = {}
+    for name, value in parse_metrics(answer["body"]).items():
+        if name.startswith("sunnycloud_http_requests_total{") and f'method="{method}"' in name:
+            status = name.split('status_class="', 1)[1].split('"', 1)[0]
+            counts[status] = counts.get(status, 0) + value
+    return counts
+
+
+def derived_order(ctl, content_hash):
+    """The kinds of a file's derived rows in the order they were stored."""
+    values = ctl.call("db-probe", query="derived_order")["values"]
+    return [kind for stored, kind in (value.split(":") for value in values) if stored == content_hash]
+
+
+def worker_jobs_total(ctl, kind, result):
+    """The supervisor's `jobs_total{kind, result}` sample (0 before the first such job)."""
+    return ctl.worker_metrics().get(f'sunnycloud_jobs_total{{kind="{kind}",result="{result}"}}', 0.0)

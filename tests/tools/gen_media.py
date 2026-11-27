@@ -87,6 +87,7 @@ def main():
     front = ["-movflags", "+faststart"]
     run_tool("ffmpeg", ["-y", "-v", "error", *video_args("1280x720", 30, "4M", 2, front), str(out) + "/clip-compliant-front.mp4"])
     run_tool("ffmpeg", ["-y", "-v", "error", *video_args("1280x720", 30, "4M", 2), str(out) + "/clip-compliant-end.mp4"])
+    run_tool("ffmpeg", ["-y", "-v", "error", *video_args("720x1280", 30, "4M", 2, front), str(out) + "/clip-compliant-portrait.mp4"])
 
     (out / "hostile-svg.png").write_text('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><script>alert(1)</script></svg>\n', encoding="utf-8")
     (out / "truncated.heic").write_bytes(truncated_heic())
@@ -95,7 +96,8 @@ def main():
     rate = int(noncompliant["format"]["bit_rate"])
     assert (out / "clip-noncompliant.mp4").stat().st_size <= 2 * 1024 * 1024, "a clip must fit one 2 MiB block"
     assert rate > 10_000_000, f"clip-noncompliant.mp4 must be above 10 Mbit/s, is {rate}"
-    for name, front_index in (("clip-compliant-front.mp4", True), ("clip-compliant-end.mp4", False)):
+    for name, front_index in (("clip-compliant-front.mp4", True), ("clip-compliant-end.mp4", False),
+                              ("clip-compliant-portrait.mp4", True)):
         info = probe(out / name)
         video = next(s for s in info["streams"] if s["codec_type"] == "video")
         assert video["codec_name"] == "h264" and video["profile"] == "High", (name, video["profile"])
