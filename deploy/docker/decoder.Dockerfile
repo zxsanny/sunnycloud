@@ -8,7 +8,7 @@
 # The base of the test-stubs target below: the stage of this file, or any decoder image (the CI suite passes the release image it
 # built, so the test variant adds a Rust build and one thin layer, never a second media build).
 ARG TEST_STUBS_BASE=runtime
-FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS debian
+FROM debian:trixie-slim@sha256:8aa5a7bf5a1955bddbe7d74fcdd0b91ab30e74362a8b73af672b0481b35b44a0 AS debian
 
 FROM debian AS fetch
 RUN apt-get update \
