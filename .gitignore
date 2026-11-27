@@ -1,4 +1,3 @@
-_docs/_autodev_state.md
 target/
 *.log
 **/logs/

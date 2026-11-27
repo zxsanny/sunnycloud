@@ -17,6 +17,9 @@ DECODERS = frozenset({"decoder-interactive", "decoder-general"})
 TOKEN_STAGES = frozenset({"next", "drop-old"})
 WORKER_TOKEN_NEXT_SECRET = "worker_api_token_next"
 WORKER_TOKEN_SECRET = "worker_api_token"
+# The tokens a `drop-old` rotation retired, one per line: a worker started before the rotation still holds one, so the
+# secret scan (ST-09-1) looks for them too. ctl's own file; no container mounts it.
+WORKER_TOKEN_RETIRED_SECRET = "worker_api_token_retired"
 # The settings `inspect` may read from a container's environment: the timings a harness profile sets, never a secret.
 TIMING_SETTINGS = ("SUNNYCLOUD_JOB_LEASE", "SUNNYCLOUD_WORKER_CLAIM_POLL_INTERVAL", "SUNNYCLOUD_WORKER_STATUS_INTERVAL",
                    "SUNNYCLOUD_DECODER_SILENCE_TIMEOUT", "SUNNYCLOUD_DECODER_CANCEL_GRACE", "SUNNYCLOUD_PHOTO_JOB_TIMEOUT",
@@ -32,6 +35,13 @@ LEFTOVER_SCRIPT = ('set -eu; i=0; while [ "$i" -lt "$1" ]; do d="/s/leftover-$i"
 # `inspect {"container"}`: the services whose container contents may be listed, and the media tools looked for.
 CONTAINER_SERVICES = frozenset({"worker"})
 MEDIA_TOOLS = frozenset({"ffmpeg", "ffprobe", "vips", "vipsheader", "vipsthumbnail"})
+# `inspect {"db_login"}` (ST-09-2): the roles a login is tried for from a service's network position: the two of the
+# role script (deploy/postgres/initdb.d/10-roles.sh), the image's superuser, and one that does not exist.
+DB_LOGIN_ROLES = ("sunnycloud", "sunnycloud_migrator", "postgres", "no_such_role")
+DB_LOGIN_TIMEOUT_SECONDS = 5
+# What psql prints when the server reached refused the login: it asked for a password (libpq sends none for an empty
+# one), refused the one given, or has no entry for the client.
+DB_LOGIN_REFUSED = ("no password supplied", "password authentication failed", "no pg_hba.conf entry")
 # The fake decoder (FD) service of each decoder lane: compose.h2.yml, profile `fd`.
 FAKE_DECODERS = {"decoder-interactive": "fd-interactive", "decoder-general": "fd-general"}
 DECODER_HEALTHY_TIMEOUT_SECONDS = 60
@@ -106,8 +116,25 @@ class WorkerSuiteActions:
             following.write_text(secrets.token_hex(24), encoding="utf-8")
             return
         promoted = following.read_text(encoding="utf-8").strip() or secrets.token_hex(24)
+        retired = current.read_text(encoding="utf-8").strip()
+        if retired:
+            with (self.secrets_dir / WORKER_TOKEN_RETIRED_SECRET).open("a", encoding="utf-8") as kept:
+                kept.write(retired + "\n")
         current.write_text(promoted, encoding="utf-8")
         following.write_text("", encoding="utf-8")
+
+    def worker_token_needles(self):
+        """The worker tokens of this run, for `secret_scan`: the current one, the next one when set, and each one a
+        rotation retired, labelled `worker_token`, `worker_token_next`, `worker_token_retired_<i>`."""
+        def read(name):
+            path = self.secrets_dir / name
+            return path.read_text(encoding="utf-8") if path.is_file() else ""
+        needles = {label: value.strip() for label, value in (("worker_token", read(WORKER_TOKEN_SECRET)),
+                                                             ("worker_token_next", read(WORKER_TOKEN_NEXT_SECRET)))
+                   if value.strip()}
+        needles.update({f"worker_token_retired_{i}": token
+                        for i, token in enumerate(read(WORKER_TOKEN_RETIRED_SECRET).split())})
+        return needles
 
     def swap_decoder(self, service, op):
         """`fake`: stop the real decoder (SIGTERM) and start a new FD container on its socket and scratch volumes; FD
@@ -200,11 +227,43 @@ class WorkerSuiteActions:
         env = json.loads(self._checked(["docker", "inspect", "-f", "{{json .Config.Env}}", container]) or "[]")
         mounts = json.loads(self._checked(["docker", "inspect", "-f", "{{json .Mounts}}", container]) or "[]")
         destinations = sorted(m.get("Destination", "") for m in mounts)
+        host = json.loads(self._checked(["docker", "inspect", "-f", "{{json .HostConfig}}", container]) or "{}")
+        networks = json.loads(self._checked(["docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", container])
+                              or "{}")
         listing = self._checked(["bash", "-c", 'set -o pipefail; docker export "$1" | tar -t', "bash", container])
         tools = sorted(path for path in listing.split("\n") if path.rstrip("/").rsplit("/", 1)[-1] in MEDIA_TOOLS)
+        prefix = f"{self.project}_"
         return {"env_names": sorted(entry.split("=", 1)[0] for entry in env),
                 "secrets": sorted(d.rsplit("/", 1)[1] for d in destinations if d.startswith("/run/secrets/")),
-                "mounts": destinations, "media_tools": tools}
+                "mounts": destinations, "media_tools": tools,
+                "volumes": sorted(m["Name"].removeprefix(prefix) for m in mounts if m.get("Type") == "volume" and m.get("Name")),
+                "docker_socket": any(m.get(key, "").endswith("docker.sock") for m in mounts for key in ("Source", "Destination")),
+                "cap_add": sorted(host.get("CapAdd") or []), "cap_drop": sorted(host.get("CapDrop") or []),
+                "privileged": bool(host.get("Privileged")),
+                "networks": sorted(name.removeprefix(prefix) for name in networks)}
+
+    def db_login(self, service):
+        """ST-09-2: from the service's own network position (a throwaway container of the database image sharing its
+        network namespace, as the listener sampler shares the api's), a connection to db:5432 and a startup message for
+        each role of `DB_LOGIN_ROLES` with an empty password (`psql -w`; libpq sends no password for an empty one).
+        Per role: `refused` (the server reached asked for a password or refused it), `connected` (a login that needs
+        no password) or `unreachable`, with psql's last line. No secret is involved."""
+        if service not in CONTAINER_SERVICES:
+            raise ActionError(400, "bad_request", f"db_login is one of {sorted(CONTAINER_SERVICES)}")
+        base = ["docker", "run", "--rm", "--network", f"container:{self._container(service)}", "-e", "PGPASSWORD=",
+                "-e", f"PGCONNECT_TIMEOUT={DB_LOGIN_TIMEOUT_SECONDS}", "--entrypoint", "psql", self._helper_image(),
+                "-w", "-X", "-At", "-h", "db", "-p", "5432", "-d", "sunnycloud", "-c", "SELECT 1"]
+        results = {}
+        for role in DB_LOGIN_ROLES:
+            code, _, err = self._run([*base, "-U", role])
+            reason = (err.strip().splitlines() or [""])[-1][-300:]
+            if code == 0:
+                results[role] = {"result": "connected", "reason": ""}
+            elif any(text in err for text in DB_LOGIN_REFUSED):
+                results[role] = {"result": "refused", "reason": reason}
+            else:
+                results[role] = {"result": "unreachable", "reason": reason}
+        return {"roles": results}
 
     def bit_flip(self, params):
         """`{"blob_id"}`: one bit of the first ciphertext byte of the blob's chunk 0 flipped in the blob volume, by a

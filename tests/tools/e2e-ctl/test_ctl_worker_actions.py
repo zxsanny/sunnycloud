@@ -23,6 +23,11 @@ class FakeDocker:
         self.top = top
         self.services = "api\nworker\ndecoder-interactive\ndecoder-general\nfd-interactive\nfd-general\n"
         self.starts = 0
+        self.logins = {}
+
+    def db_login(self, role):
+        return self.logins.get(role, (2, "", 'psql: error: connection to server at "db" (172.30.0.2), port 5432 failed: '
+                                             "fe_sendauth: no password supplied\n"))
 
     def __call__(self, args):
         self.calls.append(args)
@@ -32,6 +37,12 @@ class FakeDocker:
             return 0, "container-1\n", ""
         if "top" in args:
             return 0, self.top, ""
+        if "inspect" in args and "{{json .NetworkSettings.Networks}}" in args:
+            return 0, json.dumps({"proj_backend": {"IPAddress": "172.30.0.9"}}) + "\n", ""
+        if "inspect" in args and "{{json .HostConfig}}" in args:
+            return 0, json.dumps({"CapAdd": None, "CapDrop": ["ALL"], "Privileged": False}) + "\n", ""
+        if args[:2] == ["docker", "run"] and "psql" in args:
+            return self.db_login(args[-1])
         if "inspect" in args and "Networks" in args[args.index("-f") + 1]:
             return 0, "172.30.0.9\n", ""
         if "{{.State.Status}} {{.State.StartedAt}}" in args:
@@ -40,8 +51,10 @@ class FakeDocker:
         if args[0] == "bash":
             return 0, "usr/local/bin/sunnycloud-worker\nusr/bin/\nopt/media/bin/ffmpeg\n", ""
         if "inspect" in args and "{{json .Mounts}}" in args:
-            return 0, json.dumps([{"Destination": "/run/secrets/worker_api_token"},
-                                  {"Destination": "/run/decoder-interactive"}]) + "\n", ""
+            return 0, json.dumps([{"Type": "bind", "Source": "/tmp/s/worker_api_token",
+                                   "Destination": "/run/secrets/worker_api_token"},
+                                  {"Type": "volume", "Name": "proj_sock_interactive",
+                                   "Destination": "/run/decoder-interactive"}]) + "\n", ""
         if "inspect" in args and "{{json .Config.Env}}" in args:
             return 0, json.dumps(["PATH=/usr/bin", "SUNNYCLOUD_JOB_LEASE=6s", "SUNNYCLOUD_WORKER_STATUS_INTERVAL=1s",
                                   "SUNNYCLOUD_WORKER_API_TOKEN=must-never-be-returned"]) + "\n", ""
@@ -308,6 +321,64 @@ class WorkerActionsTest(unittest.TestCase):
         self.assertEqual(facts["secrets"], ["worker_api_token"])
         self.assertEqual(facts["mounts"], ["/run/decoder-interactive", "/run/secrets/worker_api_token"])
         self.assertEqual(facts["media_tools"], ["opt/media/bin/ffmpeg"])
+        self.assertEqual(facts["volumes"], ["sock_interactive"])
+        self.assertEqual((facts["cap_add"], facts["cap_drop"], facts["privileged"]), ([], ["ALL"], False))
+        self.assertEqual((facts["networks"], facts["docker_socket"]), (["backend"], False))
+
+    def test_inspect_container_sees_a_docker_socket_by_its_source_or_destination(self):
+        # Arrange
+        mounts = [{"Type": "bind", "Source": "/var/run/docker.sock", "Destination": "/sock"}]
+        original = self.docker.__call__
+
+        def with_socket(args):
+            if "inspect" in args and "{{json .Mounts}}" in args:
+                return 0, json.dumps(mounts) + "\n", ""
+            return original(args)
+        actions = ctl_actions.Actions("proj", ["/x/compose.test.yml"], self.tmp.name, run=with_socket,
+                                      request=self.fake_request, sleep=lambda _: None)
+
+        # Act
+        facts = actions.inspect({"container": "worker"})
+
+        # Assert
+        self.assertTrue(facts["docker_socket"])
+
+    def test_db_login_tries_each_role_from_the_workers_network_namespace_with_no_password(self):
+        # Arrange
+        self.docker.logins["postgres"] = (0, "1\n", "")
+        self.docker.logins["no_such_role"] = (2, "", "psql: error: could not translate host name \"db\"\n")
+
+        # Act
+        roles = self.actions.inspect({"db_login": "worker"})["roles"]
+
+        # Assert
+        runs = [call for call in self.docker.calls if call[:2] == ["docker", "run"]]
+        self.assertEqual([call[-1] for call in runs], ["sunnycloud", "sunnycloud_migrator", "postgres", "no_such_role"])
+        self.assertTrue(all(call[call.index("--network") + 1] == "container:container-1" for call in runs))
+        self.assertTrue(all("PGPASSWORD=" in call and "-w" in call for call in runs))
+        self.assertEqual({role: r["result"] for role, r in roles.items()},
+                         {"sunnycloud": "refused", "sunnycloud_migrator": "refused", "postgres": "connected",
+                          "no_such_role": "unreachable"})
+
+    def test_db_login_refuses_a_service_it_does_not_list_without_a_command(self):
+        # Act
+        with self.assertRaises(ctl_actions.ActionError) as raised:
+            self.actions.inspect({"db_login": "api"})
+
+        # Assert
+        self.assertEqual(raised.exception.status, 400)
+        self.assertEqual(self.docker.calls, [])
+
+    def test_drop_old_keeps_the_retired_token_for_the_secret_scan_and_never_returns_it(self):
+        # Act
+        result = self.actions.process_kill({"service": "api", "op": "restart", "worker_token": "drop-old"})
+        needles = self.actions.worker_token_needles()
+
+        # Assert
+        self.assertEqual(needles["worker_token_retired_0"], OLD_TOKEN)
+        self.assertEqual(needles["worker_token"], self.token("worker_api_token"))
+        self.assertNotIn("worker_token_next", needles)
+        self.assertNotIn(OLD_TOKEN, json.dumps(result))
 
     def test_inspect_container_refuses_a_service_it_does_not_list(self):
         # Act

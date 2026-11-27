@@ -132,13 +132,16 @@ start waits for a healthy database), `interrupted-upgrade` (`op` `revert` with `
 own `migrate`), `process-kill` (`kill` or `start` of the api, the worker or a decoder, whose runner is the container's main process;
 `pause` or `unpause` of a decoder; `fake` or `real` of a decoder (h2: FD in its place, or the decoder back); `stop` of the worker (SIGTERM, then its exit code and how long it took); `restart` of the api, waiting for it to be healthy, with `worker_token: "next"` (a second
 accepted token in `worker_api_token_next`) or `"drop-old"` (the next or a fresh token becomes the only one: a worker still
-holding the old one gets 403 until it restarts); the secret files are rewritten in place and no token is returned),
+holding the old one gets 403 until it restarts; the old token is kept in ctl's own `worker_api_token_retired` for the
+secret scan); the secret files are rewritten in place and no token is returned),
 `inspect` (a container's state, start time and restart count, its log tail, a decoder's processes listed by `docker top`,
 the timing settings the api or the worker was started with, the top-level names in a decoder scratch volume, a secret
-scan that returns only counts, or the api role's DDL rights and whether it holds a migrator secret), `db-probe` (fixed
+scan that returns only counts (the given tokens, the master key and the run's worker tokens, retired ones included), a
+database login tried for each role from the worker's network namespace (`db_login`), or the api role's DDL rights and
+whether it holds a migrator secret), `db-probe` (fixed
 queries, among them the media jobs and derived rows), `db-restore` (the golden snapshot, or a named `pg_dump` and its
 load), `exec-operator` (an operator command in the api container, in a one-off api container while `serve` is down, or
-`migrate ...` in a one-off `migrate` container; optionally sampling the api's listening sockets while it runs), `scratch-fill` (leftover job trees in a decoder scratch volume), and the worker suite's input faults in `ctl_worker.py`: `bit-flip` (one bit of a blob's first chunk), `job-row-edit` (one bit of a queued job's `content_hash`) `worker-variant` (the worker recreated with a file of `tests/h2-variants/`, or as the stack defines it) and `cpu-limit` (a decoder's CPU quota, with the one it had in the answer). `inspect` also lists a container's environment names, secrets, mounts and media tools, and filters a log to the lines holding a text (`lines_with`). The audit line names the action and status, never the body.
+`migrate ...` in a one-off `migrate` container; optionally sampling the api's listening sockets while it runs), `scratch-fill` (leftover job trees in a decoder scratch volume), and the worker suite's input faults in `ctl_worker.py`: `bit-flip` (one bit of a blob's first chunk), `job-row-edit` (one bit of a queued job's `content_hash`) `worker-variant` (the worker recreated with a file of `tests/h2-variants/`, or as the stack defines it) and `cpu-limit` (a decoder's CPU quota, with the one it had in the answer). `inspect` also lists a container's environment names, secrets, mounts, volumes, networks, capabilities, Docker socket and media tools, and filters a log to the lines holding a text (`lines_with`). The audit line names the action and status, never the body.
 Typed JSON errors `{"error": {"code", "message", "action"}}`: `not_implemented` (501) for every other action in `actions.json`,
 `unauthorized` (401) without or with a wrong token, `unknown_action` / `not_found` (404), `method_not_allowed` (405). The
 audit line is written before the response. A wildcard bind address is refused.

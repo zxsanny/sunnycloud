@@ -3,11 +3,31 @@
 use std::fs::{self, File};
 use std::io;
 use std::os::unix::fs::symlink;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use rustix::fs::{CWD, FileType, Mode, mknodat};
+use rustix::fs::{CWD, FileType, Mode, RenameFlags, mknodat, renameat_with};
 
 use crate::script::Output;
+
+/// The name beside `out/result.<ext>` under which a `swap` output's symlink waits for its first exchange.
+const SWAP_PARTNER: &str = ".swap";
+
+pub(crate) fn swap_partner(path: &Path) -> PathBuf {
+    path.with_file_name(SWAP_PARTNER)
+}
+
+/// Exchanges `path` with its swap partner `times` times (`renameat2(RENAME_EXCHANGE)`, atomic: the name always
+/// holds one of the two files), stopping at the first error, which is how the supervisor clearing `out/` ends the
+/// race. No entry is created or removed. Returns the exchanges made and the error that stopped them.
+pub(crate) fn swap(path: &Path, times: u32) -> (u32, Option<io::Error>) {
+    let partner = swap_partner(path);
+    for done in 0..times {
+        if let Err(errno) = renameat_with(CWD, path, CWD, &partner, RenameFlags::EXCHANGE) {
+            return (done, Some(errno.into()));
+        }
+    }
+    (times, None)
+}
 
 /// Puts `output` at `path` (`content` is the body of a regular file) and returns the `bytes` the answer reports:
 /// the size of the regular file behind it, else [`Output::reported_bytes`].
@@ -45,6 +65,11 @@ pub(crate) fn plant(
         }
         Output::Directory => {
             fs::create_dir(path)?;
+            Ok(output.reported_bytes())
+        }
+        Output::Swap { target, bytes, .. } => {
+            fs::write(path, bytes)?;
+            symlink(target, swap_partner(path))?;
             Ok(output.reported_bytes())
         }
     }
@@ -213,5 +238,74 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(fs::read(job.result()).expect("readable"), b"earlier");
+    }
+
+    fn swap_output(times: u32) -> Output {
+        Output::Swap {
+            target: PathBuf::from("/run/secrets/worker_api_token"),
+            bytes: b"RIFFwebp".to_vec(),
+            times,
+        }
+    }
+
+    #[test]
+    fn swap_output_plants_the_regular_file_and_a_symlink_beside_it() {
+        // Arrange
+        let job = Job::new();
+
+        // Act
+        let bytes = job.plant(&swap_output(2));
+
+        // Assert
+        assert_eq!(fs::read(job.result()).expect("readable"), b"RIFFwebp");
+        assert_eq!(
+            fs::read_link(swap_partner(&job.result())).expect("a link"),
+            PathBuf::from("/run/secrets/worker_api_token")
+        );
+        assert_eq!(bytes, 8);
+    }
+
+    #[test]
+    fn an_odd_number_of_swaps_leaves_the_symlink_at_the_result_name_and_nothing_else_in_out() {
+        // Arrange
+        let job = Job::new();
+        job.plant(&swap_output(3));
+
+        // Act
+        let (done, error) = swap(&job.result(), 3);
+
+        // Assert
+        assert_eq!((done, error.map(|e| e.kind())), (3, None));
+        assert!(
+            fs::symlink_metadata(job.result())
+                .expect("planted")
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::read(swap_partner(&job.result())).expect("the regular file"),
+            b"RIFFwebp"
+        );
+        assert_eq!(
+            fs::read_dir(job.dir.path().join("out"))
+                .expect("out/")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn swapping_stops_at_the_first_error_when_out_was_cleared() {
+        // Arrange
+        let job = Job::new();
+        job.plant(&swap_output(10));
+        fs::remove_file(job.result()).expect("the supervisor's clear_out");
+
+        // Act
+        let (done, error) = swap(&job.result(), 10);
+
+        // Assert
+        assert_eq!(done, 0);
+        assert_eq!(error.map(|e| e.kind()), Some(io::ErrorKind::NotFound));
     }
 }

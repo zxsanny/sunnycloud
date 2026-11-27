@@ -118,6 +118,15 @@ fn parse_every_output_kind_gives_the_file_fd_plants() {
             Output::Sparse { bytes: 1 << 30 },
         ),
         (json!("directory"), Output::Directory),
+        (
+            json!({"swap": {"target": "/run/secrets/worker_api_token",
+                            "bytes": {"chunks": [{"text": "RIFF"}]}, "times": 10_000}}),
+            Output::Swap {
+                target: PathBuf::from("/run/secrets/worker_api_token"),
+                bytes: b"RIFF".to_vec(),
+                times: 10_000,
+            },
+        ),
     ];
     let answers: Vec<Value> = outputs
         .iter()
@@ -373,6 +382,24 @@ fn a_hard_link_to_a_path_instead_of_a_name_in_in_is_a_script_error() {
         assert!(
             matches!(result, Err(ScriptError::NotAFileName(_))),
             "{name:?}: {result:?}"
+        );
+    }
+}
+
+#[test]
+fn a_swap_of_zero_or_too_many_exchanges_is_a_script_error() {
+    for times in [0u32, 1_000_001] {
+        // Arrange
+        let answer = json!({"image": {"width": 1, "height": 1, "output": {"swap": {
+            "target": "/run/secrets/worker_api_token", "bytes": {"chunks": [{"text": "RIFF"}]}, "times": times}}}});
+
+        // Act
+        let result = render_queue(json!([answer]));
+
+        // Assert
+        assert!(
+            matches!(result, Err(ScriptError::SwapTimes(t)) if t == times),
+            "{times}: {result:?}"
         );
     }
 }

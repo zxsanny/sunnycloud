@@ -10,6 +10,18 @@
 **Epic**: AZ-3639 (E-20)
 **Ref**: E-20/c12
 
+## Split (2026-11-27)
+
+The stack has one supervisor pair and the consumer uploads one block of at most 2 MiB, so part of this task needs
+infrastructure that does not exist yet. This task keeps AC-4 (ST-09-1), AC-5 (ST-09-2), AC-6 (ST-09-3) and the first half
+of AC-7 (AT-09-1), which run on harness H2 as it is. The rest moved:
+
+- AZ-4391: a second supervisor pair on the stack; AC-2 (PT-09-2) and the second half of AC-7 (AT-09-2).
+- AZ-4392: the consumer's block upload, DS-25 and a supervisor resource sample; AC-1 (PT-09-1) and AC-3 (PT-09-3).
+
+The timing and resource bounds of PT-09-1..3 count only on REF-SRV/REF-CPU4 (`environment.md` § Where each tier runs);
+both split tasks record them `NOT-RUN(HW-REF)` elsewhere. AC-1, AC-2, AC-3 and AT-09-2 below are kept for reference.
+
 ## Dependencies
 
 ### Document Dependencies

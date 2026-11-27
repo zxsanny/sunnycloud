@@ -56,6 +56,10 @@ PROBES = {
                              "LEFT JOIN (SELECT decoder_ok::int AS ok, image_age_days AS age, "
                              "(extract(epoch FROM seen_at) * 1000)::bigint AS seen FROM worker_status "
                              "ORDER BY seen_at DESC LIMIT 1) w ON true"),
+    # `<worker id>:<image age days>:<decoder ok>` of every status report row, oldest first: the free text a supervisor
+    # sends in its status body, for ST-09-1's secret scan.
+    "worker_status_rows": (LIST, "SELECT coalesce(string_agg(worker_id || ':' || image_age_days || ':' || decoder_ok, ',' "
+                                 "ORDER BY seen_at), '') FROM worker_status"),
     # `<job id>:<lane>` of every job in creation order: the lane of each job FD saw (its record names jobs by id).
     "job_lanes": (LIST, "SELECT coalesce(string_agg(id::text || ':' || lane, ',' ORDER BY created_at), '') FROM jobs"),
     # `<job id>:<kind>:<status>:<attempts>:<last_error>:<blob id>` of every job in creation order (`last_error` and the

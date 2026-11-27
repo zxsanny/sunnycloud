@@ -99,6 +99,51 @@ async fn every_request_is_one_line_readable_while_fd_still_runs() {
 }
 
 #[tokio::test]
+async fn a_swap_output_is_answered_then_exchanged_and_the_exchanges_are_recorded() {
+    // Arrange
+    let paths = Paths::new();
+    let script = Script::parse(
+        r#"{"render_still": {"default": {"image": {"width": 1, "height": 1, "output": {"swap": {
+            "target": "/run/secrets/worker_api_token", "bytes": {"chunks": [{"text": "RIFF"}]},
+            "times": 10000}}}}}}"#,
+    )
+    .expect("parses");
+    let _decoder = FakeDecoder::serve(Config {
+        script,
+        record: Some(paths.record()),
+        ..Config::new(&paths.socket())
+    })
+    .expect("FD binds");
+    let job = JobDir::new("0193b2a4-swap");
+    let mut client = Client::connect(&paths.socket()).await;
+
+    // Act
+    client.send(render(&job, 320)).await;
+    let reply = client.reply().await;
+    wait_until("the swap_end line", || {
+        kinds(&record_lines(&paths.record())).contains(&"swap_end".to_owned())
+    })
+    .await;
+
+    // Assert
+    assert!(reply.is_some(), "FD answered before the exchanges");
+    let lines = record_lines(&paths.record());
+    let end = lines
+        .iter()
+        .find(|line| line["kind"] == "swap_end")
+        .expect("swap_end");
+    assert_eq!(end["detail"], "exchanged 10000 of 10000");
+    assert_eq!(
+        fs::read(job.out("result.webp")).expect("the regular file"),
+        b"RIFF"
+    );
+    assert_eq!(
+        fs::read_link(job.out(".swap")).expect("the symlink"),
+        PathBuf::from("/run/secrets/worker_api_token")
+    );
+}
+
+#[tokio::test]
 async fn an_existing_record_file_is_appended_to_not_truncated() {
     // Arrange
     let paths = Paths::new();

@@ -299,6 +299,8 @@ class Actions(WorkerSuiteActions):
         start time). `{"scratch": "interactive"|"general"}`: the top-level names in that decoder scratch volume, listed
         by a throwaway container with the volume read-only (the isolation check of AC-71: nothing left after a job).
         `{"processes": <decoder>}`: the decoder container's processes; `{"settings": "api"|"worker"}`: its timing settings.
+        `{"container": "worker"}`: what the container holds (`container_facts`); `{"db_login": "worker"}`: a database
+        login tried from its network position (`db_login`).
         `{"logs", "lines_with"}`: the log tail of the lines holding that text only (the whole log is filtered first)."""
         if params.get("secret_scan") is not None:
             return self.secret_scan(params["secret_scan"])
@@ -308,6 +310,8 @@ class Actions(WorkerSuiteActions):
             return self.timing_settings(params["settings"])
         if params.get("container") is not None:
             return self.container_facts(params["container"])
+        if params.get("db_login") is not None:
+            return self.db_login(params["db_login"])
         if params.get("logs") is not None:
             needle = params.get("lines_with")
             if params["logs"] not in INSPECTABLE or not (needle is None or isinstance(needle, str) and needle):
@@ -416,10 +420,10 @@ class Actions(WorkerSuiteActions):
         return (self.secrets_dir / name).read_text(encoding="utf-8").strip()
 
     def secret_scan(self, params):
-        """How often each given token (and the master key, as hex, base64 and raw text) occurs in the logs of every
-        container of the stack, in the text of every audit row, in the host's `ps` output and in `outputs` (the stdout
-        and stderr the consumer was shown, so the key, which the consumer never holds, is looked for there too). Only counts come back:
-        a needle is never echoed, and the ctl audit line holds no body."""
+        """How often each given token (and the master key, as hex, base64 and raw text, and the worker tokens of the run,
+        `worker_token_needles`) occurs in the logs of every container of the stack, in the text of every audit row, in
+        the host's `ps` output and in `outputs` (the text the consumer was shown, so a secret the consumer never holds
+        is looked for there too). Only counts come back: a needle is never echoed, and the ctl audit line holds no body."""
         tokens = params.get("tokens") if isinstance(params, dict) else None
         if not isinstance(tokens, list) or not all(isinstance(t, str) and len(t) >= TOKEN_MIN_LENGTH for t in tokens):
             raise ActionError(400, "bad_request", f"tokens is a list of texts of at least {TOKEN_MIN_LENGTH} characters")
@@ -427,6 +431,7 @@ class Actions(WorkerSuiteActions):
         needles = {f"token_{i}": t for i, t in enumerate(tokens)}
         needles.update({"master_key_hex": key.hex(), "master_key_base64": base64.b64encode(key).decode(),
                         "master_key_base64url": base64.urlsafe_b64encode(key).decode().rstrip("=")})
+        needles.update(self.worker_token_needles())
         outputs = params.get("outputs", "")
         if not isinstance(outputs, str):
             raise ActionError(400, "bad_request", "outputs is the text of what the consumer was shown")

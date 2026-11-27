@@ -123,14 +123,27 @@ pub enum Output {
         bytes: u64,
     },
     Directory,
+    /// A regular file of these bytes (chunk form) at the result name and a symlink to `target` beside it; once the
+    /// answer is sent, FD exchanges the two names `times` times, so a reader racing the name meets either (ST-09-3).
+    Swap {
+        target: PathBuf,
+        #[serde(deserialize_with = "garbage")]
+        bytes: Vec<u8>,
+        times: u32,
+    },
 }
+
+/// The most exchanges one `swap` output may ask for.
+pub const MAX_SWAPS: u32 = 1_000_000;
 
 impl Output {
     /// The `bytes` the answer reports when the size is not known before the file is planted.
     pub(crate) fn reported_bytes(&self) -> u64 {
         match self {
             Output::Sparse { bytes } => (*bytes).max(1),
-            Output::Bytes(bytes) => u64::try_from(bytes.len()).unwrap_or(u64::MAX).max(1),
+            Output::Bytes(bytes) | Output::Swap { bytes, .. } => {
+                u64::try_from(bytes.len()).unwrap_or(u64::MAX).max(1)
+            }
             _ => 1,
         }
     }
@@ -218,6 +231,8 @@ pub enum ScriptError {
     ZeroInterval(&'static str),
     #[error("hard_link.in_file must be a plain file name, not {0:?}")]
     NotAFileName(String),
+    #[error("swap.times must be 1 to {MAX_SWAPS}, not {0}")]
+    SwapTimes(u32),
 }
 
 impl Script {
@@ -265,6 +280,11 @@ fn check_output(output: &Output) -> Result<(), ScriptError> {
         && (in_file.is_empty() || in_file.contains('/') || in_file == "." || in_file == "..")
     {
         return Err(ScriptError::NotAFileName(in_file.clone()));
+    }
+    if let Output::Swap { times, .. } = output
+        && !(1..=MAX_SWAPS).contains(times)
+    {
+        return Err(ScriptError::SwapTimes(*times));
     }
     Ok(())
 }

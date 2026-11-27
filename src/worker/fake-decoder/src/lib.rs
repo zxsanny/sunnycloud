@@ -60,8 +60,12 @@
 //! as a derived file by accident), `{"bytes": {"chunks": [C...]}}` (a regular file of exactly those bytes, for a
 //! control case that needs a postable output), `"absent"` (nothing), `{"symlink": {"target": "/path"}}`,
 //! `{"hard_link": {"in_file": "source"}}` (a link to that file in the job's `in/`, `st_nlink` 2), `"fifo"`,
-//! `{"sparse": {"bytes": N}}` (a sparse file of apparent size N) or `"directory"`. The `bytes` an answer reports is
-//! the size of the regular file behind the output, the apparent size of a sparse one, and 1 otherwise. An answer
+//! `{"sparse": {"bytes": N}}` (a sparse file of apparent size N), `"directory"` or
+//! `{"swap": {"target": "/path", "bytes": {"chunks": [C...]}, "times": N}}` (ST-09-3: a regular file of those bytes
+//! and a symlink to the target beside it, `out/.swap`; after the answer is sent and before the next request is
+//! answered, FD exchanges the two names N times with `renameat2(RENAME_EXCHANGE)`, 1 to 1,000,000, stopping at the first
+//! error, such as the supervisor clearing `out/`). The `bytes` an answer reports is the size of the regular file
+//! behind the output, the apparent size of a sparse one, and 1 otherwise. An answer
 //! FD could not send under the protocol's range table (a width of 0, say) is a script error: out-of-range values
 //! go in a garbage frame.
 //!
@@ -83,7 +87,8 @@
 //! `in/source` then: `{"bytes", "mode", "gid", "hash"}` (permission bits, group, and the file hash in hex, BLAKE3
 //! per 2 MiB block rolled up). FD's own events carry a `detail` text instead of `fields`: `invalid` (the client sent
 //! a frame the protocol refuses; the connection closes), `fd_error` (FD could not plant an output; the connection
-//! closes without an answer, so a case must check that none occurred), `input_unreadable` (a job request whose
+//! closes without an answer, so a case must check that none occurred), `swap_end` (`exchanged D of N`, then the
+//! error when one stopped the exchanges early), `input_unreadable` (a job request whose
 //! `in/source` FD could not read; that job line has no `input`), `out_unreadable` (its `out/` could not be listed;
 //! the line says 0 entries), `outage_start` and `outage_end` (`conn` 0).
 

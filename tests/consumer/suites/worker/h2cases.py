@@ -117,6 +117,7 @@ def readiness_item(ctl, name):
 
 # The worker input route as the api logs it: one "request answered" line, with this template, per non-2xx answer.
 INPUT_ROUTE = "/api/v1/worker-jobs/{job_id}/input"
+OUTPUT_ROUTE = "/api/v1/worker-jobs/{job_id}/outputs/{kind}"
 
 
 def job_rows(ctl):
@@ -134,6 +135,18 @@ def job_rows(ctl):
 def new_rows(ctl, before):
     """The rows of the jobs that are not in `before` (a `job_rows` of earlier), in creation order."""
     return {job: row for job, row in job_rows(ctl).items() if job not in before}
+
+
+def closed_rows(ctl, before, jobs, seconds=JOBS_SECONDS):
+    """The rows of the jobs not in `before` once `jobs` of them exist and none is queued or running (or what is there
+    after `seconds`)."""
+    deadline = time.monotonic() + seconds
+    while True:
+        rows = new_rows(ctl, before)
+        done = len(rows) >= jobs and all(r["status"] in ("succeeded", "dead") for r in rows.values())
+        if done or time.monotonic() > deadline:
+            return rows
+        time.sleep(POLL_SECONDS)
 
 
 def wait_for_row(ctl, wanted, seconds=JOBS_SECONDS):

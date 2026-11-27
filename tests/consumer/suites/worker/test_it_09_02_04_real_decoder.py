@@ -10,12 +10,10 @@ gives ffmpeg's own packet SHA-256), as the consumer image carries no media tools
 import pytest
 
 import mediakit
-import time
-
-from h2cases import INPUT_ROUTE, PHOTO, POLL_SECONDS, api_requests, derived_order, job_rows, new_rows, worker_jobs_total
+from h2cases import (INPUT_ROUTE, OUTPUT_ROUTE, PHOTO, api_requests, closed_rows, derived_order, job_rows,
+                     worker_jobs_total)
 from jobkit import JOBS_DONE_SECONDS
 
-OUTPUT_ROUTE = "/api/v1/worker-jobs/{job_id}/outputs/{kind}"
 COMPLIANT = ("clip-compliant-front.mp4", "clip-compliant-portrait.mp4")
 INDEX_AT_THE_END = "clip-compliant-end.mp4"
 
@@ -30,15 +28,7 @@ def posts(ctl):
 
 
 def closed(ctl, rows_before, jobs):
-    """The rows of the file's jobs once `jobs` of them exist and none is queued or running (or what is there after
-    `JOBS_DONE_SECONDS`)."""
-    deadline = time.monotonic() + JOBS_DONE_SECONDS
-    while True:
-        rows = new_rows(ctl, rows_before)
-        done = len(rows) >= jobs and all(r["status"] in ("succeeded", "dead") for r in rows.values())
-        if done or time.monotonic() > deadline:
-            return rows
-        time.sleep(POLL_SECONDS)
+    return closed_rows(ctl, rows_before, jobs, JOBS_DONE_SECONDS)
 
 
 def test_it_09_2_a_photo_job_fetches_its_input_once_and_posts_the_preview_then_the_thumbnail(stack_ctl, media):

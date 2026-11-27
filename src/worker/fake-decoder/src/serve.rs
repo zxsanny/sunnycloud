@@ -1,8 +1,9 @@
 //! One connection: requests are read and recorded as they arrive, and answered from the script, so a `cancel` is
 //! seen while a job request is being answered.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use media_shared::decoder_protocol::{
@@ -17,7 +18,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::time::{Interval, MissedTickBehavior};
 
 use crate::decoder::Shared;
-use crate::output::plant;
+use crate::output::{plant, swap};
 use crate::script::{Answer, Output};
 
 /// The shortest `Alive` interval; a zero interval would be a busy loop.
@@ -113,6 +114,7 @@ async fn answer_loop(
     mut write: OwnedWriteHalf,
 ) {
     while let Some(request) = requests.recv().await {
+        let mut pending = None;
         let response = match &request {
             Request::Hello { .. } => Response::Capabilities(shared.state().script.hello.clone()),
             Request::SelfCheck { .. } => {
@@ -127,15 +129,21 @@ async fn answer_loop(
                     shared,
                     request: &request,
                     job_dir,
+                    swap: Mutex::new(None),
                 };
-                match job.run(&mut requests, &mut write).await {
+                let response = match job.run(&mut requests, &mut write).await {
                     Some(response) => response,
                     None => return,
-                }
+                };
+                pending = job.take_swap();
+                response
             }
         };
         if !send(&mut write, &Message::Response(response)).await {
             return;
+        }
+        if let Some(swap) = pending {
+            swap.play(conn, shared).await;
         }
         if matches!(request, Request::SelfCheck { .. }) {
             shared.self_check_answered();
@@ -197,9 +205,39 @@ struct Job<'a> {
     shared: &'a Shared,
     request: &'a Request,
     job_dir: &'a str,
+    /// The exchanges a `swap` output asks for, set when it is planted and played once the answer is sent.
+    swap: Mutex<Option<PendingSwap>>,
+}
+
+/// The name race of a `swap` output (ST-09-3). It runs after the answer is sent, while the supervisor opens and reads
+/// the output, and before FD answers the next request, so it never meets the next output of the connection.
+struct PendingSwap {
+    path: PathBuf,
+    times: u32,
+}
+
+impl PendingSwap {
+    /// Records `swap_end` with the exchanges made, and the error that stopped them early.
+    async fn play(self, conn: u64, shared: &Shared) {
+        let times = self.times;
+        let detail = match tokio::task::spawn_blocking(move || swap(&self.path, times)).await {
+            Ok((done, None)) => format!("exchanged {done} of {times}"),
+            Ok((done, Some(error))) => format!("exchanged {done} of {times}: {error}"),
+            Err(error) => format!("exchanged ? of {times}: the swap task failed: {error}"),
+        };
+        shared.recorder.event(conn, "swap_end", &detail);
+    }
 }
 
 impl Job<'_> {
+    /// The slot only ever holds an `Option`, so a lock poisoned by a panic elsewhere still holds a usable value.
+    fn take_swap(&self) -> Option<PendingSwap> {
+        self.swap
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+    }
+
     /// `None` closes the connection without an answer.
     async fn run(&self, requests: &mut Requests, write: &mut OwnedWriteHalf) -> Option<Response> {
         let (answer, delay) = {
@@ -336,6 +374,15 @@ impl Job<'_> {
         cancel
     }
 
+    fn note_swap(&self, path: &Path, output: &Output) {
+        if let Output::Swap { times, .. } = output {
+            *self.swap.lock().unwrap_or_else(PoisonError::into_inner) = Some(PendingSwap {
+                path: path.to_owned(),
+                times: *times,
+            });
+        }
+    }
+
     /// Plants the output of an image or transcode answer. A file FD cannot plant is a broken harness, not a
     /// scripted fault: it is logged, recorded as `fd_error`, and the connection closes without an answer.
     fn respond(&self, ready: Ready) -> Option<Response> {
@@ -354,6 +401,7 @@ impl Job<'_> {
                     _ => "webp".to_owned(),
                 };
                 let path = out.join("result.webp");
+                self.note_swap(&path, &output);
                 let planted = plant(&path, &output, content.as_bytes(), &in_dir).map(|bytes| {
                     Response::ImageResult(ImageResult {
                         width,
@@ -368,6 +416,7 @@ impl Job<'_> {
                 output,
             } => {
                 let path = out.join("result.mp4");
+                self.note_swap(&path, &output);
                 let planted = plant(&path, &output, b"mp4 output", &in_dir).map(|bytes| {
                     Response::TranscodeResult(TranscodeResult {
                         probe_of_output,

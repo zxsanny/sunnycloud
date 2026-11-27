@@ -217,11 +217,34 @@ class ActionsTest(unittest.TestCase):
         counts = result["counts"]
         self.assertEqual((counts["logs"]["token_0"], counts["audit"]["token_0"], counts["ps"]["token_0"]), (1, 1, 0))
         self.assertEqual(counts["logs"]["master_key_hex"], 1)
+        self.assertEqual(counts["logs"]["worker_token"], 0)
         self.assertNotIn(token, json.dumps(result))
         self.assertNotIn(key.hex(), json.dumps(result))
         self.assertEqual(short.exception.status, 400)
         logs_call = next(call for call in self.docker.calls if "logs" in call)
         self.assertNotIn("consumer", logs_call)
+
+    def test_secret_scan_counts_a_retired_worker_token_in_the_logs_and_never_returns_it(self):
+        # Arrange
+        (Path(self.tmp.name) / "master_key").write_bytes(bytes(32))
+        retired = "f" * 48
+        (Path(self.tmp.name) / "worker_api_token_retired").write_text(retired + "\n", encoding="utf-8")
+
+        def runner(args):
+            if "ps" in args and "-q" in args:
+                return 0, "container-1\n", ""
+            if "logs" in args:
+                return 0, f"refused bearer {retired}\n", ""
+            return 0, "", ""
+        actions = ctl_actions.Actions("proj", "/x/compose.yml", self.tmp.name, run=runner)
+
+        # Act
+        result = actions.inspect({"secret_scan": {"tokens": []}})
+
+        # Assert
+        self.assertEqual(result["counts"]["logs"]["worker_token_retired_0"], 1)
+        self.assertEqual(result["counts"]["audit"]["worker_token_retired_0"], 0)
+        self.assertNotIn(retired, json.dumps(result))
 
     def test_db_role_check_feeds_the_url_on_stdin_and_reports_the_sqlstate(self):
         # Arrange

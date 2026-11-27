@@ -130,7 +130,8 @@ class Ctl:
         return self.call("scratch-fill", lane=lane, trees=trees)
 
     def container_facts(self, service="worker"):
-        """`{"env_names", "secrets", "mounts", "media_tools"}` of a container (names only, never a value)."""
+        """`{"env_names", "secrets", "mounts", "media_tools", "volumes", "docker_socket", "cap_add", "cap_drop",
+        "privileged", "networks"}` of a container (names only, never a value)."""
         if service != "worker":
             raise ValueError(f"service is worker, not {service!r}")
         return self.call("inspect", container=service)
