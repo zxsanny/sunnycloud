@@ -8,7 +8,8 @@ import time
 import pytest
 
 from e2e_report import skip_not_run
-from h2cases import PHOTO, photo_probe, postable_image, postable_transcode, requests_of, run_file, video_probe
+from h2cases import PHOTO, job_rows, new_rows, postable_image, postable_transcode, requests_of, run_file, \
+    video_probe, wait_for_row
 
 RETRY_SECONDS = 60
 POLL_SECONDS = 0.25
@@ -39,7 +40,7 @@ def test_it_09_6_a_stalled_transcode_is_rerun_once_on_the_cpu_into_an_empty_out_
     # Assert
     calls = transcodes(record)
     assert len(calls) == 2, record
-    assert calls[1]["out_entries"] == 0
+    assert calls[1]["out_entries"] == 0 and not requests_of(record, "out_unreadable"), record
     assert calls[1]["fields"]["plan"]["transcode"]["encoder"] == "cpu"
     assert after["derived"] - before["derived"] == 2, (before, after)
 
@@ -74,18 +75,25 @@ def test_it_09_6_d_a_failed_remux_is_rerun_as_a_cpu_transcode(media, lanes):
 @pytest.mark.parametrize("answer", ["unsupported", "corrupt", {"limit_exceeded": {"limit": "wall"}}],
                          ids=["e-unsupported", "f-corrupt", "g-limit-exceeded"])
 def test_it_09_6_e_to_g_a_final_decoder_answer_kills_the_job_at_its_first_attempt(stack_ctl, media, lanes, answer):
+    # Arrange
+    rows_before = job_rows(stack_ctl)
+
     # Act
     name = f"it-09-6-{answer if isinstance(answer, str) else 'limit'}"
-    _, record, before, after = run_file(media, lanes, name, photo_script({"error": answer}), fixture=PHOTO, ended=1)
-    attempts = stack_ctl.call("db-probe", query="job_attempts")
+    fd, _, _, _ = run_file(media, lanes, name, photo_script({"error": answer}), fixture=PHOTO,
+                           wanted=lambda before, after: True)
+    wait_for_row(stack_ctl, lambda job, row: job not in rows_before and row["status"] in ("dead", "succeeded"))
+    rows = list(new_rows(stack_ctl, rows_before).values())
 
     # Assert
-    assert len(requests_of(record, "probe")) == 1, record
-    assert after["dead"] - before["dead"] == 1, (before, after)
-    assert attempts["most"] == 1, attempts
+    assert len(requests_of(fd.record(), "probe")) == 1, fd.record()
+    assert [(row["status"], row["attempts"]) for row in rows] == [("dead", 1)], rows
 
 
 def test_it_09_6_h_a_socket_closed_mid_job_fails_retry_and_the_job_comes_back_after_its_backoff(stack_ctl, media, lanes):
+    # Arrange
+    rows_before = job_rows(stack_ctl)
+
     # Act: every probe of the photo hangs up, so every attempt ends with a transient failure.
     fd, _, _, _ = run_file(media, lanes, "it-09-6-h", photo_script("hang"), fixture=PHOTO,
                            wanted=lambda before, after: True)
@@ -93,11 +101,11 @@ def test_it_09_6_h_a_socket_closed_mid_job_fails_retry_and_the_job_comes_back_af
     while len(requests_of(fd.record(), "probe")) < 2 and time.monotonic() < deadline:
         time.sleep(POLL_SECONDS)
     probes = requests_of(fd.record(), "probe")
-    attempts = stack_ctl.call("db-probe", query="job_attempts")
+    rows = new_rows(stack_ctl, rows_before)
 
     # Assert
     assert len(probes) >= 2, fd.record()
     assert probes[1]["at_ms"] - probes[0]["at_ms"] >= 1000, probes
     assert probes[1]["job"] == probes[0]["job"] and probes[1]["conn"] != probes[0]["conn"], probes
-    assert attempts["most"] >= 2, attempts
+    assert rows.get(probes[0]["job"], {}).get("attempts", 0) >= 2, rows
 

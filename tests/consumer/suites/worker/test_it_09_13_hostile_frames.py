@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from h2cases import PHOTO, requests_of, run_file
+from h2cases import PHOTO, job_rows, requests_of, run_file, wait_for_row
 
 EVENT_SECONDS = 20
 POLL_SECONDS = 0.25
@@ -53,10 +53,11 @@ FRAMES = {
 def test_it_09_13_a_hostile_frame_fails_the_job_transiently_and_the_slot_is_gated_again(stack_ctl, media, lanes, case):
     # Arrange
     script = {"probe": {"default": {"garbage": {"framed": False, "chunks": [{"hex": FRAMES[case].hex()}]}}}}
+    rows_before = job_rows(stack_ctl)
 
     # Act
-    fd, _, before, _ = run_file(media, lanes, f"it-09-13-{case}", script, fixture=PHOTO,
-                                wanted=lambda before, after: True)
+    fd, _, _, _ = run_file(media, lanes, f"it-09-13-{case}", script, fixture=PHOTO,
+                           wanted=lambda before, after: True)
     started = stack_ctl.call("inspect", service="worker")["started_at"]
     rss_before = stack_ctl.worker_metrics()[RSS]
     deadline = time.monotonic() + EVENT_SECONDS
@@ -66,7 +67,7 @@ def test_it_09_13_a_hostile_frame_fails_the_job_transiently_and_the_slot_is_gate
         if probes and [line["kind"] for line in record if line["conn"] > probes[0]["conn"]][:2] == ["hello", "self_check"]:
             break
         time.sleep(POLL_SECONDS)
-    after = media.jobs()
+    _, failed = wait_for_row(stack_ctl, lambda job, row: job not in rows_before and row["last_error"])
     rss_after = stack_ctl.worker_metrics()[RSS]
     worker = stack_ctl.call("inspect", service="worker")
 
@@ -74,6 +75,6 @@ def test_it_09_13_a_hostile_frame_fails_the_job_transiently_and_the_slot_is_gate
     probes = requests_of(record, "probe")
     reconnected = [line["kind"] for line in record if probes and line["conn"] > probes[0]["conn"]]
     assert probes and reconnected[:2] == ["hello", "self_check"], record
-    assert after["dead"] == before["dead"] and after["derived"] == before["derived"], (before, after)
+    assert failed and failed["status"] in ("queued", "running"), failed  # failed `Retry`: neither dead nor derived
     assert (worker["status"], worker["started_at"]) == ("running", started)
     assert rss_after - rss_before < MAX_GROWTH, (rss_before, rss_after)

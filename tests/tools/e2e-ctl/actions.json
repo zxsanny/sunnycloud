@@ -23,6 +23,8 @@
     "interrupted-upgrade",
     "daemon-suspend",
     "watch-limit",
-    "scratch-fill"
+    "scratch-fill",
+    "job-row-edit",
+    "worker-variant"
   ]
 }

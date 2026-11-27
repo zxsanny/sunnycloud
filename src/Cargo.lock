@@ -4200,6 +4200,7 @@ version = "0.1.0"
 dependencies = [
  "media-shared",
  "rustix 1.1.6",
+ "sc_ids",
  "serde",
  "serde_json",
  "tempfile",

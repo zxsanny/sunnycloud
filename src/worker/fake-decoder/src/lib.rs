@@ -73,20 +73,24 @@
 //! ```json
 //! {"at_ms":3,"conn":1,"kind":"hello","fields":{"protocol":2}}
 //! {"at_ms":4,"conn":1,"kind":"self_check","fields":{"forbidden_targets":["db:5432"]}}
-//! {"at_ms":40,"conn":1,"kind":"render_still","job":"0193b2a4-...","out_entries":0,"fields":{"job_dir":"/scratch/0193b2a4-...","max_edge":1440,"poster_at_ms":null,"params_version":1,"limits":{"cpu":2,"memory_bytes":2147483648,"wall":120000,"stall_timeout":90000,"max_output_bytes":33554432}}}
+//! {"at_ms":40,"conn":1,"kind":"render_still","job":"0193b2a4-...","out_entries":0,"input":{"bytes":219573,"mode":288,"gid":10003,"hash":"9f2c..."},"fields":{"job_dir":"/scratch/0193b2a4-...","max_edge":1440,"poster_at_ms":null,"params_version":1,"limits":{"cpu":2,"memory_bytes":2147483648,"wall":120000,"stall_timeout":90000,"max_output_bytes":33554432}}}
 //! {"at_ms":41,"conn":1,"kind":"cancel","fields":{}}
 //! ```
 //!
 //! `at_ms` is milliseconds since FD started; `conn` counts connections from 1 in accept order; `kind` is the
 //! protocol name of the request and `fields` its fields; a job request adds `job` (the last component of
-//! `job_dir`, the job id) and `out_entries` (entries in the job's `out/` when it arrived). FD's own events carry a
-//! `detail` text instead of `fields`: `invalid` (the client sent a frame the protocol refuses; the connection
-//! closes), `fd_error` (FD could not plant an output; the connection closes without an answer, so a case must
-//! check that none occurred), `outage_start` and `outage_end` (`conn` 0).
+//! `job_dir`, the job id), `out_entries` (entries in the job's `out/` when it arrived) and `input`, the facts of
+//! `in/source` then: `{"bytes", "mode", "gid", "hash"}` (permission bits, group, and the file hash in hex, BLAKE3
+//! per 2 MiB block rolled up). FD's own events carry a `detail` text instead of `fields`: `invalid` (the client sent
+//! a frame the protocol refuses; the connection closes), `fd_error` (FD could not plant an output; the connection
+//! closes without an answer, so a case must check that none occurred), `input_unreadable` (a job request whose
+//! `in/source` FD could not read; that job line has no `input`), `out_unreadable` (its `out/` could not be listed;
+//! the line says 0 entries), `outage_start` and `outage_end` (`conn` 0).
 
 mod decoder;
 mod forms;
 pub mod hostile;
+mod input;
 mod output;
 mod record;
 mod script;

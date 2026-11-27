@@ -52,6 +52,11 @@ PROBES = {
                               "ORDER BY seen_at DESC LIMIT 1), -1)"),
     # `<job id>:<lane>` of every job in creation order: the lane of each job FD saw (its record names jobs by id).
     "job_lanes": (LIST, "SELECT coalesce(string_agg(id::text || ':' || lane, ',' ORDER BY created_at), '') FROM jobs"),
+    # `<job id>:<kind>:<status>:<attempts>:<last_error>:<blob id>` of every job in creation order (`last_error` and the
+    # blob empty when there is none): the blob a job's input is read from, and how its last attempt ended.
+    "job_rows": (LIST, "SELECT coalesce(string_agg(j.id::text || ':' || j.kind || ':' || j.status || ':' || j.attempts || ':' || "
+                       "coalesce(j.last_error, '') || ':' || coalesce(r.blob_id::text, ''), ',' ORDER BY j.created_at), '') "
+                       "FROM jobs j LEFT JOIN revisions r ON r.id = j.revision_id"),
     # The lease expiry of the running job (epoch ms; -1 when none runs): each heartbeat moves it forward.
     "running_lease_ms": (("lease_ms",),
                          "SELECT coalesce((SELECT (extract(epoch FROM available_at) * 1000)::bigint FROM jobs "

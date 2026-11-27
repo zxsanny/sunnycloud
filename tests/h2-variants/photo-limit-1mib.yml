@@ -1,0 +1,7 @@
+# Worker variant `photo-limit-1mib` of harness H2 (IT-09-7 (b)): e2e-ctl `worker-variant` recreates the worker with this
+# file merged over the stack's compose files, for one case; `default` recreates it without. A photo input over 1 MiB is
+# then refused from its declared length.
+services:
+  worker:
+    environment:
+      SUNNYCLOUD_WORKER_MAX_INPUT_PHOTO: 1MiB

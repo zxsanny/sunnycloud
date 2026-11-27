@@ -31,8 +31,8 @@ tokio-util = { workspace = true }
 # Same spec as sc_observability: `Instrument` carries the request span across awaits.
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 uuid = { workspace = true }
-# The `Stream` trait of the test image's worker transfer hold (`test_hold`); already in the lock through `contracts`.
-# The worker hold's stream wrapper (`test_hold`, feature `test-clock` only).
+# The `Stream` trait of the worker hold's stream wrapper (`test_hold`, feature `test-clock` only); already in the lock
+# through `contracts`.
 futures-core = { version = "0.3", default-features = false, optional = true }
 
 [features]

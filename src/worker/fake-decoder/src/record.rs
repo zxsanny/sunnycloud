@@ -11,6 +11,8 @@ use media_shared::decoder_protocol::Request;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+use crate::input::{self, InputFacts};
+
 /// One received message.
 #[derive(Debug, Clone)]
 pub struct Record {
@@ -41,6 +43,8 @@ struct Line<'a> {
     job: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     out_entries: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input: Option<InputFacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fields: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -100,9 +104,8 @@ impl Recorder {
     pub(crate) fn request(&self, conn: u64, request: &Request) {
         let at = Instant::now();
         let dir = job_dir(request);
-        let out_entries = dir.map(|dir| {
-            fs::read_dir(Path::new(dir).join("out")).map_or(0, |entries| entries.count())
-        });
+        let out_entries = dir.map(|dir| self.out_entries(conn, dir));
+        let input = dir.and_then(|dir| self.input_facts(conn, dir));
         let (kind, fields) = kind_and_fields(request);
         self.write(&Line {
             at_ms: self.ms_since_start(at),
@@ -112,6 +115,7 @@ impl Recorder {
                 .and_then(|dir| Path::new(dir).file_name())
                 .and_then(|name| name.to_str()),
             out_entries,
+            input,
             fields: Some(fields),
             detail: None,
         });
@@ -131,9 +135,35 @@ impl Recorder {
             kind,
             job: None,
             out_entries: None,
+            input: None,
             fields: None,
             detail: Some(detail),
         });
+    }
+
+    /// Entries of `<job_dir>/out`. An `out/` FD cannot list counts 0, as for the in-process tests, and is an
+    /// `out_unreadable` event in the record file, so a case can tell it from an empty `out/`.
+    fn out_entries(&self, conn: u64, dir: &str) -> usize {
+        match fs::read_dir(Path::new(dir).join("out")) {
+            Ok(entries) => entries.count(),
+            Err(error) => {
+                self.event(conn, "out_unreadable", &error.to_string());
+                0
+            }
+        }
+    }
+
+    /// The facts of `<job_dir>/in/source` for the record file only (in-process tests read their own scratch).
+    /// A source FD cannot read is an `input_unreadable` event, and the job line has no `input`.
+    fn input_facts(&self, conn: u64, dir: &str) -> Option<InputFacts> {
+        self.file.as_ref()?;
+        match input::facts(&Path::new(dir).join("in").join("source")) {
+            Ok(facts) => Some(facts),
+            Err(error) => {
+                self.event(conn, "input_unreadable", &error.to_string());
+                None
+            }
+        }
     }
 
     fn write(&self, line: &Line<'_>) {

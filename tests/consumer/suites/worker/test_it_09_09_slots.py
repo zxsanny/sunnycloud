@@ -8,12 +8,11 @@ more queued jobs than `bulk_queue_threshold` (200) to make any job bulk; that ru
 import time
 
 import mediakit
-from fdkit import FAILED_SELF_CHECK, job_requests
-from h2cases import CLIP, PHOTO, postable_image, postable_transcode, terminal, video_probe
+from fdkit import job_requests
+from h2cases import CLIP, PHOTO, gate_out_both_lanes, postable_image, postable_transcode, terminal, video_probe
 
 CLIPS = 10
 PHOTOS = 20
-GATE_SECONDS = 30
 DRAIN_SECONDS = 180
 POLL_SECONDS = 0.5
 SLOW = {"probe": {"default": {"over_time": {"delay_ms": 300, "answer": {"probe": video_probe()}}}},
@@ -43,8 +42,7 @@ def interleaved(fd):
 
 def test_it_09_9_the_interactive_slot_takes_images_only_and_the_general_slot_serves_both_lanes(stack_ctl, media, lanes):
     # Arrange: the slots are gated out while the queue fills, then both FD pass the gate.
-    for lane in ("interactive", "general"):
-        lanes(lane, {"self_check": FAILED_SELF_CHECK}, restart_worker=lane == "general")
+    gate_out_both_lanes(stack_ctl, lanes)
     before = media.jobs()
     for n in range(CLIPS):
         media.commit(f"it-09-9-clip-{n}.mp4", mediakit.with_marker(media.fixture(CLIP), f"it-09-9-clip-{n}"))

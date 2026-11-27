@@ -16,6 +16,7 @@ answering `not_implemented` in `e2e_ctl.py`.
                          every SUT log, the audit rows and host `ps`) or the api's database role (DDL, migrator secret)
     interrupted-upgrade  revert the latest migrations, or apply the pending ones, with the product's own `migrate`
     scratch-fill         leftover job trees and a stray file in a decoder scratch volume, as a supervisor that died leaves them
+    bit-flip, job-row-edit, worker-variant   the input faults of the worker suite (`ctl_worker.py`)
 """
 import base64
 import http.client
@@ -162,13 +163,15 @@ class Actions(WorkerSuiteActions):
             "exec-operator": self.exec_operator,
             "interrupted-upgrade": self.interrupted_upgrade,
             "scratch-fill": self.scratch_fill,
-
+            "bit-flip": self.bit_flip,
+            "job-row-edit": self.job_row_edit,
+            "worker-variant": self.worker_variant,
         }
 
-    def _compose(self, *args):
+    def _compose(self, *args, extra_files=()):
         """Profile `fd` too: the fake decoder services of the h2 file are then known to `ps`, `logs` and `stop` (a stack
-        without them is unaffected; every command names its services)."""
-        files = [arg for name in self.compose_files for arg in ("-f", name)]
+        without them is unaffected; every command names its services). `extra_files` follow the stack's own."""
+        files = [arg for name in (*self.compose_files, *extra_files) for arg in ("-f", name)]
         return ["docker", "compose", "-p", self.project, *files, "--profile", "core", "--profile", "fd", *args]
 
     def _checked(self, args):
@@ -264,6 +267,8 @@ class Actions(WorkerSuiteActions):
                 self._rotate_worker_token(stage)
             self._checked(self._compose("restart", service))
             self._wait_healthy(service, API_HEALTHY_TIMEOUT_SECONDS)
+        elif op == "start":
+            self._start(service)
         else:
             self._checked(self._compose(op, service))
         result = {"service": service, "op": op}
@@ -275,7 +280,8 @@ class Actions(WorkerSuiteActions):
         """`{"service"}`: the container's state, start time and restart count (a hostile-class decoder exit shows as a new
         start time). `{"scratch": "interactive"|"general"}`: the top-level names in that decoder scratch volume, listed
         by a throwaway container with the volume read-only (the isolation check of AC-71: nothing left after a job).
-        `{"processes": <decoder>}`: the decoder container's processes; `{"settings": "api"|"worker"}`: its timing settings."""
+        `{"processes": <decoder>}`: the decoder container's processes; `{"settings": "api"|"worker"}`: its timing settings.
+        `{"logs", "lines_with"}`: the log tail of the lines holding that text only (the whole log is filtered first)."""
         if params.get("secret_scan") is not None:
             return self.secret_scan(params["secret_scan"])
         if params.get("processes") is not None:
@@ -285,9 +291,12 @@ class Actions(WorkerSuiteActions):
         if params.get("container") is not None:
             return self.container_facts(params["container"])
         if params.get("logs") is not None:
-            if params["logs"] not in INSPECTABLE:
-                raise ActionError(400, "bad_request", f"logs is one of {sorted(INSPECTABLE)}")
+            needle = params.get("lines_with")
+            if params["logs"] not in INSPECTABLE or not (needle is None or isinstance(needle, str) and needle):
+                raise ActionError(400, "bad_request", f"logs is one of {sorted(INSPECTABLE)}, lines_with a text")
             text = self._checked(self._compose("logs", "--no-color", "--no-log-prefix", params["logs"]))
+            if needle is not None:
+                text = "".join(line for line in text.splitlines(keepends=True) if needle in line)
             return {"log_tail": text[-BODY_LIMIT:]}
         if params.get("db_role") is not None:
             if params["db_role"] != "api":

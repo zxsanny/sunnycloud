@@ -9,7 +9,7 @@ import time
 import pytest
 
 from e2e_report import skip_not_run
-from h2cases import PHOTO, WEBP_1X1, chunks, photo_probe, requests_of, run_file
+from h2cases import PHOTO, WEBP_1X1, chunks, job_rows, photo_probe, requests_of, run_file, wait_for_row
 
 FIFO_SECONDS = 3
 POLL_SECONDS = 0.1
@@ -31,6 +31,7 @@ def still(output):
 def test_it_09_12_a_hostile_output_file_never_becomes_a_derived_file(stack_ctl, media, lanes, case):
     # Arrange
     derived_before = stack_ctl.call("db-probe", query="derived_rows")["total"]
+    rows_before = job_rows(stack_ctl)
 
     # Act
     fd, _, _, _ = run_file(media, lanes, f"it-09-12-{case}", still(HOSTILE[case]), fixture=PHOTO,
@@ -42,12 +43,14 @@ def test_it_09_12_a_hostile_output_file_never_becomes_a_derived_file(stack_ctl, 
     while media.jobs()["running"] and time.monotonic() - rendered < FIFO_SECONDS:
         time.sleep(POLL_SECONDS)
     left_running = media.jobs()["running"]
+    _, ended = wait_for_row(stack_ctl, lambda job, row: job not in rows_before and row["last_error"])
     record = fd.record()
 
     # Assert
     assert requests_of(record, "render_still"), record
     assert not [line for line in record if line["kind"] == "fd_error"], record
     assert left_running == 0, f"the slot still holds the job {FIFO_SECONDS} s after the hostile output"
+    assert (ended or {}).get("last_error") == "output_rejected", ended  # G-09-3 (tests/spec-gaps.md)
     assert stack_ctl.call("db-probe", query="derived_rows")["total"] == derived_before
 
 

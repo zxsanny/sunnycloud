@@ -38,8 +38,8 @@ def lanes(stack_ctl):
 
     def take(lane, script, restart_worker=True):
         fd = FakeDecoderLane(stack_ctl, lane)
+        taken.append(fd)  # before the swap: a swap whose worker restart fails is still undone
         fd.start(script, restart_worker=restart_worker)
-        taken.append(fd)
         return fd
 
     yield take
@@ -47,4 +47,13 @@ def lanes(stack_ctl):
         fd.stop(restart_worker=False)
     if taken:
         stack_ctl.restart_worker()
-        assert stack_ctl.wait_worker_readyz(200, READY_SECONDS) == 200, "the worker is not ready on the real decoders"
+        assert stack_ctl.wait_worker_readyz(200, READY_SECONDS) == 200, \
+            f"the worker is not ready on the real decoders: {worker_state(stack_ctl)}"
+
+
+def worker_state(ctl):
+    """The worker container's state and its log tail, for a failure message: a supervisor that exited or never
+    started is replaced by the next case's restart, and its log with it."""
+    _, state = ctl.try_call("inspect", service="worker")
+    _, logs = ctl.try_call("inspect", logs="worker")
+    return f"{state.get('result', state)}; log tail: {logs.get('result', {}).get('log_tail', '')[-1500:]}"

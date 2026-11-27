@@ -4,7 +4,7 @@ transcode policy to the probe FD reports, and a non-compliant decoder output fai
 Every job of a clip goes through FD on the general lane: the interactive slot is gated out, so it claims nothing. FD's
 probes are scripted, so these cases check decisions and protocol traffic, never a media outcome."""
 
-from h2cases import run_file, video_probe
+from h2cases import MP4_FTYP, chunks, job_rows, new_rows, postable_image, run_file, video_probe, wait_for_row
 
 
 def script(probe, transcode=None):
@@ -19,7 +19,8 @@ def run_clip(stack_ctl, media, lanes, name, fd_script):
     return record, before, after
 
 
-def requests_of(record, kind):
+def fields_of(record, kind):
+    """The fields of every request of `kind` in FD's record."""
     return [line["fields"] for line in record if line["kind"] == kind]
 
 
@@ -28,8 +29,8 @@ def test_it_09_3_the_poster_of_a_9_second_clip_is_at_900_ms_and_a_compliant_clip
     record, before, after = run_clip(stack_ctl, media, lanes, "it-09-3-nine", script(video_probe(duration_ms=9_000)))
 
     # Assert
-    assert [r["poster_at_ms"] for r in requests_of(record, "render_still")] == [900], record
-    assert requests_of(record, "transcode") == [], record
+    assert [r["poster_at_ms"] for r in fields_of(record, "render_still")] == [900], record
+    assert fields_of(record, "transcode") == [], record
     assert after["skipped_compliant"] - before["skipped_compliant"] == 1, (before, after)
 
 
@@ -38,7 +39,7 @@ def test_it_09_3_the_poster_of_a_60_second_clip_is_at_1000_ms(stack_ctl, media, 
     record, _, _ = run_clip(stack_ctl, media, lanes, "it-09-3-sixty", script(video_probe(duration_ms=60_000)))
 
     # Assert
-    assert [r["poster_at_ms"] for r in requests_of(record, "render_still")] == [1000], record
+    assert [r["poster_at_ms"] for r in fields_of(record, "render_still")] == [1000], record
 
 
 def test_it_09_3_a_compliant_portrait_clip_gets_no_transcode(stack_ctl, media, lanes):
@@ -47,7 +48,7 @@ def test_it_09_3_a_compliant_portrait_clip_gets_no_transcode(stack_ctl, media, l
                                      script(video_probe(width=1080, height=1920)))
 
     # Assert
-    assert requests_of(record, "transcode") == [], record
+    assert fields_of(record, "transcode") == [], record
     assert after["skipped_compliant"] - before["skipped_compliant"] == 1, (before, after)
 
 
@@ -56,7 +57,7 @@ def test_it_09_3_an_index_at_the_end_is_remuxed(stack_ctl, media, lanes):
     record, _, _ = run_clip(stack_ctl, media, lanes, "it-09-3-moov-end", script(video_probe(moov_first=False)))
 
     # Assert
-    assert [r["plan"] for r in requests_of(record, "transcode")] == ["remux"], record
+    assert [r["plan"] for r in fields_of(record, "transcode")] == ["remux"], record
 
 
 def test_it_09_3_a_bitrate_of_10_5_mbit_is_transcoded_on_the_cpu_with_an_enum_only_plan(stack_ctl, media, lanes):
@@ -64,7 +65,7 @@ def test_it_09_3_a_bitrate_of_10_5_mbit_is_transcoded_on_the_cpu_with_an_enum_on
     record, _, _ = run_clip(stack_ctl, media, lanes, "it-09-3-bitrate", script(video_probe(bitrate=10_500_000)))
 
     # Assert
-    plans = [r["plan"] for r in requests_of(record, "transcode")]
+    plans = [r["plan"] for r in fields_of(record, "transcode")]
     assert len(plans) == 1 and set(plans[0]) == {"transcode"}, record
     plan = plans[0]["transcode"]
     assert (plan["encoder"], plan["faststart"], plan["tone_map"]) == ("cpu", True, False), plan
@@ -72,17 +73,22 @@ def test_it_09_3_a_bitrate_of_10_5_mbit_is_transcoded_on_the_cpu_with_an_enum_on
 
 
 def test_it_09_5_a_non_compliant_decoder_output_fails_the_job_once_without_a_post(stack_ctl, media, lanes):
-    # Arrange: the input needs a transcode, and FD's output is still far over the bitrate bound.
-    output = {"transcode": {"probe_of_output": video_probe(bitrate=12_000_000), "output": "file"}}
+    # Arrange: the input needs a transcode, and FD's output is still far over the bitrate bound. Both outputs are
+    # bytes the api would accept, so only the supervisor's own check keeps the transcode from being posted.
+    output = {"transcode": {"probe_of_output": video_probe(bitrate=12_000_000), "output": {"bytes": chunks(MP4_FTYP)}}}
     fd_script = script(video_probe(bitrate=12_000_000), transcode=output)
+    fd_script["render_still"] = {"default": postable_image()}
     derived_before = stack_ctl.call("db-probe", query="derived_rows")
+    rows_before = job_rows(stack_ctl)
 
     # Act
-    record, before, after = run_clip(stack_ctl, media, lanes, "it-09-5-output", fd_script)
-    attempts = stack_ctl.call("db-probe", query="job_attempts")
+    record, _, _ = run_clip(stack_ctl, media, lanes, "it-09-5-output", fd_script)
+    transcode, _ = wait_for_row(stack_ctl, lambda job, row: job not in rows_before and row["kind"] == "transcode"
+                                and row["status"] in ("dead", "succeeded"))
+    rows = new_rows(stack_ctl, rows_before)
 
     # Assert
-    assert len(requests_of(record, "transcode")) == 1, record
-    assert after["dead"] - before["dead"] >= 1, (before, after)
+    assert len(fields_of(record, "transcode")) == 1, record
+    assert (rows[transcode]["last_error"], rows[transcode]["status"], rows[transcode]["attempts"]) \
+        == ("OutputInvalid", "dead", 1), rows
     assert stack_ctl.call("db-probe", query="derived_rows")["transcode"] == derived_before["transcode"]
-    assert attempts["most"] == 1, attempts

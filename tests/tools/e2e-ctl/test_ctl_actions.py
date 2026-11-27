@@ -24,6 +24,8 @@ class FakeDocker:
         self.calls.append(args)
         if "ps" in args:
             return 0, "container-1\n", ""
+        if "{{.State.Status}} {{.State.StartedAt}}" in args:
+            return 0, f"exited 2026-11-27T08:00:{len(self.calls):02d}Z\n", ""
         if "inspect" in args and "-f" in args and "Networks" in args[args.index("-f") + 1]:
             return 0, "172.30.0.5\n", ""
         if "inspect" in args:
@@ -327,12 +329,13 @@ class ActionsTest(unittest.TestCase):
             with self.assertRaises(ctl_actions.ActionError):
                 actions.process_kill(refused)
 
-        # Assert
-        self.assertEqual([c[-4:] for c in self.docker.calls[:1]], [["kill", "-s", "KILL", "api"]])
-        self.assertEqual(self.docker.calls[1][-2:], ["start", "worker"])
-        self.assertEqual(self.docker.calls[2][-2:], ["pause", "decoder-general"])
-        self.assertEqual(self.docker.calls[3][-4:], ["kill", "-s", "KILL", "decoder-interactive"])
-        self.assertEqual(len(self.docker.calls), 4)
+        # Assert: the start's own state reads (`ps`, `inspect`) left out
+        calls = [c for c in self.docker.calls if "ps" not in c and "inspect" not in c]
+        self.assertEqual([c[-4:] for c in calls[:1]], [["kill", "-s", "KILL", "api"]])
+        self.assertEqual(calls[1][-2:], ["start", "worker"])
+        self.assertEqual(calls[2][-2:], ["pause", "decoder-general"])
+        self.assertEqual(calls[3][-4:], ["kill", "-s", "KILL", "decoder-interactive"])
+        self.assertEqual(len(calls), 4)
 
     def test_db_restore_runs_the_reset_script_only_for_the_golden_snapshot(self):
         # Arrange

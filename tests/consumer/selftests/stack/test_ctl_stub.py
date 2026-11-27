@@ -22,7 +22,7 @@ def audit_lines(path):
 
 # Actions with an implementation refuse the empty body `{}` this test sends; the others say `not_implemented`.
 IMPLEMENTED = {"internal-http", "db-outage", "db-probe", "db-restore", "process-kill", "exec-operator", "interrupted-upgrade", "inspect",
-               "scratch-fill"}
+               "scratch-fill", "bit-flip", "job-row-edit", "worker-variant"}
 
 
 def test_every_action_with_the_token_answers_a_typed_error_and_one_audit_line_each(ctl):
@@ -34,7 +34,7 @@ def test_every_action_with_the_token_answers_a_typed_error_and_one_audit_line_ea
     after = audit_lines(ctl["audit"])
 
     # Assert
-    assert len(ctl["actions"]) == 23
+    assert len(ctl["actions"]) == 25
     expected = {a: (400, "bad_request") if a in IMPLEMENTED else (501, "not_implemented") for a in ctl["actions"]}
     assert {a: (s, b["error"]["code"]) for a, (s, b) in answers.items()} == expected
     assert [line["action"] for line in after[before:]] == ctl["actions"]

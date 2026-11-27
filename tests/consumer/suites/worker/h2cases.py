@@ -7,6 +7,7 @@ FD's outputs are protocol traffic: a 1x1 WebP and a bare MP4 `ftyp` box pass the
 import base64
 import json
 import time
+from datetime import datetime
 
 import mediakit
 from fdkit import FAILED_SELF_CHECK
@@ -50,17 +51,27 @@ def postable_transcode():
     return {"transcode": {"probe_of_output": video_probe(), "output": {"bytes": chunks(MP4_FTYP)}}}
 
 
+# A photo FD probes as one and renders twice into postable outputs: the job closes `derived`.
+CLEAN_PHOTO = {"probe": {"default": {"probe": photo_probe()}}, "render_still": {"default": postable_image()}}
+
+
 def terminal(jobs):
     return sum(jobs[key] for key in ("derived", "skipped_compliant", "obsolete", "dead"))
 
 
-def run_file(media, lanes, name, fd_script, fixture=CLIP, ended=2, wanted=None):
-    """Gates the interactive slot out, puts FD with `fd_script` on the general lane, commits one file and waits until
-    `ended` of its jobs reached a terminal state, or until `wanted(before, after)` holds when given; returns FD's lane,
-    its record and the job counts before and after."""
+def fd_on_general(lanes, fd_script):
+    """The interactive slot gated out and FD with `fd_script` on the general lane, past its gate: every job goes to
+    that one FD, in order."""
     lanes("interactive", {"self_check": FAILED_SELF_CHECK}, restart_worker=False)
     fd = lanes("general", fd_script)
     fd.wait_for(["hello", "self_check"], GATE_SECONDS)
+    return fd
+
+
+def run_file(media, lanes, name, fd_script, fixture=CLIP, ended=2, wanted=None):
+    """`fd_on_general`, then commits one file and waits until `ended` of its jobs reached a terminal state, or until
+    `wanted(before, after)` holds when given; returns FD's lane, its record and the job counts before and after."""
+    fd = fd_on_general(lanes, fd_script)
     before = media.jobs()
     suffix = ".mp4" if fixture.endswith(".mp4") else ".jpg"
     media.commit(f"{name}{suffix}", mediakit.with_marker(media.fixture(fixture), name))
@@ -102,3 +113,64 @@ def readiness_item(ctl, name):
         return None
     return {check["name"]: check["status"] for check in json.loads(body)["checks"]}.get(name)
 
+
+# The worker input route as the api logs it: one "request answered" line, with this template, per non-2xx answer.
+INPUT_ROUTE = "/api/v1/worker-jobs/{job_id}/input"
+
+
+def job_rows(ctl):
+    """Every job in creation order: `{job id: {"kind", "status", "attempts", "last_error", "blob"}}` (`last_error` ""
+    before any failure). A worker's failure code is free text, so it is what lies between the fourth and the last
+    colon."""
+    rows = {}
+    for value in ctl.call("db-probe", query="job_rows")["values"]:
+        job, kind, status, attempts, rest = value.split(":", 4)
+        last_error, _, blob = rest.rpartition(":")
+        rows[job] = {"kind": kind, "status": status, "attempts": int(attempts), "last_error": last_error, "blob": blob}
+    return rows
+
+
+def new_rows(ctl, before):
+    """The rows of the jobs that are not in `before` (a `job_rows` of earlier), in creation order."""
+    return {job: row for job, row in job_rows(ctl).items() if job not in before}
+
+
+def wait_for_row(ctl, wanted, seconds=JOBS_SECONDS):
+    """The first `(job id, row)` of `job_rows` for which `wanted(job id, row)` holds, or `(None, None)` after
+    `seconds`."""
+    deadline = time.monotonic() + seconds
+    while True:
+        found = next(((job, row) for job, row in job_rows(ctl).items() if wanted(job, row)), None)
+        if found or time.monotonic() > deadline:
+            return found or (None, None)
+        time.sleep(POLL_SECONDS)
+
+
+def input_errors(ctl, after=0.0):
+    """The api's non-2xx answers on the worker input route logged after `after` (seconds since the epoch), oldest first:
+    `(time, status)`. ctl returns the newest 4 KiB of matching lines and the api log lives as long as its container, so
+    a case marks the time of the newest answer before it acts instead of counting lines."""
+    tail = ctl.call("inspect", logs="api", lines_with=INPUT_ROUTE)["log_tail"]
+    lines = [json.loads(line) for line in tail.splitlines() if line.startswith("{")]
+    answers = [(datetime.fromisoformat(line["ts"]).timestamp(), line["status"]) for line in lines
+               if line.get("msg") == "request answered"]
+    return [answer for answer in answers if answer[0] > after]
+
+
+def gate_out_both_lanes(ctl, lanes):
+    """Both lanes on FD failing `self_check`: the supervisor claims nothing, so a job waits `queued`."""
+    lanes("interactive", {"self_check": FAILED_SELF_CHECK}, restart_worker=False)
+    lanes("general", {"self_check": FAILED_SELF_CHECK})
+    assert ctl.wait_worker_readyz(503, GATE_SECONDS) == 503
+
+
+def settled_scratch(ctl, job, lane="general", seconds=JOBS_SECONDS):
+    """The lane's scratch entries, listed while `job` is not running and its row stays the same around the listing,
+    so the folder of an attempt in flight is not taken for one left behind."""
+    deadline = time.monotonic() + seconds
+    while True:
+        before = job_rows(ctl)[job]
+        entries = ctl.call("inspect", scratch=lane)["entries"]
+        if (before["status"] != "running" and job_rows(ctl)[job] == before) or time.monotonic() > deadline:
+            return entries
+        time.sleep(POLL_SECONDS)

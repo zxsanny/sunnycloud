@@ -22,6 +22,7 @@ class FakeDocker:
         self.calls = []
         self.top = top
         self.services = "api\nworker\ndecoder-interactive\ndecoder-general\nfd-interactive\nfd-general\n"
+        self.starts = 0
 
     def __call__(self, args):
         self.calls.append(args)
@@ -33,6 +34,9 @@ class FakeDocker:
             return 0, self.top, ""
         if "inspect" in args and "Networks" in args[args.index("-f") + 1]:
             return 0, "172.30.0.9\n", ""
+        if "{{.State.Status}} {{.State.StartedAt}}" in args:
+            self.starts += 1
+            return 0, f"exited 2026-11-27T08:00:{self.starts:02d}Z\n", ""
         if args[0] == "bash":
             return 0, "usr/local/bin/sunnycloud-worker\nusr/bin/\nopt/media/bin/ffmpeg\n", ""
         if "inspect" in args and "{{json .Mounts}}" in args:
@@ -240,7 +244,7 @@ class WorkerActionsTest(unittest.TestCase):
         self.actions.process_kill({"service": "decoder-interactive", "op": "real"})
 
         # Assert
-        commands = [c[c.index("--profile"):] for c in self.docker.calls if "compose" in c]
+        commands = [c[c.index("--profile"):] for c in self.docker.calls if "compose" in c and "ps" not in c]
         self.assertEqual(commands[1:3], [["--profile", "core", "--profile", "fd", "stop", "fd-interactive"],
                                          ["--profile", "core", "--profile", "fd", "start", "decoder-interactive"]])
         self.assertIn("{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}", self.docker.calls[-1])

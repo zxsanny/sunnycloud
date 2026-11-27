@@ -6,10 +6,10 @@ past retention; then FD passes the gate and the supervisor claims the job."""
 import time
 
 import mediakit
-from fdkit import FAILED_SELF_CHECK, JOB_REQUESTS
+from fdkit import JOB_REQUESTS
+from h2cases import gate_out_both_lanes, job_rows, new_rows
 from stackkit import advance_clock
 
-GATE_SECONDS = 30
 JOBS_SECONDS = 60
 POLL_SECONDS = 0.25
 # Past the stack's 30 s retention and 60 s tombstone horizon (compose.test.yml), so the revision is purged.
@@ -28,10 +28,8 @@ def obsolete_count(ctl):
 
 def test_it_09_8_a_revision_gone_before_the_fetch_closes_the_job_as_obsolete(stack_ctl, media, lanes):
     # Arrange
-    for lane in ("interactive", "general"):
-        lanes(lane, {"self_check": FAILED_SELF_CHECK}, restart_worker=lane == "general")
-    assert stack_ctl.wait_worker_readyz(503, GATE_SECONDS) == 503
-    before = media.jobs()
+    gate_out_both_lanes(stack_ctl, lanes)
+    before, rows_before = media.jobs(), job_rows(stack_ctl)
     committed = media.commit("it-09-8.jpg", mediakit.with_marker(media.fixture("photo-orientation6.jpg"), "it-09-8"))
     kept = revisions(stack_ctl)
     media.drive.delete(committed["node_id"])
@@ -41,21 +39,24 @@ def test_it_09_8_a_revision_gone_before_the_fetch_closes_the_job_as_obsolete(sta
         time.sleep(POLL_SECONDS)
     purged = revisions(stack_ctl) < kept
 
-    # Act: FD passes the gate now, and the supervisor claims the waiting job.
-    fds = [lanes("interactive", {}, restart_worker=False), lanes("general", {})]
+    # Act: FD passes the gate now, and a new supervisor claims the waiting job. The old one is stopped first: one that
+    # reconnected to a passing FD before its restart would close the job and take its `jobs_total` sample with it.
+    stack_ctl.call("process-kill", service="worker", op="kill")
+    fds = [lanes("interactive", {}, restart_worker=False), lanes("general", {}, restart_worker=False)]
+    stack_ctl.call("process-kill", service="worker", op="start")
     deadline = time.monotonic() + JOBS_SECONDS
     while True:
         after = media.jobs()
         if after["obsolete"] > before["obsolete"] or time.monotonic() > deadline:
             break
         time.sleep(POLL_SECONDS)
-    attempts = stack_ctl.call("db-probe", query="job_attempts")
+    rows = list(new_rows(stack_ctl, rows_before).values())
     scratch = {lane: stack_ctl.call("inspect", scratch=lane)["entries"] for lane in ("interactive", "general")}
 
     # Assert
     assert purged, "the deleted file's revision was not purged after the clock passed retention"
     assert after["obsolete"] - before["obsolete"] == 1, (before, after)
     assert [line for fd in fds for line in fd.record() if line["kind"] in JOB_REQUESTS] == []
-    assert attempts["most"] <= 1, attempts
+    assert [row["attempts"] for row in rows] == [1], rows
     assert scratch == {"interactive": [], "general": []}
     assert obsolete_count(stack_ctl) == 1.0

@@ -1,0 +1,10 @@
+# Worker variant `small-scratch-general` of harness H2 (IT-09-7 (e)): e2e-ctl `worker-variant` recreates the worker with
+# this file merged over the stack's compose files, for one case; `default` recreates it without. The general slot's
+# scratch root is an 8 MiB tmpfs of the worker's own, less than the photo input limit (256 MiB), so the free-space
+# check refuses each of that slot's jobs before its input is fetched. The decoder never sees this root: no job gets to it.
+services:
+  worker:
+    environment:
+      SUNNYCLOUD_WORKER_SCRATCH_GENERAL: /scratch-small
+    tmpfs:
+      - /scratch-small:size=8m,mode=1777

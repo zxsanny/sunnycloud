@@ -188,7 +188,7 @@ Calibration step before every AC-2 run: `iperf3` at the same RTT and 4 streams g
 | DB restore | `pg_dump` at time T0, more activity, stop api, `pg_restore` to T0 state, start api | AC-41, AC-65, AC-73 |
 | Unmount / missing root | `umount` or `rm -rf` of the sync volume mount; Windows: dismount VHD or rename the root | AC-29 |
 | Network drop | `iptables` reset at a byte offset (see `shape-flaky`) | AC-3, AC-50 |
-| Bit flip at rest | Read-modify-write one byte of a blob file via ctl (path found by ctl from the blob id) | AC-24, AC-7 |
+| Bit flip at rest | Read-modify-write one byte of a blob file via ctl (path found by ctl from the blob id): one bit of the first ciphertext byte of chunk 0, so the reader refuses the blob before its first body byte (`bit-flip`) | AC-24, AC-7, AC-45 |
 | Raw blob read | Return the first N bytes / grep for a marker in a blob file | AC-43 |
 | Isolation inspection | `docker inspect`, `nsenter` into each decoder: env, mounts, routes, DNS, capabilities, cgroup limits, scratch contents and process list | AC-25, AC-71 |
 | Read-only DB probe | Fixed queries (token hashes only, row counts after account deletion, GC queue, derived and job rows grouped by key, account and identity counts, device token and grant timestamps, count of blobs with `unavailable_at`); no free-form SQL | AC-12, AC-27, AC-30, AC-71, AC-75, AC-76, AC-80 |
@@ -204,6 +204,8 @@ Calibration step before every AC-2 run: `iperf3` at the same RTT and 4 streams g
 | Daemon suspend (desktop VMs) | Harness agent sends `SIGSTOP`/`SIGCONT` to the daemon (Windows: suspend and resume the process) | AC-16 (FT-P-82) |
 | Watch limit (LIN-VM) | Harness agent sets `fs.inotify.max_user_watches` before the daemon starts and restores it after the test | AC-15 (NFT-RES-40) |
 | Scratch leftovers | Before a supervisor start: job trees and a stray file written into a decoder scratch volume by a throwaway container as the supervisor's uid and the decoder group, as a supervisor that died leaves them (`scratch-fill`) | AC-25 |
+| Job row edit | One fixed update of a queued job: one bit of its `content_hash` flipped, so the input the API serves no longer has the job's hash (`job-row-edit`; the job id is parsed as a UUID, no free-form SQL) | AC-72 |
+| Worker variant | The worker recreated from the stack's Compose files plus one fixed override of `tests/h2-variants/` (`photo-limit-1mib`: `worker_max_input_photo = 1MiB`; `small-scratch-general`: the general slot's scratch root on an 8 MiB tmpfs); `default` recreates it as the stack defines it (`worker-variant`) | AC-72, AC-25 |
 
 ## Hardware-dependency classification
 
