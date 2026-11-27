@@ -137,12 +137,12 @@ the timing settings the api or the worker was started with, the top-level names 
 scan that returns only counts, or the api role's DDL rights and whether it holds a migrator secret), `db-probe` (fixed
 queries, among them the media jobs and derived rows), `db-restore` (the golden snapshot, or a named `pg_dump` and its
 load), `exec-operator` (an operator command in the api container, in a one-off api container while `serve` is down, or
-`migrate ...` in a one-off `migrate` container; optionally sampling the api's listening sockets while it runs), `scratch-fill` (leftover job trees in a decoder scratch volume), and the worker suite's input faults in `ctl_worker.py`: `bit-flip` (one bit of a blob's first chunk), `job-row-edit` (one bit of a queued job's `content_hash`) and `worker-variant` (the worker recreated with a file of `tests/h2-variants/`, or as the stack defines it). `inspect` also lists a container's environment names, secrets, mounts and media tools, and filters a log to the lines holding a text (`lines_with`). The audit line names the action and status, never the body.
+`migrate ...` in a one-off `migrate` container; optionally sampling the api's listening sockets while it runs), `scratch-fill` (leftover job trees in a decoder scratch volume), and the worker suite's input faults in `ctl_worker.py`: `bit-flip` (one bit of a blob's first chunk), `job-row-edit` (one bit of a queued job's `content_hash`) `worker-variant` (the worker recreated with a file of `tests/h2-variants/`, or as the stack defines it) and `cpu-limit` (a decoder's CPU quota, with the one it had in the answer). `inspect` also lists a container's environment names, secrets, mounts and media tools, and filters a log to the lines holding a text (`lines_with`). The audit line names the action and status, never the body.
 Typed JSON errors `{"error": {"code", "message", "action"}}`: `not_implemented` (501) for every other action in `actions.json`,
 `unauthorized` (401) without or with a wrong token, `unknown_action` / `not_found` (404), `method_not_allowed` (405). The
 audit line is written before the response. A wildcard bind address is refused.
 
-`actions.json` lists the 25 rows of the Fault injectors table in kebab-case. `environment.md` names four of them itself
+`actions.json` lists the 26 rows of the Fault injectors table in kebab-case. `environment.md` names four of them itself
 (`inspect`, `internal-http`, `alternate-key`, `exec-operator`); the other names are derived from the row titles. The real
 names are an open item for E-31. The "account purge" teardown action named in the Isolation section is not a row of that
 table and is not listed.

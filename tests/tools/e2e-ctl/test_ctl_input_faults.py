@@ -107,6 +107,35 @@ class CheckedStartTest(unittest.TestCase):
         self.assertEqual(docker.starts, 1)
 
 
+class CpuLimitTest(unittest.TestCase):
+    def test_cpu_limit_updates_the_decoders_quota_and_returns_the_one_it_had(self):
+        # Arrange
+        calls = []
+
+        def docker(args):
+            calls.append(args)
+            if "ps" in args:
+                return 0, "container-1\n", ""
+            return (0, "2000000000\n", "") if "{{.HostConfig.NanoCpus}}" in args else (0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            actions = ctl_actions.Actions("proj", "/x/compose.yml", tmp, run=docker)
+
+            # Act
+            result = actions.cpu_limit({"service": "decoder-general", "cpus": 0.2})
+            refused = []
+            for params in ({"service": "worker", "cpus": 1}, {"service": "decoder-general", "cpus": 0},
+                           {"service": "decoder-general", "cpus": True}, {"service": "decoder-general", "cpus": "1"}):
+                with self.assertRaises(ctl_actions.ActionError) as raised:
+                    actions.cpu_limit(params)
+                refused.append(raised.exception.status)
+
+        # Assert
+        self.assertEqual(calls[-1], ["docker", "update", "--cpus", "0.2", "container-1"])
+        self.assertEqual(result["previous_cpus"], 2.0)
+        self.assertEqual(refused, [400] * 4)
+
+
 class StopTest(unittest.TestCase):
     def test_stop_sends_sigterm_through_compose_and_reports_the_time_and_the_exit_code(self):
         # Arrange

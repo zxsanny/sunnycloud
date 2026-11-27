@@ -16,7 +16,7 @@ answering `not_implemented` in `e2e_ctl.py`.
                          every SUT log, the audit rows and host `ps`) or the api's database role (DDL, migrator secret)
     interrupted-upgrade  revert the latest migrations, or apply the pending ones, with the product's own `migrate`
     scratch-fill         leftover job trees and a stray file in a decoder scratch volume, as a supervisor that died leaves them
-    bit-flip, job-row-edit, worker-variant   the input faults of the worker suite (`ctl_worker.py`)
+    bit-flip, job-row-edit, worker-variant, cpu-limit   the input faults and the decoder CPU quota of the worker suite (`ctl_worker.py`)
 """
 import base64
 import http.client
@@ -166,6 +166,7 @@ class Actions(WorkerSuiteActions):
             "bit-flip": self.bit_flip,
             "job-row-edit": self.job_row_edit,
             "worker-variant": self.worker_variant,
+            "cpu-limit": self.cpu_limit,
         }
 
     def _compose(self, *args, extra_files=()):

@@ -209,3 +209,38 @@ def next_report(ctl, after, seconds=3):
         if report["seen_ms"] != after["seen_ms"] or time.monotonic() - started > seconds:
             return report, time.monotonic() - started
         time.sleep(POLL_SECONDS)
+
+
+# The API test image's one-shot worker transfer hold (AZ-4381) on its `:9091` listener.
+HOLD_PATH = "/test/worker-hold"
+
+
+def arm_hold(ctl, route, after_bytes, kind=None):
+    """Parks the next worker `input` answer or `output` body (of `kind`, when given) after `after_bytes` bytes."""
+    body = {"route": route, "after_bytes": after_bytes, **({"kind": kind} if kind else {})}
+    answer = ctl.internal(9091, HOLD_PATH, method="POST", headers={"Content-Type": "application/json"},
+                          body=json.dumps(body))
+    assert answer.get("status") == 204, answer
+
+
+def hold_status(ctl):
+    """`{"armed", "held", "job_id", "bytes"}` of the hold."""
+    answer = ctl.internal(9091, HOLD_PATH)
+    assert answer.get("status") == 200, answer
+    return json.loads(answer["body"])
+
+
+def release_hold(ctl):
+    """Lets a parked stream go on (a no-op when nothing is held)."""
+    answer = ctl.internal(9091, HOLD_PATH, method="DELETE")
+    assert answer.get("status") in (200, 204), answer
+
+
+def wait_held(ctl, seconds=JOBS_SECONDS):
+    """The hold's status once a stream waits in it, or the last status after `seconds`."""
+    deadline = time.monotonic() + seconds
+    while True:
+        status = hold_status(ctl)
+        if status["held"] or time.monotonic() > deadline:
+            return status
+        time.sleep(POLL_SECONDS)

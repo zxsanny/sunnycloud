@@ -1,5 +1,14 @@
 # Design decisions: AZ-3878 worker integration suite (H2)
 
+## Applied without asking
+
+| id | decided | why it is safe | undo | date |
+|----|---------|----------------|------|------|
+| D4 | IT-09-14's kill "during transcode" lands inside the transcode by lowering decoder-general's CPU quota to 0.5 for the attempt that is killed (e2e-ctl `cpu-limit`, `docker update --cpus`, a new fault-injector row) and killing while the transcode's ffmpeg (`result.mp4`) is in the decoder's process list; the quota is set back right after the kill (at 0.2 every attempt ended `DecoderSilent`: the runner missed H2's 1 s silence timeout) | reversible: yes (test stack only, set back by the case's fixture); if wrong: nothing in a release (ctl and the suite never ship); standard: Docker's own resource update on a running container, the same cgroup limits the decoders already run under (`tests/compose.test.yml` `cpus`); critical resource: none named (`_docs/02_document/decision-criteria.md` absent) | drop the `cpu-limit` action and the leg's fixture | 2026-11-27 |
+
+Why not the simpler options: a kill "when ffmpeg is visible" at full speed races (the 1-second fixture clip transcodes in
+well under a second), and a longer clip does not fit one small upload (2 MiB, the consumer's upload path).
+
 ## Asked
 
 ### D1: How a supervisor kill lands inside the input fetch and inside the output post

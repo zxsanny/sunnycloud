@@ -25,6 +25,7 @@
     "watch-limit",
     "scratch-fill",
     "job-row-edit",
-    "worker-variant"
+    "worker-variant",
+    "cpu-limit"
   ]
 }

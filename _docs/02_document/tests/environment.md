@@ -205,6 +205,7 @@ Calibration step before every AC-2 run: `iperf3` at the same RTT and 4 streams g
 | Watch limit (LIN-VM) | Harness agent sets `fs.inotify.max_user_watches` before the daemon starts and restores it after the test | AC-15 (NFT-RES-40) |
 | Scratch leftovers | Before a supervisor start: job trees and a stray file written into a decoder scratch volume by a throwaway container as the supervisor's uid and the decoder group, as a supervisor that died leaves them (`scratch-fill`) | AC-25 |
 | Job row edit | One fixed update of a queued job: one bit of its `content_hash` flipped, so the input the API serves no longer has the job's hash (`job-row-edit`; the job id is parsed as a UUID, no free-form SQL) | AC-72 |
+| CPU limit | A decoder's CPU quota lowered with `docker update --cpus` for one case and set back after it (`cpu-limit`; decoders only, 0.05 to 4 CPUs), so an ffmpeg runs long enough to kill the supervisor inside the transcode | AC-71 |
 | Worker variant | The worker recreated from the stack's Compose files plus one fixed override of `tests/h2-variants/` (`photo-limit-1mib`: `worker_max_input_photo = 1MiB`; `small-scratch-general`: the general slot's scratch root on an 8 MiB tmpfs); `default` recreates it as the stack defines it (`worker-variant`) | AC-72, AC-25 |
 
 ## Hardware-dependency classification

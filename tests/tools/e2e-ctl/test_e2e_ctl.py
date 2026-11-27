@@ -43,7 +43,7 @@ class CtlStubTest(unittest.TestCase):
         return [json.loads(line) for line in self.audit_path.read_text(encoding="utf-8").splitlines()]
 
     def test_every_documented_action_is_listed(self):
-        self.assertEqual(len(self.actions), 25)
+        self.assertEqual(len(self.actions), 26)
 
     def test_every_action_with_token_returns_not_implemented_and_one_audit_line(self):
         for index, action in enumerate(sorted(self.actions), start=1):

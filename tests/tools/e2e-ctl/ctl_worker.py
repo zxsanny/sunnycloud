@@ -55,6 +55,11 @@ JOB_HASH_EDIT = ("UPDATE jobs SET content_hash = set_byte(content_hash, 0, get_b
 WORKER_VARIANTS_DIR = Path(__file__).resolve().parents[2] / "h2-variants"
 WORKER_VARIANTS = frozenset({"default", "photo-limit-1mib", "small-scratch-general"})
 WORKER_HEALTHY_TIMEOUT_SECONDS = 60
+# `cpu-limit` (environment.md, CPU limit): the decoders whose CPU quota a case may lower (IT-09-14: an ffmpeg that runs long
+# enough to kill the supervisor inside the transcode), and the quotas allowed.
+CPU_LIMITED = DECODERS
+MIN_CPUS, MAX_CPUS = 0.05, 4.0
+NANO = 1_000_000_000
 # `stop_timed`: Docker's SIGKILL after SIGTERM comes this late, well past the worker's shutdown grace (H2: 3 s), so a
 # drain within the grace shows as exit code 0 and a hung one as 137.
 STOP_TIMEOUT_SECONDS = 10
@@ -119,6 +124,20 @@ class WorkerSuiteActions:
         self._checked(self._compose("stop", fake))
         self._start(service)
         self._wait_healthy(service, DECODER_HEALTHY_TIMEOUT_SECONDS)
+
+    def cpu_limit(self, params):
+        """`{"service", "cpus"}`: a decoder's CPU quota set with `docker update --cpus` while it runs; the answer holds the
+        quota it had before (`previous_cpus`, 0 for none), for the case to set back."""
+        service, cpus = params.get("service"), params.get("cpus")
+        if service not in CPU_LIMITED or isinstance(cpus, bool) or not isinstance(cpus, (int, float)) \
+                or not MIN_CPUS <= cpus <= MAX_CPUS:
+            raise ActionError(400, "bad_request", f"service is one of {sorted(CPU_LIMITED)}, cpus {MIN_CPUS} to {MAX_CPUS}")
+        container = self._container(service)
+        previous = self._checked(["docker", "inspect", "-f", "{{.HostConfig.NanoCpus}}", container]).strip()
+        if not previous.isdigit():
+            raise ActionError(500, "inspect_failed", f"unexpected CPU quota: {previous[:100]}")
+        self._checked(["docker", "update", "--cpus", f"{cpus:g}", container])
+        return {"service": service, "cpus": cpus, "previous_cpus": int(previous) / NANO}
 
     def stop_timed(self, service):
         """SIGTERM through `compose stop` (SIGKILL after `STOP_TIMEOUT_SECONDS`): how long the stop took and the exit
