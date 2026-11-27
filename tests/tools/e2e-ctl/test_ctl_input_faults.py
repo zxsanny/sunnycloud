@@ -107,6 +107,31 @@ class CheckedStartTest(unittest.TestCase):
         self.assertEqual(docker.starts, 1)
 
 
+class StopTest(unittest.TestCase):
+    def test_stop_sends_sigterm_through_compose_and_reports_the_time_and_the_exit_code(self):
+        # Arrange
+        calls = []
+
+        def docker(args):
+            calls.append(args)
+            if "ps" in args:
+                return 0, "container-1\n", ""
+            return (0, "0\n", "") if "{{.State.ExitCode}}" in args else (0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            actions = ctl_actions.Actions("proj", "/x/compose.yml", tmp, run=docker)
+
+            # Act
+            result = actions.process_kill({"service": "worker", "op": "stop"})
+            with self.assertRaises(ctl_actions.ActionError) as refused:
+                actions.process_kill({"service": "api", "op": "stop"})
+
+        # Assert
+        self.assertEqual(calls[0][-4:], ["stop", "-t", str(ctl_worker.STOP_TIMEOUT_SECONDS), "worker"])
+        self.assertEqual((result["exit_code"], result["op"], refused.exception.status), (0, "stop", 400))
+        self.assertGreaterEqual(result["seconds"], 0)
+
+
 class InputFaultsTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

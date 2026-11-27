@@ -5,6 +5,7 @@ blob, a job row whose hash no longer matches its input, and the worker recreated
 import json
 import secrets
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -54,6 +55,9 @@ JOB_HASH_EDIT = ("UPDATE jobs SET content_hash = set_byte(content_hash, 0, get_b
 WORKER_VARIANTS_DIR = Path(__file__).resolve().parents[2] / "h2-variants"
 WORKER_VARIANTS = frozenset({"default", "photo-limit-1mib", "small-scratch-general"})
 WORKER_HEALTHY_TIMEOUT_SECONDS = 60
+# `stop_timed`: Docker's SIGKILL after SIGTERM comes this late, well past the worker's shutdown grace (H2: 3 s), so a
+# drain within the grace shows as exit code 0 and a hung one as 137.
+STOP_TIMEOUT_SECONDS = 10
 # `_start`: how long a started container gets to show a new start time, checked every `START_POLL_SECONDS`.
 START_POLL_SECONDS = 0.2
 START_CHECKS = 50
@@ -115,6 +119,18 @@ class WorkerSuiteActions:
         self._checked(self._compose("stop", fake))
         self._start(service)
         self._wait_healthy(service, DECODER_HEALTHY_TIMEOUT_SECONDS)
+
+    def stop_timed(self, service):
+        """SIGTERM through `compose stop` (SIGKILL after `STOP_TIMEOUT_SECONDS`): how long the stop took and the exit
+        code, so a case can tell a drain within the shutdown grace from a kill (IT-09-17)."""
+        started = time.monotonic()
+        self._checked(self._compose("stop", "-t", str(STOP_TIMEOUT_SECONDS), service))
+        seconds = time.monotonic() - started
+        code = self._checked(["docker", "inspect", "-f", "{{.State.ExitCode}}",
+                              self._container(service, stopped_too=True)]).strip()
+        if not code.lstrip("-").isdigit():
+            raise ActionError(500, "inspect_failed", f"unexpected exit code: {code[:100]}")
+        return {"seconds": round(seconds, 3), "exit_code": int(code)}
 
     def _start(self, service):
         """`compose start`, then the container must show a new start time. Compose has answered 0 for a worker it did not

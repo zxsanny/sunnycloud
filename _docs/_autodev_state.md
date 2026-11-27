@@ -9,7 +9,7 @@ status: in_progress
 sub_step:
   phase: 2
   name: batch-loop
-  detail: "batch 133 (AZ-4387) and cumulative review 130-133 committed and pushed; next cumulative after batch 136. Next: AZ-3878. Env: dev DB sunnycloud-pg18 (127.0.0.1:57432), CARGO_INCREMENTAL=0; CI Ubuntu 24.04, host 26.04."
+  detail: "batch 134 (AZ-3878 AC-7) committed; AZ-3878 stays in todo: AC-6 (IT-09-14 with the AZ-4381 hold; decode leg needs a deterministic hold) then AC-2 (IT-09-2, IT-09-4). Next cumulative after batch 136. Env: dev DB sunnycloud-pg18 (127.0.0.1:57432), CARGO_INCREMENTAL=0; CI Ubuntu 24.04, host 26.04."
 retry_count: 0
 tracker: jira
 loop: 1

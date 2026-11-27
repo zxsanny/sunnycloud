@@ -174,3 +174,38 @@ def settled_scratch(ctl, job, lane="general", seconds=JOBS_SECONDS):
         if (before["status"] != "running" and job_rows(ctl)[job] == before) or time.monotonic() > deadline:
             return entries
         time.sleep(POLL_SECONDS)
+
+
+def lease_samples(ctl, seconds, poll_seconds=0.1):
+    """`(host ms, lease expiry ms)` of the running job, sampled for `seconds`."""
+    samples = []
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        samples.append((time.monotonic() * 1000, ctl.call("db-probe", query="running_lease_ms")["lease_ms"]))
+        time.sleep(poll_seconds)
+    return samples
+
+
+def heartbeat_gaps(samples):
+    """The gaps (ms) between the new lease expiries: each heartbeat sets `now + lease`, so the expiries' own spacing is
+    the heartbeat cadence on the server's clock, whatever the sampling delay."""
+    expiries = []
+    for _, lease in samples:
+        if lease > 0 and (not expiries or lease != expiries[-1]):
+            expiries.append(lease)
+    return [b - a for a, b in zip(expiries, expiries[1:])]
+
+
+def status_report(ctl):
+    """The latest status report: `decoder_ok`, `image_age_days`, `seen_ms` (-1 each before any)."""
+    return ctl.call("db-probe", query="worker_status_report")
+
+
+def next_report(ctl, after, seconds=3):
+    """The first report newer than `after`, and how long it took to come (or the old one after `seconds`)."""
+    started = time.monotonic()
+    while True:
+        report = status_report(ctl)
+        if report["seen_ms"] != after["seen_ms"] or time.monotonic() - started > seconds:
+            return report, time.monotonic() - started
+        time.sleep(POLL_SECONDS)

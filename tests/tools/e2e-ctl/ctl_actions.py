@@ -253,11 +253,14 @@ class Actions(WorkerSuiteActions):
         stage = params.get("worker_token")
         allowed = ((service in KILLABLE | DECODERS and op in ("kill", "start") and stage is None)
                    or (service in DECODERS and op in ("pause", "unpause", "fake", "real") and stage is None)
-                   or (service == "api" and op == "restart" and (stage is None or stage in TOKEN_STAGES)))
+                   or (service == "api" and op == "restart" and (stage is None or stage in TOKEN_STAGES))
+                   or (service == "worker" and op == "stop" and stage is None))
         if not allowed:
             raise ActionError(400, "bad_request", f"`kill` or `start` for {sorted(KILLABLE | DECODERS)}, `pause`, "
                                                   f"`unpause`, `fake` or `real` for {sorted(DECODERS)}, `restart` for api with an optional "
-                                                  f"worker_token of {sorted(TOKEN_STAGES)}")
+                                                  f"worker_token of {sorted(TOKEN_STAGES)}, `stop` for worker")
+        if op == "stop":
+            return {"service": service, "op": op, **self.stop_timed(service)}
         if op == "kill":
             self._checked(self._compose("kill", "-s", "KILL", service))
         elif op in ("fake", "real"):

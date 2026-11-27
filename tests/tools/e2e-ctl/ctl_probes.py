@@ -50,6 +50,12 @@ PROBES = {
     "worker_status_seen_ms": (("seen_ms",),
                               "SELECT coalesce((SELECT (extract(epoch FROM seen_at) * 1000)::bigint FROM worker_status "
                               "ORDER BY seen_at DESC LIMIT 1), -1)"),
+    # The latest status report: decoder health, image age in whole days and when it came (epoch ms); -1 each before any.
+    "worker_status_report": (("decoder_ok", "image_age_days", "seen_ms"),
+                             "SELECT coalesce(w.ok, -1), coalesce(w.age, -1), coalesce(w.seen, -1) FROM (SELECT 1) one "
+                             "LEFT JOIN (SELECT decoder_ok::int AS ok, image_age_days AS age, "
+                             "(extract(epoch FROM seen_at) * 1000)::bigint AS seen FROM worker_status "
+                             "ORDER BY seen_at DESC LIMIT 1) w ON true"),
     # `<job id>:<lane>` of every job in creation order: the lane of each job FD saw (its record names jobs by id).
     "job_lanes": (LIST, "SELECT coalesce(string_agg(id::text || ':' || lane, ',' ORDER BY created_at), '') FROM jobs"),
     # `<job id>:<kind>:<status>:<attempts>:<last_error>:<blob id>` of every job in creation order (`last_error` and the

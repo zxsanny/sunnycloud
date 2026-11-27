@@ -44,3 +44,20 @@
 **Second opinion**: differs. It proposed A, which the session had not drafted. The session had leaned to B. The difference: A lands the post kill by construction and changes no image, network path or supervisor in the release. B adds a moving service and leaves the post leg timing-dependent. The session now recommends A, deciding on priority 3 (the simpler option that extends an existing mechanism), with automation equal across the options.
 
 **Answer**: A, a one-shot hold on the API test image's `:9091` listener (operator, 2026-11-26: "Hold in API test image").
+
+## Settled by the spec
+
+### D3: IT-09-18 expected the running job "not disturbed" across a test-clock advance
+
+**Settled by**: `_docs/02_document/components/09_worker_supervisor/description.md:57` ("Lease expiry, backoff and
+retention are the API's and follow the offset there") and `_docs/02_document/contracts/08_media_jobs/worker_job_protocol.md:67`
+(a worker whose lease expired gets 409 `lease_lost` and stops quietly). The API's heartbeat extends only a lease still
+open by its own clock (`src/components/08_media_jobs/src/job_repo.rs:90-96`), so a 1-hour advance ends the 6 s lease of
+the running job, as IT-09-10 A relies on. 09 tests.md IT-09-18's "no `cancel` across both advances" was a spec defect.
+**Applied (2026-11-27)**: tests.md IT-09-18 reworded; the case keeps the job running across the 1-hour advance and
+expects the lease loss (409, `cancel`, claimed again on the same connection) with no supervisor timer firing (no
+decoder kill, `/readyz` 200: one hour is past every wall limit), and runs the 3-day advance on an idle supervisor.
+**Second opinion**: already answered (it quoted the same two lines); its proposal to keep the job across the advance,
+rather than advance with no job running, is the design applied: without it, no advance with a job running would exceed
+a wall limit (IT-09-10 A moves 10 s), and "an advance never trips a watchdog" (description.md:57) would have no check.
+**Undo**: revert the tests.md line and `tests/consumer/suites/worker/test_it_09_18_test_clock.py`.

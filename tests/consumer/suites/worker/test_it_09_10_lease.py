@@ -8,7 +8,8 @@ spacing of the expiries is the heartbeat cadence on the server's clock, free of 
 any log" check of case B is ST-09-1 (AZ-3879)."""
 import time
 
-from h2cases import HELD_TRANSCODE, HOLD_MS, readiness_item, requests_of, run_file, wait_for_request
+from h2cases import (HELD_TRANSCODE, HOLD_MS, heartbeat_gaps, lease_samples, readiness_item, requests_of, run_file,
+                     wait_for_request)
 from stackkit import advance_clock
 
 HEARTBEAT_MS = 2000
@@ -17,26 +18,6 @@ SAMPLE_SECONDS = 5
 EVENT_SECONDS = 20
 POLL_SECONDS = 0.1
 PAST_THE_LEASE_SECONDS = 10
-
-
-def lease_samples(ctl, seconds):
-    """`(host ms, lease expiry ms)` of the running job, sampled for `seconds`."""
-    samples = []
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        samples.append((time.monotonic() * 1000, ctl.call("db-probe", query="running_lease_ms")["lease_ms"]))
-        time.sleep(POLL_SECONDS)
-    return samples
-
-
-def heartbeat_gaps(samples):
-    """The gaps (ms) between the new lease expiries: each heartbeat sets `now + lease`, so the expiries' own spacing is
-    the heartbeat cadence on the server's clock, whatever the sampling delay."""
-    expiries = []
-    for _, lease in samples:
-        if lease > 0 and (not expiries or lease != expiries[-1]):
-            expiries.append(lease)
-    return [b - a for a, b in zip(expiries, expiries[1:])]
 
 
 def test_it_09_10_a_heartbeats_every_2_s_and_a_lease_lost_to_the_clock_cancels_the_job_without_a_post(stack_ctl, media, lanes):
