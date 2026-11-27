@@ -66,7 +66,7 @@ tower = { version = "0.5", default-features = false, features = ["util"] }
 uuid = { workspace = true, features = ["v4"] }
 # The realtime pipeline tests (`pipeline_realtime`): a WebSocket client without TLS, and the frame decoder of the
 # contract (`realtime.md`); all three are already locked through 11.
-tokio-tungstenite = { version = "=0.29.0", default-features = false, features = ["handshake"] }
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["handshake"] }
 futures-util = { version = "0.3", default-features = false, features = ["alloc", "sink"] }
 packbin = "=0.5.1"
 
