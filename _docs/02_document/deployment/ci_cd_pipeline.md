@@ -153,12 +153,21 @@ The `core` black-box tier needs Docker and runs through `tests/run.sh --profile 
 
 ## Caching and parallelism
 
-| Cache | Key | Restore keys |
-|-------|-----|--------------|
-| Cargo registry and `target` (`Swatinem/rust-cache`, SHA-pinned) | `Cargo.lock` hash + toolchain | toolchain only |
-| npm | `package-lock.json` | none |
-| Docker layers | BuildKit cache in GHCR (`:buildcache` per image) | same image |
-| Decoder media layer | `versions.env` + `ffmpeg.configure` hash | none (first build about 25 min) |
+GitHub gives the repository 10 GB of Actions cache and evicts the least recently used entry past it (AZ-4389). Pushes to
+`dev` write the large caches; a pull request only reads them, since Dependabot opens one daily and a PR that changes
+`Cargo.lock` or a Dockerfile would store a second full set under its own ref. The `dev` set was about 8.3 GB on
+2026-11-27 (`gh api repos/{owner}/{repo}/actions/cache/usage`, `gh cache list --sort size_in_bytes`).
+
+| Cache | Key | Restore keys | Written |
+|-------|-----|--------------|---------|
+| Cargo registry and `target` (`Swatinem/rust-cache`, one per job, about 4.6 GB together) | job + toolchain + `Cargo.lock` + `Cargo.toml` hash | same job | pushes to `dev`, also after a failed step |
+| Gradle, Gradle wrapper and pub (`mobile`, about 2.2 GB) | `pubspec.lock` + Android `*.kts` + wrapper properties | none | pushes to `dev`, at the end of the job once the debug build passed, also when a later step failed |
+| Decoder BuildKit layers (`image-build (decoder)`, local cache directory, about 1.2 GB) | manifests + Dockerfiles + `versions.env` + `ffmpeg.configure` + `media-metadata.sh` | earlier decoder key | pushes to `dev` after a green build |
+| Bun packages (`web`) | `bun.lock` | none | every green run |
+| vault-core tool downloads (`vault-core`, under 0.2 GB) | the download script's hash | none | every green run |
+
+The api, worker and `-test` images keep no layer cache: each would take about 1 GB (0.6 GB of it the rust base image
+layers) and they build in 4 to 6 minutes on parallel legs. The decoder takes about 25 minutes cold.
 
 Parallel from the start: `rust-lint`, `rust-test`, `web`, `openapi`, `mobile`, `desktop-build`, `supply-chain`, `images`. `core` and `ops-drill` wait for `images`. A failure in any required job blocks the merge.
 

@@ -1,5 +1,8 @@
 # PR gate (AZ-3761). YAML only checks out, caches and calls repository scripts (scripts/ci/*.sh); the same
 # scripts run on a laptop. Every action is pinned by commit SHA, the PostgreSQL service by digest.
+# Caches (AZ-4389): the repository has 10 GB of Actions cache, and past it GitHub evicts the least recently used entry.
+# Only pushes to dev write the Rust, image and Gradle caches; a pull request reads them. Dependabot opens PRs daily and
+# each one that changes Cargo.lock or a Dockerfile would otherwise store a full second set under its own ref.
 name: ci
 
 on:
@@ -44,6 +47,7 @@ jobs:
           workspaces: src
           key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install sqlx-cli
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh sqlx-cli
       - name: fmt, clippy, offline query data
@@ -92,6 +96,7 @@ jobs:
           workspaces: src
           key: ${{ matrix.shard == 'features' && 'features-' || '' }}${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install cargo-llvm-cov and cargo-nextest
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-llvm-cov cargo-nextest
       - name: Install the PostgreSQL 18 client (PGDG, pinned version and key)
@@ -196,6 +201,7 @@ jobs:
           workspaces: src
           key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock') }}-release
           cache-on-failure: true
+          save-if: ${{ github.event_name == 'push' }}
       - name: 1 GiB download (AZ-3657 AC-1)
         working-directory: src
         run: ../scripts/ci/watchdog.sh --name pipeline-download-1gib -- ../scripts/ci/run-one-test.sh cargo test --release --locked -p sunnycloud-server --test pipeline_download -- --ignored --exact ac1_a_1_gib_file_reads_in_full_by_range_past_the_end_and_conditionally
@@ -222,6 +228,7 @@ jobs:
           workspaces: src
           key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
+          save-if: ${{ github.event_name == 'push' }}
       - name: IT-11-1 to IT-11-20 with their max execution times and the missing-case check
         run: scripts/ci/watchdog.sh --name http-api-suite -- scripts/ci/check-it-suite.sh
 
@@ -258,6 +265,7 @@ jobs:
           workspaces: src
           key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
+          save-if: ${{ github.event_name == 'push' }}
       - name: IT-12-1 to IT-12-19 with their max execution times and the missing-case check
         env:
           WATCHDOG_STALL: 600
@@ -291,6 +299,7 @@ jobs:
           workspaces: src
           key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install sqlx-cli
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh sqlx-cli
       - name: Migrations up, down, up on an empty PostgreSQL 18
@@ -321,6 +330,7 @@ jobs:
           workspaces: src
           key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install cargo-deny, cargo-audit and gitleaks
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-deny cargo-audit gitleaks
       - name: Advisory ignores, cargo audit, cargo deny check advisories bans licenses sources
@@ -346,19 +356,29 @@ jobs:
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # AZ-4389: only the decoder keeps a BuildKit cache (about 1.2 GB; it saves 20 minutes). A Rust image's cache is
+      # about 1 GB, 0.6 GB of it the rust base image layers, and the four of them took the repository past its 10 GB
+      # Actions cache, which evicted the mobile Gradle cache; cold, those four build in 4 to 6 minutes on parallel legs.
       # The cook layer hangs on the recipe, which holds every Cargo.toml: a manifest change needs a new key, because
-      # actions/cache never overwrites an existing one.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # a cache under a key is never overwritten.
+      - id: buildx-cache
+        if: matrix.target == 'decoder'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/buildx-cache
-          key: buildx-${{ matrix.target }}-${{ hashFiles('src/Cargo.lock', 'src/rust-toolchain.toml', 'src/**/Cargo.toml', 'deploy/docker/*.Dockerfile', 'deploy/docker/versions.env', 'deploy/docker/ffmpeg.configure', 'deploy/docker/media-metadata.sh') }}
-          restore-keys: buildx-${{ matrix.target }}-
+          key: buildx-decoder-${{ hashFiles('src/Cargo.lock', 'src/rust-toolchain.toml', 'src/**/Cargo.toml', 'deploy/docker/*.Dockerfile', 'deploy/docker/versions.env', 'deploy/docker/ffmpeg.configure', 'deploy/docker/media-metadata.sh') }}
+          restore-keys: buildx-decoder-
       - name: Build ${{ matrix.target }} (no push)
         env:
-          BUILDX_CACHE_DIR: ${{ runner.temp }}/buildx-cache
+          BUILDX_CACHE_DIR: ${{ matrix.target == 'decoder' && format('{0}/buildx-cache', runner.temp) || '' }}
         run: >-
           scripts/ci/watchdog.sh --name build-image-${{ matrix.target }} --
           scripts/ci/build-images.sh build ${{ matrix.target }} ${{ runner.temp }}/${{ matrix.target }}.tar
+      - if: matrix.target == 'decoder' && github.event_name == 'push' && steps.buildx-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/buildx-cache
+          key: ${{ steps.buildx-cache.outputs.cache-primary-key }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: image-${{ matrix.target }}
@@ -420,6 +440,7 @@ jobs:
           workspaces: src
           key: ${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install cargo-nextest
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-nextest
       - name: Install the host reference tools (vips, ffmpeg, ffprobe, libheif plugins)
@@ -450,6 +471,7 @@ jobs:
           workspaces: src
           key: vault-core-${{ matrix.leg }}-${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install cargo-deny
         if: matrix.leg == 'native'
         run: scripts/ci/watchdog.sh --name install-tools -- scripts/ci/install-tools.sh cargo-deny
@@ -491,7 +513,12 @@ jobs:
           workspaces: src
           key: mobile-${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+          save-if: ${{ github.event_name == 'push' }}
+      # AZ-4389: restore here, save at the end of the job (step "Save the Gradle and pub caches"). actions/cache saves
+      # only after a green job, so a job that failed on a cold fetch (Maven Central answers 429 to shared runners) never
+      # refilled an evicted entry and every later run fetched cold again.
+      - id: gradle-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches
@@ -508,6 +535,7 @@ jobs:
       - name: Kotlin bindings match the Rust surface
         run: scripts/ci/watchdog.sh --name mobile-check-bindings -- scripts/ci/mobile-check-bindings.sh
       - name: Debug build, minSdk, one process, one library per ABI, 16 KB alignment
+        id: debug-build
         run: scripts/ci/watchdog.sh --name mobile-build-debug -- scripts/ci/mobile-build-app.sh debug
       - name: Release build, minSdk, one process, one library per ABI, 16 KB alignment
         run: scripts/ci/watchdog.sh --name mobile-build-release -- scripts/ci/mobile-build-app.sh release
@@ -515,6 +543,18 @@ jobs:
         run: scripts/ci/watchdog.sh --name mobile-test -- scripts/ci/mobile-test.sh
       - name: Seeded failures (4 KB library, changed BackupCore method, vault-core dependency)
         run: scripts/ci/watchdog.sh --name mobile-check-seeds -- scripts/ci/tests/test-mobile-checks.sh
+      # Also after a red step, so a later failure does not lose the dependencies, but only once the debug build got
+      # through: a build that failed while resolving would store a partial cache under the final key, and a cache under
+      # a key is never overwritten. Last step, so it holds what the release build and the Kotlin tests fetched too.
+      - name: Save the Gradle and pub caches
+        if: ${{ !cancelled() && github.event_name == 'push' && steps.gradle-cache.outputs.cache-hit != 'true' && steps.debug-build.outcome == 'success' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.pub-cache
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
 
   # AZ-3935: the web app (src/web). Bun 1.4.5 installs and runs the scripts; the runner's Node (22 or newer) runs vite,
   # vitest, eslint and svelte-check. Lint, typecheck, unit tests (they include a scan of a real production build for
@@ -534,6 +574,7 @@ jobs:
           workspaces: src
           key: web-${{ hashFiles('src/rust-toolchain.toml', 'src/Cargo.lock', 'src/Cargo.toml') }}
           cache-on-failure: true
+          save-if: ${{ github.event_name == 'push' }}
       # Bun installs packages and runs the scripts, but hands the tools' node-shebang bins (vite, vitest, eslint) to Node,
       # so Node 22 is pinned here instead of relying on what the runner image ships.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
